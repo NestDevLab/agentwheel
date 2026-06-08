@@ -1,0 +1,30 @@
+{
+  "name": "agentweave",
+  "version": "0.1.0",
+  "description": "Multi-runtime agent artifact orchestrator",
+  "type": "module",
+  "bin": {
+    "agentweave": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@skillkit/core": "1.24.0",
+    "commander": "14.0.2",
+    "jsonc-parser": "3.3.1",
+    "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.0.15"
+  },
+  "packageManager": "pnpm@10.23.0"
+}

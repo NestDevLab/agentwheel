@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="agentweave keeps agent skills, rules, and instructions in sync across runtimes.">
+  <title>agentweave - One source. Every agent.</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #111827;
+      --panel-2: #151b26;
+      --text: #f8fafc;
+      --muted: #9ca3af;
+      --line: rgba(148, 163, 184, 0.2);
+      --indigo: #4f46e5;
+      --violet: #7c3aed;
+      --cyan: #06b6d4;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(79, 70, 229, 0.2), transparent 28rem),
+        radial-gradient(circle at 82% 18%, rgba(6, 182, 212, 0.16), transparent 26rem),
+        linear-gradient(180deg, #0d1117 0%, #0b0f16 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .brand img {
+      width: 38px;
+      height: 38px;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+      gap: 56px;
+      align-items: center;
+      padding: 76px 0 84px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(17, 24, 39, 0.72);
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--cyan);
+      box-shadow: 0 0 24px var(--cyan);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 24px 0 18px;
+      font-size: clamp(48px, 7vw, 86px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .accent {
+      background: linear-gradient(90deg, var(--cyan), #818cf8, #a78bfa);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .subhead {
+      max-width: 650px;
+      margin: 0;
+      color: #cbd5e1;
+      font-size: clamp(18px, 2.2vw, 22px);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 32px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .button.primary {
+      background: linear-gradient(135deg, var(--indigo), var(--violet));
+      color: white;
+      box-shadow: 0 14px 38px rgba(79, 70, 229, 0.32);
+    }
+
+    .button.secondary {
+      border-color: var(--line);
+      background: rgba(17, 24, 39, 0.72);
+      color: #e5e7eb;
+    }
+
+    .mark {
+      position: relative;
+      min-height: 360px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(21, 27, 38, 0.88), rgba(13, 17, 23, 0.78));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .mark::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at center, black, transparent 78%);
+    }
+
+    .mark img {
+      position: absolute;
+      inset: 50% auto auto 50%;
+      width: min(72%, 260px);
+      height: auto;
+      transform: translate(-50%, -50%);
+      filter: drop-shadow(0 18px 44px rgba(6, 182, 212, 0.18));
+    }
+
+    .code {
+      margin: 0 0 74px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, 0.7);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .codebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .light {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #334155;
+    }
+
+    pre {
+      margin: 0;
+      padding: 22px;
+      overflow-x: auto;
+      color: #dbeafe;
+      font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .prompt {
+      color: var(--cyan);
+    }
+
+    .muted {
+      color: #94a3b8;
+    }
+
+    section {
+      padding: 36px 0;
+    }
+
+    .section-title {
+      max-width: 760px;
+      margin: 0 0 24px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      min-height: 220px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(15, 23, 42, 0.66));
+    }
+
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 18px;
+      border-radius: 8px;
+      background: rgba(6, 182, 212, 0.12);
+      color: var(--cyan);
+      font-weight: 800;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 14px;
+      align-items: center;
+      margin-top: 28px;
+    }
+
+    .step {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .arrow {
+      color: var(--cyan);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 48px 0 38px;
+      color: var(--muted);
+      font-size: 14px;
+      border-top: 1px solid var(--line);
+      margin-top: 48px;
+    }
+
+    footer a {
+      color: #cbd5e1;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 42px;
+      }
+
+      .mark {
+        min-height: 280px;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+        justify-self: center;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .wrap {
+        width: min(100% - 28px, 1120px);
+      }
+
+      header,
+      footer {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .nav {
+        flex-wrap: wrap;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./" aria-label="agentweave home">
+        <img src="./assets/logo-dark.svg" alt="" width="38" height="38">
+        <span>agentweave</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="https://github.com/NestDevLab/agentweave">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <span class="eyebrow"><span class="dot"></span> early v0.1 install spine</span>
+          <h1>One source. <span class="accent">Every agent.</span></h1>
+          <p class="subhead">agentweave turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/NestDevLab/agentweave">GitHub repo</a>
+            <a class="button secondary" href="#how">Get started</a>
+          </div>
+        </div>
+        <div class="mark" aria-hidden="true">
+          <img src="./assets/logo-dark.svg" alt="">
+        </div>
+      </section>
+
+      <div class="code" aria-label="Install snippet">
+        <div class="codebar">
+          <span class="light"></span><span class="light"></span><span class="light"></span>
+          <span>agentweave sync</span>
+        </div>
+        <pre><code><span class="prompt">$</span> agentweave add github:NestDevLab/core-agent-pack
+<span class="prompt">$</span> agentweave sync --adapter openclaw --dry-run
+<span class="prompt">$</span> agentweave sync --adapter openclaw
+<span class="muted"># managed files stay managed; local overlays stay yours</span></code></pre>
+      </div>
+
+      <section id="features">
+        <h2 class="section-title">Designed for agent stacks that keep moving.</h2>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">A</div>
+            <h3>Pluggable adapters</h3>
+            <p>Point a runtime at its paths with JSONC config, or use bundled adapters for common agent tools.</p>
+          </article>
+          <article class="card">
+            <div class="icon">S</div>
+            <h3>Stays in sync</h3>
+            <p>Plan first, then apply. Hash manifests keep generated runtime files honest across updates.</p>
+          </article>
+          <article class="card">
+            <div class="icon">T</div>
+            <h3>Your tweaks survive</h3>
+            <p>Local overlays and additive rules let teams customize without forking upstream packages.</p>
+          </article>
+          <article class="card">
+            <div class="icon">R</div>
+            <h3>Custom runtimes</h3>
+            <p>Private runtime? Drop in a local adapter config and keep it inside your own workspace.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how">
+        <h2 class="section-title">How it works</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>Author package</strong>
+            <span>Skills, rules, instructions, and future artifacts live upstream.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>Workspace control plane</strong>
+            <span>.agentweave stores locks, overlays, overrides, and local intent.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>Runtime output</strong>
+            <span>Sync writes generated files into OpenClaw, Claude, Codex, or private runtimes.</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>agentweave is early / v0.1.</span>
+      <a href="https://github.com/NestDevLab/agentweave">github.com/NestDevLab/agentweave</a>
+    </footer>
+  </div>
+</body>
+</html>

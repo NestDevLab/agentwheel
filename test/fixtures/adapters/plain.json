@@ -1,0 +1,13 @@
+{
+  "name": "plain-json",
+  "displayName": "Plain JSON",
+  "targets": {
+    "instructions": {
+      "dest": ".plain/AGENTS.md"
+    },
+    "rules": {
+      "dest": ".plain/rules"
+    }
+  }
+}
+

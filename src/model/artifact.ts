@@ -1,0 +1,30 @@
+import { z } from "zod";
+
+export const artifactTypeSchema = z.enum([
+  "instructions",
+  "rules",
+  "skills",
+  "commands",
+  "subagents",
+  "mcp",
+  "hooks",
+  "plugins",
+]);
+
+export type ArtifactType = z.infer<typeof artifactTypeSchema>;
+
+export const fileKindSchema = z.enum(["file", "dir"]);
+export type FileKind = z.infer<typeof fileKindSchema>;
+
+export const artifactSchema = z.object({
+  type: artifactTypeSchema,
+  name: z.string().min(1),
+  sourcePath: z.string().min(1),
+  stagedPath: z.string().min(1).optional(),
+  relativePath: z.string().min(1),
+  kind: fileKindSchema,
+  hash: z.string().min(16),
+});
+
+export type Artifact = z.infer<typeof artifactSchema>;
+

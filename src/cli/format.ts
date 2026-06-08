@@ -1,0 +1,25 @@
+import type { InstallPlan, PlanAction } from "../install/plan.js";
+import { summarizePlan } from "../install/plan.js";
+
+const labels: Record<PlanAction, string> = {
+  create: "CREATE",
+  update: "UPDATE",
+  skip: "SKIP",
+  remove: "REMOVE",
+  drift: "DRIFT",
+  conflict: "CONFLICT",
+};
+
+export function formatPlan(plan: InstallPlan): string {
+  const lines = [`Plan for ${plan.adapter} at ${plan.targetRoot}`];
+  for (const operation of plan.operations) {
+    const source = operation.sourcePath ? `${operation.sourcePath} -> ` : "";
+    lines.push(`${labels[operation.action].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason})`);
+  }
+  const summary = summarizePlan(plan);
+  lines.push(
+    `Summary: create ${summary.create}, update ${summary.update}, skip ${summary.skip}, remove ${summary.remove}, drift ${summary.drift}, conflict ${summary.conflict}`,
+  );
+  return lines.join("\n");
+}
+

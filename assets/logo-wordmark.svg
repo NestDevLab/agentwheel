@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 128" role="img" aria-labelledby="title desc">
+  <title id="title">agentweave wordmark</title>
+  <desc id="desc">Agentweave icon with wordmark.</desc>
+  <defs>
+    <linearGradient id="weave-a" x1="20" y1="106" x2="108" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="weave-b" x1="22" y1="22" x2="106" y2="106" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#06b6d4"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <path d="M24 32 L42 96 L64 48 L86 96 L104 32" fill="none" stroke="url(#weave-a)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M24 96 L42 32 L64 80 L86 32 L104 96" fill="none" stroke="url(#weave-b)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M42 96 L52 74" fill="none" stroke="#f8fafc" stroke-width="14" stroke-linecap="round"/>
+    <path d="M76 54 L86 32" fill="none" stroke="#f8fafc" stroke-width="14" stroke-linecap="round"/>
+    <path d="M24 32 L42 96 L64 48 L86 96 L104 32" fill="none" stroke="url(#weave-a)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="24" cy="32" r="5" fill="#06b6d4"/>
+    <circle cx="104" cy="32" r="5" fill="#7c3aed"/>
+    <circle cx="24" cy="96" r="5" fill="#4f46e5"/>
+    <circle cx="104" cy="96" r="5" fill="#06b6d4"/>
+  </g>
+  <text x="142" y="78" fill="#111827" font-family="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="43" font-weight="700" letter-spacing="0">agentweave</text>
+  <path d="M143 90 H385" stroke="#06b6d4" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+</svg>
+

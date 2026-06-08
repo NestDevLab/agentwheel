@@ -1,0 +1,4 @@
+# Core Rule
+
+Keep generated files managed by agentweave.
+

@@ -1,0 +1,14 @@
+{
+  // JSONC is allowed for human-edited adapter configs.
+  "name": "commented-jsonc",
+  "displayName": "Commented JSONC",
+  "targets": {
+    "instructions": {
+      "dest": ".commented/AGENTS.md",
+    },
+    "skills": {
+      "dest": ".commented/skills",
+    },
+  },
+}
+

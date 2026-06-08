@@ -112,11 +112,17 @@
     }
 
     h1 {
-      max-width: 760px;
+      max-width: 920px;
       margin: 24px 0 18px;
-      font-size: clamp(48px, 7vw, 86px);
-      line-height: 0.95;
+      font-size: clamp(46px, 5.6vw, 78px);
+      line-height: 1.02;
       letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .title-line {
+      display: block;
+      white-space: nowrap;
     }
 
     .accent {
@@ -197,6 +203,8 @@
       overflow-x: auto;
       color: #dbeafe;
       font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: left;
+      white-space: pre;
     }
 
     .prompt {
@@ -221,12 +229,12 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
     }
 
     .card {
-      min-height: 220px;
+      min-height: 214px;
       padding: 22px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -254,6 +262,76 @@
       margin: 0;
       color: var(--muted);
       font-size: 15px;
+    }
+
+    .pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      padding: 5px 8px;
+      border: 1px solid rgba(6, 182, 212, 0.22);
+      border-radius: 999px;
+      background: rgba(6, 182, 212, 0.08);
+      color: #bae6fd;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .doc-link {
+      min-height: 132px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+    }
+
+    .doc-link strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #f8fafc;
+    }
+
+    .doc-link span {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .intro-text {
+      max-width: 760px;
+      margin: 0 0 24px;
+      color: #cbd5e1;
+      font-size: clamp(17px, 2vw, 20px);
+    }
+
+    #get-started .code {
+      margin-bottom: 26px;
+    }
+
+    #get-started .inline-note {
+      max-width: 780px;
+      margin: 20px 0 0;
+      color: #cbd5e1;
+      font-size: 16px;
+    }
+
+    #get-started .inline-note code {
+      color: #dbeafe;
+      background: rgba(2, 6, 23, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 5px;
     }
 
     .flow {
@@ -315,6 +393,10 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .docs-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .flow {
         grid-template-columns: 1fr;
       }
@@ -343,6 +425,14 @@
       .grid {
         grid-template-columns: 1fr;
       }
+
+      h1 {
+        font-size: clamp(34px, 10.5vw, 48px);
+      }
+
+      .docs-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -356,6 +446,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
+        <a href="#docs">Docs</a>
         <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
       </nav>
@@ -366,7 +457,7 @@
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
           <span class="eyebrow"><span class="dot"></span> early v0.3 lifecycle core</span>
-          <h1>One source. <span class="accent">Every agent.</span></h1>
+          <h1><span class="title-line">One source.</span><span class="title-line accent">Every agent.</span></h1>
           <p class="subhead">agentwheel turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/NestDevLab/agentwheel">GitHub repo</a>
@@ -388,27 +479,40 @@
       </div>
 
       <section id="features">
-        <h2 class="section-title">Designed for agent stacks that keep moving.</h2>
+        <h2 class="section-title">Everything your agent stack needs to stay aligned.</h2>
         <div class="grid">
           <article class="card">
-            <div class="icon">A</div>
-            <h3>Pluggable adapters</h3>
-            <p>Point a runtime at its paths with JSONC config, or use bundled adapters for common agent tools.</p>
+            <div class="icon">F</div>
+            <h3>Full artifact model</h3>
+            <p>Install every common agent asset type without collapsing them into one generic file.</p>
+            <div class="pill-list">
+              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">plugins</span>
+            </div>
           </article>
           <article class="card">
             <div class="icon">S</div>
-            <h3>Stays in sync</h3>
-            <p>Plan first, then apply. Hash manifests keep generated runtime files honest across updates.</p>
+            <h3>Drift-aware sync</h3>
+            <p>Plan first, then apply. Hash manifests track managed output, detect drift, and keep updates idempotent.</p>
           </article>
           <article class="card">
-            <div class="icon">T</div>
-            <h3>Your tweaks survive</h3>
-            <p>Local overlays and additive rules let teams customize without forking upstream packages.</p>
+            <div class="icon">A</div>
+            <h3>Pluggable adapters</h3>
+            <p>Use bundled runtimes, private JSONC file-drop adapters, or explicit local adapter code behind <code>--allow-adapter-code</code>.</p>
+          </article>
+          <article class="card">
+            <div class="icon">D</div>
+            <h3>Source drivers</h3>
+            <p>Consume local paths, git packages, SkillKit sources, and Vercel-style skills without making the registry mandatory.</p>
           </article>
           <article class="card">
             <div class="icon">R</div>
-            <h3>Custom runtimes</h3>
-            <p>Private runtime? Drop in a local adapter config and keep it inside your own workspace.</p>
+            <h3>Optional registry</h3>
+            <p>Short-name discovery and federation live in an index, but direct git/path/source URLs always bypass gatekeeping.</p>
+          </article>
+          <article class="card">
+            <div class="icon">P</div>
+            <h3>Profiles</h3>
+            <p>Group runtimes and sync one package across OpenClaw, Claude, Codex, Hermes, Copilot, or your own adapters in one command.</p>
           </article>
         </div>
       </section>
@@ -433,9 +537,32 @@
         </div>
       </section>
 
+      <section id="docs">
+        <h2 class="section-title">Docs</h2>
+        <p class="intro-text">The full documentation lives in the GitHub repo for now. Start with the README, then use the design and lifecycle docs for package formats, update behavior, overlays, registry, and adapter details.</p>
+        <div class="docs-grid">
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
+            <strong>README</strong>
+            <span>Quick start, concepts, roadmap, and supported commands.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/DESIGN.md">
+            <strong>DESIGN.md</strong>
+            <span>Architecture, module layout, adapters, staging, install, and source drivers.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/LIFECYCLE.md">
+            <strong>LIFECYCLE.md</strong>
+            <span>Publish, install, update, overlays, overrides, eject, and registry model.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel">
+            <strong>GitHub repo</strong>
+            <span>Source, issues, releases, npm package metadata, and examples.</span>
+          </a>
+        </div>
+      </section>
+
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="subhead">agentwheel is early (v0.3) and installs from npm. Three steps: get it, point it at a package, sync.</p>
+        <p class="intro-text">agentwheel is early (v0.3) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync.</p>
 
         <div class="code" aria-label="Install agentwheel">
           <div class="codebar">
@@ -466,7 +593,7 @@
 <span class="prompt">$</span> agentwheel update            <span class="muted"># write into configured runtimes</span></code></pre>
         </div>
 
-        <p class="subhead">Custom or private runtime? Skip the registry entirely and point at a local adapter:
+        <p class="inline-note">Custom or private runtime? Skip the registry entirely and point at a local adapter:
         <code>agentwheel sync ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
         <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
         <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>

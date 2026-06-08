@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
-import { artifactTypeSchema } from "./artifact.js";
+import { artifactTypeSchema, packageAssetSchema } from "./artifact.js";
 import { pathExists } from "../utils/fs.js";
 
 export const packageProvideSchema = z.object({
   type: artifactTypeSchema,
   path: z.string().min(1),
+  assets: z.array(packageAssetSchema).optional(),
 });
 
 export const packageManifestSchema = z.object({
@@ -19,6 +20,7 @@ export const packageManifestSchema = z.object({
 
 export type PackageManifest = z.infer<typeof packageManifestSchema>;
 export type PackageProvide = z.infer<typeof packageProvideSchema>;
+export type PackageAsset = z.infer<typeof packageAssetSchema>;
 
 export async function findPackageManifestPath(root: string): Promise<string | undefined> {
   for (const name of ["agentwheel.json", "agentwheel.jsonc"]) {

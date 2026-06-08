@@ -1,7 +1,7 @@
-import { cp, mkdir, mkdtemp } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { chmod, cp, mkdir, mkdtemp, readdir, stat } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
-import type { Artifact } from "../model/artifact.js";
+import type { Artifact, PackageAsset } from "../model/artifact.js";
 import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
@@ -30,6 +30,7 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     const stagedPath = join(root, artifact.relativePath);
     await mkdir(dirname(stagedPath), { recursive: true });
     await cp(artifact.sourcePath, stagedPath, { recursive: artifact.kind === "dir", dereference: true });
+    await composeAssets(artifact, resolved.resolvedPath, stagedPath);
     stagedArtifacts.push({
       ...artifact,
       stagedPath,
@@ -73,4 +74,97 @@ export async function stageSource(driver: SourceDriver, source: string, options:
       })),
     },
   };
+}
+
+async function composeAssets(artifact: Artifact, packageRoot: string, stagedPath: string): Promise<void> {
+  if (!artifact.assets?.length) return;
+  if (artifact.kind !== "dir") {
+    throw new Error(`Asset includes require a directory artifact: ${artifact.type}/${artifact.name}`);
+  }
+  for (const asset of artifact.assets) {
+    const source = resolvePackagePath(packageRoot, asset.from);
+    const dest = join(stagedPath, asset.into);
+    await copyAsset(asset, source, dest);
+  }
+}
+
+async function copyAsset(asset: PackageAsset, source: string, dest: string): Promise<void> {
+  const sourceStats = await stat(source);
+  if (sourceStats.isFile()) {
+    if (matchesAny(basename(source), asset.include)) {
+      await mkdir(dest, { recursive: true });
+      await copyAssetFile(source, join(dest, basename(source)), asset);
+    }
+    return;
+  }
+  if (!sourceStats.isDirectory()) {
+    throw new Error(`Asset include source is not a file or directory: ${source}`);
+  }
+  if (!asset.include?.length) {
+    await mkdir(dirname(dest), { recursive: true });
+    await cp(source, dest, { recursive: true, dereference: true });
+    if (asset.mode === "copy") await normalizeCopiedModes(dest);
+    return;
+  }
+  for (const file of await listFiles(source)) {
+    const rel = relative(source, file).replaceAll("\\", "/");
+    if (!matchesAny(rel, asset.include) && !matchesAny(basename(file), asset.include)) continue;
+    await copyAssetFile(file, join(dest, rel), asset);
+  }
+}
+
+async function copyAssetFile(source: string, dest: string, asset: PackageAsset): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true });
+  await cp(source, dest, { dereference: true });
+  if (asset.mode === "copy") await chmod(dest, 0o644);
+}
+
+function resolvePackagePath(packageRoot: string, path: string): string {
+  const resolved = resolve(packageRoot, path);
+  const root = resolve(packageRoot);
+  if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
+    throw new Error(`Asset include escapes package root: ${path}`);
+  }
+  return resolved;
+}
+
+async function listFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        out.push(full);
+      }
+    }
+  }
+  await walk(root);
+  return out;
+}
+
+async function normalizeCopiedModes(path: string): Promise<void> {
+  const stats = await stat(path);
+  if (stats.isFile()) {
+    await chmod(path, 0o644);
+    return;
+  }
+  if (!stats.isDirectory()) return;
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    await normalizeCopiedModes(join(path, entry.name));
+  }
+}
+
+function matchesAny(path: string, patterns?: string[]): boolean {
+  if (!patterns?.length) return true;
+  return patterns.some((pattern) => matchesGlob(path, pattern));
+}
+
+function matchesGlob(path: string, pattern: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`).test(path);
 }

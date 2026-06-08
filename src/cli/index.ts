@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.4.1");
+  .version("0.5.0");
 
 program
   .command("init")

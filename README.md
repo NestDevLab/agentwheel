@@ -33,9 +33,9 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ---
 
-> **Status: early (v0.4).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> **Status: early (v0.5).** The lifecycle core is real and tested — local/git/skillkit/vercel
 > sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
-> profiles, runtime auto-detection, fleet targeting, rich JSON merge, and pluggable adapters.
+> profiles, runtime auto-detection, fleet targeting, asset-includes, rich JSON merge, and pluggable adapters.
 > Expect sharp edges.
 
 ## What it does
@@ -147,6 +147,28 @@ A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 }
 ```
 
+Packages can compose shared files into each directory artifact at staging time. This keeps one
+canonical copy in the package repo while installing self-contained skills:
+
+```jsonc
+{
+  "type": "skills",
+  "path": "skills",
+  "assets": [
+    {
+      "from": "packages/tmux-bridge/bin",
+      "into": "bin",
+      "include": ["*.sh"],
+      "mode": "preserve"
+    }
+  ]
+}
+```
+
+`mode: "preserve"` keeps executable bits on copied scripts. The composed files are included in
+the skill directory hash, so idempotency and drift detection work as if the assets had always
+belonged to the skill.
+
 Publish by pushing to any git host. A registry exists only for short names and discovery — it's
 optional, and `agentwheel add <url|path>` always works without it.
 
@@ -221,6 +243,7 @@ clear conversion format.
 - [x] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
 - [x] **v0.3** — skillkit/vercel source drivers; optional registry & federation; programmatic adapters behind `--allow-adapter-code`; rich JSON merge for mcp/hooks/settings; profiles.
 - [x] **v0.4** — runtime auto-detection; no `--target-root` needed for normal use; fleet config with named agents; global + project config merge; `--agent` and `--all`.
+- [x] **v0.5** — asset-includes compose shared files into skills at install time; executable bits preserved; hashes include composed assets.
 
 ## Design docs
 

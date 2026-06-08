@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import type { Artifact, ArtifactType } from "../model/artifact.js";
+import type { Artifact, ArtifactType, PackageAsset } from "../model/artifact.js";
 import { readPackageManifest } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
@@ -158,7 +158,7 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
     const stats = await stat(full);
     if (provide.type === "instructions") {
       if (stats.isFile()) {
-        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName));
+        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets));
       }
       continue;
     }
@@ -166,16 +166,16 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
       for (const entry of await sortedDirEntries(full)) {
         const child = join(full, entry.name);
         if (provide.type === "skills" && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName));
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets));
         } else if (provide.type === "plugins" && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName));
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets));
         } else if (entry.isFile()) {
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
-          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName));
+          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide.assets));
         }
       }
     } else if (stats.isFile()) {
-      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName));
+      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets));
     }
   }
   return artifacts;
@@ -194,7 +194,7 @@ async function listGenericArtifacts(type: ArtifactType, dir: string, relativeRoo
   return artifacts;
 }
 
-async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string): Promise<Artifact> {
+async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[]): Promise<Artifact> {
   return {
     type,
     name,
@@ -204,10 +204,11 @@ async function artifactForFile(type: ArtifactType, name: string, sourcePath: str
     hash: await hashPath(sourcePath),
     packageName,
     channel: "managed",
+    assets,
   };
 }
 
-async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string): Promise<Artifact> {
+async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[]): Promise<Artifact> {
   return {
     type,
     name,
@@ -217,5 +218,6 @@ async function artifactForDir(type: ArtifactType, name: string, sourcePath: stri
     hash: await hashPath(sourcePath),
     packageName,
     channel: "managed",
+    assets,
   };
 }

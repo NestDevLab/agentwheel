@@ -6,11 +6,13 @@ import { loadAdapterConfig } from "../model/adapter.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
 import { formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
+import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
 import { readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
+import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 
 const program = new Command();
 
@@ -48,19 +50,21 @@ program
   .option("--name <name>", "package alias")
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const driverName = options.driver ?? inferDriver(source);
+    const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const resolvedSource = resolvedInput.source;
+    const driverName = options.driver ?? inferSourceDriverName(resolvedSource);
     const driver = getSourceDriver(driverName);
     const adapter = options.adapterConfig ? await loadAdapterConfig(options.adapterConfig) : getAdapter(options.adapter);
-    const bundle = await stageSource(driver, source, {
+    const bundle = await stageSource(driver, resolvedSource, {
       workspaceRoot: targetRoot,
       adapter,
       cacheRoot: join(targetRoot, ".agentwheel", "cache"),
       mode: options.mode,
     });
-    const name = options.name ?? bundle.source.packageName ?? source;
+    const name = options.name ?? resolvedInput.registryEntry?.name ?? bundle.source.packageName ?? source;
     const entry: WorkspacePackage = {
       name,
-      source,
+      source: resolvedSource,
       driver: driverName,
       adapter: adapter.name,
       adapterConfig: options.adapterConfig,
@@ -77,7 +81,7 @@ program
   .argument("<source>", "local source directory")
   .option("--driver <driver>", "source driver")
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver ?? inferDriver(source));
+    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
     const resolved = await driver.resolve(source);
     const artifacts = await driver.list(resolved);
     for (const artifact of artifacts) {
@@ -90,7 +94,7 @@ program
   .argument("<source>", "local source directory")
   .option("--driver <driver>", "source driver")
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver ?? inferDriver(source));
+    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
     const resolved = await driver.resolve(source);
     const result = await driver.scan(resolved);
     if (result.findings.length === 0) {
@@ -178,6 +182,39 @@ program
   });
 
 program
+  .command("registry")
+  .description("manage optional registry indexes")
+  .addCommand(
+    new Command("update")
+      .description("refresh the local registry cache")
+      .option("--target-root <path>", "workspace root", process.cwd())
+      .action(async (options) => {
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        const index = await client.getIndex({ refresh: true });
+        console.log(`Registry refreshed: ${index.entries.length} entries from ${index.sources.join(", ")}`);
+      }),
+  )
+  .addCommand(
+    new Command("list")
+      .description("list available registry entries")
+      .option("--target-root <path>", "workspace root", process.cwd())
+      .action(async (options) => {
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        printRegistryEntries((await client.getIndex()).entries);
+      }),
+  )
+  .addCommand(
+    new Command("search")
+      .description("search registry entries")
+      .argument("<query>", "search query")
+      .option("--target-root <path>", "workspace root", process.cwd())
+      .action(async (query, options) => {
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        printRegistryEntries(await client.search(query));
+      }),
+  );
+
+program
   .command("remember")
   .requiredOption("--runtime <runtime>", "runtime/adapter name")
   .option("--target-root <path>", "workspace root", process.cwd())
@@ -218,7 +255,7 @@ program
   });
 
 async function buildPlan(source: string, options: { driver?: string; adapter: string; adapterConfig?: string; targetRoot: string; mode?: "pinned" | "tracking" }) {
-  const driver = getSourceDriver(options.driver ?? inferDriver(source));
+  const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
   const adapter = options.adapterConfig ? await loadAdapterConfig(options.adapterConfig) : getAdapter(options.adapter);
   const targetRoot = normalizeTargetRoot(options.targetRoot);
   const bundle = await stageSource(driver, source, {
@@ -251,10 +288,11 @@ async function initPackage(root: string): Promise<void> {
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Agent Instructions\n", "utf8");
 }
 
-function inferDriver(source: string): "local" | "git" | "skillkit" | "vercel-skills" {
-  if (source.startsWith("skillkit:")) return "skillkit";
-  if (source.startsWith("vercel:")) return "vercel-skills";
-  return source.startsWith("github:") || source.startsWith("git:") ? "git" : "local";
+function printRegistryEntries(entries: Array<{ name: string; type: string; source: string; description: string; tags?: string[] }>): void {
+  for (const entry of entries) {
+    const tags = entry.tags?.length ? ` [${entry.tags.join(",")}]` : "";
+    console.log(`${entry.name}\t${entry.type}\t${entry.source}\t${entry.description}${tags}`);
+  }
 }
 
 program.parseAsync().catch((error: unknown) => {

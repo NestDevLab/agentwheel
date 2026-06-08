@@ -13,9 +13,15 @@ export const workspacePackageSchema = z.object({
   requestedRef: z.string().min(1).optional(),
 });
 
+export const workspaceRegistrySchema = z.object({
+  sources: z.array(z.string().min(1)).optional(),
+  ttlSeconds: z.number().int().positive().optional(),
+}).default({});
+
 export const workspaceConfigSchema = z.object({
   schemaVersion: z.literal(1),
   packages: z.array(workspacePackageSchema).default([]),
+  registry: workspaceRegistrySchema,
 });
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
@@ -27,7 +33,7 @@ export function workspaceConfigPath(workspaceRoot: string): string {
 
 export async function readWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig> {
   const path = workspaceConfigPath(workspaceRoot);
-  if (!(await pathExists(path))) return { schemaVersion: 1, packages: [] };
+  if (!(await pathExists(path))) return { schemaVersion: 1, packages: [], registry: {} };
   return workspaceConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
 }
 
@@ -39,5 +45,5 @@ export function upsertPackage(config: WorkspaceConfig, entry: WorkspacePackage):
   const packages = config.packages.filter((candidate) => candidate.name !== entry.name);
   packages.push(entry);
   packages.sort((a, b) => a.name.localeCompare(b.name));
-  return { schemaVersion: 1, packages };
+  return { schemaVersion: 1, packages, registry: config.registry ?? {} };
 }

@@ -462,7 +462,7 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> early v0.3 lifecycle core</span>
+          <span class="eyebrow"><span class="dot"></span> early v0.4 runtime targeting</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
           <p class="subhead">agentwheel turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
           <div class="actions">
@@ -479,8 +479,9 @@
         </div>
         <pre><code><span class="prompt">$</span> npm i -g agentwheel
 <span class="prompt">$</span> agentwheel add github:NestDevLab/core-agent-pack --adapter openclaw
-<span class="prompt">$</span> agentwheel update --dry-run
-<span class="prompt">$</span> agentwheel update
+<span class="prompt">$</span> cd ~/.openclaw
+<span class="prompt">$</span> agentwheel sync --dry-run
+<span class="prompt">$</span> agentwheel sync
 <span class="muted"># managed files stay managed; local overlays stay yours</span></code></pre>
       </div>
 
@@ -517,8 +518,8 @@
           </article>
           <article class="card">
             <div class="icon">P</div>
-            <h3>Profiles</h3>
-            <p>Group runtimes and sync one package across OpenClaw, Claude, Codex, Hermes, Copilot, or your own adapters in one command.</p>
+            <h3>Runtime targeting</h3>
+            <p>Run inside a runtime folder with no target flag, or sync a named fleet with <code>--agent</code>, <code>--all</code>, and profiles.</p>
           </article>
         </div>
       </section>
@@ -608,7 +609,7 @@
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.3) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync.</p>
+        <p class="intro-text">agentwheel is early (v0.4) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
 
         <div class="code" aria-label="Install agentwheel">
           <div class="codebar">
@@ -635,11 +636,29 @@
             <span class="light"></span><span class="light"></span><span class="light"></span>
             <span>3 · preview, then sync</span>
           </div>
-          <pre><code><span class="prompt">$</span> agentwheel update --dry-run  <span class="muted"># see exactly what would change</span>
-<span class="prompt">$</span> agentwheel update            <span class="muted"># write into configured runtimes</span></code></pre>
+          <pre><code><span class="prompt">$</span> cd ~/.openclaw
+<span class="prompt">$</span> agentwheel sync --dry-run    <span class="muted"># auto-detects the runtime target</span>
+<span class="prompt">$</span> agentwheel sync              <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
         </div>
 
-        <p class="inline-note">Custom or private runtime? Skip the registry entirely and point at a local adapter:
+        <div class="code" aria-label="Fleet targeting">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>fleet mode</span>
+          </div>
+          <pre><code>{
+  "agents": {
+    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home" },
+    "docs-copilot": { "adapter": "copilot", "root": "/path/to/project" }
+  }
+}
+
+<span class="prompt">$</span> agentwheel sync --agent lab-openclaw
+<span class="prompt">$</span> agentwheel sync --all
+<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
+        </div>
+
+        <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:
         <code>agentwheel sync ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
         <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
         <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
@@ -647,7 +666,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.3.</span>
+      <span>agentwheel is early / v0.4.</span>
       <a href="https://github.com/NestDevLab/agentwheel">github.com/NestDevLab/agentwheel</a>
     </footer>
   </div>

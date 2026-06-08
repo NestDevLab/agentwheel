@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { registryCacheSchema, registryIndexSchema, type RegistryCache, type RegistryEntry } from "../model/registry.js";
-import { readWorkspaceConfig } from "../model/workspace.js";
+import { readMergedWorkspaceConfig } from "../model/workspace.js";
 import { GitSourceDriver } from "../source/git.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
@@ -74,7 +74,7 @@ export class RegistryClient {
       return process.env.AGENTWHEEL_REGISTRY.split(",").map((source) => source.trim()).filter(Boolean);
     }
     if (this.options.workspaceRoot) {
-      const config = await readWorkspaceConfig(this.options.workspaceRoot);
+      const config = await readMergedWorkspaceConfig(this.options.workspaceRoot);
       if (config.registry.sources?.length) return config.registry.sources;
     }
     return [DEFAULT_REGISTRY_SOURCE];
@@ -83,7 +83,7 @@ export class RegistryClient {
   private async getTtlMs(): Promise<number> {
     if (this.options.ttlMs !== undefined) return this.options.ttlMs;
     if (this.options.workspaceRoot) {
-      const config = await readWorkspaceConfig(this.options.workspaceRoot);
+      const config = await readMergedWorkspaceConfig(this.options.workspaceRoot);
       if (config.registry.ttlSeconds !== undefined) return config.registry.ttlSeconds * 1000;
     }
     return DEFAULT_REGISTRY_TTL_MS;

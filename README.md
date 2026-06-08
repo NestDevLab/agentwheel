@@ -24,17 +24,19 @@ So you copy-paste. You forget which agent has the latest version. You tweak a ru
 ```bash
 npm i -g agentwheel
 agentwheel add github:your-org/agent-pack
-agentwheel update --dry-run  # show me what would change
-agentwheel update            # install into configured agents
+cd ~/.openclaw
+agentwheel sync --dry-run    # show me what would change
+agentwheel sync              # install into the detected runtime
 ```
 
 No lock-in. No central gatekeeper. Your packages live in plain git repos, your customizations live in your own repo, and anything reachable by a URL just works.
 
 ---
 
-> **Status: early (v0.3).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> **Status: early (v0.4).** The lifecycle core is real and tested — local/git/skillkit/vercel
 > sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
-> profiles, rich JSON merge, and pluggable adapters. Expect sharp edges.
+> profiles, runtime auto-detection, fleet targeting, rich JSON merge, and pluggable adapters.
+> Expect sharp edges.
 
 ## What it does
 
@@ -51,8 +53,9 @@ npm i -g agentwheel
 
 agentwheel init
 agentwheel add github:your-org/agent-pack --adapter openclaw --mode tracking
-agentwheel update --dry-run
-agentwheel update
+cd ~/.openclaw
+agentwheel sync --dry-run
+agentwheel sync
 ```
 
 Prefer pnpm? `pnpm add -g agentwheel` works too.
@@ -68,6 +71,48 @@ pnpm link --global
 ```
 
 `plan`, `sync --dry-run`, and `update --dry-run` show exactly what would change before anything is written. They're the commands to trust.
+
+## Runtime targeting
+
+Normal use no longer needs `--target-root`. Run agentwheel inside a runtime folder and it detects
+the target:
+
+```bash
+cd ~/.openclaw
+agentwheel sync github:your-org/agent-pack
+```
+
+If the current directory is already the runtime directory (`~/.openclaw`), agentwheel uses its
+parent as the root so output lands in `~/.openclaw/skills`, not `~/.openclaw/.openclaw/skills`.
+If the current directory contains a runtime directory (`./.openclaw`), that directory is used as
+the target under the current project.
+
+For a control-plane setup, define named agents in config. Global config lives at
+`~/.agentwheel/config.json`; project config lives at `.agentwheel/config.json`; project values win.
+
+```jsonc
+{
+  "agents": {
+    "lab-openclaw": { "adapter": "openclaw", "root": "/Users/me/.openclaw-home" },
+    "docs-copilot": { "adapter": "copilot", "root": "/Users/me/projects/docs" }
+  },
+  "profiles": {
+    "daily": [
+      { "agent": "lab-openclaw" },
+      { "agent": "docs-copilot" }
+    ]
+  }
+}
+```
+
+```bash
+agentwheel sync --agent lab-openclaw
+agentwheel sync --all
+agentwheel sync --profile daily
+```
+
+Target resolution order is exact: `--target-root` wins, then `--agent`, then auto-detect from the
+current directory, then fallback to the current directory.
 
 ## Core ideas
 
@@ -172,6 +217,7 @@ clear conversion format.
 - [x] **v0.1** — install spine: local sources; openclaw/claude/codex adapters; skills/rules/instructions; `plan` · `sync` · `--dry-run` · `uninstall`; manifest + drift + idempotency.
 - [x] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
 - [x] **v0.3** — skillkit/vercel source drivers; optional registry & federation; programmatic adapters behind `--allow-adapter-code`; rich JSON merge for mcp/hooks/settings; profiles.
+- [x] **v0.4** — runtime auto-detection; no `--target-root` needed for normal use; fleet config with named agents; global + project config merge; `--agent` and `--all`.
 
 ## Design docs
 

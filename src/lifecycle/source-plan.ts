@@ -10,6 +10,7 @@ import { stageSource, type StagedBundle } from "../staging/staging.js";
 export interface SourcePlanOptions {
   source: string;
   targetRoot: string;
+  workspaceRoot?: string;
   adapter: AdapterConfig;
   driver?: string;
   mode?: "pinned" | "tracking";
@@ -23,13 +24,14 @@ export interface SourcePlanResult {
 }
 
 export async function createSourcePlan(options: SourcePlanOptions): Promise<SourcePlanResult> {
-  const resolvedInput = await resolvePackageSource(options.source, options.targetRoot);
+  const workspaceRoot = options.workspaceRoot ?? options.targetRoot;
+  const resolvedInput = await resolvePackageSource(options.source, workspaceRoot);
   const resolvedSource = resolvedInput.source;
   const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedSource));
   const bundle = await stageSource(driver, resolvedSource, {
-    workspaceRoot: options.targetRoot,
+    workspaceRoot,
     adapter: options.adapter,
-    cacheRoot: join(options.targetRoot, ".agentwheel", "cache"),
+    cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     mode: options.mode,
   });
   const manifest = await readInstallManifest(options.targetRoot, options.adapter.name);

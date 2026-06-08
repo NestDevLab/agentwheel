@@ -7,20 +7,21 @@ import { formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
-import { readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
+import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { createSourcePlan } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
+import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 
 const program = new Command();
 
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.3.1");
+  .version("0.4.0");
 
 program
   .command("init")
@@ -133,14 +134,19 @@ program
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root", process.cwd())
+  .option("--target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
   .option("--mode <mode>", "pinned or tracking")
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
   .action(async (source, options) => {
-    const { plan, bundle } = await buildPlan(source, options);
-    console.log(formatPlan(plan));
-    await rm(bundle.root, { recursive: true, force: true });
-    if (plan.hasBlockingChanges) process.exitCode = 1;
+    const targets = await resolveCliTargets(options);
+    for (const target of targets) {
+      const { plan, bundle } = await buildPlan(source, target, options);
+      console.log(formatPlan(plan));
+      await rm(bundle.root, { recursive: true, force: true });
+      if (plan.hasBlockingChanges) process.exitCode = 1;
+    }
   });
 
 program
@@ -151,16 +157,18 @@ program
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root", process.cwd())
+  .option("--target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
   .option("--mode <mode>", "pinned or tracking")
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .action(async (source, options) => {
     if (options.profile) {
-      const targetRoot = normalizeTargetRoot(options.targetRoot);
+      const target = await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent });
       const results = await syncProfile({
-        workspaceRoot: targetRoot,
+        workspaceRoot: target.workspaceRoot,
         profile: options.profile,
         source,
         driver: options.driver,
@@ -171,71 +179,45 @@ program
         warn: (message) => console.warn(message),
       });
       for (const result of results) {
-        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName}:`);
+        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot}:`);
         console.log(formatPlan(result.plan));
         if (result.plan.hasBlockingChanges) process.exitCode = 1;
       }
       if (!options.dryRun) console.log("Applied.");
       return;
     }
+    const targets = await resolveCliTargets(options);
     if (!source) {
-      throw new Error("sync requires a source unless --profile is used");
+      for (const target of targets) {
+        await runConfiguredPackages(target, options, { useUpdateDecision: false });
+      }
+      return;
     }
-    const { plan, bundle } = await buildPlan(source, options);
-    console.log(formatPlan(plan));
-    if (!options.dryRun) {
-      await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
-      console.log("Applied.");
+    for (const target of targets) {
+      const { plan, bundle } = await buildPlan(source, target, options);
+      console.log(formatPlan(plan));
+      if (!options.dryRun) {
+        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
+        console.log(`Applied ${target.adapter} at ${target.targetRoot}.`);
+      }
+      await rm(bundle.root, { recursive: true, force: true });
+      if (plan.hasBlockingChanges) process.exitCode = 1;
     }
-    await rm(bundle.root, { recursive: true, force: true });
-    if (plan.hasBlockingChanges) process.exitCode = 1;
   });
 
 program
   .command("update")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("--target-root <path>", "workspace root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show plans without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .action(async (options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const config = await readWorkspaceConfig(targetRoot);
-    if (config.packages.length === 0) {
-      console.log("No packages configured.");
-      return;
-    }
-    for (const pkg of config.packages) {
-      const adapter = await resolveAdapter({
-        adapter: pkg.adapter,
-        adapterConfig: pkg.adapterConfig,
-        adapterModule: pkg.adapterModule,
-        allowAdapterCode: options.allowAdapterCode,
-        baseDir: targetRoot,
-        warn: (message) => console.warn(message),
-      });
-      const lock = await readSourceLock(targetRoot, adapter.name);
-      const decision = shouldUpdatePackage(pkg, lock);
-      if (!decision.shouldUpdate) {
-        console.log(`Skipping ${pkg.name}: ${decision.reason}.`);
-        continue;
-      }
-      const { plan, bundle } = await buildPlan(pkg.source, {
-        driver: pkg.driver,
-        adapter: pkg.adapter,
-        adapterConfig: pkg.adapterConfig,
-        adapterModule: pkg.adapterModule,
-        allowAdapterCode: options.allowAdapterCode,
-        targetRoot,
-        mode: pkg.mode,
-      });
-      console.log(`Update ${pkg.name}:`);
-      console.log(formatPlan(plan));
-      if (!options.dryRun) {
-        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
-        console.log(`Applied ${pkg.name}.`);
-      }
-      await rm(bundle.root, { recursive: true, force: true });
-      if (plan.hasBlockingChanges) process.exitCode = 1;
+    const targets = await resolveCliTargets(options);
+    for (const target of targets) {
+      await runConfiguredPackages(target, options, { useUpdateDecision: true });
     }
   });
 
@@ -298,53 +280,104 @@ program
   .option("--adapter <adapter>", "adapter", "openclaw")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root", process.cwd())
+  .option("--target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show removals without writing", false)
   .action(async (options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const programmaticAdapter = options.adapterModule
-      ? await resolveAdapter({
-        adapter: options.adapter,
-        adapterModule: options.adapterModule,
-        allowAdapterCode: options.allowAdapterCode,
-        baseDir: targetRoot,
-        warn: (message) => console.warn(message),
-      })
-      : undefined;
-    const adapterName = programmaticAdapter?.name ?? options.adapter;
-    const manifest = await readInstallManifest(targetRoot, adapterName);
-    if (!manifest) {
-      console.log(`No install manifest for ${adapterName} at ${targetRoot}`);
-      return;
+    const targets = await resolveCliTargets(options);
+    for (const target of targets) {
+      const adapter = await resolveAdapterForTarget(target, options);
+      const manifest = await readInstallManifest(target.targetRoot, adapter.name);
+      if (!manifest) {
+        console.log(`No install manifest for ${adapter.name} at ${target.targetRoot}`);
+        continue;
+      }
+      const plan = await createUninstallPlan(manifest);
+      console.log(formatPlan(plan));
+      await uninstall(plan, options.dryRun);
+      if (!options.dryRun) {
+        await adapter.programmatic?.uninstall?.({ targetRoot: target.targetRoot, adapterName: adapter.name });
+        console.log(`Uninstalled ${adapter.name} at ${target.targetRoot}.`);
+      }
+      if (plan.hasBlockingChanges) process.exitCode = 1;
     }
-    const plan = await createUninstallPlan(manifest);
-    console.log(formatPlan(plan));
-    await uninstall(plan, options.dryRun);
-    if (!options.dryRun && programmaticAdapter) {
-      await programmaticAdapter.programmatic?.uninstall?.({ targetRoot, adapterName: programmaticAdapter.name });
-    }
-    if (!options.dryRun) console.log("Uninstalled.");
-    if (plan.hasBlockingChanges) process.exitCode = 1;
   });
 
-async function buildPlan(source: string, options: { driver?: string; adapter: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; targetRoot: string; mode?: "pinned" | "tracking" }) {
-  const targetRoot = normalizeTargetRoot(options.targetRoot);
-  const adapter = await resolveAdapter({
-    adapter: options.adapter,
-    adapterConfig: options.adapterConfig,
-    adapterModule: options.adapterModule,
-    allowAdapterCode: options.allowAdapterCode,
-    baseDir: targetRoot,
-    warn: (message) => console.warn(message),
-  });
+async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking" }) {
+  const adapter = await resolveAdapterForTarget(target, options);
   const result = await createSourcePlan({
     source,
-    targetRoot,
+    targetRoot: target.targetRoot,
+    workspaceRoot: target.workspaceRoot,
     adapter,
     driver: options.driver,
     mode: options.mode,
   });
   return { plan: result.plan, bundle: result.bundle };
+}
+
+async function resolveCliTargets(options: { targetRoot?: string; adapter?: string; agent?: string; all?: boolean }): Promise<RuntimeTarget[]> {
+  if (options.all) {
+    return resolveAllRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent, all: options.all });
+  }
+  return [await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent })];
+}
+
+async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }) {
+  return resolveAdapter({
+    adapter: target.adapter,
+    adapterConfig: options.adapterConfig,
+    adapterModule: options.adapterModule,
+    allowAdapterCode: options.allowAdapterCode,
+    baseDir: target.workspaceRoot,
+    warn: (message) => console.warn(message),
+  });
+}
+
+async function runConfiguredPackages(
+  target: RuntimeTarget,
+  options: { dryRun?: boolean; executePlugins?: boolean; allowAdapterCode?: boolean; adapterConfig?: string; adapterModule?: string; adapter?: string },
+  behavior: { useUpdateDecision: boolean },
+): Promise<void> {
+  const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  if (config.packages.length === 0) {
+    console.log(`No packages configured at ${target.workspaceRoot}.`);
+    return;
+  }
+  for (const pkg of config.packages) {
+    const targetForPackage = options.adapter || target.source !== "cwd"
+      ? target
+      : { ...target, adapter: pkg.adapter };
+    const adapter = await resolveAdapterForTarget(targetForPackage, {
+      adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
+      adapterModule: options.adapterModule ?? pkg.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+    });
+    if (behavior.useUpdateDecision) {
+      const lock = await readSourceLock(targetForPackage.targetRoot, adapter.name);
+      const decision = shouldUpdatePackage(pkg, lock);
+      if (!decision.shouldUpdate) {
+        console.log(`Skipping ${pkg.name}: ${decision.reason}.`);
+        continue;
+      }
+    }
+    const { plan, bundle } = await buildPlan(pkg.source, targetForPackage, {
+      driver: pkg.driver,
+      adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
+      adapterModule: options.adapterModule ?? pkg.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+      mode: pkg.mode,
+    });
+    console.log(`${behavior.useUpdateDecision ? "Update" : "Sync"} ${pkg.name} (${adapter.name} at ${targetForPackage.targetRoot}):`);
+    console.log(formatPlan(plan));
+    if (!options.dryRun) {
+      await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
+      console.log(`Applied ${pkg.name}.`);
+    }
+    await rm(bundle.root, { recursive: true, force: true });
+    if (plan.hasBlockingChanges) process.exitCode = 1;
+  }
 }
 
 async function initPackage(root: string): Promise<void> {

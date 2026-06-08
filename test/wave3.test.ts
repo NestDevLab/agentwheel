@@ -159,6 +159,7 @@ describe("v0.3 wave 3", () => {
       schemaVersion: 1,
       packages: [],
       registry: {},
+      agents: {},
       profiles: {
         lab: {
           runtimes: [

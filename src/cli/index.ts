@@ -9,6 +9,7 @@ import { getSourceDriver } from "../source/index.js";
 import { stageSource } from "../staging/staging.js";
 import { readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage } from "../model/workspace.js";
+import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 
 const program = new Command();
@@ -126,11 +127,12 @@ program
   .option("--target-root <path>", "runtime/project root", process.cwd())
   .option("--mode <mode>", "pinned or tracking")
   .option("--dry-run", "show plan without writing", false)
+  .option("--execute-plugins", "execute semantic plugin installs", false)
   .action(async (source, options) => {
     const { plan, bundle } = await buildPlan(source, options);
     console.log(formatPlan(plan));
     if (!options.dryRun) {
-      await applyInstallPlan(plan, bundle.sourceLock);
+      await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
       console.log("Applied.");
     }
     await rm(bundle.root, { recursive: true, force: true });
@@ -141,6 +143,7 @@ program
   .command("update")
   .option("--target-root <path>", "workspace root", process.cwd())
   .option("--dry-run", "show plans without writing", false)
+  .option("--execute-plugins", "execute semantic plugin installs", false)
   .action(async (options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const config = await readWorkspaceConfig(targetRoot);
@@ -166,12 +169,33 @@ program
       console.log(`Update ${pkg.name}:`);
       console.log(formatPlan(plan));
       if (!options.dryRun) {
-        await applyInstallPlan(plan, bundle.sourceLock);
+        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
         console.log(`Applied ${pkg.name}.`);
       }
       await rm(bundle.root, { recursive: true, force: true });
       if (plan.hasBlockingChanges) process.exitCode = 1;
     }
+  });
+
+program
+  .command("remember")
+  .requiredOption("--runtime <runtime>", "runtime/adapter name")
+  .option("--target-root <path>", "workspace root", process.cwd())
+  .argument("<text>", "text to append to the local instructions overlay")
+  .action(async (text, options) => {
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const result = await remember(targetRoot, options.runtime, text);
+    console.log(`Remembered in ${result.overlayPath}. Run: agentwheel sync <source> --adapter ${options.runtime}`);
+  });
+
+program
+  .command("eject")
+  .argument("<item>", "package/type/name")
+  .option("--target-root <path>", "workspace root", process.cwd())
+  .action(async (item, options) => {
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const result = await ejectArtifact(targetRoot, item);
+    console.log(`Ejected ${item} to ${result.ejectedPath}.`);
   });
 
 program

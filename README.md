@@ -119,11 +119,15 @@ agentwheel sync ./my-pack --adapter-config ./myco-internal.jsonc
 Built-in adapters ship for common runtimes; declarative adapters need no code and stay private.
 (Programmatic adapters, for logic beyond file placement, are planned behind an explicit opt-in.)
 
+Copilot support is intentionally file-drop only: instructions, rules, and prompt/command files are
+placed in GitHub-native locations, while raw `SKILL.md` directories stay disabled until there is a
+clear conversion format.
+
 ## Roadmap
 
 - [x] **v0.1** — install spine: local sources; openclaw/claude/codex adapters; skills/rules/instructions; `plan` · `sync` · `--dry-run` · `uninstall`; manifest + drift + idempotency.
-- [ ] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts.
-- [ ] **v0.3** — registry & federation (skill ecosystems, MCP); semantic plugin targets; profiles; programmatic adapters.
+- [ ] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
+- [ ] **v0.3** — registry & federation (skill ecosystems, MCP); profiles; programmatic adapters.
 
 ## Design docs
 

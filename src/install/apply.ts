@@ -1,10 +1,18 @@
+import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
+import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, SourceLock } from "../model/manifest.js";
 import { atomicCopy, hashPath } from "../utils/fs.js";
 import { removeStateFiles, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallPlan } from "./plan.js";
 
-export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock): Promise<InstallManifest> {
+const execFileAsync = promisify(execFile);
+
+export interface ApplyOptions {
+  executePlugins?: boolean;
+}
+
+export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock, options: ApplyOptions = {}): Promise<InstallManifest> {
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
@@ -14,7 +22,35 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
   const now = new Date().toISOString();
 
   for (const operation of plan.operations) {
-    if (operation.action === "create" || operation.action === "update") {
+    if (operation.action === "plugin") {
+      if (!operation.desiredHash) {
+        throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
+      }
+      if (options.executePlugins) {
+        if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
+          throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
+        }
+        const command = operation.semanticCommand[0];
+        const args = operation.semanticCommand.slice(1);
+        if (!command) {
+          throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
+        }
+        await execFileAsync(command, args);
+      }
+      entries.push({
+        path: operation.relativeDestPath,
+        artifactType: operation.artifactType,
+        artifactName: operation.artifactName,
+        kind: operation.kind,
+        hash: operation.desiredHash,
+        sourceHash: operation.desiredHash,
+        updatedAt: now,
+        channel: operation.channel,
+        packageName: operation.packageName,
+        semanticCommand: operation.semanticCommand,
+        executed: options.executePlugins === true,
+      });
+    } else if (operation.action === "create" || operation.action === "update") {
       if (!operation.sourcePath || !operation.desiredHash) {
         throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
       }
@@ -29,6 +65,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         updatedAt: now,
         channel: operation.channel,
         packageName: operation.packageName,
+        semanticCommand: operation.semanticCommand,
       });
     } else if (operation.action === "skip") {
       if (!operation.desiredHash) {
@@ -44,6 +81,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         updatedAt: now,
         channel: operation.channel,
         packageName: operation.packageName,
+        semanticCommand: operation.semanticCommand,
       });
     } else if (operation.action === "remove") {
       await rm(operation.destPath, { recursive: true, force: true });

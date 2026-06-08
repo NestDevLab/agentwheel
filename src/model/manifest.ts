@@ -11,6 +11,8 @@ export const manifestEntrySchema = z.object({
   updatedAt: z.string().datetime(),
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   packageName: z.string().min(1).optional(),
+  semanticCommand: z.array(z.string()).optional(),
+  executed: z.boolean().optional(),
 });
 
 export const installManifestSchema = z.object({

@@ -3,9 +3,10 @@ import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
 import type { InstallManifest } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
+import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 
-export type PlanAction = "create" | "update" | "skip" | "remove" | "drift" | "conflict";
+export type PlanAction = "create" | "update" | "skip" | "remove" | "drift" | "conflict" | "plugin";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
 
 export interface InstallOperation {
@@ -22,6 +23,8 @@ export interface InstallOperation {
   reason: string;
   channel: PlanChannel;
   packageName?: string;
+  semanticCommand?: string[];
+  execute?: boolean;
 }
 
 export interface InstallPlan {
@@ -50,6 +53,16 @@ export async function createInstallPlan(
   const operations: InstallOperation[] = [];
 
   for (const op of desired.values()) {
+    if (op.action === "plugin") {
+      const existing = manifestByPath.get(op.relativeDestPath);
+      if (existing && existing.hash === op.desiredHash) {
+        operations.push({ ...op, action: "skip", manifestHash: existing.hash, reason: "plugin already planned" });
+      } else {
+        operations.push(op);
+      }
+      continue;
+    }
+
     const existing = manifestByPath.get(op.relativeDestPath);
     const exists = await pathExists(op.destPath);
     if (!exists) {
@@ -130,6 +143,24 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
   const target = adapter.targets[artifact.type];
   if (!target?.enabled) return undefined;
 
+  if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
+    const sourcePath = artifact.stagedPath ?? artifact.sourcePath;
+    return {
+      action: "plugin",
+      artifactType: artifact.type,
+      artifactName: artifact.name,
+      kind: artifact.kind,
+      sourcePath,
+      destPath: targetRoot,
+      relativeDestPath: `plugins/${artifact.name}`,
+      desiredHash: artifact.hash,
+      reason: "semantic plugin install planned",
+      channel: artifact.channel ?? "managed",
+      packageName: artifact.packageName,
+      semanticCommand: openClawPluginInstallCommand({ path: sourcePath, dryRun: true }),
+    };
+  }
+
   const destPath = artifact.type === "instructions"
     ? join(targetRoot, target.dest)
     : join(targetRoot, target.dest, artifact.name);
@@ -157,6 +188,7 @@ export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {
     remove: 0,
     drift: 0,
     conflict: 0,
+    plugin: 0,
   };
   for (const operation of plan.operations) {
     summary[operation.action]++;

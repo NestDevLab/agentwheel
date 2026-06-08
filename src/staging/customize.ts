@@ -92,7 +92,7 @@ async function applyReplacements(
   if (!(await pathExists(root))) return artifacts;
 
   const byKey = new Map(artifacts.map((artifact) => [artifactKey(artifact), artifact]));
-  for (const type of ["instructions", "rules", "skills"] as ArtifactType[]) {
+  for (const type of ["instructions", "rules", "skills", "commands", "subagents", "mcp", "hooks", "plugins"] as ArtifactType[]) {
     const typeRoot = join(root, type);
     if (!(await pathExists(typeRoot))) continue;
     for (const entry of await sortedDirEntries(typeRoot)) {

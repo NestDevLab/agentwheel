@@ -6,6 +6,7 @@ import { artifactTypeSchema } from "./artifact.js";
 export const targetMappingSchema = z.object({
   dest: z.string().min(1),
   enabled: z.boolean().default(true),
+  semantic: z.enum(["openclaw-plugin"]).optional(),
 });
 
 export const adapterSchema = z.object({

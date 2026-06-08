@@ -100,6 +100,12 @@ export class LocalSourceDriver implements SourceDriver {
       }
     }
 
+    for (const type of ["commands", "mcp", "hooks", "plugins"] as ArtifactType[]) {
+      const dir = join(root, type);
+      if (!(await pathExists(dir))) continue;
+      artifacts.push(...await listGenericArtifacts(type, dir, type, resolved.packageName));
+    }
+
     return artifacts;
   }
 
@@ -161,6 +167,8 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
         const child = join(full, entry.name);
         if (provide.type === "skills" && entry.isDirectory()) {
           artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName));
+        } else if (provide.type === "plugins" && entry.isDirectory()) {
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName));
         } else if (entry.isFile()) {
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
           artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName));
@@ -168,6 +176,19 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
       }
     } else if (stats.isFile()) {
       artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName));
+    }
+  }
+  return artifacts;
+}
+
+async function listGenericArtifacts(type: ArtifactType, dir: string, relativeRoot: string, packageName?: string): Promise<Artifact[]> {
+  const artifacts: Artifact[] = [];
+  for (const entry of await sortedDirEntries(dir)) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      artifacts.push(await artifactForDir(type, entry.name, full, join(relativeRoot, entry.name), packageName));
+    } else if (entry.isFile()) {
+      artifacts.push(await artifactForFile(type, entry.name, full, join(relativeRoot, entry.name), packageName));
     }
   }
   return artifacts;

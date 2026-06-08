@@ -27,6 +27,8 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         hash: await hashPath(operation.destPath),
         sourceHash: operation.desiredHash,
         updatedAt: now,
+        channel: operation.channel,
+        packageName: operation.packageName,
       });
     } else if (operation.action === "skip") {
       if (!operation.desiredHash) {
@@ -40,6 +42,8 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         hash: operation.desiredHash,
         sourceHash: operation.desiredHash,
         updatedAt: now,
+        channel: operation.channel,
+        packageName: operation.packageName,
       });
     } else if (operation.action === "remove") {
       await rm(operation.destPath, { recursive: true, force: true });
@@ -69,4 +73,3 @@ export async function uninstall(plan: InstallPlan, dryRun: boolean): Promise<voi
   }
   await removeStateFiles(plan.targetRoot, plan.adapter);
 }
-

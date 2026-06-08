@@ -20,6 +20,8 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
         currentHash,
         manifestHash: entry.hash,
         reason: "managed destination changed outside agentweave",
+        channel: entry.channel,
+        packageName: entry.packageName,
       });
     } else {
       operations.push({
@@ -32,6 +34,8 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
         currentHash,
         manifestHash: entry.hash,
         reason: "uninstall managed artifact",
+        channel: entry.channel,
+        packageName: entry.packageName,
       });
     }
   }
@@ -43,4 +47,3 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
     hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
   };
 }
-

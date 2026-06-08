@@ -9,6 +9,8 @@ export const manifestEntrySchema = z.object({
   hash: z.string().min(16),
   sourceHash: z.string().min(16),
   updatedAt: z.string().datetime(),
+  channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
+  packageName: z.string().min(1).optional(),
 });
 
 export const installManifestSchema = z.object({
@@ -24,6 +26,12 @@ export const sourceLockSchema = z.object({
   driver: z.string().min(1),
   source: z.string().min(1),
   resolvedPath: z.string().min(1),
+  packageName: z.string().min(1).optional(),
+  packageVersion: z.string().min(1).optional(),
+  mode: z.enum(["pinned", "tracking"]).default("pinned"),
+  requestedRef: z.string().min(1).optional(),
+  resolvedCommit: z.string().min(1).optional(),
+  sourceHash: z.string().min(16).optional(),
   generatedAt: z.string().datetime(),
   artifacts: z.array(
     z.object({
@@ -39,4 +47,3 @@ export const sourceLockSchema = z.object({
 export type InstallManifestEntry = z.infer<typeof manifestEntrySchema>;
 export type InstallManifest = z.infer<typeof installManifestSchema>;
 export type SourceLock = z.infer<typeof sourceLockSchema>;
-

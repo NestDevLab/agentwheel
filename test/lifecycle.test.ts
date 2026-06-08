@@ -1,0 +1,175 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { afterEach, describe, expect, it } from "vitest";
+import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
+import { shouldUpdatePackage } from "../src/lifecycle/update.js";
+import { GitSourceDriver } from "../src/source/git.js";
+import { LocalSourceDriver } from "../src/source/local.js";
+import { stageSource } from "../src/staging/staging.js";
+
+const execFileAsync = promisify(execFile);
+const tempRoots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempRoots.map((path) => rm(path, { recursive: true, force: true })));
+  tempRoots.length = 0;
+});
+
+async function tempRoot(prefix = "agentweave-life-"): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  tempRoots.push(root);
+  return root;
+}
+
+async function writePackage(root: string, options: { name?: string; coreRule?: string; ejectedRule?: string } = {}) {
+  await mkdir(join(root, "instructions"), { recursive: true });
+  await mkdir(join(root, "rules"), { recursive: true });
+  await mkdir(join(root, "skills", "demo-skill"), { recursive: true });
+  await writeFile(join(root, "agentweave.json"), JSON.stringify({
+    schemaVersion: 1,
+    name: options.name ?? "acme/core",
+    version: "0.1.0",
+    provides: [
+      { type: "instructions", path: "instructions/AGENTS.md" },
+      { type: "rules", path: "rules" },
+      { type: "skills", path: "skills" },
+    ],
+  }, null, 2));
+  await writeFile(join(root, "instructions", "AGENTS.md"), "# Upstream instructions\n");
+  await writeFile(join(root, "rules", "core.md"), options.coreRule ?? "# Upstream core\n");
+  await writeFile(join(root, "rules", "ejected.md"), options.ejectedRule ?? "# Upstream ejected\n");
+  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n");
+}
+
+describe("lifecycle core", () => {
+  it("reads canonical package manifests", async () => {
+    const source = await tempRoot();
+    await writePackage(source);
+    const driver = new LocalSourceDriver();
+    const resolved = await driver.resolve(source);
+    const artifacts = await driver.list(resolved);
+
+    expect(resolved.packageName).toBe("acme/core");
+    expect(artifacts.map((artifact) => `${artifact.type}:${artifact.name}`).sort()).toEqual([
+      "instructions:AGENTS.md",
+      "rules:core.md",
+      "rules:ejected.md",
+      "skills:demo-skill",
+    ]);
+  });
+
+  it("resolves git tracking refs and pinned commits from a local repo", async () => {
+    const repo = await tempRoot("agentweave-git-src-");
+    await writePackage(repo, { coreRule: "# v1\n" });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentweave-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v1"]);
+    const commit1 = (await git(repo, ["rev-parse", "HEAD"])).trim();
+
+    const workspace = await tempRoot("agentweave-git-ws-");
+    const driver = new GitSourceDriver();
+    const first = await stageSource(driver, `git:${repo}#main`, {
+      cacheRoot: join(workspace, ".agentweave", "cache"),
+      mode: "tracking",
+    });
+    expect(first.source.resolvedCommit).toBe(commit1);
+
+    await writePackage(repo, { coreRule: "# v2\n" });
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v2"]);
+    const commit2 = (await git(repo, ["rev-parse", "HEAD"])).trim();
+
+    const tracking = await stageSource(driver, `git:${repo}#main`, {
+      cacheRoot: join(workspace, ".agentweave", "cache"),
+      mode: "tracking",
+    });
+    expect(tracking.source.resolvedCommit).toBe(commit2);
+
+    const pinned = await stageSource(driver, `git:${repo}#${commit1}`, {
+      cacheRoot: join(workspace, ".agentweave", "cache-pinned"),
+      mode: "pinned",
+    });
+    expect(pinned.source.resolvedCommit).toBe(commit1);
+  });
+
+  it("decides update behavior for pinned and tracking packages", () => {
+    const pinned = {
+      name: "pkg",
+      source: "git:/repo#abc",
+      driver: "git" as const,
+      adapter: "openclaw",
+      mode: "pinned" as const,
+      requestedRef: "abc",
+    };
+    const lock = {
+      version: 1 as const,
+      driver: "git",
+      source: "git:/repo#abc",
+      resolvedPath: "/cache/repo",
+      mode: "pinned" as const,
+      requestedRef: "abc",
+      generatedAt: new Date().toISOString(),
+      artifacts: [],
+    };
+
+    expect(shouldUpdatePackage(pinned, lock).shouldUpdate).toBe(false);
+    expect(shouldUpdatePackage({ ...pinned, requestedRef: "def" }, lock).shouldUpdate).toBe(true);
+    expect(shouldUpdatePackage({ ...pinned, mode: "tracking" }, lock).shouldUpdate).toBe(true);
+  });
+
+  it("stages overlay, additions, overrides, and ejected artifacts distinctly", async () => {
+    const source = await tempRoot();
+    await writePackage(source);
+    const workspace = await tempRoot();
+    await mkdir(join(workspace, ".agentweave", "overlays", "openclaw"), { recursive: true });
+    await mkdir(join(workspace, ".agentweave", "additions", "rules"), { recursive: true });
+    await mkdir(join(workspace, ".agentweave", "overrides", "acme", "core", "rules"), { recursive: true });
+    await mkdir(join(workspace, ".agentweave", "ejected", "acme", "core", "rules"), { recursive: true });
+    await writeFile(join(workspace, ".agentweave", "overlays", "openclaw", "instructions.local.md"), "Local memory survives.\n");
+    await writeFile(join(workspace, ".agentweave", "additions", "rules", "local.md"), "# Local additive rule\n");
+    await writeFile(join(workspace, ".agentweave", "overrides", "acme", "core", "rules", "core.md"), "# Overridden core\n");
+    await writeFile(join(workspace, ".agentweave", "ejected", "acme", "core", "rules", "ejected.md"), "# Local ejected\n");
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, {
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+    });
+    const plan = await createInstallPlan(bundle, openClawAdapter, workspace);
+
+    expect(plan.operations.map((operation) => `${operation.channel}:${operation.artifactType}:${operation.artifactName}`).sort()).toEqual([
+      "addition:rules:local.md",
+      "ejected:rules:ejected.md",
+      "managed:skills:demo-skill",
+      "overlay:instructions:AGENTS.md",
+      "override:rules:core.md",
+    ]);
+
+    await applyInstallPlan(plan, bundle.sourceLock);
+    const instructions = await readFile(join(workspace, ".openclaw", "AGENTS.md"), "utf8");
+    expect(instructions).toContain("BEGIN agentweave managed: upstream");
+    expect(instructions).toContain("Local memory survives.");
+    expect(await readFile(join(workspace, ".openclaw", "rules", "core.md"), "utf8")).toBe("# Overridden core\n");
+    expect(await readFile(join(workspace, ".openclaw", "rules", "local.md"), "utf8")).toBe("# Local additive rule\n");
+
+    await writePackage(source, { ejectedRule: "# Upstream changed ejected\n" });
+    const updated = await stageSource(new LocalSourceDriver(), source, {
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+    });
+    const updatePlan = await createInstallPlan(updated, openClawAdapter, workspace, await readInstallManifest(workspace, "openclaw"));
+    const ejected = updatePlan.operations.find((operation) => operation.artifactName === "ejected.md");
+    expect(ejected?.channel).toBe("ejected");
+    expect(ejected?.action).toBe("skip");
+  });
+});
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd });
+  return stdout;
+}

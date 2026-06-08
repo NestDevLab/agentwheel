@@ -6,6 +6,7 @@ import type { StagedBundle } from "../staging/staging.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "drift" | "conflict";
+export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
 
 export interface InstallOperation {
   action: PlanAction;
@@ -19,6 +20,8 @@ export interface InstallOperation {
   currentHash?: string;
   manifestHash?: string;
   reason: string;
+  channel: PlanChannel;
+  packageName?: string;
 }
 
 export interface InstallPlan {
@@ -94,6 +97,8 @@ export async function createInstallPlan(
         currentHash,
         manifestHash: entry.hash,
         reason: "managed stale destination changed outside agentweave",
+        channel: entry.channel,
+        packageName: entry.packageName,
       });
     } else {
       operations.push({
@@ -106,6 +111,8 @@ export async function createInstallPlan(
         currentHash,
         manifestHash: entry.hash,
         reason: "artifact removed from source",
+        channel: entry.channel,
+        packageName: entry.packageName,
       });
     }
   }
@@ -137,6 +144,8 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     relativeDestPath: relative(targetRoot, destPath).replaceAll("\\", "/"),
     desiredHash: artifact.hash,
     reason: "destination missing",
+    channel: artifact.channel ?? "managed",
+    packageName: artifact.packageName,
   };
 }
 
@@ -154,4 +163,3 @@ export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {
   }
   return summary;
 }
-

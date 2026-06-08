@@ -4,6 +4,12 @@ export interface ResolvedSource {
   driver: string;
   source: string;
   resolvedPath: string;
+  packageName?: string;
+  packageVersion?: string;
+  mode?: "pinned" | "tracking";
+  requestedRef?: string;
+  resolvedCommit?: string;
+  sourceHash?: string;
 }
 
 export interface ScanFinding {
@@ -19,7 +25,7 @@ export interface ScanResult {
 
 export interface SourceDriver {
   readonly name: string;
-  resolve(source: string): Promise<ResolvedSource>;
+  resolve(source: string, options?: SourceResolveOptions): Promise<ResolvedSource>;
   list(resolved: ResolvedSource): Promise<Artifact[]>;
   fetch(resolved: ResolvedSource): Promise<ResolvedSource>;
   scan(resolved: ResolvedSource): Promise<ScanResult>;
@@ -27,3 +33,8 @@ export interface SourceDriver {
   export(resolved: ResolvedSource): Promise<ResolvedSource>;
 }
 
+export interface SourceResolveOptions {
+  cacheRoot?: string;
+  mode?: "pinned" | "tracking";
+  ref?: string;
+}

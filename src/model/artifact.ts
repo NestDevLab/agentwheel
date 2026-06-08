@@ -24,7 +24,8 @@ export const artifactSchema = z.object({
   relativePath: z.string().min(1),
   kind: fileKindSchema,
   hash: z.string().min(16),
+  packageName: z.string().min(1).optional(),
+  channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
 });
 
 export type Artifact = z.infer<typeof artifactSchema>;
-

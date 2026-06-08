@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import type { Artifact } from "../model/artifact.js";
+import type { Artifact, ArtifactType } from "../model/artifact.js";
+import { readPackageManifest } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
 
@@ -16,10 +17,24 @@ export class LocalSourceDriver implements SourceDriver {
     if (!stats.isDirectory()) {
       throw new Error(`Local source must be a directory: ${resolvedPath}`);
     }
-    return { driver: this.name, source, resolvedPath };
+    const manifest = await readPackageManifest(resolvedPath);
+    return {
+      driver: this.name,
+      source,
+      resolvedPath,
+      packageName: manifest?.name,
+      packageVersion: manifest?.version,
+      mode: "pinned",
+      sourceHash: await hashPath(resolvedPath),
+    };
   }
 
   async list(resolved: ResolvedSource): Promise<Artifact[]> {
+    const manifest = await readPackageManifest(resolved.resolvedPath);
+    if (manifest) {
+      return listFromManifest(resolved.resolvedPath, manifest.name);
+    }
+
     const artifacts: Artifact[] = [];
     const root = resolved.resolvedPath;
     const instructions = await firstExisting([join(root, "instructions.md"), join(root, "AGENTS.md")]);
@@ -31,6 +46,8 @@ export class LocalSourceDriver implements SourceDriver {
         relativePath: basename(instructions),
         kind: "file",
         hash: await hashPath(instructions),
+        packageName: resolved.packageName,
+        channel: "managed",
       });
     }
 
@@ -46,6 +63,8 @@ export class LocalSourceDriver implements SourceDriver {
             relativePath: join("rules", entry.name),
             kind: "file",
             hash: await hashPath(full),
+            packageName: resolved.packageName,
+            channel: "managed",
           });
         }
       }
@@ -63,6 +82,8 @@ export class LocalSourceDriver implements SourceDriver {
             relativePath: join("skills", entry.name),
             kind: "dir",
             hash: await hashPath(full),
+            packageName: resolved.packageName,
+            channel: "managed",
           });
         } else if (entry.isFile() && entry.name.endsWith(".md")) {
           artifacts.push({
@@ -72,6 +93,8 @@ export class LocalSourceDriver implements SourceDriver {
             relativePath: join("skills", entry.name),
             kind: "file",
             hash: await hashPath(full),
+            packageName: resolved.packageName,
+            channel: "managed",
           });
         }
       }
@@ -116,4 +139,62 @@ async function firstExisting(paths: string[]): Promise<string | undefined> {
 
 async function sortedDirEntries(path: string) {
   return (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function listFromManifest(root: string, packageName: string): Promise<Artifact[]> {
+  const manifest = await readPackageManifest(root);
+  if (!manifest) return [];
+
+  const artifacts: Artifact[] = [];
+  for (const provide of manifest.provides) {
+    const full = join(root, provide.path);
+    if (!(await pathExists(full))) continue;
+    const stats = await stat(full);
+    if (provide.type === "instructions") {
+      if (stats.isFile()) {
+        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName));
+      }
+      continue;
+    }
+    if (stats.isDirectory()) {
+      for (const entry of await sortedDirEntries(full)) {
+        const child = join(full, entry.name);
+        if (provide.type === "skills" && entry.isDirectory()) {
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName));
+        } else if (entry.isFile()) {
+          const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
+          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName));
+        }
+      }
+    } else if (stats.isFile()) {
+      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName));
+    }
+  }
+  return artifacts;
+}
+
+async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string): Promise<Artifact> {
+  return {
+    type,
+    name,
+    sourcePath,
+    relativePath,
+    kind: "file",
+    hash: await hashPath(sourcePath),
+    packageName,
+    channel: "managed",
+  };
+}
+
+async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string): Promise<Artifact> {
+  return {
+    type,
+    name,
+    sourcePath,
+    relativePath,
+    kind: "dir",
+    hash: await hashPath(sourcePath),
+    packageName,
+    channel: "managed",
+  };
 }

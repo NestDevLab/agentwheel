@@ -10,11 +10,19 @@ const labels: Record<PlanAction, string> = {
   conflict: "CONFLICT",
 };
 
+const channelLabels = {
+  managed: "MANAGED",
+  overlay: "OVERLAY",
+  addition: "ADDITION",
+  override: "OVERRIDE",
+  ejected: "EJECTED",
+};
+
 export function formatPlan(plan: InstallPlan): string {
   const lines = [`Plan for ${plan.adapter} at ${plan.targetRoot}`];
   for (const operation of plan.operations) {
     const source = operation.sourcePath ? `${operation.sourcePath} -> ` : "";
-    lines.push(`${labels[operation.action].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason})`);
+    lines.push(`${labels[operation.action].padEnd(8)} ${channelLabels[operation.channel].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason})`);
   }
   const summary = summarizePlan(plan);
   lines.push(
@@ -22,4 +30,3 @@ export function formatPlan(plan: InstallPlan): string {
   );
   return lines.join("\n");
 }
-

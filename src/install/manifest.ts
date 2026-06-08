@@ -1,6 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { installManifestSchema, type InstallManifest, type SourceLock } from "../model/manifest.js";
+import { sourceLockSchema } from "../model/manifest.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { installManifestPath, sourceLockPath } from "./paths.js";
 
@@ -18,6 +19,12 @@ export async function writeSourceLock(targetRoot: string, adapter: string, lock:
   await writeJsonAtomic(sourceLockPath(targetRoot, adapter), lock);
 }
 
+export async function readSourceLock(targetRoot: string, adapter: string): Promise<SourceLock | undefined> {
+  const path = sourceLockPath(targetRoot, adapter);
+  if (!(await pathExists(path))) return undefined;
+  return sourceLockSchema.parse(JSON.parse(await readFile(path, "utf8")));
+}
+
 export async function removeStateFiles(targetRoot: string, adapter: string): Promise<void> {
   await rm(installManifestPath(targetRoot, adapter), { force: true });
   await rm(sourceLockPath(targetRoot, adapter), { force: true });
@@ -26,4 +33,3 @@ export async function removeStateFiles(targetRoot: string, adapter: string): Pro
 export function normalizeTargetRoot(path: string): string {
   return resolve(path);
 }
-

@@ -1,7 +1,8 @@
+import { GitSourceDriver } from "./git.js";
 import { LocalSourceDriver } from "./local.js";
 import type { SourceDriver } from "./types.js";
 
-const drivers: SourceDriver[] = [new LocalSourceDriver()];
+const drivers: SourceDriver[] = [new LocalSourceDriver(), new GitSourceDriver()];
 
 export function getSourceDriver(name = "local"): SourceDriver {
   const driver = drivers.find((candidate) => candidate.name === name);
@@ -12,4 +13,3 @@ export function getSourceDriver(name = "local"): SourceDriver {
 }
 
 export type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
-

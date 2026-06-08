@@ -22,18 +22,19 @@ So you copy-paste. You forget which agent has the latest version. You tweak a ru
 **agentwheel makes it one job, done once.** Point it at your skills and instructions, tell it which agents you run, and it installs everything where each one expects it — then keeps it that way. Update upstream and your agents update. Make a local tweak and it survives the next update. Add a brand-new runtime nobody's ever heard of? Drop in a small config and it's a first-class target too.
 
 ```bash
+npm i -g agentwheel
 agentwheel add github:your-org/agent-pack
-agentwheel sync          # installs into every agent you have
-agentwheel sync --dry-run  # ...or just show me what would change
+agentwheel update --dry-run  # show me what would change
+agentwheel update            # install into configured agents
 ```
 
 No lock-in. No central gatekeeper. Your packages live in plain git repos, your customizations live in your own repo, and anything reachable by a URL just works.
 
 ---
 
-> **Status: early (v0.1).** The install spine is real and tested — local sources, a working
-> plan/sync/drift/uninstall flow, and pluggable adapters. The wider lifecycle (git/registry sources,
-> `update`, overlays, `init`) is on the roadmap below. Expect sharp edges.
+> **Status: early (v0.2).** The install spine and lifecycle core are real and tested — local/git
+> sources, plan/sync/update/drift/uninstall, overlays, eject/remember, and pluggable adapters.
+> Expect sharp edges.
 
 ## What it does
 
@@ -46,12 +47,27 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 ## Quick start
 
 ```bash
-# from a local package directory
-agentwheel plan ./my-pack --adapter-config ./adapters/openclaw.jsonc --dry-run
-agentwheel sync ./my-pack --adapter-config ./adapters/openclaw.jsonc
+npm i -g agentwheel
+
+agentwheel init
+agentwheel add github:your-org/agent-pack --adapter openclaw --mode tracking
+agentwheel update --dry-run
+agentwheel update
 ```
 
-`plan` / `sync --dry-run` show exactly what would change before anything is written. They're the commands to trust.
+Prefer pnpm? `pnpm add -g agentwheel` works too.
+
+Contributor install from source:
+
+```bash
+git clone https://github.com/NestDevLab/agentwheel
+cd agentwheel
+pnpm install
+pnpm build
+pnpm link --global
+```
+
+`plan`, `sync --dry-run`, and `update --dry-run` show exactly what would change before anything is written. They're the commands to trust.
 
 ## Core ideas
 
@@ -126,7 +142,7 @@ clear conversion format.
 ## Roadmap
 
 - [x] **v0.1** — install spine: local sources; openclaw/claude/codex adapters; skills/rules/instructions; `plan` · `sync` · `--dry-run` · `uninstall`; manifest + drift + idempotency.
-- [ ] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
+- [x] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
 - [ ] **v0.3** — registry & federation (skill ecosystems, MCP); profiles; programmatic adapters.
 
 ## Design docs

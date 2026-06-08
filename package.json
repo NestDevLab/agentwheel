@@ -1,16 +1,43 @@
 {
   "name": "agentwheel",
-  "version": "0.1.0",
-  "description": "Multi-runtime agent artifact orchestrator",
+  "version": "0.2.0",
+  "description": "Weave skills, rules, and instructions across every AI agent.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NestDevLab/agentwheel.git"
+  },
+  "homepage": "https://github.com/NestDevLab/agentwheel#readme",
+  "bugs": {
+    "url": "https://github.com/NestDevLab/agentwheel/issues"
+  },
+  "keywords": [
+    "ai-agent",
+    "agents",
+    "skills",
+    "rules",
+    "instructions",
+    "mcp",
+    "openclaw",
+    "claude",
+    "codex",
+    "copilot"
+  ],
   "bin": {
-    "agentwheel": "./dist/index.js"
+    "agentwheel": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && chmod +x dist/index.js",
+    "prepack": "pnpm build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

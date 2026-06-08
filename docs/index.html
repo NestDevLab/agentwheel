@@ -356,6 +356,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
+        <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
       </nav>
     </header>
@@ -369,7 +370,7 @@
           <p class="subhead">agentwheel turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/NestDevLab/agentwheel">GitHub repo</a>
-            <a class="button secondary" href="#how">Get started</a>
+            <a class="button secondary" href="#get-started">Get started</a>
           </div>
         </div>
       </section>
@@ -429,6 +430,43 @@
             <span>Sync writes generated files into OpenClaw, Claude, Codex, or private runtimes.</span>
           </div>
         </div>
+      </section>
+
+      <section id="get-started">
+        <h2 class="section-title">Get started</h2>
+        <p class="subhead">agentwheel is early (v0.1) and installs from source. Three steps: get it, point it at a package, sync.</p>
+
+        <div class="code" aria-label="Install agentwheel">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>1 · install</span>
+          </div>
+          <pre><code><span class="prompt">$</span> git clone https://github.com/NestDevLab/agentwheel
+<span class="prompt">$</span> cd agentwheel &amp;&amp; pnpm install &amp;&amp; pnpm build
+<span class="prompt">$</span> pnpm link --global   <span class="muted"># makes the `agentwheel` command available</span></code></pre>
+        </div>
+
+        <div class="code" aria-label="Initialize and add a package">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>2 · add a source</span>
+          </div>
+          <pre><code><span class="prompt">$</span> agentwheel init                              <span class="muted"># create the .agentwheel workspace</span>
+<span class="prompt">$</span> agentwheel add github:your-org/agent-pack    <span class="muted"># ...or: agentwheel add ./my-pack</span></code></pre>
+        </div>
+
+        <div class="code" aria-label="Preview then apply">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>3 · preview, then sync</span>
+          </div>
+          <pre><code><span class="prompt">$</span> agentwheel sync --adapter openclaw --dry-run  <span class="muted"># see exactly what would change</span>
+<span class="prompt">$</span> agentwheel sync --adapter openclaw            <span class="muted"># write into the runtime</span></code></pre>
+        </div>
+
+        <p class="subhead">Custom or private runtime? Skip the registry entirely and point at a local adapter:
+        <code>agentwheel sync --adapter-config ./my-runtime.jsonc</code>. Full docs live in the
+        <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
       </section>
     </main>
 

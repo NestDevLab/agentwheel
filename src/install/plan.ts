@@ -69,7 +69,7 @@ export async function createInstallPlan(
         action: "drift",
         currentHash,
         manifestHash: existing.hash,
-        reason: "managed destination changed outside agentweave",
+        reason: "managed destination changed outside agentwheel",
       });
       continue;
     }
@@ -96,7 +96,7 @@ export async function createInstallPlan(
         relativeDestPath: entry.path,
         currentHash,
         manifestHash: entry.hash,
-        reason: "managed stale destination changed outside agentweave",
+        reason: "managed stale destination changed outside agentwheel",
         channel: entry.channel,
         packageName: entry.packageName,
       });

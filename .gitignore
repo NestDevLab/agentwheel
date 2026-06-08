@@ -5,5 +5,5 @@ coverage/
 .pnpm-store/
 .DS_Store
 *.log
-.agentweave/
+.agentwheel/
 

@@ -22,7 +22,7 @@ export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
 export function workspaceConfigPath(workspaceRoot: string): string {
-  return join(workspaceRoot, ".agentweave", "config.json");
+  return join(workspaceRoot, ".agentwheel", "config.json");
 }
 
 export async function readWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig> {

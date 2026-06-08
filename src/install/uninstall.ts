@@ -19,7 +19,7 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
         relativeDestPath: entry.path,
         currentHash,
         manifestHash: entry.hash,
-        reason: "managed destination changed outside agentweave",
+        reason: "managed destination changed outside agentwheel",
         channel: entry.channel,
         packageName: entry.packageName,
       });

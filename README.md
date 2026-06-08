@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" alt="agentweave" width="120">
+  <img src="assets/logo.png" alt="agentwheel" width="120">
 </p>
 
-<h1 align="center">agentweave</h1>
+<h1 align="center">agentwheel</h1>
 
 <p align="center"><strong>One source. Every agent.</strong></p>
 
@@ -13,18 +13,18 @@
 
 ---
 
-## Why agentweave?
+## Why agentwheel?
 
 Your AI agents are multiplying. Claude here, Codex there, a couple of custom runtimes in the corner — and every one of them wants its skills, its rules, its own little `AGENTS.md`, in its own folder, in its own format.
 
 So you copy-paste. You forget which agent has the latest version. You tweak a rule for one and it drifts out of sync with the rest. Multiply that by a team, and "keep the agents aligned" quietly becomes a part-time job.
 
-**agentweave makes it one job, done once.** Point it at your skills and instructions, tell it which agents you run, and it installs everything where each one expects it — then keeps it that way. Update upstream and your agents update. Make a local tweak and it survives the next update. Add a brand-new runtime nobody's ever heard of? Drop in a small config and it's a first-class target too.
+**agentwheel makes it one job, done once.** Point it at your skills and instructions, tell it which agents you run, and it installs everything where each one expects it — then keeps it that way. Update upstream and your agents update. Make a local tweak and it survives the next update. Add a brand-new runtime nobody's ever heard of? Drop in a small config and it's a first-class target too.
 
 ```bash
-agentweave add github:your-org/agent-pack
-agentweave sync          # installs into every agent you have
-agentweave sync --dry-run  # ...or just show me what would change
+agentwheel add github:your-org/agent-pack
+agentwheel sync          # installs into every agent you have
+agentwheel sync --dry-run  # ...or just show me what would change
 ```
 
 No lock-in. No central gatekeeper. Your packages live in plain git repos, your customizations live in your own repo, and anything reachable by a URL just works.
@@ -47,8 +47,8 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ```bash
 # from a local package directory
-agentweave plan ./my-pack --adapter-config ./adapters/openclaw.jsonc --dry-run
-agentweave sync ./my-pack --adapter-config ./adapters/openclaw.jsonc
+agentwheel plan ./my-pack --adapter-config ./adapters/openclaw.jsonc --dry-run
+agentwheel sync ./my-pack --adapter-config ./adapters/openclaw.jsonc
 ```
 
 `plan` / `sync --dry-run` show exactly what would change before anything is written. They're the commands to trust.
@@ -60,7 +60,7 @@ agentweave sync ./my-pack --adapter-config ./adapters/openclaw.jsonc
 | | Where | What |
 |---|---|---|
 | **Author** | the package's git repo | upstream content — never edited in place |
-| **Workspace** | your repo, under `.agentweave/` | your config, locks, and customizations |
+| **Workspace** | your repo, under `.agentwheel/` | your config, locks, and customizations |
 | **Runtime** | `.openclaw/`, `~/.claude/`, … | generated output — never hand-edited |
 
 Flow: **author + your workspace → `sync` → runtime**.
@@ -70,7 +70,7 @@ Flow: **author + your workspace → `sync` → runtime**.
 A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 
 ```jsonc
-// agentweave.json  (plain JSON or JSONC — both work)
+// agentwheel.json  (plain JSON or JSONC — both work)
 {
   "schemaVersion": 1,
   "name": "your-org/agent-pack",
@@ -84,12 +84,12 @@ A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 ```
 
 Publish by pushing to any git host. A registry exists only for short names and discovery — it's
-optional, and `agentweave add <url|path>` always works without it.
+optional, and `agentwheel add <url|path>` always works without it.
 
 ## Customizing without getting overwritten
 
 Drift detection blocks *accidental* edits to generated files. *Intentional* changes have four channels,
-all stored in your `.agentweave/` (never in the runtime dir, never in the author's repo):
+all stored in your `.agentwheel/` (never in the runtime dir, never in the author's repo):
 
 - **Layer** — an editable region in your instructions that updates never touch. (This is how an agent can "remember X durably" without fighting drift.)
 - **Add** — extra rule files composed alongside upstream.
@@ -113,7 +113,7 @@ Write a `.jsonc` adapter and point at it — it's a first-class target, and noth
 ```
 
 ```bash
-agentweave sync ./my-pack --adapter-config ./myco-internal.jsonc
+agentwheel sync ./my-pack --adapter-config ./myco-internal.jsonc
 ```
 
 Built-in adapters ship for common runtimes; declarative adapters need no code and stay private.

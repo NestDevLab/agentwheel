@@ -1,4 +1,4 @@
-# agentweave — Design Blueprint (MVP)
+# agentwheel — Design Blueprint (MVP)
 
 > Multi-runtime agent artifact orchestrator. Weaves a **source layer** (skills/instructions
 > ecosystem) and an **install/adapter layer** (per-runtime placement) into one thin,
@@ -14,7 +14,7 @@ Vercel `skills` (skills-only, openclaw+hermes native but enum-hardcoded), SkillK
 source/ecosystem, Apache-2, but plugin API not wired to install path), agent_sync (only tool
 with *working* pluggable file-drop adapters + full artifact scope, but bash/9★/no-LICENSE/single-dev).
 None is a pluggable, full-scope, multi-runtime installer that natively covers our home runtimes
-(OpenClaw, Hermes) including **plugins**. agentweave fills that gap.
+(OpenClaw, Hermes) including **plugins**. agentwheel fills that gap.
 
 ## Three-layer architecture
 ```
@@ -23,7 +23,7 @@ LAYER 2  ORCHESTRATOR  ours (TS): source-contract, staging, manifest-hash, plan
 LAYER 3  INSTALL     ours (TS): atomic copy + drift + adapters + semantic plugin targets
 ```
 Layers 2+3 = one TS package. SkillKit used as **source only** (fetch/scan/translate) → avoids
-the "two competing installers" conflict; only agentweave writes into runtime dirs.
+the "two competing installers" conflict; only agentwheel writes into runtime dirs.
 
 ## Module layout (single TS package for MVP)
 - `source/` — `SourceDriver` contract: `resolve / list / fetch / scan / translate / export`.
@@ -70,5 +70,5 @@ strong test fixtures, `plan`/`dry-run` as the central, trusted behavior.
 
 ## Design lineage
 - agent_sync's file-drop adapter model and drift/manifest approach are the design reference/benchmark;
-  agentweave reimplements the ideas in TypeScript rather than depending on it.
+  agentwheel reimplements the ideas in TypeScript rather than depending on it.
 - SkillKit's `@skillkit/core` is consumed as a source-layer library, not as an installer.

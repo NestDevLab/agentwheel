@@ -61,7 +61,7 @@ export async function listFiles(root: string): Promise<string[]> {
 
 export async function atomicCopy(source: string, dest: string, kind: "file" | "dir"): Promise<void> {
   await mkdir(dirname(dest), { recursive: true });
-  const temp = `${dest}.agentweave-tmp-${process.pid}-${Date.now()}`;
+  const temp = `${dest}.agentwheel-tmp-${process.pid}-${Date.now()}`;
   await rm(temp, { recursive: true, force: true });
   if (kind === "file") {
     await copyFile(source, temp);

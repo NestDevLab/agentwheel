@@ -19,7 +19,7 @@ afterEach(async () => {
   tempRoots.length = 0;
 });
 
-async function tempRoot(prefix = "agentweave-life-"): Promise<string> {
+async function tempRoot(prefix = "agentwheel-life-"): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
   tempRoots.push(root);
   return root;
@@ -29,7 +29,7 @@ async function writePackage(root: string, options: { name?: string; coreRule?: s
   await mkdir(join(root, "instructions"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo-skill"), { recursive: true });
-  await writeFile(join(root, "agentweave.json"), JSON.stringify({
+  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
     schemaVersion: 1,
     name: options.name ?? "acme/core",
     version: "0.1.0",
@@ -63,19 +63,19 @@ describe("lifecycle core", () => {
   });
 
   it("resolves git tracking refs and pinned commits from a local repo", async () => {
-    const repo = await tempRoot("agentweave-git-src-");
+    const repo = await tempRoot("agentwheel-git-src-");
     await writePackage(repo, { coreRule: "# v1\n" });
     await git(repo, ["init", "-b", "main"]);
     await git(repo, ["config", "user.name", "Test"]);
-    await git(repo, ["config", "user.email", "agentweave-test@users.noreply.github.com"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
     await git(repo, ["add", "-A"]);
     await git(repo, ["commit", "-m", "v1"]);
     const commit1 = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
-    const workspace = await tempRoot("agentweave-git-ws-");
+    const workspace = await tempRoot("agentwheel-git-ws-");
     const driver = new GitSourceDriver();
     const first = await stageSource(driver, `git:${repo}#main`, {
-      cacheRoot: join(workspace, ".agentweave", "cache"),
+      cacheRoot: join(workspace, ".agentwheel", "cache"),
       mode: "tracking",
     });
     expect(first.source.resolvedCommit).toBe(commit1);
@@ -86,13 +86,13 @@ describe("lifecycle core", () => {
     const commit2 = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
     const tracking = await stageSource(driver, `git:${repo}#main`, {
-      cacheRoot: join(workspace, ".agentweave", "cache"),
+      cacheRoot: join(workspace, ".agentwheel", "cache"),
       mode: "tracking",
     });
     expect(tracking.source.resolvedCommit).toBe(commit2);
 
     const pinned = await stageSource(driver, `git:${repo}#${commit1}`, {
-      cacheRoot: join(workspace, ".agentweave", "cache-pinned"),
+      cacheRoot: join(workspace, ".agentwheel", "cache-pinned"),
       mode: "pinned",
     });
     expect(pinned.source.resolvedCommit).toBe(commit1);
@@ -127,14 +127,14 @@ describe("lifecycle core", () => {
     const source = await tempRoot();
     await writePackage(source);
     const workspace = await tempRoot();
-    await mkdir(join(workspace, ".agentweave", "overlays", "openclaw"), { recursive: true });
-    await mkdir(join(workspace, ".agentweave", "additions", "rules"), { recursive: true });
-    await mkdir(join(workspace, ".agentweave", "overrides", "acme", "core", "rules"), { recursive: true });
-    await mkdir(join(workspace, ".agentweave", "ejected", "acme", "core", "rules"), { recursive: true });
-    await writeFile(join(workspace, ".agentweave", "overlays", "openclaw", "instructions.local.md"), "Local memory survives.\n");
-    await writeFile(join(workspace, ".agentweave", "additions", "rules", "local.md"), "# Local additive rule\n");
-    await writeFile(join(workspace, ".agentweave", "overrides", "acme", "core", "rules", "core.md"), "# Overridden core\n");
-    await writeFile(join(workspace, ".agentweave", "ejected", "acme", "core", "rules", "ejected.md"), "# Local ejected\n");
+    await mkdir(join(workspace, ".agentwheel", "overlays", "openclaw"), { recursive: true });
+    await mkdir(join(workspace, ".agentwheel", "additions", "rules"), { recursive: true });
+    await mkdir(join(workspace, ".agentwheel", "overrides", "acme", "core", "rules"), { recursive: true });
+    await mkdir(join(workspace, ".agentwheel", "ejected", "acme", "core", "rules"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "overlays", "openclaw", "instructions.local.md"), "Local memory survives.\n");
+    await writeFile(join(workspace, ".agentwheel", "additions", "rules", "local.md"), "# Local additive rule\n");
+    await writeFile(join(workspace, ".agentwheel", "overrides", "acme", "core", "rules", "core.md"), "# Overridden core\n");
+    await writeFile(join(workspace, ".agentwheel", "ejected", "acme", "core", "rules", "ejected.md"), "# Local ejected\n");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
@@ -152,7 +152,7 @@ describe("lifecycle core", () => {
 
     await applyInstallPlan(plan, bundle.sourceLock);
     const instructions = await readFile(join(workspace, ".openclaw", "AGENTS.md"), "utf8");
-    expect(instructions).toContain("BEGIN agentweave managed: upstream");
+    expect(instructions).toContain("BEGIN agentwheel managed: upstream");
     expect(instructions).toContain("Local memory survives.");
     expect(await readFile(join(workspace, ".openclaw", "rules", "core.md"), "utf8")).toBe("# Overridden core\n");
     expect(await readFile(join(workspace, ".openclaw", "rules", "local.md"), "utf8")).toBe("# Local additive rule\n");

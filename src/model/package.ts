@@ -21,7 +21,7 @@ export type PackageManifest = z.infer<typeof packageManifestSchema>;
 export type PackageProvide = z.infer<typeof packageProvideSchema>;
 
 export async function findPackageManifestPath(root: string): Promise<string | undefined> {
-  for (const name of ["agentweave.json", "agentweave.jsonc"]) {
+  for (const name of ["agentwheel.json", "agentwheel.jsonc"]) {
     const candidate = join(root, name);
     if (await pathExists(candidate)) return candidate;
   }

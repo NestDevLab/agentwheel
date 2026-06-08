@@ -1,6 +1,6 @@
 ---
 name: demo-skill
-description: Demo skill for agentweave tests.
+description: Demo skill for agentwheel tests.
 ---
 
 # Demo Skill

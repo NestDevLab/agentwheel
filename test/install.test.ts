@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 async function tempRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "agentweave-test-"));
+  const root = await mkdtemp(join(tmpdir(), "agentwheel-test-"));
   tempRoots.push(root);
   return root;
 }
@@ -47,7 +47,7 @@ describe("install engine", () => {
     ]);
 
     await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).resolves.toBeTruthy();
-    await expect(stat(join(targetRoot, ".agentweave", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
+    await expect(stat(join(targetRoot, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 

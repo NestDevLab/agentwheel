@@ -1,4 +1,4 @@
 # Core Rule
 
-Keep generated files managed by agentweave.
+Keep generated files managed by agentwheel.
 

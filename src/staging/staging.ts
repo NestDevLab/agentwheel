@@ -23,7 +23,7 @@ export interface StageOptions extends SourceResolveOptions {
 export async function stageSource(driver: SourceDriver, source: string, options: StageOptions = {}): Promise<StagedBundle> {
   const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(source, options))));
   const artifacts = await driver.list(resolved);
-  const root = await mkdtemp(join(tmpdir(), "agentweave-stage-"));
+  const root = await mkdtemp(join(tmpdir(), "agentwheel-stage-"));
   const stagedArtifacts: Artifact[] = [];
 
   for (const artifact of artifacts) {

@@ -21,7 +21,7 @@ export async function applyCustomizations(artifacts: Artifact[], options: Custom
 }
 
 async function applyInstructionOverlay(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
-  const overlayPath = join(options.workspaceRoot, ".agentweave", "overlays", options.adapter.name, "instructions.local.md");
+  const overlayPath = join(options.workspaceRoot, ".agentwheel", "overlays", options.adapter.name, "instructions.local.md");
   if (!(await pathExists(overlayPath))) return artifacts;
   const index = artifacts.findIndex((artifact) => artifact.type === "instructions");
   if (index < 0) return artifacts;
@@ -29,18 +29,18 @@ async function applyInstructionOverlay(artifacts: Artifact[], options: Customiza
   const artifact = artifacts[index];
   const managed = await readFile(artifact.stagedPath ?? artifact.sourcePath, "utf8");
   const local = await readFile(overlayPath, "utf8");
-  const composedPath = join(options.stageRoot, ".agentweave-composed", "instructions", "AGENTS.md");
+  const composedPath = join(options.stageRoot, ".agentwheel-composed", "instructions", "AGENTS.md");
   await mkdir(dirname(composedPath), { recursive: true });
   await writeFile(
     composedPath,
     [
-      "<!-- BEGIN agentweave managed: upstream -->",
+      "<!-- BEGIN agentwheel managed: upstream -->",
       managed.trimEnd(),
-      "<!-- END agentweave managed: upstream -->",
+      "<!-- END agentwheel managed: upstream -->",
       "",
-      "<!-- BEGIN agentweave local: editable -->",
+      "<!-- BEGIN agentwheel local: editable -->",
       local.trimEnd(),
-      "<!-- END agentweave local: editable -->",
+      "<!-- END agentwheel local: editable -->",
       "",
     ].join("\n"),
     "utf8",
@@ -59,7 +59,7 @@ async function applyInstructionOverlay(artifacts: Artifact[], options: Customiza
 }
 
 async function applyAdditions(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
-  const additionsRoot = join(options.workspaceRoot, ".agentweave", "additions");
+  const additionsRoot = join(options.workspaceRoot, ".agentwheel", "additions");
   const rulesRoot = join(additionsRoot, "rules");
   if (!(await pathExists(rulesRoot))) return artifacts;
   const additions: Artifact[] = [];
@@ -88,7 +88,7 @@ async function applyReplacements(
 ): Promise<Artifact[]> {
   const packageName = options.packageName;
   if (!packageName) return artifacts;
-  const root = join(options.workspaceRoot, ".agentweave", channel === "override" ? "overrides" : "ejected", ...packageName.split("/"));
+  const root = join(options.workspaceRoot, ".agentwheel", channel === "override" ? "overrides" : "ejected", ...packageName.split("/"));
   if (!(await pathExists(root))) return artifacts;
 
   const byKey = new Map(artifacts.map((artifact) => [artifactKey(artifact), artifact]));
@@ -99,7 +99,7 @@ async function applyReplacements(
       const full = join(typeRoot, entry.name);
       const kind = entry.isDirectory() ? "dir" : "file";
       const existing = byKey.get(`${type}:${entry.name}`);
-      const stagedPath = join(options.stageRoot, ".agentweave-composed", channel, type, entry.name);
+      const stagedPath = join(options.stageRoot, ".agentwheel-composed", channel, type, entry.name);
       await mkdir(dirname(stagedPath), { recursive: true });
       await cp(full, stagedPath, { recursive: kind === "dir", dereference: true });
       byKey.set(`${type}:${entry.name}`, {

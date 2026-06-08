@@ -14,7 +14,7 @@ import { shouldUpdatePackage } from "../lifecycle/update.js";
 const program = new Command();
 
 program
-  .name("agentweave")
+  .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
   .version("0.1.0");
 
@@ -26,14 +26,14 @@ program
     const root = normalizeTargetRoot(options.targetRoot);
     if (kind === "package") {
       await initPackage(root);
-      console.log("Initialized agentweave package.");
+      console.log("Initialized agentwheel package.");
       return;
     }
     if (kind !== "workspace") {
       throw new Error(`Unknown init kind: ${kind}`);
     }
     await writeWorkspaceConfig(root, await readWorkspaceConfig(root));
-    console.log("Initialized .agentweave/config.json.");
+    console.log("Initialized .agentwheel/config.json.");
   });
 
 program
@@ -53,7 +53,7 @@ program
     const bundle = await stageSource(driver, source, {
       workspaceRoot: targetRoot,
       adapter,
-      cacheRoot: join(targetRoot, ".agentweave", "cache"),
+      cacheRoot: join(targetRoot, ".agentwheel", "cache"),
       mode: options.mode,
     });
     const name = options.name ?? bundle.source.packageName ?? source;
@@ -200,7 +200,7 @@ async function buildPlan(source: string, options: { driver?: string; adapter: st
   const bundle = await stageSource(driver, source, {
     workspaceRoot: targetRoot,
     adapter,
-    cacheRoot: join(targetRoot, ".agentweave", "cache"),
+    cacheRoot: join(targetRoot, ".agentwheel", "cache"),
     mode: options.mode,
   });
   const manifest = await readInstallManifest(targetRoot, adapter.name);
@@ -212,10 +212,10 @@ async function initPackage(root: string): Promise<void> {
   await mkdir(join(root, "instructions"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills"), { recursive: true });
-  const manifestPath = join(root, "agentweave.json");
+  const manifestPath = join(root, "agentwheel.json");
   const manifest = {
     schemaVersion: 1,
-    name: "example/agentweave-package",
+    name: "example/agentwheel-package",
     version: "0.1.0",
     provides: [
       { type: "instructions", path: "instructions/AGENTS.md" },

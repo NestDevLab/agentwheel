@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 128" role="img" aria-labelledby="title desc">
-  <title id="title">agentweave wordmark</title>
-  <desc id="desc">agentweave icon with wordmark.</desc>
+  <title id="title">agentwheel wordmark</title>
+  <desc id="desc">agentwheel icon with wordmark.</desc>
   <image href="./logo.png" x="0" y="0" width="128" height="128" preserveAspectRatio="xMidYMid meet"/>
-  <text x="150" y="78" fill="#f8fafc" font-family="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="46" font-weight="750" letter-spacing="0">agentweave</text>
+  <text x="150" y="78" fill="#f8fafc" font-family="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="46" font-weight="750" letter-spacing="0">agentwheel</text>
   <path d="M152 92 H452" stroke="#06b6d4" stroke-width="4" stroke-linecap="round" opacity="0.75"/>
 </svg>

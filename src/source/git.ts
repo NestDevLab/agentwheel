@@ -99,7 +99,7 @@ function parseGitSource(source: string): { url: string; ref?: string } {
 }
 
 function cachePathFor(url: string, cacheRoot?: string): string {
-  const root = cacheRoot ? resolve(cacheRoot) : join(homedir(), ".agentweave", "cache");
+  const root = cacheRoot ? resolve(cacheRoot) : join(homedir(), ".agentwheel", "cache");
   const slug = url
     .replace(/^[a-z]+:\/\//i, "")
     .replace(/\.git$/i, "")

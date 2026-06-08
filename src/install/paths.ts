@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export function metadataDir(targetRoot: string): string {
-  return join(targetRoot, ".agentweave");
+  return join(targetRoot, ".agentwheel");
 }
 
 export function installManifestPath(targetRoot: string, adapter: string): string {

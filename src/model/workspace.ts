@@ -6,7 +6,7 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 export const workspacePackageSchema = z.object({
   name: z.string().min(1),
   source: z.string().min(1),
-  driver: z.enum(["local", "git"]).default("local"),
+  driver: z.enum(["local", "git", "skillkit", "vercel-skills"]).default("local"),
   adapter: z.string().min(1).default("openclaw"),
   adapterConfig: z.string().min(1).optional(),
   mode: z.enum(["pinned", "tracking"]).default("pinned"),

@@ -1,8 +1,15 @@
 import { GitSourceDriver } from "./git.js";
 import { LocalSourceDriver } from "./local.js";
+import { SkillKitSourceDriver } from "./skillkit.js";
 import type { SourceDriver } from "./types.js";
+import { VercelSkillsSourceDriver } from "./vercel-skills.js";
 
-const drivers: SourceDriver[] = [new LocalSourceDriver(), new GitSourceDriver()];
+const drivers: SourceDriver[] = [
+  new LocalSourceDriver(),
+  new GitSourceDriver(),
+  new SkillKitSourceDriver(),
+  new VercelSkillsSourceDriver(),
+];
 
 export function getSourceDriver(name = "local"): SourceDriver {
   const driver = drivers.find((candidate) => candidate.name === name);

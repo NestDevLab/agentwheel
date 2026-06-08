@@ -40,7 +40,7 @@ program
 program
   .command("add")
   .argument("<source>", "package source")
-  .option("--driver <driver>", "source driver (local or git)")
+  .option("--driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--target-root <path>", "workspace root", process.cwd())
@@ -75,9 +75,9 @@ program
 program
   .command("list")
   .argument("<source>", "local source directory")
-  .option("--driver <driver>", "source driver", "local")
+  .option("--driver <driver>", "source driver")
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver);
+    const driver = getSourceDriver(options.driver ?? inferDriver(source));
     const resolved = await driver.resolve(source);
     const artifacts = await driver.list(resolved);
     for (const artifact of artifacts) {
@@ -88,9 +88,9 @@ program
 program
   .command("scan")
   .argument("<source>", "local source directory")
-  .option("--driver <driver>", "source driver", "local")
+  .option("--driver <driver>", "source driver")
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver);
+    const driver = getSourceDriver(options.driver ?? inferDriver(source));
     const resolved = await driver.resolve(source);
     const result = await driver.scan(resolved);
     if (result.findings.length === 0) {
@@ -106,7 +106,7 @@ program
 program
   .command("plan")
   .argument("<source>", "source directory")
-  .option("--driver <driver>", "source driver", "local")
+  .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--target-root <path>", "runtime/project root", process.cwd())
@@ -121,7 +121,7 @@ program
 program
   .command("sync")
   .argument("<source>", "source directory")
-  .option("--driver <driver>", "source driver", "local")
+  .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--target-root <path>", "runtime/project root", process.cwd())
@@ -251,7 +251,9 @@ async function initPackage(root: string): Promise<void> {
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Agent Instructions\n", "utf8");
 }
 
-function inferDriver(source: string): "local" | "git" {
+function inferDriver(source: string): "local" | "git" | "skillkit" | "vercel-skills" {
+  if (source.startsWith("skillkit:")) return "skillkit";
+  if (source.startsWith("vercel:")) return "vercel-skills";
   return source.startsWith("github:") || source.startsWith("git:") ? "git" : "local";
 }
 

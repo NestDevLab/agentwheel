@@ -448,6 +448,7 @@
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
         <a href="#docs">Docs</a>
+        <a href="#packages">Packages</a>
         <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
       </nav>
@@ -558,6 +559,46 @@
             <strong>GitHub repo</strong>
             <span>Source, issues, releases, npm package metadata, and examples.</span>
           </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel-registry">
+            <strong>Package registry</strong>
+            <span>Short-name index for public agentwheel packages.</span>
+          </a>
+        </div>
+      </section>
+
+      <section id="packages">
+        <h2 class="section-title">How to add a package</h2>
+        <p class="intro-text">Package discovery is powered by the public <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>. The registry is optional, but it gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>.</p>
+
+        <div class="flow">
+          <div class="step">
+            <strong>1 · Publish a package repo</strong>
+            <span>Add `agentwheel.json` plus folders such as instructions, rules, skills, commands, MCP, or hooks.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>2 · Open a registry PR</strong>
+            <span>Add one entry to `index.json` in NestDevLab/agentwheel-registry.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>3 · Install by short name</strong>
+            <span>Users run `agentwheel registry update`, then `agentwheel add &lt;name&gt;`.</span>
+          </div>
+        </div>
+
+        <div class="code" aria-label="Registry entry example">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>index.json entry</span>
+          </div>
+          <pre><code>{
+  "name": "your-package-name",
+  "source": "github:your-org/your-agent-package",
+  "type": "package",
+  "description": "Reusable skills, rules, and instructions for agentwheel.",
+  "tags": ["skills", "rules", "instructions"]
+}</code></pre>
         </div>
       </section>
 

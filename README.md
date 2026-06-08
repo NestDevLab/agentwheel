@@ -102,6 +102,34 @@ A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 Publish by pushing to any git host. A registry exists only for short names and discovery — it's
 optional, and `agentwheel add <url|path>` always works without it.
 
+## How to add a package
+
+The public package registry lives at
+[`NestDevLab/agentwheel-registry`](https://github.com/NestDevLab/agentwheel-registry).
+
+1. Create a public repo with `agentwheel.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
+2. Open a pull request to `agentwheel-registry` that adds an entry to `index.json`.
+3. Users install by short name:
+
+```bash
+agentwheel registry update
+agentwheel add your-package-name --adapter openclaw
+agentwheel update --dry-run
+agentwheel update
+```
+
+Example registry entry:
+
+```json
+{
+  "name": "your-package-name",
+  "source": "github:your-org/your-agent-package",
+  "type": "package",
+  "description": "Reusable skills, rules, and instructions for agentwheel.",
+  "tags": ["skills", "rules", "instructions"]
+}
+```
+
 ## Customizing without getting overwritten
 
 Drift detection blocks *accidental* edits to generated files. *Intentional* changes have four channels,

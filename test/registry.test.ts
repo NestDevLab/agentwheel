@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
+import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { RegistryClient, mergeIndexes, resolvePackageSource } from "../src/registry/client.js";
 import { getSourceDriver } from "../src/source/index.js";
 import { inferSourceDriverName } from "../src/source/identify.js";
@@ -40,6 +41,24 @@ async function writeSkill(dir: string, name: string): Promise<void> {
     `# ${name}`,
     "",
   ].join("\n"), "utf8");
+}
+
+async function writePackage(dir: string): Promise<void> {
+  await mkdir(join(dir, "rules"), { recursive: true });
+  await mkdir(join(dir, "skills", "demo-skill"), { recursive: true });
+  await writeFile(join(dir, "agentwheel.json"), JSON.stringify({
+    schemaVersion: 1,
+    name: "fixture/short-package",
+    version: "0.1.0",
+    provides: [
+      { type: "instructions", path: "AGENTS.md" },
+      { type: "rules", path: "rules" },
+      { type: "skills", path: "skills" },
+    ],
+  }, null, 2), "utf8");
+  await writeFile(join(dir, "AGENTS.md"), "# Fixture instructions\n", "utf8");
+  await writeFile(join(dir, "rules", "core.md"), "# Fixture rule\n", "utf8");
+  await writeFile(join(dir, "skills", "demo-skill", "SKILL.md"), "# Fixture skill\n", "utf8");
 }
 
 describe("registry client", () => {
@@ -111,6 +130,37 @@ describe("registry client", () => {
 
     await expect(stat(join(target, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("plans a package source from a registry short-name like add does", async () => {
+    const root = await tempRoot();
+    const source = join(root, "package-source");
+    const target = join(root, "target");
+    await writePackage(source);
+    await writeIndex(join(root, "index.json"), [
+      { name: "short-package", source, type: "package", description: "Short package", tags: ["test"] },
+    ]);
+    await mkdir(join(target, ".agentwheel"), { recursive: true });
+    await writeFile(join(target, ".agentwheel", "config.json"), JSON.stringify({
+      schemaVersion: 1,
+      packages: [],
+      registry: { sources: [join(root, "index.json")] },
+    }, null, 2));
+
+    const result = await createSourcePlan({
+      source: "short-package",
+      targetRoot: target,
+      adapter: openClawAdapter,
+    });
+
+    expect(result.resolvedSource).toBe(source);
+    expect(result.registryEntryName).toBe("short-package");
+    expect(result.plan.operations.map((operation) => `${operation.action}:${operation.relativeDestPath}`)).toEqual([
+      "create:.openclaw/AGENTS.md",
+      "create:.openclaw/rules/core.md",
+      "create:.openclaw/skills/demo-skill",
+    ]);
+    await rm(result.bundle.root, { recursive: true, force: true });
   });
 
   it("reads registry indexes from a local git repository without network", async () => {

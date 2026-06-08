@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
-import { applyInstallPlan, createInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
+import { applyInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
 import { formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
@@ -11,6 +11,7 @@ import { readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../mod
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
+import { createSourcePlan } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 
@@ -19,7 +20,7 @@ const program = new Command();
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.2.0");
+  .version("0.3.1");
 
 program
   .command("init")
@@ -89,11 +90,14 @@ program
 
 program
   .command("list")
-  .argument("<source>", "local source directory")
+  .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
+  .option("--target-root <path>", "workspace root", process.cwd())
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
-    const resolved = await driver.resolve(source);
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
+    const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
     const artifacts = await driver.list(resolved);
     for (const artifact of artifacts) {
       console.log(`${artifact.type}\t${artifact.name}\t${artifact.relativePath}`);
@@ -102,11 +106,14 @@ program
 
 program
   .command("scan")
-  .argument("<source>", "local source directory")
+  .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
+  .option("--target-root <path>", "workspace root", process.cwd())
   .action(async (source, options) => {
-    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
-    const resolved = await driver.resolve(source);
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
+    const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
     const result = await driver.scan(resolved);
     if (result.findings.length === 0) {
       console.log("Scan ok: no findings");
@@ -128,6 +135,7 @@ program
   .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "runtime/project root", process.cwd())
   .option("--mode <mode>", "pinned or tracking")
+  .option("--dry-run", "accepted for symmetry; plan never writes", false)
   .action(async (source, options) => {
     const { plan, bundle } = await buildPlan(source, options);
     console.log(formatPlan(plan));
@@ -320,7 +328,6 @@ program
   });
 
 async function buildPlan(source: string, options: { driver?: string; adapter: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; targetRoot: string; mode?: "pinned" | "tracking" }) {
-  const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
   const targetRoot = normalizeTargetRoot(options.targetRoot);
   const adapter = await resolveAdapter({
     adapter: options.adapter,
@@ -330,15 +337,14 @@ async function buildPlan(source: string, options: { driver?: string; adapter: st
     baseDir: targetRoot,
     warn: (message) => console.warn(message),
   });
-  const bundle = await stageSource(driver, source, {
-    workspaceRoot: targetRoot,
+  const result = await createSourcePlan({
+    source,
+    targetRoot,
     adapter,
-    cacheRoot: join(targetRoot, ".agentwheel", "cache"),
+    driver: options.driver,
     mode: options.mode,
   });
-  const manifest = await readInstallManifest(targetRoot, adapter.name);
-  const plan = await createInstallPlan(bundle, adapter, targetRoot, manifest);
-  return { plan, bundle };
+  return { plan: result.plan, bundle: result.bundle };
 }
 
 async function initPackage(root: string): Promise<void> {

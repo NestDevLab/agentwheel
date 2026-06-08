@@ -8,6 +8,7 @@ export const artifactTypeSchema = z.enum([
   "subagents",
   "mcp",
   "hooks",
+  "settings",
   "plugins",
 ]);
 

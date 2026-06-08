@@ -32,9 +32,9 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ---
 
-> **Status: early (v0.2).** The install spine and lifecycle core are real and tested — local/git
-> sources, plan/sync/update/drift/uninstall, overlays, eject/remember, and pluggable adapters.
-> Expect sharp edges.
+> **Status: early (v0.3).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
+> profiles, rich JSON merge, and pluggable adapters. Expect sharp edges.
 
 ## What it does
 
@@ -133,7 +133,7 @@ agentwheel sync ./my-pack --adapter-config ./myco-internal.jsonc
 ```
 
 Built-in adapters ship for common runtimes; declarative adapters need no code and stay private.
-(Programmatic adapters, for logic beyond file placement, are planned behind an explicit opt-in.)
+Programmatic adapters, for private runtime logic beyond file placement, require explicit `--allow-adapter-code`.
 
 Copilot support is intentionally file-drop only: instructions, rules, and prompt/command files are
 placed in GitHub-native locations, while raw `SKILL.md` directories stay disabled until there is a
@@ -143,7 +143,7 @@ clear conversion format.
 
 - [x] **v0.1** — install spine: local sources; openclaw/claude/codex adapters; skills/rules/instructions; `plan` · `sync` · `--dry-run` · `uninstall`; manifest + drift + idempotency.
 - [x] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
-- [ ] **v0.3** — registry & federation (skill ecosystems, MCP); profiles; programmatic adapters.
+- [x] **v0.3** — skillkit/vercel source drivers; optional registry & federation; programmatic adapters behind `--allow-adapter-code`; rich JSON merge for mcp/hooks/settings; profiles.
 
 ## Design docs
 

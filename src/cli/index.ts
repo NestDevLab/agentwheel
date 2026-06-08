@@ -1,8 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Command } from "commander";
-import { getAdapter } from "../adapters/index.js";
-import { loadAdapterConfig } from "../model/adapter.js";
+import { resolveAdapter } from "../adapters/resolve.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
 import { formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
@@ -11,6 +10,7 @@ import { stageSource } from "../staging/staging.js";
 import { readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
+import { syncProfile } from "../lifecycle/profile.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 
@@ -45,6 +45,8 @@ program
   .option("--driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "workspace root", process.cwd())
   .option("--mode <mode>", "pinned or tracking", "pinned")
   .option("--name <name>", "package alias")
@@ -54,7 +56,14 @@ program
     const resolvedSource = resolvedInput.source;
     const driverName = options.driver ?? inferSourceDriverName(resolvedSource);
     const driver = getSourceDriver(driverName);
-    const adapter = options.adapterConfig ? await loadAdapterConfig(options.adapterConfig) : getAdapter(options.adapter);
+    const adapter = await resolveAdapter({
+      adapter: options.adapter,
+      adapterConfig: options.adapterConfig,
+      adapterModule: options.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+      baseDir: targetRoot,
+      warn: (message) => console.warn(message),
+    });
     const bundle = await stageSource(driver, resolvedSource, {
       workspaceRoot: targetRoot,
       adapter,
@@ -68,6 +77,8 @@ program
       driver: driverName,
       adapter: adapter.name,
       adapterConfig: options.adapterConfig,
+      adapterModule: options.adapterModule,
+      adapterCodeHash: adapter.programmatic?.hash,
       mode: options.mode,
       requestedRef: bundle.source.requestedRef,
     };
@@ -113,6 +124,8 @@ program
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "runtime/project root", process.cwd())
   .option("--mode <mode>", "pinned or tracking")
   .action(async (source, options) => {
@@ -124,15 +137,42 @@ program
 
 program
   .command("sync")
-  .argument("<source>", "source directory")
+  .argument("[source]", "source directory")
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "runtime/project root", process.cwd())
   .option("--mode <mode>", "pinned or tracking")
+  .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .action(async (source, options) => {
+    if (options.profile) {
+      const targetRoot = normalizeTargetRoot(options.targetRoot);
+      const results = await syncProfile({
+        workspaceRoot: targetRoot,
+        profile: options.profile,
+        source,
+        driver: options.driver,
+        mode: options.mode,
+        dryRun: options.dryRun,
+        executePlugins: options.executePlugins,
+        allowAdapterCode: options.allowAdapterCode,
+        warn: (message) => console.warn(message),
+      });
+      for (const result of results) {
+        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName}:`);
+        console.log(formatPlan(result.plan));
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
+      }
+      if (!options.dryRun) console.log("Applied.");
+      return;
+    }
+    if (!source) {
+      throw new Error("sync requires a source unless --profile is used");
+    }
     const { plan, bundle } = await buildPlan(source, options);
     console.log(formatPlan(plan));
     if (!options.dryRun) {
@@ -148,6 +188,7 @@ program
   .option("--target-root <path>", "workspace root", process.cwd())
   .option("--dry-run", "show plans without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .action(async (options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const config = await readWorkspaceConfig(targetRoot);
@@ -156,7 +197,14 @@ program
       return;
     }
     for (const pkg of config.packages) {
-      const adapter = pkg.adapterConfig ? await loadAdapterConfig(pkg.adapterConfig) : getAdapter(pkg.adapter);
+      const adapter = await resolveAdapter({
+        adapter: pkg.adapter,
+        adapterConfig: pkg.adapterConfig,
+        adapterModule: pkg.adapterModule,
+        allowAdapterCode: options.allowAdapterCode,
+        baseDir: targetRoot,
+        warn: (message) => console.warn(message),
+      });
       const lock = await readSourceLock(targetRoot, adapter.name);
       const decision = shouldUpdatePackage(pkg, lock);
       if (!decision.shouldUpdate) {
@@ -167,6 +215,8 @@ program
         driver: pkg.driver,
         adapter: pkg.adapter,
         adapterConfig: pkg.adapterConfig,
+        adapterModule: pkg.adapterModule,
+        allowAdapterCode: options.allowAdapterCode,
         targetRoot,
         mode: pkg.mode,
       });
@@ -238,26 +288,48 @@ program
 program
   .command("uninstall")
   .option("--adapter <adapter>", "adapter", "openclaw")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "runtime/project root", process.cwd())
   .option("--dry-run", "show removals without writing", false)
   .action(async (options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const manifest = await readInstallManifest(targetRoot, options.adapter);
+    const programmaticAdapter = options.adapterModule
+      ? await resolveAdapter({
+        adapter: options.adapter,
+        adapterModule: options.adapterModule,
+        allowAdapterCode: options.allowAdapterCode,
+        baseDir: targetRoot,
+        warn: (message) => console.warn(message),
+      })
+      : undefined;
+    const adapterName = programmaticAdapter?.name ?? options.adapter;
+    const manifest = await readInstallManifest(targetRoot, adapterName);
     if (!manifest) {
-      console.log(`No install manifest for ${options.adapter} at ${targetRoot}`);
+      console.log(`No install manifest for ${adapterName} at ${targetRoot}`);
       return;
     }
     const plan = await createUninstallPlan(manifest);
     console.log(formatPlan(plan));
     await uninstall(plan, options.dryRun);
+    if (!options.dryRun && programmaticAdapter) {
+      await programmaticAdapter.programmatic?.uninstall?.({ targetRoot, adapterName: programmaticAdapter.name });
+    }
     if (!options.dryRun) console.log("Uninstalled.");
     if (plan.hasBlockingChanges) process.exitCode = 1;
   });
 
-async function buildPlan(source: string, options: { driver?: string; adapter: string; adapterConfig?: string; targetRoot: string; mode?: "pinned" | "tracking" }) {
+async function buildPlan(source: string, options: { driver?: string; adapter: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; targetRoot: string; mode?: "pinned" | "tracking" }) {
   const driver = getSourceDriver(options.driver ?? inferSourceDriverName(source));
-  const adapter = options.adapterConfig ? await loadAdapterConfig(options.adapterConfig) : getAdapter(options.adapter);
   const targetRoot = normalizeTargetRoot(options.targetRoot);
+  const adapter = await resolveAdapter({
+    adapter: options.adapter,
+    adapterConfig: options.adapterConfig,
+    adapterModule: options.adapterModule,
+    allowAdapterCode: options.allowAdapterCode,
+    baseDir: targetRoot,
+    warn: (message) => console.warn(message),
+  });
   const bundle = await stageSource(driver, source, {
     workspaceRoot: targetRoot,
     adapter,

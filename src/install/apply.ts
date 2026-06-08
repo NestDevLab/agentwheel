@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, SourceLock } from "../model/manifest.js";
 import { atomicCopy, hashPath } from "../utils/fs.js";
+import { mergeJsonFile } from "./json-merge.js";
 import { removeStateFiles, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallPlan } from "./plan.js";
 
@@ -50,26 +51,15 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         semanticCommand: operation.semanticCommand,
         executed: options.executePlugins === true,
       });
-    } else if (operation.action === "create" || operation.action === "update") {
-      if (!operation.sourcePath || !operation.desiredHash) {
-        throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
+    } else if (operation.action === "program") {
+      if (!plan.adapterCode || !operation.desiredHash || !operation.programmaticOperation) {
+        throw new Error(`Invalid programmatic operation: ${operation.relativeDestPath}`);
       }
-      await atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
-      entries.push({
-        path: operation.relativeDestPath,
-        artifactType: operation.artifactType,
-        artifactName: operation.artifactName,
-        kind: operation.kind,
-        hash: await hashPath(operation.destPath),
-        sourceHash: operation.desiredHash,
-        updatedAt: now,
-        channel: operation.channel,
-        packageName: operation.packageName,
-        semanticCommand: operation.semanticCommand,
-      });
-    } else if (operation.action === "skip") {
-      if (!operation.desiredHash) {
-        throw new Error(`Invalid skip operation missing hash: ${operation.relativeDestPath}`);
+      if (operation.programmaticApply) {
+        await operation.programmaticApply(operation.programmaticOperation, {
+          targetRoot: plan.targetRoot,
+          adapterName: plan.adapter,
+        });
       }
       entries.push({
         path: operation.relativeDestPath,
@@ -81,7 +71,45 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         updatedAt: now,
         channel: operation.channel,
         packageName: operation.packageName,
+      });
+    } else if (operation.action === "create" || operation.action === "update") {
+      if (!operation.sourcePath || !operation.desiredHash) {
+        throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
+      }
+      if (operation.mergeStrategy === "json-deep") {
+        await mergeJsonFile(operation.sourcePath, operation.destPath);
+      } else {
+        await atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
+      }
+      entries.push({
+        path: operation.relativeDestPath,
+        artifactType: operation.artifactType,
+        artifactName: operation.artifactName,
+        kind: operation.kind,
+        hash: await hashPath(operation.destPath),
+        sourceHash: operation.desiredHash,
+        updatedAt: now,
+        channel: operation.channel,
+        packageName: operation.packageName,
         semanticCommand: operation.semanticCommand,
+        mergeStrategy: operation.mergeStrategy,
+      });
+    } else if (operation.action === "skip") {
+      if (!operation.desiredHash) {
+        throw new Error(`Invalid skip operation missing hash: ${operation.relativeDestPath}`);
+      }
+      entries.push({
+        path: operation.relativeDestPath,
+        artifactType: operation.artifactType,
+        artifactName: operation.artifactName,
+        kind: operation.kind,
+        hash: operation.mergeStrategy === "json-deep" && operation.currentHash ? operation.currentHash : operation.desiredHash,
+        sourceHash: operation.desiredHash,
+        updatedAt: now,
+        channel: operation.channel,
+        packageName: operation.packageName,
+        semanticCommand: operation.semanticCommand,
+        mergeStrategy: operation.mergeStrategy,
       });
     } else if (operation.action === "remove") {
       await rm(operation.destPath, { recursive: true, force: true });
@@ -93,6 +121,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
     adapter: plan.adapter,
     targetRoot: plan.targetRoot,
     generatedAt: now,
+    adapterCode: plan.adapterCode,
     entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
   };
   await writeInstallManifest(manifest);

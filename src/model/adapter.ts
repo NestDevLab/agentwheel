@@ -7,6 +7,7 @@ export const targetMappingSchema = z.object({
   dest: z.string().min(1),
   enabled: z.boolean().default(true),
   semantic: z.enum(["openclaw-plugin"]).optional(),
+  merge: z.enum(["json-deep"]).optional(),
 });
 
 export const adapterSchema = z.object({
@@ -21,7 +22,31 @@ export const adapterSchema = z.object({
 });
 
 export type TargetMapping = z.infer<typeof targetMappingSchema>;
-export type AdapterConfig = z.infer<typeof adapterSchema>;
+export type AdapterConfig = z.infer<typeof adapterSchema> & {
+  programmatic?: ProgrammaticAdapterRuntime;
+};
+
+export interface ProgrammaticAdapterOperation {
+  name: string;
+  reason?: string;
+}
+
+export interface ProgrammaticAdapterContext {
+  targetRoot: string;
+  adapterName: string;
+}
+
+export interface ProgrammaticAdapterRuntime {
+  modulePath: string;
+  hash: string;
+  capabilities: string[];
+  plan?: (context: ProgrammaticAdapterContext) => Promise<ProgrammaticAdapterOperation[]> | ProgrammaticAdapterOperation[];
+  apply?: (operation: ProgrammaticAdapterOperation, context: ProgrammaticAdapterContext) => Promise<void> | void;
+  uninstall?: (context: ProgrammaticAdapterContext) => Promise<void> | void;
+}
+
+export type ProgrammaticAdapterApply = NonNullable<ProgrammaticAdapterRuntime["apply"]>;
+export type ProgrammaticAdapterUninstall = NonNullable<ProgrammaticAdapterRuntime["uninstall"]>;
 
 export async function loadAdapterConfig(path: string): Promise<AdapterConfig> {
   const content = await readFile(path, "utf8");

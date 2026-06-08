@@ -118,7 +118,7 @@ describe("v0.2 wave 2", () => {
     const source = await tempRoot();
     const workspace = await tempRoot();
     await writeFullPackage(source);
-    await writeWorkspaceConfig(workspace, upsertPackage({ schemaVersion: 1, packages: [], registry: {} }, {
+    await writeWorkspaceConfig(workspace, upsertPackage({ schemaVersion: 1, packages: [], registry: {}, profiles: {} }, {
       name: "acme/wave2",
       source,
       driver: "local",

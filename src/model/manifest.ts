@@ -13,6 +13,7 @@ export const manifestEntrySchema = z.object({
   packageName: z.string().min(1).optional(),
   semanticCommand: z.array(z.string()).optional(),
   executed: z.boolean().optional(),
+  mergeStrategy: z.enum(["json-deep"]).optional(),
 });
 
 export const installManifestSchema = z.object({
@@ -20,6 +21,10 @@ export const installManifestSchema = z.object({
   adapter: z.string().min(1),
   targetRoot: z.string().min(1),
   generatedAt: z.string().datetime(),
+  adapterCode: z.object({
+    modulePath: z.string().min(1),
+    hash: z.string().min(16),
+  }).optional(),
   entries: z.array(manifestEntrySchema),
 });
 

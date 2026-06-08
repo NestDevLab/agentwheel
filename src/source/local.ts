@@ -100,7 +100,7 @@ export class LocalSourceDriver implements SourceDriver {
       }
     }
 
-    for (const type of ["commands", "mcp", "hooks", "plugins"] as ArtifactType[]) {
+    for (const type of ["commands", "mcp", "hooks", "settings", "plugins"] as ArtifactType[]) {
       const dir = join(root, type);
       if (!(await pathExists(dir))) continue;
       artifacts.push(...await listGenericArtifacts(type, dir, type, resolved.packageName));

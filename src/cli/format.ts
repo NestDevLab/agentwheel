@@ -9,6 +9,7 @@ const labels: Record<PlanAction, string> = {
   drift: "DRIFT",
   conflict: "CONFLICT",
   plugin: "PLUGIN",
+  program: "PROGRAM",
 };
 
 const channelLabels = {

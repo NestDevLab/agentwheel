@@ -8,7 +8,8 @@ export const hermesAdapter: AdapterConfig = {
     rules: { enabled: true, dest: ".hermes/rules" },
     skills: { enabled: true, dest: ".hermes/skills" },
     commands: { enabled: true, dest: ".hermes/commands" },
-    mcp: { enabled: true, dest: ".hermes/mcp" },
-    hooks: { enabled: true, dest: ".hermes/hooks" },
+    mcp: { enabled: true, dest: ".hermes/mcp", merge: "json-deep" },
+    hooks: { enabled: true, dest: ".hermes/hooks", merge: "json-deep" },
+    settings: { enabled: true, dest: ".hermes/settings.json", merge: "json-deep" },
   },
 };

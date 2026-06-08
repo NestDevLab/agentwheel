@@ -25,7 +25,7 @@ export interface InstallOperation {
   packageName?: string;
   semanticCommand?: string[];
   execute?: boolean;
-  mergeStrategy?: "json-deep";
+  mergeStrategy?: "json-deep" | "codex-toml-mcp";
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
 }
@@ -100,7 +100,7 @@ export async function createInstallPlan(
       continue;
     }
 
-    if (op.mergeStrategy === "json-deep") {
+    if (op.mergeStrategy) {
       const existing = manifestByPath.get(op.relativeDestPath);
       const exists = await pathExists(op.destPath);
       if (!exists) {
@@ -217,7 +217,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     };
   }
 
-  const destPath = artifact.type === "instructions" || artifact.type === "settings"
+  const destPath = artifact.type === "instructions" || artifact.type === "settings" || isFileTarget(target.dest)
     ? join(targetRoot, target.dest)
     : join(targetRoot, target.dest, artifact.name);
 
@@ -235,6 +235,10 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     packageName: artifact.packageName,
     mergeStrategy: target.merge,
   };
+}
+
+function isFileTarget(dest: string): boolean {
+  return /\.(json|jsonc|toml|md)$/i.test(dest);
 }
 
 export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {

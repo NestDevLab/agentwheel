@@ -6,6 +6,7 @@ import { atomicCopy, hashPath } from "../utils/fs.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { removeStateFiles, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallPlan } from "./plan.js";
+import { mergeCodexTomlMcp } from "./toml-merge.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,6 +90,8 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
       }
       if (operation.mergeStrategy === "json-deep") {
         await mergeJsonFile(operation.sourcePath, operation.destPath);
+      } else if (operation.mergeStrategy === "codex-toml-mcp") {
+        await mergeCodexTomlMcp(operation.sourcePath, operation.destPath);
       } else {
         await atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
       }
@@ -114,7 +117,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         artifactType: operation.artifactType,
         artifactName: operation.artifactName,
         kind: operation.kind,
-        hash: operation.mergeStrategy === "json-deep" && operation.currentHash ? operation.currentHash : operation.desiredHash,
+        hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : operation.desiredHash,
         sourceHash: operation.desiredHash,
         updatedAt: now,
         channel: operation.channel,

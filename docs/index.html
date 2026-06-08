@@ -452,6 +452,7 @@
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
         <a href="#docs">Docs</a>
+        <a href="#adapters">Adapters</a>
         <a href="#packages">Packages</a>
         <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
@@ -462,7 +463,7 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> early v0.6 selective installs</span>
+          <span class="eyebrow"><span class="dot"></span> early v0.7 Claude + Codex adapters</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
           <p class="subhead">agentwheel turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
           <div class="actions">
@@ -504,7 +505,10 @@
           <article class="card">
             <div class="icon">A</div>
             <h3>Pluggable adapters</h3>
-            <p>Use bundled runtimes, private JSONC file-drop adapters, or explicit local adapter code behind <code>--allow-adapter-code</code>.</p>
+            <p>Use complete built-ins for OpenClaw, Claude Code, Codex CLI, Hermes, and Copilot, private JSONC adapters, or explicit local adapter code.</p>
+            <div class="pill-list">
+              <span class="pill">Claude skills</span><span class="pill">Codex MCP</span><span class="pill">commands</span><span class="pill">agents</span>
+            </div>
           </article>
           <article class="card">
             <div class="icon">D</div>
@@ -576,6 +580,28 @@
         </div>
       </section>
 
+      <section id="adapters">
+        <h2 class="section-title">Built-in adapters</h2>
+        <p class="intro-text">Claude Code and Codex CLI now get real file-drop targets, not stubs. Skills, instructions, commands, agents, rules, MCP, hooks, and settings land in each runtime's native shape.</p>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">C</div>
+            <h3>Claude Code</h3>
+            <p><code>.claude/CLAUDE.md</code>, <code>.claude/skills</code>, <code>.claude/commands</code>, <code>.claude/agents</code>, <code>.claude/rules</code>, <code>.claude/.mcp.json</code>, and <code>.claude/settings.json</code>.</p>
+          </article>
+          <article class="card">
+            <div class="icon">X</div>
+            <h3>Codex CLI</h3>
+            <p><code>.codex/AGENTS.md</code>, <code>.codex/skills</code>, <code>.codex/commands</code>, <code>.codex/agents</code>, <code>.codex/rules</code>, <code>.codex/config.toml</code>, and <code>.codex/hooks.json</code>.</p>
+          </article>
+          <article class="card">
+            <div class="icon">M</div>
+            <h3>Safe MCP merge</h3>
+            <p>Claude MCP merges JSON. Codex MCP updates only <code>[mcp_servers]</code> in <code>config.toml</code>, preserving unrelated user config.</p>
+          </article>
+        </div>
+      </section>
+
       <section id="packages">
         <h2 class="section-title">How to add a package</h2>
         <p class="intro-text">Package discovery is powered by the public <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>. The registry is optional, but it gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>. Packages can also use asset-includes to keep one canonical copy of shared scripts while installing self-contained skills.</p>
@@ -643,7 +669,7 @@
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.6) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
+        <p class="intro-text">agentwheel is early (v0.7) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
 
         <div class="code" aria-label="Install agentwheel">
           <div class="codebar">
@@ -701,7 +727,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.6.</span>
+      <span>agentwheel is early / v0.7.</span>
       <a href="https://github.com/NestDevLab/agentwheel">github.com/NestDevLab/agentwheel</a>
     </footer>
   </div>

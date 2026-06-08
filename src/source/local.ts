@@ -100,7 +100,7 @@ export class LocalSourceDriver implements SourceDriver {
       }
     }
 
-    for (const type of ["commands", "mcp", "hooks", "settings", "plugins"] as ArtifactType[]) {
+    for (const type of ["commands", "subagents", "mcp", "hooks", "settings", "plugins"] as ArtifactType[]) {
       const dir = join(root, type);
       if (!(await pathExists(dir))) continue;
       artifacts.push(...await listGenericArtifacts(type, dir, type, resolved.packageName));
@@ -165,9 +165,7 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
     if (stats.isDirectory()) {
       for (const entry of await sortedDirEntries(full)) {
         const child = join(full, entry.name);
-        if (provide.type === "skills" && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
-        } else if (provide.type === "plugins" && entry.isDirectory()) {
+        if ((provide.type === "skills" || provide.type === "plugins" || provide.type === "subagents") && entry.isDirectory()) {
           artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
         } else if (entry.isFile()) {
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;

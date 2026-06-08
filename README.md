@@ -33,10 +33,10 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ---
 
-> **Status: early (v0.6).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> **Status: early (v0.7).** The lifecycle core is real and tested — local/git/skillkit/vercel
 > sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
 > profiles, runtime auto-detection, fleet targeting, asset-includes, selective installs,
-> update notifications, rich JSON merge, and pluggable adapters.
+> update notifications, full Claude/Codex adapters, rich JSON/TOML merge, and pluggable adapters.
 > Expect sharp edges.
 
 ## What it does
@@ -260,6 +260,20 @@ agentwheel sync ./my-pack --adapter-config ./myco-internal.jsonc
 Built-in adapters ship for common runtimes; declarative adapters need no code and stay private.
 Programmatic adapters, for private runtime logic beyond file placement, require explicit `--allow-adapter-code`.
 
+Built-in runtime targets:
+
+| Runtime | Main targets |
+|---|---|
+| **OpenClaw** | `.openclaw/AGENTS.md`, `.openclaw/skills`, `.openclaw/rules`, `.openclaw/commands`, MCP/hooks/settings, semantic plugin planning |
+| **Claude Code** | `.claude/CLAUDE.md`, `.claude/skills`, `.claude/commands`, `.claude/agents`, `.claude/rules`, `.claude/.mcp.json`, `.claude/settings.json` |
+| **Codex CLI** | `.codex/AGENTS.md`, `.codex/skills`, `.codex/commands`, `.codex/agents`, `.codex/rules`, `.codex/config.toml`, `.codex/hooks.json` |
+| **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, MCP/hooks/settings |
+| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts` |
+
+Claude MCP and hooks/settings are merged as JSON. Codex MCP entries are merged into
+`[mcp_servers]` in `.codex/config.toml` without deleting unrelated user config; hooks use
+`.codex/hooks.json`.
+
 Copilot support is intentionally file-drop only: instructions, rules, and prompt/command files are
 placed in GitHub-native locations, while raw `SKILL.md` directories stay disabled until there is a
 clear conversion format.
@@ -272,6 +286,7 @@ clear conversion format.
 - [x] **v0.4** — runtime auto-detection; no `--target-root` needed for normal use; fleet config with named agents; global + project config merge; `--agent` and `--all`.
 - [x] **v0.5** — asset-includes compose shared files into skills at install time; executable bits preserved; hashes include composed assets.
 - [x] **v0.6** — selective installs with `--select`/`--skill`; required artifacts; cached npm update notifier.
+- [x] **v0.7** — full Claude/Codex adapters; Codex TOML MCP merge; subagent enumeration; `--skill` selector fix.
 
 ## Design docs
 

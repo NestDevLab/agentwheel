@@ -7,7 +7,7 @@ export const targetMappingSchema = z.object({
   dest: z.string().min(1),
   enabled: z.boolean().default(true),
   semantic: z.enum(["openclaw-plugin"]).optional(),
-  merge: z.enum(["json-deep"]).optional(),
+  merge: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
 });
 
 export const adapterSchema = z.object({

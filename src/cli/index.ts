@@ -24,7 +24,7 @@ const program = new Command();
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.6.0")
+  .version("0.7.0")
   .option("--no-update-check", "disable npm version update check", false);
 
 program
@@ -335,8 +335,7 @@ async function buildPlan(source: string, target: RuntimeTarget, options: { drive
     adapter,
     driver: options.driver,
     mode: options.mode,
-    select: options.select ?? selectedArtifactsFromOptions(options),
-    skills: options.skills,
+    select: selectedArtifactsFromOptions(options),
   });
   return { plan: result.plan, bundle: result.bundle };
 }
@@ -483,7 +482,7 @@ function printRegistryEntries(entries: Array<{ name: string; type: string; sourc
 
 async function main(): Promise<void> {
   await maybeCheckForUpdate({
-    currentVersion: "0.6.0",
+    currentVersion: "0.7.0",
     argv: process.argv,
     env: process.env,
     isTTY: process.stderr.isTTY === true,

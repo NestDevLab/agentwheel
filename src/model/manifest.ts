@@ -13,7 +13,7 @@ export const manifestEntrySchema = z.object({
   packageName: z.string().min(1).optional(),
   semanticCommand: z.array(z.string()).optional(),
   executed: z.boolean().optional(),
-  mergeStrategy: z.enum(["json-deep"]).optional(),
+  mergeStrategy: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
 });
 
 export const installManifestSchema = z.object({

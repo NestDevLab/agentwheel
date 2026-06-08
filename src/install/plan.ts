@@ -6,7 +6,7 @@ import type { StagedBundle } from "../staging/staging.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 
-export type PlanAction = "create" | "update" | "skip" | "remove" | "drift" | "conflict" | "plugin" | "program";
+export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
 
 export interface InstallOperation {
@@ -243,6 +243,7 @@ export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {
     update: 0,
     skip: 0,
     remove: 0,
+    keep: 0,
     drift: 0,
     conflict: 0,
     plugin: 0,

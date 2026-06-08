@@ -11,17 +11,20 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
     const currentHash = await hashPath(destPath);
     if (currentHash !== entry.hash) {
       operations.push({
-        action: "drift",
+        action: "keep",
         artifactType: entry.artifactType,
         artifactName: entry.artifactName,
         kind: entry.kind,
         destPath,
         relativeDestPath: entry.path,
+        desiredHash: entry.sourceHash,
         currentHash,
         manifestHash: entry.hash,
-        reason: "managed destination changed outside agentwheel",
+        reason: "managed destination changed outside agentwheel; keeping by default",
         channel: entry.channel,
         packageName: entry.packageName,
+        semanticCommand: entry.semanticCommand,
+        mergeStrategy: entry.mergeStrategy,
       });
     } else {
       operations.push({
@@ -44,6 +47,7 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
     adapter: manifest.adapter,
     targetRoot: manifest.targetRoot,
     operations,
-    hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
+    hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
+    adapterCode: manifest.adapterCode,
   };
 }

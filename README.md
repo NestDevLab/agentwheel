@@ -72,6 +72,9 @@ pnpm link --global
 
 `plan`, `sync --dry-run`, and `update --dry-run` show exactly what would change before anything is written. They're the commands to trust.
 
+`uninstall` removes clean managed files by default and keeps drifted files in place with a warning.
+Use `agentwheel uninstall --force` only when you also want to remove drifted managed files.
+
 ## Runtime targeting
 
 Normal use no longer needs `--target-root`. Run agentwheel inside a runtime folder and it detects

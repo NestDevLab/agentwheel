@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.4.0");
+  .version("0.4.1");
 
 program
   .command("init")
@@ -284,6 +284,7 @@ program
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show removals without writing", false)
+  .option("--force", "remove drifted managed files too", false)
   .action(async (options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
@@ -295,10 +296,10 @@ program
       }
       const plan = await createUninstallPlan(manifest);
       console.log(formatPlan(plan));
-      await uninstall(plan, options.dryRun);
+      const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force });
       if (!options.dryRun) {
         await adapter.programmatic?.uninstall?.({ targetRoot: target.targetRoot, adapterName: adapter.name });
-        console.log(`Uninstalled ${adapter.name} at ${target.targetRoot}.`);
+        console.log(formatUninstallResult(result));
       }
       if (plan.hasBlockingChanges) process.exitCode = 1;
     }
@@ -397,6 +398,17 @@ async function initPackage(root: string): Promise<void> {
   };
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Agent Instructions\n", "utf8");
+}
+
+function formatUninstallResult(result: { removed: number; kept: number; removedDrifted: number }): string {
+  const removedLabel = result.removed === 1 ? "managed file" : "managed files";
+  if (result.removedDrifted > 0) {
+    const driftedLabel = result.removedDrifted === 1 ? "drifted file" : "drifted files";
+    return `Removed ${result.removed} ${removedLabel}, including ${result.removedDrifted} ${driftedLabel}.`;
+  }
+  if (result.kept === 0) return `Removed ${result.removed} ${removedLabel}.`;
+  const keptLabel = result.kept === 1 ? "drifted file" : "drifted files";
+  return `Removed ${result.removed} ${removedLabel}; kept ${result.kept} ${keptLabel} (use --force to remove).`;
 }
 
 function printRegistryEntries(entries: Array<{ name: string; type: string; source: string; description: string; tags?: string[] }>): void {

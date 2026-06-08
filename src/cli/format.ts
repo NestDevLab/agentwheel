@@ -6,6 +6,7 @@ const labels: Record<PlanAction, string> = {
   update: "UPDATE",
   skip: "SKIP",
   remove: "REMOVE",
+  keep: "KEEP",
   drift: "DRIFT",
   conflict: "CONFLICT",
   plugin: "PLUGIN",
@@ -29,7 +30,7 @@ export function formatPlan(plan: InstallPlan): string {
   }
   const summary = summarizePlan(plan);
   lines.push(
-    `Summary: create ${summary.create}, update ${summary.update}, skip ${summary.skip}, remove ${summary.remove}, drift ${summary.drift}, conflict ${summary.conflict}, plugin ${summary.plugin}`,
+    `Summary: create ${summary.create}, update ${summary.update}, skip ${summary.skip}, remove ${summary.remove}, keep ${summary.keep}, drift ${summary.drift}, conflict ${summary.conflict}, plugin ${summary.plugin}`,
   );
   return lines.join("\n");
 }

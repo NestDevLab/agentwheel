@@ -13,6 +13,17 @@ export interface ApplyOptions {
   executePlugins?: boolean;
 }
 
+export interface UninstallOptions {
+  dryRun?: boolean;
+  force?: boolean;
+}
+
+export interface UninstallResult {
+  removed: number;
+  kept: number;
+  removedDrifted: number;
+}
+
 export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock, options: ApplyOptions = {}): Promise<InstallManifest> {
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
@@ -129,14 +140,50 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
   return manifest;
 }
 
-export async function uninstall(plan: InstallPlan, dryRun: boolean): Promise<void> {
+export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
+  const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
   if (plan.hasBlockingChanges) {
-    const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
-    throw new Error(`Refusing to uninstall with drift: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
+    const blockers = plan.operations.filter((operation) => operation.action === "conflict");
+    throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
-  if (dryRun) return;
+  const removable = plan.operations.filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"));
+  const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
+  const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
+  if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
   for (const operation of plan.operations) {
-    await rm(operation.destPath, { recursive: true, force: true });
+    if (operation.action === "remove" || (resolvedOptions.force && operation.action === "keep")) {
+      await rm(operation.destPath, { recursive: true, force: true });
+    }
   }
-  await removeStateFiles(plan.targetRoot, plan.adapter);
+  if (kept.length > 0) {
+    const now = new Date().toISOString();
+    await writeInstallManifest({
+      version: 1,
+      adapter: plan.adapter,
+      targetRoot: plan.targetRoot,
+      generatedAt: now,
+      adapterCode: plan.adapterCode,
+      entries: kept.map((operation) => {
+        if (!operation.manifestHash || !operation.desiredHash) {
+          throw new Error(`Invalid kept operation missing manifest/source hash: ${operation.relativeDestPath}`);
+        }
+        return {
+          path: operation.relativeDestPath,
+          artifactType: operation.artifactType,
+          artifactName: operation.artifactName,
+          kind: operation.kind,
+          hash: operation.manifestHash,
+          sourceHash: operation.desiredHash,
+          updatedAt: now,
+          channel: operation.channel,
+          packageName: operation.packageName,
+          semanticCommand: operation.semanticCommand,
+          mergeStrategy: operation.mergeStrategy,
+        };
+      }).sort((a, b) => a.path.localeCompare(b.path)),
+    });
+  } else {
+    await removeStateFiles(plan.targetRoot, plan.adapter);
+  }
+  return { removed: removable.length, kept: kept.length, removedDrifted };
 }

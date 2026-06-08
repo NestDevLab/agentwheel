@@ -1,9 +1,10 @@
-import { appendFile, mkdtemp, rm, stat } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { formatPlan } from "../src/cli/format.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
@@ -26,6 +27,27 @@ async function tempRoot(): Promise<string> {
 async function buildPlan(targetRoot: string) {
   const driver = new LocalSourceDriver();
   const bundle = await stageSource(driver, fixtureSource);
+  const manifest = await readInstallManifest(targetRoot, openClawAdapter.name);
+  const plan = await createInstallPlan(bundle, openClawAdapter, targetRoot, manifest);
+  return { bundle, plan };
+}
+
+async function createSixFileSource(): Promise<string> {
+  const root = await tempRoot();
+  await mkdir(join(root, "rules"), { recursive: true });
+  await mkdir(join(root, "skills", "demo-skill"), { recursive: true });
+  await writeFile(join(root, "instructions.md"), "Core instructions\n", "utf8");
+  await writeFile(join(root, "rules", "safe-actions.md"), "Safe actions\n", "utf8");
+  await writeFile(join(root, "rules", "review.md"), "Review\n", "utf8");
+  await writeFile(join(root, "rules", "handoff.md"), "Handoff\n", "utf8");
+  await writeFile(join(root, "rules", "memory.md"), "Memory\n", "utf8");
+  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n", "utf8");
+  return root;
+}
+
+async function buildPlanFromSource(source: string, targetRoot: string) {
+  const driver = new LocalSourceDriver();
+  const bundle = await stageSource(driver, source);
   const manifest = await readInstallManifest(targetRoot, openClawAdapter.name);
   const plan = await createInstallPlan(bundle, openClawAdapter, targetRoot, manifest);
   return { bundle, plan };
@@ -92,5 +114,51 @@ describe("install engine", () => {
     await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).rejects.toThrow();
     expect(await readInstallManifest(targetRoot, openClawAdapter.name)).toBeUndefined();
   });
-});
 
+  it("uninstalls clean managed artifacts and keeps drifted files by default", async () => {
+    const source = await createSixFileSource();
+    const targetRoot = await tempRoot();
+    const first = await buildPlanFromSource(source, targetRoot);
+    const manifest = await applyInstallPlan(first.plan, first.bundle.sourceLock);
+    expect(manifest.entries).toHaveLength(6);
+    await rm(first.bundle.root, { recursive: true, force: true });
+
+    const driftedPath = join(targetRoot, ".openclaw", "rules", "safe-actions.md");
+    await appendFile(driftedPath, "\nmanual change\n", "utf8");
+
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, openClawAdapter.name))!);
+    expect(uninstallPlan.hasBlockingChanges).toBe(false);
+    expect(uninstallPlan.operations.filter((operation) => operation.action === "remove")).toHaveLength(5);
+    expect(uninstallPlan.operations.filter((operation) => operation.action === "keep")).toHaveLength(1);
+    expect(formatPlan(uninstallPlan)).toContain("KEEP");
+    expect(formatPlan(uninstallPlan)).toContain("remove 5, keep 1, drift 0");
+
+    const result = await uninstall(uninstallPlan, { dryRun: false });
+    expect(result).toEqual({ removed: 5, kept: 1, removedDrifted: 0 });
+    await expect(stat(driftedPath)).resolves.toBeTruthy();
+    await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).rejects.toThrow();
+
+    const partialManifest = await readInstallManifest(targetRoot, openClawAdapter.name);
+    expect(partialManifest?.entries.map((entry) => entry.path)).toEqual([".openclaw/rules/safe-actions.md"]);
+    const secondPlan = await createUninstallPlan(partialManifest!);
+    expect(secondPlan.operations.map((operation) => operation.action)).toEqual(["keep"]);
+  });
+
+  it("uninstall force removes drifted managed artifacts", async () => {
+    const source = await createSixFileSource();
+    const targetRoot = await tempRoot();
+    const first = await buildPlanFromSource(source, targetRoot);
+    const manifest = await applyInstallPlan(first.plan, first.bundle.sourceLock);
+    expect(manifest.entries).toHaveLength(6);
+    await rm(first.bundle.root, { recursive: true, force: true });
+
+    const driftedPath = join(targetRoot, ".openclaw", "rules", "safe-actions.md");
+    await appendFile(driftedPath, "\nmanual change\n", "utf8");
+
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, openClawAdapter.name))!);
+    const result = await uninstall(uninstallPlan, { force: true });
+    expect(result).toEqual({ removed: 6, kept: 0, removedDrifted: 1 });
+    await expect(stat(driftedPath)).rejects.toThrow();
+    expect(await readInstallManifest(targetRoot, openClawAdapter.name)).toBeUndefined();
+  });
+});

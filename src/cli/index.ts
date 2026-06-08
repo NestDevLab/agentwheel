@@ -15,13 +15,17 @@ import { createSourcePlan } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
+import type { InstallPlan } from "../install/plan.js";
+import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
+import { maybeCheckForUpdate } from "./update-check.js";
 
 const program = new Command();
 
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.5.0");
+  .version("0.6.0")
+  .option("--no-update-check", "disable npm version update check", false);
 
 program
   .command("init")
@@ -52,8 +56,11 @@ program
   .option("--target-root <path>", "workspace root", process.cwd())
   .option("--mode <mode>", "pinned or tracking", "pinned")
   .option("--name <name>", "package alias")
+  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const selectedArtifacts = selectedArtifactsFromOptions(options);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const resolvedSource = resolvedInput.source;
     const driverName = options.driver ?? inferSourceDriverName(resolvedSource);
@@ -71,6 +78,7 @@ program
       adapter,
       cacheRoot: join(targetRoot, ".agentwheel", "cache"),
       mode: options.mode,
+      select: selectedArtifacts,
     });
     const name = options.name ?? resolvedInput.registryEntry?.name ?? bundle.source.packageName ?? source;
     const entry: WorkspacePackage = {
@@ -83,6 +91,7 @@ program
       adapterCodeHash: adapter.programmatic?.hash,
       mode: options.mode,
       requestedRef: bundle.source.requestedRef,
+      select: selectedArtifacts,
     };
     await writeWorkspaceConfig(targetRoot, upsertPackage(await readWorkspaceConfig(targetRoot), entry));
     await rm(bundle.root, { recursive: true, force: true });
@@ -94,12 +103,15 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
   .option("--target-root <path>", "workspace root", process.cwd())
+  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const selectedArtifacts = selectedArtifactsFromOptions(options);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
-    const artifacts = await driver.list(resolved);
+    const artifacts = filterArtifactsBySelection(await driver.list(resolved), selectedArtifacts);
     for (const artifact of artifacts) {
       console.log(`${artifact.type}\t${artifact.name}\t${artifact.relativePath}`);
     }
@@ -138,6 +150,8 @@ program
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--mode <mode>", "pinned or tracking")
+  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
   .action(async (source, options) => {
     const targets = await resolveCliTargets(options);
@@ -161,6 +175,8 @@ program
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--mode <mode>", "pinned or tracking")
+  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -173,6 +189,7 @@ program
         source,
         driver: options.driver,
         mode: options.mode,
+        select: selectedArtifactsFromOptions(options),
         dryRun: options.dryRun,
         executePlugins: options.executePlugins,
         allowAdapterCode: options.allowAdapterCode,
@@ -214,6 +231,8 @@ program
   .option("--dry-run", "show plans without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
+  .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
@@ -285,6 +304,8 @@ program
   .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show removals without writing", false)
   .option("--force", "remove drifted managed files too", false)
+  .option("--select <type/name>", "uninstall only selected artifact type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "uninstall only selected skill name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
@@ -294,7 +315,7 @@ program
         console.log(`No install manifest for ${adapter.name} at ${target.targetRoot}`);
         continue;
       }
-      const plan = await createUninstallPlan(manifest);
+      const plan = filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options));
       console.log(formatPlan(plan));
       const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force });
       if (!options.dryRun) {
@@ -305,7 +326,7 @@ program
     }
   });
 
-async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking" }) {
+async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking"; select?: string[]; skill?: string[]; skills?: string[] }) {
   const adapter = await resolveAdapterForTarget(target, options);
   const result = await createSourcePlan({
     source,
@@ -314,6 +335,8 @@ async function buildPlan(source: string, target: RuntimeTarget, options: { drive
     adapter,
     driver: options.driver,
     mode: options.mode,
+    select: options.select ?? selectedArtifactsFromOptions(options),
+    skills: options.skills,
   });
   return { plan: result.plan, bundle: result.bundle };
 }
@@ -338,7 +361,7 @@ async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapter
 
 async function runConfiguredPackages(
   target: RuntimeTarget,
-  options: { dryRun?: boolean; executePlugins?: boolean; allowAdapterCode?: boolean; adapterConfig?: string; adapterModule?: string; adapter?: string },
+  options: { dryRun?: boolean; executePlugins?: boolean; allowAdapterCode?: boolean; adapterConfig?: string; adapterModule?: string; adapter?: string; select?: string[]; skill?: string[] },
   behavior: { useUpdateDecision: boolean },
 ): Promise<void> {
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -346,6 +369,7 @@ async function runConfiguredPackages(
     console.log(`No packages configured at ${target.workspaceRoot}.`);
     return;
   }
+  const selectedArtifacts = selectedArtifactsFromOptions(options);
   for (const pkg of config.packages) {
     const targetForPackage = options.adapter || target.source !== "cwd"
       ? target
@@ -369,6 +393,8 @@ async function runConfiguredPackages(
       adapterModule: options.adapterModule ?? pkg.adapterModule,
       allowAdapterCode: options.allowAdapterCode,
       mode: pkg.mode,
+      select: selectedArtifacts ?? pkg.select,
+      skills: selectedArtifacts ? undefined : pkg.skills,
     });
     console.log(`${behavior.useUpdateDecision ? "Update" : "Sync"} ${pkg.name} (${adapter.name} at ${targetForPackage.targetRoot}):`);
     console.log(formatPlan(plan));
@@ -379,6 +405,43 @@ async function runConfiguredPackages(
     await rm(bundle.root, { recursive: true, force: true });
     if (plan.hasBlockingChanges) process.exitCode = 1;
   }
+}
+
+function collectSelectOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
+function collectSkillOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
+function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {
+  return normalizeArtifactSelectors(options.select, options.skills ?? options.skill);
+}
+
+function filterUninstallPlanBySelection(plan: InstallPlan, selected?: string[]): InstallPlan {
+  if (!selected?.length) return plan;
+  const requested = normalizeArtifactSelectors(selected) ?? [];
+  const available = new Set(plan.operations.map((operation) => `${operation.artifactType}/${operation.artifactName}`));
+  const missing = requested.filter((selector) => !available.has(selector));
+  if (missing.length > 0) {
+    throw new Error(`Selected artifact not found in install manifest: ${missing.join(", ")}`);
+  }
+  const selectedSet = new Set(requested);
+  const operations = plan.operations.map((operation) => {
+    if (selectedSet.has(`${operation.artifactType}/${operation.artifactName}`)) return operation;
+    return {
+      ...operation,
+      action: "skip" as const,
+      desiredHash: operation.desiredHash ?? operation.manifestHash,
+      reason: "not selected for uninstall",
+    };
+  });
+  return {
+    ...plan,
+    operations,
+    hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
+  };
 }
 
 async function initPackage(root: string): Promise<void> {
@@ -418,7 +481,17 @@ function printRegistryEntries(entries: Array<{ name: string; type: string; sourc
   }
 }
 
-program.parseAsync().catch((error: unknown) => {
+async function main(): Promise<void> {
+  await maybeCheckForUpdate({
+    currentVersion: "0.6.0",
+    argv: process.argv,
+    env: process.env,
+    isTTY: process.stderr.isTTY === true,
+  });
+  await program.parseAsync();
+}
+
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });

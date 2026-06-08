@@ -33,9 +33,10 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ---
 
-> **Status: early (v0.5).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> **Status: early (v0.6).** The lifecycle core is real and tested — local/git/skillkit/vercel
 > sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
-> profiles, runtime auto-detection, fleet targeting, asset-includes, rich JSON merge, and pluggable adapters.
+> profiles, runtime auto-detection, fleet targeting, asset-includes, selective installs,
+> update notifications, rich JSON merge, and pluggable adapters.
 > Expect sharp edges.
 
 ## What it does
@@ -74,6 +75,10 @@ pnpm link --global
 
 `uninstall` removes clean managed files by default and keeps drifted files in place with a warning.
 Use `agentwheel uninstall --force` only when you also want to remove drifted managed files.
+
+agentwheel checks npm for newer versions at most once every 24 hours and prints a non-blocking
+stderr warning when an update is available. Disable it with `--no-update-check` or
+`AGENTWHEEL_NO_UPDATE_CHECK=1`.
 
 ## Runtime targeting
 
@@ -144,6 +149,28 @@ A package is a git repo (or folder) with a JSON manifest and a canonical layout:
     { "type": "rules",        "path": "rules" },
     { "type": "skills",       "path": "skills" }
   ]
+}
+```
+
+Install only part of a package with `--select <type>/<name>`. `--skill <name>` is a shortcut for
+`--select skills/<name>`, and selections saved during `add` are reused by later `sync` and `update`
+runs.
+
+```bash
+agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter openclaw
+agentwheel sync --dry-run
+
+agentwheel sync github:your-org/agent-pack --select rules/safe-actions.md --select commands/build.md
+```
+
+Package authors can mark dependencies as required. Required artifacts are always installed and
+cannot be deselected:
+
+```jsonc
+{
+  "type": "rules",
+  "path": "rules/core-safety.md",
+  "required": true
 }
 ```
 
@@ -244,6 +271,7 @@ clear conversion format.
 - [x] **v0.3** — skillkit/vercel source drivers; optional registry & federation; programmatic adapters behind `--allow-adapter-code`; rich JSON merge for mcp/hooks/settings; profiles.
 - [x] **v0.4** — runtime auto-detection; no `--target-root` needed for normal use; fleet config with named agents; global + project config merge; `--agent` and `--all`.
 - [x] **v0.5** — asset-includes compose shared files into skills at install time; executable bits preserved; hashes include composed assets.
+- [x] **v0.6** — selective installs with `--select`/`--skill`; required artifacts; cached npm update notifier.
 
 ## Design docs
 

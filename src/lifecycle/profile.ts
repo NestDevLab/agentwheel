@@ -15,6 +15,8 @@ export interface ProfileSyncOptions {
   source?: string;
   driver?: string;
   mode?: "pinned" | "tracking";
+  select?: string[];
+  skills?: string[];
   dryRun?: boolean;
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
@@ -60,6 +62,8 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         adapter,
         cacheRoot: join(options.workspaceRoot, ".agentwheel", "cache"),
         mode: options.mode ?? pkg.mode,
+        select: options.select ?? pkg.select,
+        skills: options.select ? undefined : pkg.skills,
       });
       try {
         const plan = await createInstallPlan(bundle, adapter, target.targetRoot, await readInstallManifest(target.targetRoot, adapter.name));
@@ -96,5 +100,7 @@ async function packageFromSource(source: string, options: ProfileSyncOptions): P
     driver: driver as WorkspacePackage["driver"],
     adapter: "openclaw",
     mode: options.mode ?? "pinned",
+    select: options.select,
+    skills: options.skills,
   };
 }

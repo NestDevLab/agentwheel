@@ -148,6 +148,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   }
   const removable = plan.operations.filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"));
   const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
+  const skipped = plan.operations.filter((operation) => operation.action === "skip");
   const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
   if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
   for (const operation of plan.operations) {
@@ -155,7 +156,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       await rm(operation.destPath, { recursive: true, force: true });
     }
   }
-  if (kept.length > 0) {
+  const preserved = [...kept, ...skipped];
+  if (preserved.length > 0) {
     const now = new Date().toISOString();
     await writeInstallManifest({
       version: 1,
@@ -163,9 +165,9 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       targetRoot: plan.targetRoot,
       generatedAt: now,
       adapterCode: plan.adapterCode,
-      entries: kept.map((operation) => {
+      entries: preserved.map((operation) => {
         if (!operation.manifestHash || !operation.desiredHash) {
-          throw new Error(`Invalid kept operation missing manifest/source hash: ${operation.relativeDestPath}`);
+          throw new Error(`Invalid preserved operation missing manifest/source hash: ${operation.relativeDestPath}`);
         }
         return {
           path: operation.relativeDestPath,

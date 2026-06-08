@@ -14,6 +14,8 @@ export const workspacePackageSchema = z.object({
   adapterCodeHash: z.string().min(16).optional(),
   mode: z.enum(["pinned", "tracking"]).default("pinned"),
   requestedRef: z.string().min(1).optional(),
+  select: z.array(z.string().min(1)).optional(),
+  skills: z.array(z.string().min(1)).optional(),
 });
 
 export const workspaceProfileRuntimeSchema = z.object({

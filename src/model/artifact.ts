@@ -36,6 +36,7 @@ export const artifactSchema = z.object({
   packageName: z.string().min(1).optional(),
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   assets: z.array(packageAssetSchema).optional(),
+  required: z.boolean().optional(),
 });
 
 export type Artifact = z.infer<typeof artifactSchema>;

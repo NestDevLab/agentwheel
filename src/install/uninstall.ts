@@ -34,11 +34,14 @@ export async function createUninstallPlan(manifest: InstallManifest): Promise<In
         kind: entry.kind,
         destPath,
         relativeDestPath: entry.path,
+        desiredHash: entry.sourceHash,
         currentHash,
         manifestHash: entry.hash,
         reason: "uninstall managed artifact",
         channel: entry.channel,
         packageName: entry.packageName,
+        semanticCommand: entry.semanticCommand,
+        mergeStrategy: entry.mergeStrategy,
       });
     }
   }

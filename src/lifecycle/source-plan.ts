@@ -14,6 +14,8 @@ export interface SourcePlanOptions {
   adapter: AdapterConfig;
   driver?: string;
   mode?: "pinned" | "tracking";
+  select?: string[];
+  skills?: string[];
 }
 
 export interface SourcePlanResult {
@@ -33,6 +35,8 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     adapter: options.adapter,
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     mode: options.mode,
+    select: options.select,
+    skills: options.skills,
   });
   const manifest = await readInstallManifest(options.targetRoot, options.adapter.name);
   const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest);

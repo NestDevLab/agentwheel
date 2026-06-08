@@ -9,6 +9,7 @@ export const packageProvideSchema = z.object({
   type: artifactTypeSchema,
   path: z.string().min(1),
   assets: z.array(packageAssetSchema).optional(),
+  required: z.boolean().optional(),
 });
 
 export const packageManifestSchema = z.object({

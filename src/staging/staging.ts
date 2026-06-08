@@ -7,6 +7,7 @@ import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
 import { hashPath } from "../utils/fs.js";
 import { applyCustomizations } from "./customize.js";
+import { filterArtifactsBySelection } from "../model/selection.js";
 
 export interface StagedBundle {
   root: string;
@@ -18,6 +19,8 @@ export interface StagedBundle {
 export interface StageOptions extends SourceResolveOptions {
   workspaceRoot?: string;
   adapter?: AdapterConfig;
+  select?: string[];
+  skills?: string[];
 }
 
 export async function stageSource(driver: SourceDriver, source: string, options: StageOptions = {}): Promise<StagedBundle> {
@@ -39,14 +42,16 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     });
   }
 
+  const selectedArtifacts = filterArtifactsBySelection(stagedArtifacts, options.select, options.skills);
+
   const finalArtifacts = options.workspaceRoot && options.adapter
-    ? await applyCustomizations(stagedArtifacts, {
+    ? await applyCustomizations(selectedArtifacts, {
       workspaceRoot: options.workspaceRoot,
       adapter: options.adapter,
       stageRoot: root,
       packageName: resolved.packageName,
     })
-    : stagedArtifacts;
+    : selectedArtifacts;
 
   const generatedAt = new Date().toISOString();
   return {

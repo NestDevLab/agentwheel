@@ -158,7 +158,7 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
     const stats = await stat(full);
     if (provide.type === "instructions") {
       if (stats.isFile()) {
-        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets));
+        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets, provide.required));
       }
       continue;
     }
@@ -166,16 +166,16 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
       for (const entry of await sortedDirEntries(full)) {
         const child = join(full, entry.name);
         if (provide.type === "skills" && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets));
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
         } else if (provide.type === "plugins" && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets));
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
         } else if (entry.isFile()) {
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
-          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide.assets));
+          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
         }
       }
     } else if (stats.isFile()) {
-      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets));
+      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets, provide.required));
     }
   }
   return artifacts;
@@ -194,7 +194,7 @@ async function listGenericArtifacts(type: ArtifactType, dir: string, relativeRoo
   return artifacts;
 }
 
-async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[]): Promise<Artifact> {
+async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[], required?: boolean): Promise<Artifact> {
   return {
     type,
     name,
@@ -205,10 +205,11 @@ async function artifactForFile(type: ArtifactType, name: string, sourcePath: str
     packageName,
     channel: "managed",
     assets,
+    required,
   };
 }
 
-async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[]): Promise<Artifact> {
+async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[], required?: boolean): Promise<Artifact> {
   return {
     type,
     name,
@@ -219,5 +220,6 @@ async function artifactForDir(type: ArtifactType, name: string, sourcePath: stri
     packageName,
     channel: "managed",
     assets,
+    required,
   };
 }

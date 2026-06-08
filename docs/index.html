@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="agentweave keeps agent skills, rules, and instructions in sync across runtimes.">
   <title>agentweave - One source. Every agent.</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="./favicon.png" type="image/png">
   <style>
     :root {
       color-scheme: dark;
@@ -77,11 +77,18 @@
     }
 
     .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
-      gap: 56px;
+      display: flex;
+      flex-direction: column;
       align-items: center;
-      padding: 76px 0 84px;
+      text-align: center;
+      padding: 58px 0 78px;
+    }
+
+    .hero-logo {
+      width: clamp(112px, 18vw, 148px);
+      height: auto;
+      margin: 0 0 22px;
+      filter: drop-shadow(0 18px 48px rgba(6, 182, 212, 0.22));
     }
 
     .eyebrow {
@@ -121,7 +128,7 @@
 
     .subhead {
       max-width: 650px;
-      margin: 0;
+      margin: 0 auto;
       color: #cbd5e1;
       font-size: clamp(18px, 2.2vw, 22px);
     }
@@ -129,6 +136,7 @@
     .actions {
       display: flex;
       flex-wrap: wrap;
+      justify-content: center;
       gap: 14px;
       margin-top: 32px;
     }
@@ -155,36 +163,6 @@
       border-color: var(--line);
       background: rgba(17, 24, 39, 0.72);
       color: #e5e7eb;
-    }
-
-    .mark {
-      position: relative;
-      min-height: 360px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(180deg, rgba(21, 27, 38, 0.88), rgba(13, 17, 23, 0.78));
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .mark::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-      background-size: 28px 28px;
-      mask-image: radial-gradient(circle at center, black, transparent 78%);
-    }
-
-    .mark img {
-      position: absolute;
-      inset: 50% auto auto 50%;
-      width: min(72%, 260px);
-      height: auto;
-      transform: translate(-50%, -50%);
-      filter: drop-shadow(0 18px 44px rgba(6, 182, 212, 0.18));
     }
 
     .code {
@@ -326,12 +304,11 @@
 
     @media (max-width: 900px) {
       .hero {
-        grid-template-columns: 1fr;
         padding-top: 42px;
       }
 
-      .mark {
-        min-height: 280px;
+      .hero-logo {
+        width: 112px;
       }
 
       .grid {
@@ -373,7 +350,7 @@
   <div class="wrap">
     <header>
       <a class="brand" href="./" aria-label="agentweave home">
-        <img src="./assets/logo-dark.svg" alt="" width="38" height="38">
+        <img src="./assets/logo.png" alt="" width="38" height="38">
         <span>agentweave</span>
       </a>
       <nav class="nav" aria-label="Primary">
@@ -385,6 +362,7 @@
 
     <main>
       <section class="hero">
+        <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
           <span class="eyebrow"><span class="dot"></span> early v0.1 install spine</span>
           <h1>One source. <span class="accent">Every agent.</span></h1>
@@ -393,9 +371,6 @@
             <a class="button primary" href="https://github.com/NestDevLab/agentweave">GitHub repo</a>
             <a class="button secondary" href="#how">Get started</a>
           </div>
-        </div>
-        <div class="mark" aria-hidden="true">
-          <img src="./assets/logo-dark.svg" alt="">
         </div>
       </section>
 

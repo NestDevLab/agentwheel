@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="assets/logo-wordmark.svg" alt="agentweave" width="380">
+  <img src="assets/logo.png" alt="agentweave" width="120">
 </p>
+
+<h1 align="center">agentweave</h1>
 
 <p align="center"><strong>One source. Every agent.</strong></p>
 

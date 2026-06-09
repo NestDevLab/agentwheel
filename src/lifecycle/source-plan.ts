@@ -6,6 +6,8 @@ import { resolvePackageSource } from "../registry/client.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, type StagedBundle } from "../staging/staging.js";
+import { localTransport } from "../transport/index.js";
+import type { TargetTransport } from "../transport/index.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -16,6 +18,7 @@ export interface SourcePlanOptions {
   mode?: "pinned" | "tracking";
   select?: string[];
   skills?: string[];
+  transport?: TargetTransport;
 }
 
 export interface SourcePlanResult {
@@ -38,7 +41,8 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     select: options.select,
     skills: options.skills,
   });
-  const manifest = await readInstallManifest(options.targetRoot, options.adapter.name);
-  const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest);
+  const transport = options.transport ?? localTransport;
+  const manifest = await readInstallManifest(options.targetRoot, options.adapter.name, transport);
+  const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport);
   return { plan, bundle, resolvedSource, registryEntryName: resolvedInput.registryEntry?.name };
 }

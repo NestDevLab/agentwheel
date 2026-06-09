@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
 import { applyInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
@@ -18,6 +19,8 @@ import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } fr
 import type { InstallPlan } from "../install/plan.js";
 import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
 import { maybeCheckForUpdate } from "./update-check.js";
+import { pathExists } from "../utils/fs.js";
+import { transportForTarget } from "../transport/index.js";
 
 const program = new Command();
 
@@ -31,6 +34,7 @@ program
   .command("init")
   .argument("[kind]", "workspace or package", "workspace")
   .option("--target-root <path>", "workspace root", process.cwd())
+  .option("--fleet-example", "scaffold example agents and profiles in workspace config", false)
   .action(async (kind, options) => {
     const root = normalizeTargetRoot(options.targetRoot);
     if (kind === "package") {
@@ -41,7 +45,10 @@ program
     if (kind !== "workspace") {
       throw new Error(`Unknown init kind: ${kind}`);
     }
-    await writeWorkspaceConfig(root, await readWorkspaceConfig(root));
+    const config = await readWorkspaceConfig(root);
+    const bootstrapPackage = config.bootstrapSkills === false ? undefined : await defaultBootstrapPackage(root);
+    const withBootstrap = bootstrapPackage ? upsertPackage(config, bootstrapPackage) : config;
+    await writeWorkspaceConfig(root, options.fleetExample ? withFleetExample(withBootstrap) : withBootstrap);
     console.log("Initialized .agentwheel/config.json.");
   });
 
@@ -196,7 +203,7 @@ program
         warn: (message) => console.warn(message),
       });
       for (const result of results) {
-        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot}:`);
+        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
         console.log(formatPlan(result.plan));
         if (result.plan.hasBlockingChanges) process.exitCode = 1;
       }
@@ -214,7 +221,7 @@ program
       const { plan, bundle } = await buildPlan(source, target, options);
       console.log(formatPlan(plan));
       if (!options.dryRun) {
-        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
+        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins, transport: transportForTarget(target) });
         console.log(`Applied ${target.adapter} at ${target.targetRoot}.`);
       }
       await rm(bundle.root, { recursive: true, force: true });
@@ -310,15 +317,19 @@ program
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
       const adapter = await resolveAdapterForTarget(target, options);
-      const manifest = await readInstallManifest(target.targetRoot, adapter.name);
+      const transport = transportForTarget(target);
+      const manifest = await readInstallManifest(target.targetRoot, adapter.name, transport);
       if (!manifest) {
         console.log(`No install manifest for ${adapter.name} at ${target.targetRoot}`);
         continue;
       }
       const plan = filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options));
       console.log(formatPlan(plan));
-      const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force });
+      const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force, transport });
       if (!options.dryRun) {
+        if (transport.kind !== "local" && adapter.programmatic?.uninstall) {
+          throw new Error(`Cannot execute programmatic adapter uninstall over ${transport.description}.`);
+        }
         await adapter.programmatic?.uninstall?.({ targetRoot: target.targetRoot, adapterName: adapter.name });
         console.log(formatUninstallResult(result));
       }
@@ -328,6 +339,7 @@ program
 
 async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking"; select?: string[]; skill?: string[]; skills?: string[] }) {
   const adapter = await resolveAdapterForTarget(target, options);
+  const transport = transportForTarget(target);
   const result = await createSourcePlan({
     source,
     targetRoot: target.targetRoot,
@@ -336,6 +348,7 @@ async function buildPlan(source: string, target: RuntimeTarget, options: { drive
     driver: options.driver,
     mode: options.mode,
     select: selectedArtifactsFromOptions(options),
+    transport,
   });
   return { plan: result.plan, bundle: result.bundle };
 }
@@ -379,7 +392,8 @@ async function runConfiguredPackages(
       allowAdapterCode: options.allowAdapterCode,
     });
     if (behavior.useUpdateDecision) {
-      const lock = await readSourceLock(targetForPackage.targetRoot, adapter.name);
+      const transport = transportForTarget(targetForPackage);
+      const lock = await readSourceLock(targetForPackage.targetRoot, adapter.name, transport);
       const decision = shouldUpdatePackage(pkg, lock);
       if (!decision.shouldUpdate) {
         console.log(`Skipping ${pkg.name}: ${decision.reason}.`);
@@ -398,7 +412,7 @@ async function runConfiguredPackages(
     console.log(`${behavior.useUpdateDecision ? "Update" : "Sync"} ${pkg.name} (${adapter.name} at ${targetForPackage.targetRoot}):`);
     console.log(formatPlan(plan));
     if (!options.dryRun) {
-      await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins });
+      await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins, transport: transportForTarget(targetForPackage) });
       console.log(`Applied ${pkg.name}.`);
     }
     await rm(bundle.root, { recursive: true, force: true });
@@ -460,6 +474,61 @@ async function initPackage(root: string): Promise<void> {
   };
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Agent Instructions\n", "utf8");
+}
+
+async function defaultBootstrapPackage(_root: string): Promise<WorkspacePackage | undefined> {
+  const packageRoot = await findAgentwheelPackageRoot(dirname(fileURLToPath(import.meta.url)));
+  if (!packageRoot) return undefined;
+  return {
+    name: "agentwheel",
+    source: packageRoot,
+    driver: "local",
+    adapter: "openclaw",
+    mode: "tracking",
+    select: ["skills/agentwheel"],
+  };
+}
+
+function withFleetExample(config: Awaited<ReturnType<typeof readWorkspaceConfig>>) {
+  return {
+    ...config,
+    agents: {
+      ...config.agents,
+      "local-codex": config.agents["local-codex"] ?? {
+        adapter: "codex",
+        root: ".",
+        transport: "local" as const,
+      },
+      "remote-codex": config.agents["remote-codex"] ?? {
+        adapter: "codex",
+        root: "/home/administrator/agent-runtime",
+        transport: "ssh" as const,
+        host: "remote-host.example",
+        user: "administrator",
+        port: 22,
+        identityFile: "~/.ssh/id_ed25519",
+      },
+    },
+    profiles: {
+      ...config.profiles,
+      fleet: config.profiles.fleet ?? {
+        runtimes: [
+          { agent: "local-codex" },
+          { agent: "remote-codex" },
+        ],
+      },
+    },
+  };
+}
+
+async function findAgentwheelPackageRoot(start: string): Promise<string | undefined> {
+  let current = resolve(start);
+  while (true) {
+    if (await pathExists(join(current, "agentwheel.json"))) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }
 
 function formatUninstallResult(result: { removed: number; kept: number; removedDrifted: number }): string {

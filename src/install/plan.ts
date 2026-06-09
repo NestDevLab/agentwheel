@@ -4,7 +4,8 @@ import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
 import type { InstallManifest } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
-import { hashPath, pathExists } from "../utils/fs.js";
+import { localTransport } from "../transport/index.js";
+import type { TargetTransport } from "../transport/index.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
@@ -48,6 +49,7 @@ export async function createInstallPlan(
   adapter: AdapterConfig,
   targetRoot: string,
   manifest?: InstallManifest,
+  transport: TargetTransport = localTransport,
 ): Promise<InstallPlan> {
   const desired = new Map<string, InstallOperation>();
 
@@ -102,12 +104,12 @@ export async function createInstallPlan(
 
     if (op.mergeStrategy) {
       const existing = manifestByPath.get(op.relativeDestPath);
-      const exists = await pathExists(op.destPath);
+      const exists = await transport.pathExists(op.destPath);
       if (!exists) {
         operations.push({ ...op, action: "create", reason: "merge destination missing" });
         continue;
       }
-      const currentHash = await hashPath(op.destPath);
+      const currentHash = await transport.hashPath(op.destPath);
       if (existing && existing.sourceHash === op.desiredHash) {
         operations.push({ ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
@@ -117,13 +119,13 @@ export async function createInstallPlan(
     }
 
     const existing = manifestByPath.get(op.relativeDestPath);
-    const exists = await pathExists(op.destPath);
+    const exists = await transport.pathExists(op.destPath);
     if (!exists) {
       operations.push({ ...op, action: "create", reason: "destination missing" });
       continue;
     }
 
-    const currentHash = await hashPath(op.destPath);
+    const currentHash = await transport.hashPath(op.destPath);
     if (!existing) {
       operations.push({ ...op, action: "conflict", currentHash, reason: "destination exists but is not managed" });
       continue;
@@ -150,8 +152,8 @@ export async function createInstallPlan(
   for (const entry of manifest?.entries ?? []) {
     if (desired.has(entry.path)) continue;
     const destPath = join(targetRoot, entry.path);
-    if (!(await pathExists(destPath))) continue;
-    const currentHash = await hashPath(destPath);
+    if (!(await transport.pathExists(destPath))) continue;
+    const currentHash = await transport.hashPath(destPath);
     if (currentHash !== entry.hash) {
       operations.push({
         action: "drift",

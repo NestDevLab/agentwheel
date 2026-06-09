@@ -1,22 +1,27 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, SourceLock } from "../model/manifest.js";
-import { atomicCopy, hashPath } from "../utils/fs.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { removeStateFiles, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallPlan } from "./plan.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
+import { localTransport } from "../transport/index.js";
+import type { TargetTransport } from "../transport/index.js";
 
 const execFileAsync = promisify(execFile);
 
 export interface ApplyOptions {
   executePlugins?: boolean;
+  transport?: TargetTransport;
 }
 
 export interface UninstallOptions {
   dryRun?: boolean;
   force?: boolean;
+  transport?: TargetTransport;
 }
 
 export interface UninstallResult {
@@ -26,6 +31,7 @@ export interface UninstallResult {
 }
 
 export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock, options: ApplyOptions = {}): Promise<InstallManifest> {
+  const transport = options.transport ?? localTransport;
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
@@ -40,6 +46,9 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
       }
       if (options.executePlugins) {
+        if (transport.kind !== "local") {
+          throw new Error(`Cannot execute semantic plugin install over ${transport.description}. Run plugin installation on the remote host.`);
+        }
         if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
           throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
         }
@@ -68,6 +77,9 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         throw new Error(`Invalid programmatic operation: ${operation.relativeDestPath}`);
       }
       if (operation.programmaticApply) {
+        if (transport.kind !== "local") {
+          throw new Error(`Cannot execute programmatic adapter operation over ${transport.description}.`);
+        }
         await operation.programmaticApply(operation.programmaticOperation, {
           targetRoot: plan.targetRoot,
           adapterName: plan.adapter,
@@ -89,18 +101,18 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
       }
       if (operation.mergeStrategy === "json-deep") {
-        await mergeJsonFile(operation.sourcePath, operation.destPath);
+        await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
       } else if (operation.mergeStrategy === "codex-toml-mcp") {
-        await mergeCodexTomlMcp(operation.sourcePath, operation.destPath);
+        await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeCodexTomlMcp);
       } else {
-        await atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
+        await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
       }
       entries.push({
         path: operation.relativeDestPath,
         artifactType: operation.artifactType,
         artifactName: operation.artifactName,
         kind: operation.kind,
-        hash: await hashPath(operation.destPath),
+        hash: await transport.hashPath(operation.destPath),
         sourceHash: operation.desiredHash,
         updatedAt: now,
         channel: operation.channel,
@@ -126,7 +138,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         mergeStrategy: operation.mergeStrategy,
       });
     } else if (operation.action === "remove") {
-      await rm(operation.destPath, { recursive: true, force: true });
+      await transport.rm(operation.destPath);
     }
   }
 
@@ -138,13 +150,14 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
     adapterCode: plan.adapterCode,
     entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
   };
-  await writeInstallManifest(manifest);
-  await writeSourceLock(plan.targetRoot, plan.adapter, sourceLock);
+  await writeInstallManifest(manifest, transport);
+  await writeSourceLock(plan.targetRoot, plan.adapter, sourceLock, transport);
   return manifest;
 }
 
 export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
   const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
+  const transport = resolvedOptions.transport ?? localTransport;
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "conflict");
     throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
@@ -156,7 +169,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
   for (const operation of plan.operations) {
     if (operation.action === "remove" || (resolvedOptions.force && operation.action === "keep")) {
-      await rm(operation.destPath, { recursive: true, force: true });
+      await transport.rm(operation.destPath);
     }
   }
   const preserved = [...kept, ...skipped];
@@ -186,9 +199,33 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
           mergeStrategy: operation.mergeStrategy,
         };
       }).sort((a, b) => a.path.localeCompare(b.path)),
-    });
+    }, transport);
   } else {
-    await removeStateFiles(plan.targetRoot, plan.adapter);
+    await removeStateFiles(plan.targetRoot, plan.adapter, transport);
   }
   return { removed: removable.length, kept: kept.length, removedDrifted };
+}
+
+async function mergeWithTransport(
+  sourcePath: string,
+  destPath: string,
+  transport: TargetTransport,
+  merge: (sourcePath: string, destPath: string) => Promise<void>,
+): Promise<void> {
+  if (transport.kind === "local") {
+    await merge(sourcePath, destPath);
+    return;
+  }
+
+  const tempRoot = await mkdtemp(join(tmpdir(), "agentwheel-merge-"));
+  const localDest = join(tempRoot, basename(destPath) || "merged");
+  try {
+    if (await transport.pathExists(destPath)) {
+      await writeFile(localDest, await transport.readFile(destPath), "utf8");
+    }
+    await merge(sourcePath, localDest);
+    await transport.atomicCopy(localDest, destPath, "file");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 }

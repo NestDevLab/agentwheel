@@ -1,5 +1,6 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig } from "../model/workspace.js";
+import type { SshTransportConfig, TransportKind } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
 
 export interface RuntimeTarget {
@@ -7,6 +8,8 @@ export interface RuntimeTarget {
   targetRoot: string;
   workspaceRoot: string;
   agentName?: string;
+  transport: TransportKind;
+  ssh?: SshTransportConfig;
   source: "target-root" | "agent" | "auto-detect" | "cwd";
 }
 
@@ -41,6 +44,7 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
       adapter: request.adapter ?? "openclaw",
       targetRoot,
       workspaceRoot: targetRoot,
+      transport: "local",
       source: "target-root",
     };
   }
@@ -54,13 +58,14 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
 
   const detected = await detectRuntimeTarget(cwd, request.adapter);
   if (detected) {
-    return { ...detected, workspaceRoot: await findWorkspaceRoot(detected.targetRoot), source: "auto-detect" };
+    return { ...detected, workspaceRoot: await findWorkspaceRoot(detected.targetRoot), transport: "local", source: "auto-detect" };
   }
 
   return {
     adapter: request.adapter ?? "openclaw",
     targetRoot: cwd,
     workspaceRoot,
+    transport: "local",
     source: "cwd",
   };
 }
@@ -79,7 +84,7 @@ export async function resolveAllRuntimeTargets(request: RuntimeTargetRequest = {
   return targets;
 }
 
-export async function detectRuntimeTarget(cwd = process.cwd(), adapterFilter?: string): Promise<Omit<RuntimeTarget, "workspaceRoot" | "source"> | undefined> {
+export async function detectRuntimeTarget(cwd = process.cwd(), adapterFilter?: string): Promise<{ adapter: string; targetRoot: string } | undefined> {
   const root = resolve(cwd);
   const matches: Array<{ adapter: string; targetRoot: string }> = [];
 
@@ -109,8 +114,17 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
   return {
     agentName: name,
     adapter: agent.adapter,
-    targetRoot: resolveConfigPath(agent.root, workspaceRoot),
+    targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
+    transport: agent.transport,
+    ssh: agent.transport === "ssh"
+      ? {
+          host: agent.host ?? "",
+          user: agent.user,
+          port: agent.port,
+          identityFile: agent.identityFile ? resolveConfigPath(agent.identityFile, workspaceRoot) : undefined,
+        }
+      : undefined,
     source: "agent",
   };
 }

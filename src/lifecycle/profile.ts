@@ -8,6 +8,8 @@ import { resolvePackageSource } from "../registry/client.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
+import { localTransport, transportForTarget } from "../transport/index.js";
+import type { SshTransportConfig, TargetTransport, TransportKind } from "../transport/index.js";
 
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -26,6 +28,7 @@ export interface ProfileSyncOptions {
 export interface ProfileSyncResult {
   runtime: string;
   targetRoot: string;
+  transport: TransportKind;
   packageName: string;
   plan: InstallPlan;
 }
@@ -66,10 +69,11 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         skills: options.select ? undefined : pkg.skills,
       });
       try {
-        const plan = await createInstallPlan(bundle, adapter, target.targetRoot, await readInstallManifest(target.targetRoot, adapter.name));
-        results.push({ runtime: adapter.name, targetRoot: target.targetRoot, packageName: pkg.name, plan });
+        const manifest = await readInstallManifest(target.targetRoot, adapter.name, target.transport);
+        const plan = await createInstallPlan(bundle, adapter, target.targetRoot, manifest, target.transport);
+        results.push({ runtime: adapter.name, targetRoot: target.targetRoot, transport: target.transport.kind, packageName: pkg.name, plan });
         if (!options.dryRun) {
-          await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: runtime.executePlugins ?? options.executePlugins });
+          await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: runtime.executePlugins ?? options.executePlugins, transport: target.transport });
         }
       } finally {
         await rm(bundle.root, { recursive: true, force: true });
@@ -79,15 +83,36 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   return results;
 }
 
-function resolveProfileRuntime(runtime: WorkspaceProfileRuntime, config: Awaited<ReturnType<typeof readMergedWorkspaceConfig>>, workspaceRoot: string): { adapter: string; targetRoot: string } {
+function resolveProfileRuntime(
+  runtime: WorkspaceProfileRuntime,
+  config: Awaited<ReturnType<typeof readMergedWorkspaceConfig>>,
+  workspaceRoot: string,
+): { adapter: string; targetRoot: string; transport: TargetTransport } {
   if (runtime.agent) {
     const agent = config.agents[runtime.agent];
     if (!agent) throw new Error(`Unknown agent in profile: ${runtime.agent}`);
-    return { adapter: agent.adapter, targetRoot: resolveConfigPath(agent.root, workspaceRoot) };
+    const target = {
+      agentName: runtime.agent,
+      adapter: agent.adapter,
+      targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
+      workspaceRoot,
+      transport: agent.transport,
+      ssh: agent.transport === "ssh"
+        ? {
+            host: agent.host ?? "",
+            user: agent.user,
+            port: agent.port,
+            identityFile: agent.identityFile ? resolveConfigPath(agent.identityFile, workspaceRoot) : undefined,
+          } satisfies SshTransportConfig
+        : undefined,
+      source: "agent" as const,
+    };
+    return { adapter: target.adapter, targetRoot: target.targetRoot, transport: transportForTarget(target) };
   }
   return {
     adapter: runtime.adapter,
     targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
+    transport: localTransport,
   };
 }
 

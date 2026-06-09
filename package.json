@@ -29,6 +29,8 @@
   },
   "files": [
     "dist",
+    "skills",
+    "agentwheel.json",
     "README.md",
     "LICENSE"
   ],

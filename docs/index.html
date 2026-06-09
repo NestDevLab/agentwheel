@@ -569,6 +569,10 @@
             <strong>LIFECYCLE.md</strong>
             <span>Publish, install, update, overlays, overrides, eject, and registry model.</span>
           </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/fleet-config.md">
+            <strong>Fleet config</strong>
+            <span>Named local and SSH agents, profiles, and remote drift checks.</span>
+          </a>
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel">
             <strong>GitHub repo</strong>
             <span>Source, issues, releases, npm package metadata, and examples.</span>
@@ -709,13 +713,20 @@
           </div>
           <pre><code>{
   "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home" },
-    "docs-copilot": { "adapter": "copilot", "root": "/path/to/project" }
+    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home", "transport": "local" },
+    "remote-codex": {
+      "adapter": "codex",
+      "root": "/home/agent/project",
+      "transport": "ssh",
+      "host": "agent-host.example",
+      "user": "agent"
+    }
   }
 }
 
 <span class="prompt">$</span> agentwheel sync --agent lab-openclaw
 <span class="prompt">$</span> agentwheel sync --all
+<span class="prompt">$</span> agentwheel sync --profile daily --dry-run
 <span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
         </div>
 

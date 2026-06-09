@@ -39,11 +39,26 @@ export const workspaceRegistrySchema = z.object({
 export const workspaceAgentSchema = z.object({
   adapter: z.string().min(1),
   root: z.string().min(1),
+  transport: z.enum(["local", "ssh"]).default("local"),
+  host: z.string().min(1).optional(),
+  user: z.string().min(1).optional(),
+  port: z.number().int().positive().optional(),
+  identityFile: z.string().min(1).optional(),
+}).superRefine((agent, ctx) => {
+  if (agent.transport !== "ssh") return;
+  if (!agent.host) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["host"],
+      message: "SSH agents require host",
+    });
+  }
 });
 
 export const workspaceConfigSchema = z.object({
   schemaVersion: z.literal(1),
   packages: z.array(workspacePackageSchema).default([]),
+  bootstrapSkills: z.boolean().optional(),
   registry: workspaceRegistrySchema,
   profiles: z.record(z.string(), workspaceProfileSchema).default({}),
   agents: z.record(z.string(), workspaceAgentSchema).default({}),
@@ -72,7 +87,7 @@ export function upsertPackage(config: WorkspaceConfig, entry: WorkspacePackage):
   const packages = config.packages.filter((candidate) => candidate.name !== entry.name);
   packages.push(entry);
   packages.sort((a, b) => a.name.localeCompare(b.name));
-  return { schemaVersion: 1, packages, registry: config.registry ?? {}, profiles: config.profiles ?? {}, agents: config.agents ?? {} };
+  return { schemaVersion: 1, packages, bootstrapSkills: config.bootstrapSkills, registry: config.registry ?? {}, profiles: config.profiles ?? {}, agents: config.agents ?? {} };
 }
 
 export interface WorkspaceMergeOptions {
@@ -103,6 +118,7 @@ export function mergeWorkspaceConfig(global: WorkspaceConfig, project: Workspace
   return workspaceConfigSchema.parse({
     schemaVersion: 1,
     packages: project.packages.length > 0 ? project.packages : global.packages,
+    bootstrapSkills: project.bootstrapSkills ?? global.bootstrapSkills,
     registry: {
       ...global.registry,
       ...project.registry,

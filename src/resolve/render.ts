@@ -30,7 +30,8 @@ export async function renderGraphForTarget(
       select: rawNode.node.selected,
     });
 
-    artifacts.push(...rendered.artifacts.map((artifact) => ({
+    const installableArtifacts = rendered.artifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
+    artifacts.push(...installableArtifacts.map((artifact) => ({
       ...artifact,
       graphNodeId: rawNode.node.id,
       dependencyRole: dependencyRole(rawNode, artifact.type),

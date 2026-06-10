@@ -31,6 +31,15 @@ export function createSshTransport(config: SshTransportConfig): TargetTransport 
         return false;
       }
     },
+    async mkdirExclusive(path) {
+      const dir = posixDirname(path);
+      try {
+        await run(`mkdir -p ${quoteSh(dir)} && mkdir ${quoteSh(path)}`);
+      } catch (error) {
+        if (isFileExistsError(error)) throw asAlreadyExists(error);
+        throw error;
+      }
+    },
     async hashPath(path) {
       return (await run(`node -e ${quoteSh(remoteHashScript)} -- ${quoteSh(path)}`)).trim();
     },
@@ -107,6 +116,19 @@ function waitForProcess(child: ReturnType<typeof spawn>, label: string): Promise
 
 function quoteSh(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function isFileExistsError(error: unknown): boolean {
+  const text = typeof error === "object" && error !== null
+    ? `${"message" in error ? String((error as { message?: unknown }).message) : ""}\n${"stderr" in error ? String((error as { stderr?: unknown }).stderr) : ""}`
+    : String(error);
+  return text.includes("File exists");
+}
+
+function asAlreadyExists(error: unknown): Error & { code: "EEXIST" } {
+  const out = error instanceof Error ? error : new Error(String(error));
+  (out as Error & { code: "EEXIST" }).code = "EEXIST";
+  return out as Error & { code: "EEXIST" };
 }
 
 const remoteHashScript = String.raw`

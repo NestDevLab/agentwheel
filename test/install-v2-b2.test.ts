@@ -15,7 +15,7 @@ import {
   writeInstallManifest,
   type DesiredArtifact,
 } from "../src/install/index.js";
-import { applyJournalPath, applyLockPath } from "../src/install/transaction.js";
+import { acquireApplyLock, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
 import { installManifestPath } from "../src/install/paths.js";
 import { localTransport } from "../src/transport/index.js";
 import type { TargetTransport } from "../src/transport/index.js";
@@ -225,6 +225,45 @@ describe("one-shot v1 to v2 migration", () => {
 });
 
 describe("transactional apply", () => {
+  it("acquires local locks exclusively until release", async () => {
+    const target = await tempRoot();
+    const first = await acquireApplyLock(target, adapter.name);
+
+    await expect(acquireApplyLock(target, adapter.name)).rejects.toThrow(/Apply lock already exists/);
+
+    await first.release();
+    const second = await acquireApplyLock(target, adapter.name);
+    await second.release();
+  });
+
+  it("uses ssh-shaped exclusive mkdir instead of check-then-act lock probing", async () => {
+    const target = await tempRoot();
+    const lockPath = applyLockPath(target, adapter.name);
+    const mkdirCalls: string[] = [];
+    const transport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+      async pathExists(path) {
+        if (path === lockPath) {
+          throw new Error("lock pathExists should not be called");
+        }
+        return localTransport.pathExists(path);
+      },
+      async mkdirExclusive(path) {
+        mkdirCalls.push(path);
+        await mkdir(dirname(path), { recursive: true });
+        await mkdir(path);
+      },
+    };
+
+    const first = await acquireApplyLock(target, adapter.name, transport);
+    expect(mkdirCalls).toEqual([lockPath]);
+    await expect(acquireApplyLock(target, adapter.name, transport)).rejects.toThrow(/Apply lock already exists/);
+    expect(mkdirCalls).toEqual([lockPath, lockPath]);
+    await first.release();
+  });
+
   it("rejects a second apply while the target lock is held", async () => {
     const source = await tempRoot();
     const target = await tempRoot();

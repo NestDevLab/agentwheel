@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { InstallManifestV2, SourceLock } from "../model/manifest.js";
 import { localTransport } from "../transport/index.js";
@@ -65,22 +65,14 @@ export async function acquireApplyLock(
     createdAt: new Date().toISOString(),
   };
 
-  if (transport.kind === "local") {
-    await mkdir(metadataDir(targetRoot), { recursive: true });
-    try {
-      await mkdir(lockPath);
-    } catch (error) {
-      if (!isAlreadyExists(error)) throw error;
-      await handleExistingLock(lockPath, ownerPath, transport, options);
-      await mkdir(lockPath);
-    }
-    await writeFile(ownerPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
-  } else {
-    if (await transport.pathExists(lockPath)) {
-      await handleExistingLock(lockPath, ownerPath, transport, options);
-    }
-    await transport.writeJsonAtomic(ownerPath, metadata);
+  try {
+    await transport.mkdirExclusive(lockPath);
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+    await handleExistingLock(lockPath, ownerPath, transport, options);
+    await transport.mkdirExclusive(lockPath);
   }
+  await transport.writeJsonAtomic(ownerPath, metadata);
 
   return {
     path: lockPath,

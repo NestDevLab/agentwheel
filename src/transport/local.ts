@@ -7,6 +7,10 @@ export const localTransport: TargetTransport = {
   kind: "local",
   description: "local filesystem",
   pathExists,
+  async mkdirExclusive(path) {
+    await mkdir(dirname(path), { recursive: true });
+    await mkdir(path);
+  },
   hashPath,
   readFile: (path) => readFile(path, "utf8"),
   async writeFileAtomic(path, content) {

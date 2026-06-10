@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import { applyCombinedInstallPlan, applyInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
-import { formatGraphPlan, formatPlan } from "./format.js";
+import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -26,6 +26,7 @@ import { transportForTarget } from "../transport/index.js";
 import { validatePackage } from "../model/package-validate.js";
 import { migratePackageManifest } from "../model/package-migrate.js";
 import { findPackageManifestPath } from "../model/package.js";
+import { readGraphLock } from "../model/graph-lock.js";
 
 const program = new Command();
 
@@ -295,6 +296,64 @@ program
       await runConfiguredGraphPackages(target, options, { useUpdateDecision: true });
     }
   });
+
+program
+  .command("deps")
+  .description("inspect the OpenPack dependency graph")
+  .addCommand(
+    new Command("tree")
+      .argument("[source]", "optional source directory to resolve")
+      .option("--adapter <adapter>", "built-in adapter")
+      .option("--adapter-config <path>", "adapter JSON/JSONC file")
+      .option("--adapter-module <path>", "local programmatic adapter module")
+      .option("--allow-adapter-code", "allow loading local adapter code", false)
+      .option("--target-root <path>", "runtime/project root")
+      .option("--agent <name>", "named agent from merged config")
+      .option("--all", "run for every configured agent", false)
+      .option("--mode <mode>", "pinned or tracking")
+      .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+      .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+      .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
+      .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+      .option("--yes", "trust all new transitive sources", false)
+      .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+      .action(async (source, options) => {
+        const targets = await resolveCliTargets(options);
+        for (const target of targets) {
+          if (source) {
+            for (const result of await buildGraphPlansForTarget(target, source, options, { useUpdateDecision: false })) {
+              console.log(formatDependencyTree(result.graph).join("\n"));
+              for (const decision of result.bundle.graphLock.canonical.namespacing) {
+                console.log(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
+              }
+              await rm(result.bundle.root, { recursive: true, force: true });
+            }
+            continue;
+          }
+          const { lock } = await readTargetGraphLock(target, options);
+          console.log(formatLockDependencyTree(lock));
+        }
+      }),
+  )
+  .addCommand(
+    new Command("why")
+      .argument("<selector>", "installed path, type/installName, or graphNodeId:type/name")
+      .option("--adapter <adapter>", "built-in adapter")
+      .option("--adapter-config <path>", "adapter JSON/JSONC file")
+      .option("--adapter-module <path>", "local programmatic adapter module")
+      .option("--allow-adapter-code", "allow loading local adapter code", false)
+      .option("--target-root <path>", "runtime/project root")
+      .option("--agent <name>", "named agent from merged config")
+      .option("--all", "run for every configured agent", false)
+      .action(async (selector, options) => {
+        const targets = await resolveCliTargets(options);
+        for (const target of targets) {
+          const { lock, adapter } = await readTargetGraphLock(target, options);
+          const manifest = await readInstallManifest(target.targetRoot, adapter.name, transportForTarget(target));
+          console.log(formatDepsWhy(lock, manifest, selector));
+        }
+      }),
+  );
 
 program
   .command("registry")
@@ -567,6 +626,7 @@ async function buildGraphPlansForTarget(
         mode: pkg.mode,
         ref: pkg.requestedRef,
         select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+        aliases: pkg.aliases,
       })),
       ...group.extraRoots,
     ];
@@ -631,6 +691,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
           mode: pkg.mode,
           ref: pkg.requestedRef,
           select: normalizeArtifactSelectors(pkg.select, pkg.skills),
+          aliases: pkg.aliases,
         })),
         targetRoot: remainingGroup.target.targetRoot,
         workspaceRoot: remainingGroup.target.workspaceRoot,
@@ -730,6 +791,23 @@ function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, o
     transport: target.transport,
     ssh: target.ssh,
   };
+}
+
+async function readTargetGraphLock(
+  target: RuntimeTarget,
+  options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
+) {
+  const adapter = await resolveAdapterForTarget(target, options);
+  const path = graphLockPathForTarget(
+    target.workspaceRoot,
+    target.agentName ?? target.source,
+    adapter.name,
+    targetFingerprintParts(target, adapter, options),
+  );
+  if (!(await pathExists(path))) {
+    throw new Error(`No graph lock for ${adapter.name} at ${target.targetRoot}: ${path}`);
+  }
+  return { adapter, path, lock: await readGraphLock(path) };
 }
 
 async function runConfiguredPackages(

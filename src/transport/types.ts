@@ -4,6 +4,7 @@ export interface TargetTransport {
   kind: TransportKind;
   description: string;
   pathExists(path: string): Promise<boolean>;
+  mkdirExclusive(path: string): Promise<void>;
   hashPath(path: string): Promise<string>;
   readFile(path: string): Promise<string>;
   writeFileAtomic(path: string, content: string): Promise<void>;

@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 
-export const manifestEntrySchema = z.object({
+export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
+export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
+
+export const manifestEntryV1Schema = z.object({
   path: z.string().min(1),
   artifactType: artifactTypeSchema,
   artifactName: z.string().min(1),
@@ -17,7 +20,24 @@ export const manifestEntrySchema = z.object({
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });
 
-export const installManifestSchema = z.object({
+export const manifestEntrySchema = manifestEntryV1Schema.extend({
+  installName: z.string().min(1),
+  logicalSelector: z.string().min(1).optional(),
+  graphNodeId: z.string().min(1).optional(),
+  dependencyRole: dependencyRoleSchema.default("root"),
+  owners: z.array(z.string().min(1)).min(1),
+  refCount: z.number().int().positive(),
+  graphLockDigest: z.string().min(1).optional(),
+}).transform((entry) => {
+  const owners = [...new Set(entry.owners)].sort();
+  return {
+    ...entry,
+    owners,
+    refCount: owners.length,
+  };
+});
+
+export const installManifestV1Schema = z.object({
   version: z.literal(1),
   adapter: z.string().min(1),
   targetRoot: z.string().min(1),
@@ -26,8 +46,29 @@ export const installManifestSchema = z.object({
     modulePath: z.string().min(1),
     hash: z.string().min(16),
   }).optional(),
+  entries: z.array(manifestEntryV1Schema),
+}).transform((manifest) => ({
+  ...manifest,
+  legacy: true as const,
+}));
+
+export const installManifestV2Schema = z.object({
+  version: z.literal(2),
+  adapter: z.string().min(1),
+  targetRoot: z.string().min(1),
+  generatedAt: z.string().datetime(),
+  revision: z.string().min(16),
+  adapterCode: z.object({
+    modulePath: z.string().min(1),
+    hash: z.string().min(16),
+  }).optional(),
   entries: z.array(manifestEntrySchema),
-});
+}).transform((manifest) => ({
+  ...manifest,
+  legacy: false as const,
+}));
+
+export const installManifestSchema = z.union([installManifestV2Schema, installManifestV1Schema]);
 
 export const sourceLockSchema = z.object({
   version: z.literal(1),
@@ -54,5 +95,8 @@ export const sourceLockSchema = z.object({
 });
 
 export type InstallManifestEntry = z.infer<typeof manifestEntrySchema>;
-export type InstallManifest = z.infer<typeof installManifestSchema>;
+export type InstallManifestV1Entry = z.infer<typeof manifestEntryV1Schema>;
+export type InstallManifestV2 = z.infer<typeof installManifestV2Schema>;
+export type InstallManifestV1 = z.infer<typeof installManifestV1Schema> & { revision: string };
+export type InstallManifest = InstallManifestV2 | InstallManifestV1;
 export type SourceLock = z.infer<typeof sourceLockSchema>;

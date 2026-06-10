@@ -3,19 +3,33 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import type { InstallManifest, InstallManifestEntry, SourceLock } from "../model/manifest.js";
-import { mergeJsonFile } from "./json-merge.js";
-import { removeStateFiles, writeInstallManifest, writeSourceLock } from "./manifest.js";
-import type { InstallPlan } from "./plan.js";
-import { mergeCodexTomlMcp } from "./toml-merge.js";
+import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { mergeJsonFile } from "./json-merge.js";
+import { readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import type { InstallOperation, InstallPlan } from "./plan.js";
+import {
+  acquireApplyLock,
+  localPathExists,
+  readApplyJournal,
+  recordBackup,
+  removeApplyJournal,
+  rollbackCompletedOperations,
+  type ApplyJournal,
+  type ApplyLockOptions,
+  writeApplyJournal,
+} from "./transaction.js";
+import { mergeCodexTomlMcp } from "./toml-merge.js";
+import { normalizeOwners } from "./desired.js";
 
 const execFileAsync = promisify(execFile);
 
 export interface ApplyOptions {
   executePlugins?: boolean;
   transport?: TargetTransport;
+  graphLockDigest?: string;
+  lock?: ApplyLockOptions;
 }
 
 export interface UninstallOptions {
@@ -31,132 +45,134 @@ export interface UninstallResult {
 }
 
 export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock, options: ApplyOptions = {}): Promise<InstallManifest> {
+  return applyPlanTransactionally(plan, { ...options, sourceLock });
+}
+
+export async function applyCombinedInstallPlan(plan: InstallPlan, options: ApplyOptions = {}): Promise<InstallManifest> {
+  return applyPlanTransactionally(plan, options);
+}
+
+export async function recoverPendingApply(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+): Promise<InstallManifest | undefined> {
+  const lock = await acquireApplyLock(targetRoot, adapter, transport);
+  try {
+    const journal = await readApplyJournal(targetRoot, adapter, transport);
+    if (!journal) return undefined;
+
+    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program")) {
+      throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
+    }
+
+    const completedIndexes = new Set(journal.completed.map((operation) => operation.index));
+    const missingSources = await missingRemainingSources(journal, completedIndexes);
+    if (missingSources.length > 0) {
+      await rollbackCompletedOperations(journal.completed, transport);
+      await removeApplyJournal(targetRoot, adapter, transport);
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+    const entries: InstallManifestEntry[] = [];
+    for (const [index, operation] of journal.operations.entries()) {
+      if (completedIndexes.has(index)) {
+        const entry = await entryForCompletedOperation(operation, transport, now, journal.graphLockDigest);
+        if (entry) entries.push(entry);
+        continue;
+      }
+
+      const backup = await recordBackup(operation, index, targetRoot, adapter, transport);
+      const entry = await applyOperation(operation, { transport, now, graphLockDigest: journal.graphLockDigest });
+      if (entry) entries.push(entry);
+      if (isJournaledMutation(operation)) {
+        journal.completed.push(backup);
+        await writeApplyJournal(journal, transport);
+      }
+    }
+
+    const manifest = withManifestRevision({
+      ...journal.manifest,
+      generatedAt: now,
+      entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
+    });
+    if (journal.sourceLock) await writeSourceLock(targetRoot, adapter, journal.sourceLock, transport);
+    await writeInstallManifest(manifest, transport);
+    await removeApplyJournal(targetRoot, adapter, transport);
+    return manifest;
+  } finally {
+    await lock.release();
+  }
+}
+
+async function applyPlanTransactionally(
+  plan: InstallPlan,
+  options: ApplyOptions & { sourceLock?: SourceLock } = {},
+): Promise<InstallManifest> {
   const transport = options.transport ?? localTransport;
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
 
-  const entries: InstallManifestEntry[] = [];
-  const now = new Date().toISOString();
+  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock);
+  try {
+    await assertBaseRevision(plan, transport);
+    const now = new Date().toISOString();
+    const graphLockDigest = options.graphLockDigest ?? plan.graphLockDigest;
+    const journal: ApplyJournal = {
+      version: 1,
+      adapter: plan.adapter,
+      targetRoot: plan.targetRoot,
+      baseRevision: plan.baseRevision,
+      graphLockDigest,
+      createdAt: now,
+      updatedAt: now,
+      operations: plan.operations,
+      completed: [],
+      manifest: {
+        version: 2,
+        adapter: plan.adapter,
+        targetRoot: plan.targetRoot,
+        generatedAt: now,
+        revision: "pending-apply-0000",
+        legacy: false,
+        adapterCode: plan.adapterCode,
+        entries: [],
+      },
+      sourceLock: options.sourceLock,
+    };
+    await writeApplyJournal(journal, transport);
 
-  for (const operation of plan.operations) {
-    if (operation.action === "plugin") {
-      if (!operation.desiredHash) {
-        throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
-      }
-      if (options.executePlugins) {
-        if (transport.kind !== "local") {
-          throw new Error(`Cannot execute semantic plugin install over ${transport.description}. Run plugin installation on the remote host.`);
-        }
-        if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
-          throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
-        }
-        const command = operation.semanticCommand[0];
-        const args = operation.semanticCommand.slice(1);
-        if (!command) {
-          throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
-        }
-        await execFileAsync(command, args);
-      }
-      entries.push({
-        path: operation.relativeDestPath,
-        artifactType: operation.artifactType,
-        artifactName: operation.artifactName,
-        kind: operation.kind,
-        hash: operation.desiredHash,
-        sourceHash: operation.desiredHash,
-        updatedAt: now,
-        channel: operation.channel,
-        packageName: operation.packageName,
-        semanticCommand: operation.semanticCommand,
-        executed: options.executePlugins === true,
-        composedFrom: operation.composedFrom,
+    const entries: InstallManifestEntry[] = [];
+    for (const [index, operation] of plan.operations.entries()) {
+      const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
+      const entry = await applyOperation(operation, {
+        transport,
+        now,
+        executePlugins: options.executePlugins,
+        graphLockDigest,
+        plan,
       });
-    } else if (operation.action === "program") {
-      if (!plan.adapterCode || !operation.desiredHash || !operation.programmaticOperation) {
-        throw new Error(`Invalid programmatic operation: ${operation.relativeDestPath}`);
+      if (entry) entries.push(entry);
+      if (isJournaledMutation(operation)) {
+        journal.completed.push(backup);
+        await writeApplyJournal(journal, transport);
       }
-      if (operation.programmaticApply) {
-        if (transport.kind !== "local") {
-          throw new Error(`Cannot execute programmatic adapter operation over ${transport.description}.`);
-        }
-        await operation.programmaticApply(operation.programmaticOperation, {
-          targetRoot: plan.targetRoot,
-          adapterName: plan.adapter,
-        });
-      }
-      entries.push({
-        path: operation.relativeDestPath,
-        artifactType: operation.artifactType,
-        artifactName: operation.artifactName,
-        kind: operation.kind,
-        hash: operation.desiredHash,
-        sourceHash: operation.desiredHash,
-        updatedAt: now,
-        channel: operation.channel,
-        packageName: operation.packageName,
-        composedFrom: operation.composedFrom,
-      });
-    } else if (operation.action === "create" || operation.action === "update") {
-      if (!operation.sourcePath || !operation.desiredHash) {
-        throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
-      }
-      if (operation.mergeStrategy === "json-deep") {
-        await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
-      } else if (operation.mergeStrategy === "codex-toml-mcp") {
-        await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeCodexTomlMcp);
-      } else {
-        await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
-      }
-      entries.push({
-        path: operation.relativeDestPath,
-        artifactType: operation.artifactType,
-        artifactName: operation.artifactName,
-        kind: operation.kind,
-        hash: await transport.hashPath(operation.destPath),
-        sourceHash: operation.desiredHash,
-        updatedAt: now,
-        channel: operation.channel,
-        packageName: operation.packageName,
-        semanticCommand: operation.semanticCommand,
-        mergeStrategy: operation.mergeStrategy,
-        composedFrom: operation.composedFrom,
-      });
-    } else if (operation.action === "skip") {
-      if (!operation.desiredHash) {
-        throw new Error(`Invalid skip operation missing hash: ${operation.relativeDestPath}`);
-      }
-      entries.push({
-        path: operation.relativeDestPath,
-        artifactType: operation.artifactType,
-        artifactName: operation.artifactName,
-        kind: operation.kind,
-        hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : operation.desiredHash,
-        sourceHash: operation.desiredHash,
-        updatedAt: now,
-        channel: operation.channel,
-        packageName: operation.packageName,
-        semanticCommand: operation.semanticCommand,
-        mergeStrategy: operation.mergeStrategy,
-        composedFrom: operation.composedFrom,
-      });
-    } else if (operation.action === "remove") {
-      await transport.rm(operation.destPath);
     }
-  }
 
-  const manifest: InstallManifest = {
-    version: 1,
-    adapter: plan.adapter,
-    targetRoot: plan.targetRoot,
-    generatedAt: now,
-    adapterCode: plan.adapterCode,
-    entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
-  };
-  await writeInstallManifest(manifest, transport);
-  await writeSourceLock(plan.targetRoot, plan.adapter, sourceLock, transport);
-  return manifest;
+    const manifest = withManifestRevision({
+      ...journal.manifest,
+      entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
+    });
+    if (options.sourceLock) await writeSourceLock(plan.targetRoot, plan.adapter, options.sourceLock, transport);
+    await writeInstallManifest(manifest, transport);
+    await removeApplyJournal(plan.targetRoot, plan.adapter, transport);
+    return manifest;
+  } finally {
+    await lock.release();
+  }
 }
 
 export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
@@ -180,35 +196,220 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   if (preserved.length > 0) {
     const now = new Date().toISOString();
     await writeInstallManifest({
-      version: 1,
+      version: 2,
       adapter: plan.adapter,
       targetRoot: plan.targetRoot,
       generatedAt: now,
+      revision: "pending-uninstall-0",
+      legacy: false,
       adapterCode: plan.adapterCode,
       entries: preserved.map((operation) => {
         if (!operation.manifestHash || !operation.desiredHash) {
           throw new Error(`Invalid preserved operation missing manifest/source hash: ${operation.relativeDestPath}`);
         }
-        return {
-          path: operation.relativeDestPath,
-          artifactType: operation.artifactType,
-          artifactName: operation.artifactName,
-          kind: operation.kind,
+        return manifestEntryForOperation(operation, {
+          now,
           hash: operation.manifestHash,
           sourceHash: operation.desiredHash,
-          updatedAt: now,
-          channel: operation.channel,
-          packageName: operation.packageName,
-          semanticCommand: operation.semanticCommand,
-          mergeStrategy: operation.mergeStrategy,
-          composedFrom: operation.composedFrom,
-        };
+          graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
+        });
       }).sort((a, b) => a.path.localeCompare(b.path)),
     }, transport);
   } else {
     await removeStateFiles(plan.targetRoot, plan.adapter, transport);
   }
   return { removed: removable.length, kept: kept.length, removedDrifted };
+}
+
+async function applyOperation(
+  operation: InstallOperation,
+  context: {
+    transport: TargetTransport;
+    now: string;
+    executePlugins?: boolean;
+    graphLockDigest?: string;
+    plan?: InstallPlan;
+  },
+): Promise<InstallManifestEntry | undefined> {
+  const { transport, now } = context;
+  if (operation.action === "plugin") {
+    if (!operation.desiredHash) {
+      throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
+    }
+    if (context.executePlugins) {
+      if (transport.kind !== "local") {
+        throw new Error(`Cannot execute semantic plugin install over ${transport.description}. Run plugin installation on the remote host.`);
+      }
+      if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
+        throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
+      }
+      const command = operation.semanticCommand[0];
+      const args = operation.semanticCommand.slice(1);
+      if (!command) {
+        throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
+      }
+      await execFileAsync(command, args);
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.desiredHash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: context.graphLockDigest,
+      executed: context.executePlugins === true,
+    });
+  }
+
+  if (operation.action === "program") {
+    if (!context.plan?.adapterCode || !operation.desiredHash || !operation.programmaticOperation) {
+      throw new Error(`Invalid programmatic operation: ${operation.relativeDestPath}`);
+    }
+    if (operation.programmaticApply) {
+      if (transport.kind !== "local") {
+        throw new Error(`Cannot execute programmatic adapter operation over ${transport.description}.`);
+      }
+      await operation.programmaticApply(operation.programmaticOperation, {
+        targetRoot: context.plan.targetRoot,
+        adapterName: context.plan.adapter,
+      });
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.desiredHash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: context.graphLockDigest,
+    });
+  }
+
+  if (operation.action === "create" || operation.action === "update") {
+    if (!operation.sourcePath || !operation.desiredHash) {
+      throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
+    }
+    if (operation.mergeStrategy === "json-deep") {
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+    } else if (operation.mergeStrategy === "codex-toml-mcp") {
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeCodexTomlMcp);
+    } else {
+      await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
+    }
+    const hash = await transport.hashPath(operation.destPath);
+    if (!operation.mergeStrategy && hash !== operation.desiredHash) {
+      throw new Error(`Hash verification failed for ${operation.relativeDestPath}: expected ${operation.desiredHash}, got ${hash}`);
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: context.graphLockDigest,
+    });
+  }
+
+  if (operation.action === "skip") {
+    if (!operation.desiredHash) {
+      throw new Error(`Invalid skip operation missing hash: ${operation.relativeDestPath}`);
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : operation.desiredHash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: context.graphLockDigest,
+    });
+  }
+
+  if (operation.action === "remove") {
+    await transport.rm(operation.destPath);
+    return undefined;
+  }
+
+  return undefined;
+}
+
+async function entryForCompletedOperation(
+  operation: InstallOperation,
+  transport: TargetTransport,
+  now: string,
+  graphLockDigest: string | undefined,
+): Promise<InstallManifestEntry | undefined> {
+  if (operation.action === "remove") return undefined;
+  if (operation.action === "create" || operation.action === "update") {
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: await transport.hashPath(operation.destPath),
+      sourceHash: requireDesiredHash(operation),
+      graphLockDigest,
+    });
+  }
+  if (operation.action === "skip") {
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : requireDesiredHash(operation),
+      sourceHash: requireDesiredHash(operation),
+      graphLockDigest,
+    });
+  }
+  return undefined;
+}
+
+function manifestEntryForOperation(
+  operation: InstallOperation,
+  values: {
+    now: string;
+    hash: string;
+    sourceHash: string;
+    graphLockDigest?: string;
+    executed?: boolean;
+  },
+): InstallManifestEntry {
+  const owners = normalizeOwners(operation.owners ?? [operation.packageName ?? operation.artifactName]);
+  return {
+    path: operation.relativeDestPath,
+    artifactType: operation.artifactType,
+    artifactName: operation.artifactName,
+    installName: operation.installName ?? operation.artifactName,
+    logicalSelector: operation.logicalSelector ?? `${operation.artifactType}/${operation.artifactName}`,
+    graphNodeId: operation.graphNodeId,
+    dependencyRole: operation.dependencyRole ?? "root",
+    owners,
+    refCount: owners.length,
+    kind: operation.kind,
+    hash: values.hash,
+    sourceHash: values.sourceHash,
+    updatedAt: values.now,
+    channel: operation.channel,
+    packageName: operation.packageName,
+    semanticCommand: operation.semanticCommand,
+    executed: values.executed,
+    mergeStrategy: operation.mergeStrategy,
+    composedFrom: operation.composedFrom,
+    graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,
+  };
+}
+
+async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  const current = await readInstallManifest(plan.targetRoot, plan.adapter, transport);
+  const currentRevision = current?.revision ?? null;
+  if (currentRevision !== plan.baseRevision) {
+    throw new Error(`Install manifest changed since planning for ${plan.adapter}; replan needed`);
+  }
+}
+
+async function missingRemainingSources(journal: ApplyJournal, completedIndexes: Set<number>): Promise<string[]> {
+  const missing: string[] = [];
+  for (const [index, operation] of journal.operations.entries()) {
+    if (completedIndexes.has(index)) continue;
+    if ((operation.action === "create" || operation.action === "update") && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
+      missing.push(operation.sourcePath);
+    }
+  }
+  return missing;
+}
+
+function isJournaledMutation(operation: InstallOperation): boolean {
+  return operation.action === "create" || operation.action === "update" || operation.action === "remove";
+}
+
+function requireDesiredHash(operation: InstallOperation): string {
+  if (!operation.desiredHash) throw new Error(`Invalid operation missing desired hash: ${operation.relativeDestPath}`);
+  return operation.desiredHash;
 }
 
 async function mergeWithTransport(

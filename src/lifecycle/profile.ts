@@ -23,6 +23,7 @@ export interface ProfileSyncOptions {
   allowAdapterCode?: boolean;
   noDeps?: boolean;
   frozenLock?: boolean;
+  offline?: boolean;
   yes?: boolean;
   trustPatterns?: string[];
   isTTY?: boolean;
@@ -87,6 +88,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       },
       noDeps: options.noDeps,
       frozenLock: options.frozenLock,
+      offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trustPatterns ?? [],
       isTTY: options.isTTY,

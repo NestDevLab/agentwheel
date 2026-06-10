@@ -66,6 +66,10 @@ export function formatGraphPlan(result: GraphSourcePlanResult): string {
   for (const decision of result.bundle.graphLock.canonical.namespacing) {
     lines.push(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
   }
+  if (result.graphDiff.length > 0) {
+    lines.push("Graph diff:");
+    lines.push(...result.graphDiff);
+  }
   lines.push(formatPlan(result.plan));
   return lines.join("\n");
 }

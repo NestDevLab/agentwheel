@@ -11,6 +11,7 @@ import { readApplyJournal } from "../install/transaction.js";
 import { resolvePackageSource } from "../registry/client.js";
 import { RegistryClient } from "../registry/client.js";
 import { resolveDependencyGraph, type GraphRootRequest, type ResolvedGraph } from "../resolve/graph.js";
+import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { renderGraphForTarget } from "../resolve/render.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
@@ -18,6 +19,8 @@ import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
+import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, rememberTrustedSources } from "./trust.js";
+import { readWorkspaceConfig } from "../model/workspace.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -48,6 +51,7 @@ export interface GraphSourcePlanOptions {
   targetFingerprintParts?: unknown;
   noDeps?: boolean;
   frozenLock?: boolean;
+  offline?: boolean;
   yes?: boolean;
   trustPatterns?: string[];
   isTTY?: boolean;
@@ -65,6 +69,7 @@ export interface GraphSourcePlanResult {
   targetFingerprint: string;
   warnings: string[];
   newTransitiveSources: string[];
+  graphDiff: string[];
   recoveredPendingApply: boolean;
 }
 
@@ -99,6 +104,10 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     options.warn?.(message);
   };
   const recoveredPendingApply = await recoverPendingApplyIfSafe(options.targetRoot, options.adapter.name, transport);
+  const workspaceConfig = await readWorkspaceConfig(workspaceRoot);
+  const trustPolicy = normalizeTrustPolicy(workspaceConfig.trust);
+  const lockMode = options.frozenLock === true || options.offline === true;
+  const lockLabel = options.offline === true ? "Offline" : "Frozen lock";
   const targetFingerprint = computeTargetFingerprint(options.targetFingerprintParts ?? {
     adapter: options.adapter.name,
     targetRoot: options.targetRoot,
@@ -107,20 +116,24 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   });
   const graphLockPath = pathForGraphLock(workspaceRoot, options.targetKey ?? "default", options.adapter.name, targetFingerprint);
   const previousLock = await readExistingGraphLock(graphLockPath);
-  const registryClient = new RegistryClient({ workspaceRoot, offline: options.frozenLock });
+  const registryClient = new RegistryClient({ workspaceRoot, offline: lockMode, offlineLabel: lockLabel, warn });
   const graph = await resolveDependencyGraph(options.roots, {
     workspaceRoot,
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     registryClient,
     noDeps: options.noDeps,
-    frozenLock: options.frozenLock,
+    frozenLock: lockMode,
+    offline: options.offline,
     previousLock,
     warn,
     runtime: options.adapter.name,
   });
-  assertFrozenGraph(previousLock, graph, options.frozenLock === true);
-  const newTransitiveSources = newTransitiveSourcesForTrust(graph, previousLock, options.trustPatterns ?? [], options.yes === true);
-  await assertTrusted(newTransitiveSources, options);
+  assertFrozenGraph(previousLock, graph, lockMode, lockLabel);
+  assertTrustArtifactPolicy(graph, trustPolicy);
+  const trustEvaluation = evaluateTransitiveTrust(graph, previousLock, trustPolicy, options.trustPatterns ?? [], options.yes === true);
+  await assertTrusted(trustEvaluation.promptSources, options);
+  const persistedTrustSources = await rememberTrustedSources(workspaceRoot, trustEvaluation.persistSources);
+  for (const source of persistedTrustSources) warn(`remembered trusted transitive source: ${source}`);
   const bundle = await renderGraphForTarget(graph, {
     workspaceRoot,
     adapter: options.adapter,
@@ -128,6 +141,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   });
   const desiredArtifacts = desiredArtifactsFromGraphBundle(bundle);
   const graphLockDigest = digestGraphLock(bundle.graphLock);
+  const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
   const manifest = await readInstallManifest(options.targetRoot, options.adapter.name, transport);
   const plan = await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
     baseRevision: manifest?.revision ?? null,
@@ -142,7 +156,8 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     graphLockDigest,
     targetFingerprint,
     warnings,
-    newTransitiveSources,
+    newTransitiveSources: trustEvaluation.promptSources,
+    graphDiff,
     recoveredPendingApply,
   };
 }
@@ -202,10 +217,10 @@ function digestGraphLock(lock: ResolvedGraphBundle["graphLock"]): string {
   return createHash("sha256").update(canonicalGraphLockJson(lock)).digest("hex");
 }
 
-function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedGraph, frozen: boolean): void {
+function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedGraph, frozen: boolean, label: string): void {
   if (!frozen) return;
   if (!previousLock) {
-    throw new Error("Frozen lock requires an existing graph lock. Run without --frozen-lock first.");
+    throw new Error(`${label} requires an existing graph lock. Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
   }
   const lockedByKey = new Map(previousLock.canonical.nodes.map((node) => [`${node.normalizedSource}\0${node.name}`, node]));
   const mismatches: string[] = [];
@@ -223,18 +238,8 @@ function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedG
     }
   }
   if (mismatches.length > 0) {
-    throw new Error(`Frozen lock would change graph nodes:\n${mismatches.map((item) => `- ${item}`).join("\n")}`);
+    throw new Error(`${label} would change graph nodes:\n${mismatches.map((item) => `- ${item}`).join("\n")}`);
   }
-}
-
-function newTransitiveSourcesForTrust(graph: ResolvedGraph, previousLock: GraphLock | undefined, trustPatterns: string[], yes: boolean): string[] {
-  if (yes) return [];
-  const trusted = new Set((previousLock?.canonical.nodes ?? []).map((node) => node.normalizedSource));
-  return [...new Set(graph.rawNodes
-    .filter((raw) => raw.depth > 0)
-    .map((raw) => raw.node.normalizedSource)
-    .filter((source) => !trusted.has(source))
-    .filter((source) => !trustPatterns.some((pattern) => matchesGlob(source, pattern))))].sort();
 }
 
 async function assertTrusted(sources: string[], options: GraphSourcePlanOptions): Promise<void> {
@@ -254,12 +259,4 @@ async function assertTrusted(sources: string[], options: GraphSourcePlanOptions)
     }
   }
   throw new Error(`New transitive sources require trust. Re-run with --yes or --trust <pattern>:\n${sources.map((source) => `- ${source}`).join("\n")}`);
-}
-
-function matchesGlob(value: string, pattern: string): boolean {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*")
-    .replace(/\?/g, ".");
-  return new RegExp(`^${escaped}$`).test(value);
 }

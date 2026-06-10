@@ -13,6 +13,7 @@ import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspac
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
+import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, graphLockPathForTarget } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
@@ -169,6 +170,7 @@ program
   .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
@@ -209,6 +211,7 @@ program
   .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
@@ -226,6 +229,7 @@ program
         allowAdapterCode: options.allowAdapterCode,
         noDeps: options.noDeps,
         frozenLock: options.frozenLock,
+        offline: options.offline,
         yes: options.yes,
         trustPatterns: options.trust ?? [],
         isTTY: process.stdin.isTTY === true,
@@ -288,6 +292,7 @@ program
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (options) => {
@@ -315,6 +320,7 @@ program
       .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
       .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
       .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+      .option("--offline", "resolve strictly from graph locks and local caches", false)
       .option("--yes", "trust all new transitive sources", false)
       .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
       .action(async (source, options) => {
@@ -363,7 +369,7 @@ program
       .description("refresh the local registry cache")
       .option("--target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         const index = await client.getIndex({ refresh: true });
         console.log(`Registry refreshed: ${index.entries.length} entries from ${index.sources.join(", ")}`);
       }),
@@ -373,7 +379,7 @@ program
       .description("list available registry entries")
       .option("--target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries((await client.getIndex()).entries);
       }),
   )
@@ -383,8 +389,26 @@ program
       .argument("<query>", "search query")
       .option("--target-root <path>", "workspace root", process.cwd())
       .action(async (query, options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot) });
+        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries(await client.search(query));
+      }),
+  );
+
+program
+  .command("trust")
+  .description("manage persisted source trust decisions")
+  .addCommand(
+    new Command("forget")
+      .argument("<pattern>", "trusted source glob to revoke")
+      .option("--target-root <path>", "workspace root", process.cwd())
+      .action(async (pattern, options) => {
+        const removed = await forgetTrustedSources(normalizeTargetRoot(options.targetRoot), pattern);
+        if (removed.length === 0) {
+          console.log(`No persisted trust matched ${pattern}.`);
+          return;
+        }
+        console.log(`Forgot ${removed.length} trusted source${removed.length === 1 ? "" : "s"}:`);
+        for (const source of removed) console.log(`- ${source}`);
       }),
   );
 
@@ -530,6 +554,7 @@ interface GraphCliOptions {
   noDeps?: boolean;
   onlySource?: boolean;
   frozenLock?: boolean;
+  offline?: boolean;
   yes?: boolean;
   trust?: string[];
 }
@@ -641,6 +666,7 @@ async function buildGraphPlansForTarget(
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions),
       noDeps: options.noDeps,
       frozenLock: options.frozenLock,
+      offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trust ?? [],
       isTTY: process.stdin.isTTY === true,
@@ -700,6 +726,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         targetKey: remainingGroup.target.agentName ?? remainingGroup.target.source,
         targetFingerprintParts: targetFingerprintParts(remainingGroup.target, remainingAdapter, remainingGroup.adapterOptions),
         frozenLock: options.frozenLock,
+        offline: options.offline,
         yes: options.yes,
         trustPatterns: options.trust ?? [],
         isTTY: process.stdin.isTTY === true,

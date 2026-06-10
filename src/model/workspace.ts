@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { artifactTypeSchema } from "./artifact.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
 export const workspacePackageSchema = z.object({
@@ -37,6 +38,13 @@ export const workspaceRegistrySchema = z.object({
   ttlSeconds: z.number().int().positive().optional(),
 }).default({});
 
+export const workspaceTrustSchema = z.object({
+  allow: z.array(z.string().min(1)).optional(),
+  acceptedSources: z.array(z.string().min(1)).optional(),
+  denyArtifactTypes: z.array(artifactTypeSchema).optional(),
+  requireReviewForTransitive: z.boolean().optional(),
+}).default({});
+
 export const workspaceAgentSchema = z.object({
   adapter: z.string().min(1),
   root: z.string().min(1),
@@ -61,11 +69,14 @@ export const workspaceConfigSchema = z.object({
   packages: z.array(workspacePackageSchema).default([]),
   bootstrapSkills: z.boolean().optional(),
   registry: workspaceRegistrySchema,
+  trust: workspaceTrustSchema,
   profiles: z.record(z.string(), workspaceProfileSchema).default({}),
   agents: z.record(z.string(), workspaceAgentSchema).default({}),
 });
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
+export type WorkspaceTrust = z.infer<typeof workspaceTrustSchema>;
+export type WorkspaceConfigInput = z.input<typeof workspaceConfigSchema>;
 export type WorkspaceProfileRuntime = z.infer<typeof workspaceProfileRuntimeSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
@@ -80,15 +91,16 @@ export async function readWorkspaceConfig(workspaceRoot: string): Promise<Worksp
   return workspaceConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
 }
 
-export async function writeWorkspaceConfig(workspaceRoot: string, config: WorkspaceConfig): Promise<void> {
+export async function writeWorkspaceConfig(workspaceRoot: string, config: WorkspaceConfigInput): Promise<void> {
   await writeJsonAtomic(workspaceConfigPath(workspaceRoot), workspaceConfigSchema.parse(config));
 }
 
-export function upsertPackage(config: WorkspaceConfig, entry: WorkspacePackage): WorkspaceConfig {
-  const packages = config.packages.filter((candidate) => candidate.name !== entry.name);
+export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePackage): WorkspaceConfig {
+  const parsed = workspaceConfigSchema.parse(config);
+  const packages = parsed.packages.filter((candidate) => candidate.name !== entry.name);
   packages.push(entry);
   packages.sort((a, b) => a.name.localeCompare(b.name));
-  return { schemaVersion: 1, packages, bootstrapSkills: config.bootstrapSkills, registry: config.registry ?? {}, profiles: config.profiles ?? {}, agents: config.agents ?? {} };
+  return { schemaVersion: 1, packages, bootstrapSkills: parsed.bootstrapSkills, registry: parsed.registry ?? {}, trust: parsed.trust ?? {}, profiles: parsed.profiles ?? {}, agents: parsed.agents ?? {} };
 }
 
 export interface WorkspaceMergeOptions {
@@ -126,6 +138,7 @@ export function mergeWorkspaceConfig(global: WorkspaceConfig, project: Workspace
       sources: project.registry.sources ?? global.registry.sources,
       ttlSeconds: project.registry.ttlSeconds ?? global.registry.ttlSeconds,
     },
+    trust: mergeWorkspaceTrust(global.trust, project.trust),
     profiles: { ...global.profiles, ...project.profiles },
     agents: { ...global.agents, ...project.agents },
   });
@@ -138,10 +151,23 @@ export function resolveConfigPath(path: string, baseRoot: string): string {
 }
 
 function emptyWorkspaceConfig(): WorkspaceConfig {
-  return { schemaVersion: 1, packages: [], registry: {}, profiles: {}, agents: {} };
+  return { schemaVersion: 1, packages: [], registry: {}, trust: {}, profiles: {}, agents: {} };
 }
 
 async function readConfigPath(path: string): Promise<WorkspaceConfig> {
   if (!(await pathExists(path))) return emptyWorkspaceConfig();
   return workspaceConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
+}
+
+function mergeWorkspaceTrust(global: WorkspaceTrust | undefined, project: WorkspaceTrust | undefined): WorkspaceTrust {
+  return {
+    allow: sortedUnique([...(global?.allow ?? []), ...(project?.allow ?? [])]),
+    acceptedSources: sortedUnique([...(global?.acceptedSources ?? []), ...(project?.acceptedSources ?? [])]),
+    denyArtifactTypes: sortedUnique([...(global?.denyArtifactTypes ?? []), ...(project?.denyArtifactTypes ?? [])]) as WorkspaceTrust["denyArtifactTypes"],
+    requireReviewForTransitive: project?.requireReviewForTransitive ?? global?.requireReviewForTransitive,
+  };
+}
+
+function sortedUnique(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }

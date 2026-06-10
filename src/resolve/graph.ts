@@ -34,6 +34,7 @@ export interface ResolveGraphOptions {
   now?: () => Date;
   noDeps?: boolean;
   frozenLock?: boolean;
+  offline?: boolean;
   previousLock?: GraphLock;
   warn?: (message: string) => void;
   runtime?: string;
@@ -229,8 +230,17 @@ async function processRequirement(
       ref: requirement.ref,
       registryClient: options.registryClient,
     });
-    const frozen = options.frozenLock ? lockedNodeForSource(normalized.normalizedSource, options.previousLock) : undefined;
-    const fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
+    const lockLabel = options.offline ? "Offline" : "Frozen lock";
+    const frozen = options.frozenLock ? lockedNodeForSource(normalized.normalizedSource, options.previousLock, lockLabel) : undefined;
+    let fetched: FetchedPackage;
+    try {
+      fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
+    } catch (error) {
+      if (!options.frozenLock) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      const label = frozen?.node ? `${frozen.node.id} (${normalized.normalizedSource})` : normalized.normalizedSource;
+      throw new Error(`${lockLabel} cache missing or stale for locked graph node:\n- ${label}: ${message}`);
+    }
     verifyIntegrity(requirement.integrity, fetched.sourceHash, `${fetched.name}@${fetched.version}`);
     if (!satisfiesVersionRange(fetched.version, requirement.version)) {
       throw new Error(`Package ${fetched.name}@${fetched.version} does not satisfy requested version ${requirement.version}`);
@@ -679,16 +689,16 @@ async function fetchPackage(
   return promise;
 }
 
-function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefined): FrozenNodeMatch {
+function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefined, label: string): FrozenNodeMatch {
   if (!lock) {
-    throw new Error(`Frozen lock requires an existing graph lock before resolving ${normalizedSource}.`);
+    throw new Error(`${label} requires an existing graph lock before resolving ${normalizedSource}.`);
   }
   const matches = lock.canonical.nodes.filter((node) => node.normalizedSource === normalizedSource);
   if (matches.length === 0) {
-    throw new Error(`Frozen lock cannot resolve new source: ${normalizedSource}. Run without --frozen-lock first.`);
+    throw new Error(`${label} cannot resolve new source: ${normalizedSource}. Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
   }
   if (matches.length > 1) {
-    throw new Error(`Frozen lock has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
+    throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
   }
   const node = matches[0]!;
   return {

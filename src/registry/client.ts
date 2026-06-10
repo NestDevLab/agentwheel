@@ -9,6 +9,7 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
 export const DEFAULT_REGISTRY_SOURCE = "github:NestDevLab/agentwheel-registry";
 export const DEFAULT_REGISTRY_TTL_MS = 24 * 60 * 60 * 1000;
+export const SUPPORTED_OPENPACK_SCHEMA_VERSION = 2;
 
 export interface RegistryClientOptions {
   workspaceRoot?: string;
@@ -17,6 +18,8 @@ export interface RegistryClientOptions {
   ttlMs?: number;
   now?: () => Date;
   offline?: boolean;
+  offlineLabel?: string;
+  warn?: (message: string) => void;
 }
 
 export interface RegistryIndex {
@@ -41,14 +44,17 @@ export class RegistryClient {
     const ttlMs = await this.getTtlMs();
     const cached = await this.readCache();
     if (!options.refresh && cached && sameSources(cached.sources, sources) && (this.options.offline || !this.isExpired(cached, ttlMs))) {
+      this.warnCompatibility(cached.entries);
       return { entries: cached.entries, sources: cached.sources, fetchedAt: cached.fetchedAt, fromCache: true };
     }
     if (this.options.offline) {
       const reason = cached ? "registry sources changed" : "registry cache is missing";
-      throw new Error(`Frozen lock cannot refresh registry indexes (${reason}). Run without --frozen-lock first.`);
+      const label = this.options.offlineLabel ?? "Offline";
+      throw new Error(`${label} cannot refresh registry indexes (${reason}). Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
     }
 
     const entries = mergeIndexes(await Promise.all(sources.map((source) => this.fetchSource(source))));
+    this.warnCompatibility(entries);
     const fetchedAt = this.now().toISOString();
     await writeJsonAtomic(this.cachePath, { version: 1, fetchedAt, sources, entries } satisfies RegistryCache);
     return { entries, sources, fetchedAt, fromCache: false };
@@ -125,13 +131,25 @@ export class RegistryClient {
     const resolved = await this.git.fetch(await this.git.resolve(source, { cacheRoot: join(dirname(this.cachePath), "registry-repos") }));
     return readFile(join(resolved.resolvedPath, "index.json"), "utf8");
   }
+
+  private warnCompatibility(entries: RegistryEntry[]): void {
+    for (const entry of entries) {
+      const schemaVersion = entry.openpack?.schemaVersion;
+      if (schemaVersion !== undefined && schemaVersion > SUPPORTED_OPENPACK_SCHEMA_VERSION) {
+        this.options.warn?.(
+          `Registry entry ${entry.name} declares OpenPack schemaVersion ${schemaVersion}, `
+          + `newer than supported ${SUPPORTED_OPENPACK_SCHEMA_VERSION}.`,
+        );
+      }
+    }
+  }
 }
 
-export async function resolvePackageSource(source: string, workspaceRoot: string): Promise<{ source: string; registryEntry?: RegistryEntry }> {
+export async function resolvePackageSource(source: string, workspaceRoot: string, options: { offline?: boolean; warn?: (message: string) => void } = {}): Promise<{ source: string; registryEntry?: RegistryEntry }> {
   const { isExplicitSource } = await import("../source/identify.js");
   if (await isExplicitSource(source)) return { source };
 
-  const entry = await new RegistryClient({ workspaceRoot }).resolve(source);
+  const entry = await new RegistryClient({ workspaceRoot, offline: options.offline, warn: options.warn }).resolve(source);
   if (!entry) {
     throw new Error(`Registry entry not found: ${source}. Use an explicit path/git/skillkit/vercel source to bypass the registry.`);
   }

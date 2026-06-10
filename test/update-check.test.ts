@@ -104,6 +104,7 @@ describe("update check", () => {
     for (const options of [
       { env: { AGENTWHEEL_NO_UPDATE_CHECK: "1" }, argv: [], isTTY: true },
       { env: {}, argv: ["agentwheel", "--no-update-check"], isTTY: true },
+      { env: {}, argv: ["agentwheel", "sync", "--offline"], isTTY: true },
       { env: { CI: "true" }, argv: [], isTTY: true },
       { env: {}, argv: [], isTTY: false },
     ]) {

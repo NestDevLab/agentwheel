@@ -4,10 +4,14 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { formatGraphPlan } from "../src/cli/format.js";
-import { createGraphSourcePlan, writeGraphSourceLock } from "../src/lifecycle/source-plan.js";
-import { forgetTrustedSources } from "../src/lifecycle/trust.js";
-import { readWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
+import { applyCombinedInstallPlan } from "../src/install/index.js";
+import type { InstallPlan } from "../src/install/plan.js";
+import { createGraphSourcePlan, createSourcePlan, writeGraphSourceLock } from "../src/lifecycle/source-plan.js";
+import { forgetTrustedSources, readTrustedSources } from "../src/lifecycle/trust.js";
+import { stringifyGraphLock } from "../src/model/graph-lock.js";
+import { writeWorkspaceConfig } from "../src/model/workspace.js";
 import { RegistryClient } from "../src/registry/client.js";
+import { SkillKitSourceDriver } from "../src/source/skillkit.js";
 
 const tempRoots: string[] = [];
 
@@ -98,6 +102,29 @@ describe("OpenPack phase E", () => {
     })).rejects.toThrow(/trust\.denyArtifactTypes.*phase-e\/hooks.*hooks\/guard\.sh/s);
   });
 
+  it("blocks denied artifact types for root-selected artifacts too", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root-deny-root");
+    await writeText(join(root, "hooks", "guard.sh"), "echo guard\n");
+    await writeOpenPack(root, { name: "phase-e/root-denied-hook", provides: [{ type: "hooks", path: "hooks" }] });
+    await writeWorkspaceConfig(workspace, {
+      schemaVersion: 1,
+      registry: {},
+      trust: { denyArtifactTypes: ["hooks"] },
+      packages: [],
+      profiles: {},
+      agents: {},
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: await tempRoot("agentwheel-phase-e-root-deny-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "root-deny",
+    })).rejects.toThrow(/trust\.denyArtifactTypes.*phase-e\/root-denied-hook.*hooks\/guard\.sh/s);
+  });
+
   it("allows transitive sources when review is disabled by policy", async () => {
     const workspace = await tempRoot();
     const { root } = await dependencyFixture(workspace, "review-off");
@@ -127,6 +154,7 @@ describe("OpenPack phase E", () => {
 
   it("persists accepted trust and can forget it by pattern", async () => {
     const workspace = await tempRoot();
+    const trustStore = join(workspace, "user-trust.json");
     const { root, dep } = await dependencyFixture(workspace, "persist");
     let prompts = 0;
 
@@ -136,6 +164,7 @@ describe("OpenPack phase E", () => {
       workspaceRoot: workspace,
       adapter: openClawAdapter,
       targetKey: "trust-persist",
+      trustStorePath: trustStore,
       promptTrust: async () => {
         prompts += 1;
         return true;
@@ -143,8 +172,7 @@ describe("OpenPack phase E", () => {
     });
     await rm(first.bundle.root, { recursive: true, force: true });
 
-    const config = await readWorkspaceConfig(workspace);
-    expect(config.trust.acceptedSources).toContain(`local:${dep}`);
+    expect(await readTrustedSources(workspace, trustStore)).toContain(`local:${dep}`);
 
     const second = await createGraphSourcePlan({
       roots: [{ rootId: "root", source: root }],
@@ -152,6 +180,7 @@ describe("OpenPack phase E", () => {
       workspaceRoot: workspace,
       adapter: openClawAdapter,
       targetKey: "trust-persist",
+      trustStorePath: trustStore,
       promptTrust: async () => {
         throw new Error("persisted trust should skip prompt");
       },
@@ -159,8 +188,63 @@ describe("OpenPack phase E", () => {
     await rm(second.bundle.root, { recursive: true, force: true });
 
     expect(prompts).toBe(1);
-    expect(await forgetTrustedSources(workspace, `local:${dep}`)).toEqual([`local:${dep}`]);
-    expect((await readWorkspaceConfig(workspace)).trust.acceptedSources).toEqual([]);
+    expect(await forgetTrustedSources(workspace, `local:${dep}`, trustStore)).toEqual([`local:${dep}`]);
+    expect(await readTrustedSources(workspace, trustStore)).toEqual([]);
+  });
+
+  it("does not trust project-local acceptedSources on first use", async () => {
+    const workspace = await tempRoot();
+    const trustStore = join(workspace, "user-trust.json");
+    const { root, dep } = await dependencyFixture(workspace, "poison");
+    await writeWorkspaceConfig(workspace, {
+      schemaVersion: 1,
+      registry: {},
+      trust: { acceptedSources: [`local:${dep}`] },
+      packages: [],
+      profiles: {},
+      agents: {},
+    });
+    let prompts = 0;
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: await tempRoot("agentwheel-phase-e-poison-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "trust-poison",
+      trustStorePath: trustStore,
+      promptTrust: async () => {
+        prompts += 1;
+        return true;
+      },
+    });
+
+    expect(prompts).toBe(1);
+    await rm(result.bundle.root, { recursive: true, force: true });
+  });
+
+  it("enforces merged global trust policy during graph planning", async () => {
+    const workspace = await tempRoot();
+    const globalRoot = await tempRoot("agentwheel-phase-e-global-");
+    const { root } = await dependencyFixture(workspace, "global-deny");
+    await writeWorkspaceConfig(globalRoot, {
+      schemaVersion: 1,
+      registry: {},
+      trust: { denyArtifactTypes: ["rules"] },
+      packages: [],
+      profiles: {},
+      agents: {},
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: await tempRoot("agentwheel-phase-e-global-target-"),
+      workspaceRoot: workspace,
+      globalRoot,
+      adapter: openClawAdapter,
+      targetKey: "global-deny",
+      yes: true,
+    })).rejects.toThrow(/trust\.denyArtifactTypes.*rules\/root\.md/s);
   });
 
   it("resolves offline from a warm lock and reports missing locked sources", async () => {
@@ -175,6 +259,7 @@ describe("OpenPack phase E", () => {
       adapter: openClawAdapter,
       targetKey: "offline",
       yes: true,
+      trustStorePath: join(workspace, "offline-trust.json"),
     });
     await writeGraphSourceLock(warm);
     await rm(warm.bundle.root, { recursive: true, force: true });
@@ -186,6 +271,7 @@ describe("OpenPack phase E", () => {
       adapter: openClawAdapter,
       targetKey: "offline",
       offline: true,
+      trustStorePath: join(workspace, "offline-trust.json"),
     });
     expect(offline.graphDiff).toEqual([]);
     await rm(offline.bundle.root, { recursive: true, force: true });
@@ -199,6 +285,104 @@ describe("OpenPack phase E", () => {
       targetKey: "offline",
       offline: true,
     })).rejects.toThrow(/Offline cache missing or stale.*phase-e\/offline-dep/s);
+  });
+
+  it("keeps offline source planning from refreshing registry or provider paths", async () => {
+    const workspace = await tempRoot();
+    await expect(createSourcePlan({
+      source: "missing-registry-entry",
+      targetRoot: await tempRoot("agentwheel-phase-e-source-offline-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      offline: true,
+    })).rejects.toThrow(/Offline cannot refresh registry indexes/);
+
+    let cloned = false;
+    const driver = new SkillKitSourceDriver({
+      detectProvider: () => ({
+        clone: async () => {
+          cloned = true;
+          return { success: true, path: await tempRoot("agentwheel-phase-e-skillkit-clone-") };
+        },
+      }),
+      discoverSkills: () => [],
+      translateSkill: () => ({}),
+    });
+    const resolved = await driver.resolve("skillkit:github:example/remote-skill", {
+      cacheRoot: join(workspace, "cache"),
+      frozenLock: true,
+    });
+
+    await expect(driver.fetch(resolved)).rejects.toThrow(/Frozen lock requires cached SkillKit source/);
+    expect(cloned).toBe(false);
+  });
+
+  it("rejects unsafe install names at plan and apply time", async () => {
+    const workspace = await tempRoot();
+    const { root } = await dependencyFixture(workspace, "unsafe-alias");
+
+    await expect(createGraphSourcePlan({
+      roots: [{
+        rootId: "root",
+        source: root,
+        aliases: { "phase-e/unsafe-alias-dep:rules/dep.md": "../outside.md" },
+      }],
+      targetRoot: await tempRoot("agentwheel-phase-e-unsafe-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "unsafe-alias",
+      yes: true,
+      trustStorePath: join(workspace, "unsafe-trust.json"),
+    })).rejects.toThrow(/Invalid install name.*path separators/);
+
+    const target = await tempRoot("agentwheel-phase-e-apply-containment-");
+    const sourceFile = join(workspace, "source.md");
+    await writeText(sourceFile, "x\n");
+    const plan: InstallPlan = {
+      adapter: "openclaw",
+      targetRoot: target,
+      operations: [{
+        action: "create",
+        artifactType: "rules",
+        artifactName: "escape.md",
+        kind: "file",
+        sourcePath: sourceFile,
+        destPath: join(target, "..", "escape.md"),
+        relativeDestPath: "../escape.md",
+        desiredHash: "0".repeat(64),
+        reason: "test",
+        channel: "managed",
+      }],
+      hasBlockingChanges: false,
+      baseRevision: null,
+    };
+    await expect(applyCombinedInstallPlan(plan)).rejects.toThrow(/outside target root/);
+  });
+
+  it("scopes aliases to the declaring root dependency graph", async () => {
+    const workspace = await tempRoot();
+    const rootA = join(workspace, "root-a");
+    const rootB = join(workspace, "root-b");
+    await writeText(join(rootA, "rules", "a.md"), "# A\n");
+    await writeText(join(rootB, "rules", "b.md"), "# B\n");
+    await writeOpenPack(rootA, { name: "phase-e/root-a", provides: [{ type: "rules", path: "rules" }] });
+    await writeOpenPack(rootB, { name: "phase-e/root-b", provides: [{ type: "rules", path: "rules" }] });
+
+    await expect(createGraphSourcePlan({
+      roots: [
+        {
+          rootId: "root-a",
+          source: rootA,
+          aliases: { "phase-e/root-b:rules/b.md": "stolen.md" },
+        },
+        { rootId: "root-b", source: rootB },
+      ],
+      targetRoot: await tempRoot("agentwheel-phase-e-alias-scope-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "alias-scope",
+      yes: true,
+    })).rejects.toThrow(/cannot rename artifacts outside that root/);
   });
 
   it("prints graph diff lines for added, removed, and version-moved nodes", async () => {
@@ -226,6 +410,7 @@ describe("OpenPack phase E", () => {
       adapter: openClawAdapter,
       targetKey: "graph-diff",
       yes: true,
+      trustStorePath: join(workspace, "diff-trust.json"),
     });
     await writeGraphSourceLock(initial);
     await rm(initial.bundle.root, { recursive: true, force: true });
@@ -245,6 +430,7 @@ describe("OpenPack phase E", () => {
       adapter: openClawAdapter,
       targetKey: "graph-diff",
       yes: true,
+      trustStorePath: join(workspace, "diff-trust.json"),
     });
 
     expect(updated.graphDiff.some((line) => /MOVED node .*phase-e\/root-diff.*version 1\.0\.0 -> 2\.0\.0/.test(line))).toBe(true);
@@ -252,6 +438,35 @@ describe("OpenPack phase E", () => {
     expect(updated.graphDiff.some((line) => /REMOVED node .*phase-e\/dep-a/.test(line))).toBe(true);
     expect(formatGraphPlan(updated)).toContain("Graph diff:");
     await rm(updated.bundle.root, { recursive: true, force: true });
+  });
+
+  it("serializes byte-identical graph locks for identical graphs", async () => {
+    const workspace = await tempRoot();
+    const { root } = await dependencyFixture(workspace, "stable-lock");
+    const target = await tempRoot("agentwheel-phase-e-stable-lock-target-");
+    const first = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "stable-lock",
+      yes: true,
+      trustStorePath: join(workspace, "stable-lock-trust.json"),
+    });
+    const second = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "stable-lock",
+      yes: true,
+      trustStorePath: join(workspace, "stable-lock-trust.json"),
+    });
+
+    expect(stringifyGraphLock(first.bundle.graphLock)).toBe(stringifyGraphLock(second.bundle.graphLock));
+    expect(stringifyGraphLock(first.bundle.graphLock)).not.toContain("generatedAt");
+    await rm(first.bundle.root, { recursive: true, force: true });
+    await rm(second.bundle.root, { recursive: true, force: true });
   });
 
   it("warns for registry entries declaring newer OpenPack schema metadata", async () => {

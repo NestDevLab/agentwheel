@@ -17,6 +17,12 @@ export interface StagedBundle {
   sourceLock: SourceLock;
 }
 
+export interface RawStagedBundle {
+  root: string;
+  source: ResolvedSource;
+  artifacts: Artifact[];
+}
+
 export interface StageOptions extends SourceResolveOptions {
   workspaceRoot?: string;
   adapter?: AdapterConfig;
@@ -25,8 +31,20 @@ export interface StageOptions extends SourceResolveOptions {
 }
 
 export async function stageSource(driver: SourceDriver, source: string, options: StageOptions = {}): Promise<StagedBundle> {
+  return renderStagedBundle(await stageSourceRaw(driver, source, options), options);
+}
+
+export async function stageSourceRaw(driver: SourceDriver, source: string, options: SourceResolveOptions = {}): Promise<RawStagedBundle> {
   const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(source, options))));
+  return stageResolvedSourceRaw(driver, resolved);
+}
+
+export async function stageResolvedSourceRaw(driver: SourceDriver, resolved: ResolvedSource): Promise<RawStagedBundle> {
   const artifacts = await driver.list(resolved);
+  return stageResolvedArtifactsRaw(resolved, artifacts);
+}
+
+export async function stageResolvedArtifactsRaw(resolved: ResolvedSource, artifacts: Artifact[]): Promise<RawStagedBundle> {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-stage-"));
   const stagedArtifacts: Artifact[] = [];
 
@@ -43,6 +61,15 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     });
   }
 
+  return {
+    root,
+    source: resolved,
+    artifacts: stagedArtifacts,
+  };
+}
+
+export async function renderStagedBundle(bundle: RawStagedBundle, options: StageOptions = {}): Promise<StagedBundle> {
+  const { root, source: resolved, artifacts: stagedArtifacts } = bundle;
   const preExpandedArtifacts = options.workspaceRoot && options.adapter
     ? await applyFragmentCustomizations(stagedArtifacts, {
       workspaceRoot: options.workspaceRoot,

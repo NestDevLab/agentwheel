@@ -17,6 +17,7 @@ export const graphLockNodeSchema = z.object({
   mode: z.enum(["pinned", "tracking"]),
   requiredBy: z.array(z.string().min(1)),
   selected: z.array(z.string().min(1)),
+  selectionReasons: z.record(z.string(), z.array(z.string().min(1))).optional(),
 });
 
 export const graphLockRootSchema = z.object({
@@ -26,6 +27,7 @@ export const graphLockRootSchema = z.object({
   graphNodeId: z.string().min(1),
   mode: z.enum(["pinned", "tracking"]),
   selected: z.array(z.string().min(1)),
+  aliases: z.record(z.string(), z.string().min(1)).optional(),
 });
 
 export const graphLockEdgeSchema = z.object({
@@ -72,6 +74,14 @@ export const graphLockPlainNameIncumbentSchema = z.object({
   graphNodeId: z.string().min(1),
 });
 
+export const graphLockNamespacingSchema = z.object({
+  graphNodeId: z.string().min(1),
+  type: artifactTypeSchema,
+  name: z.string().min(1),
+  installName: z.string().min(1),
+  reason: z.enum(["alias", "transitive-collision"]),
+});
+
 export const graphLockCanonicalSchema = z.object({
   targetFingerprint: z.string().min(1).optional(),
   roots: z.array(graphLockRootSchema),
@@ -79,6 +89,7 @@ export const graphLockCanonicalSchema = z.object({
   edges: z.array(graphLockEdgeSchema),
   includeEdges: z.array(graphLockIncludeEdgeSchema).default([]),
   artifacts: z.array(graphLockArtifactSchema).default([]),
+  namespacing: z.array(graphLockNamespacingSchema).default([]),
   plainNameIncumbents: z.array(graphLockPlainNameIncumbentSchema).default([]),
 });
 
@@ -94,6 +105,7 @@ export type GraphLockEdge = z.infer<typeof graphLockEdgeSchema>;
 export type GraphLockIncludeEdge = z.infer<typeof graphLockIncludeEdgeSchema>;
 export type GraphLockArtifact = z.infer<typeof graphLockArtifactSchema>;
 export type GraphLockPlainNameIncumbent = z.infer<typeof graphLockPlainNameIncumbentSchema>;
+export type GraphLockNamespacing = z.infer<typeof graphLockNamespacingSchema>;
 export type GraphLockCanonical = z.infer<typeof graphLockCanonicalSchema>;
 export type GraphLock = z.infer<typeof graphLockSchema>;
 
@@ -131,6 +143,7 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
           ...node,
           requiredBy: sortedUnique(node.requiredBy),
           selected: sortedUnique(node.selected),
+          selectionReasons: canonicalSelectionReasons(node.selectionReasons),
         }))
         .sort((a, b) => a.id.localeCompare(b.id)),
       edges: [...parsed.canonical.edges]
@@ -141,10 +154,21 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
       artifacts: [...parsed.canonical.artifacts]
         .map((artifact) => ({ ...artifact, owners: sortedUnique(artifact.owners) }))
         .sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector)),
+      namespacing: [...parsed.canonical.namespacing]
+        .sort((a, b) => `${a.type}:${a.installName}:${a.graphNodeId}:${a.name}`.localeCompare(`${b.type}:${b.installName}:${b.graphNodeId}:${b.name}`)),
       plainNameIncumbents: [...parsed.canonical.plainNameIncumbents]
         .sort((a, b) => `${a.adapter}:${a.targetFingerprint}:${a.type}:${a.name}`.localeCompare(`${b.adapter}:${b.targetFingerprint}:${b.type}:${b.name}`)),
     },
   };
+}
+
+function canonicalSelectionReasons(reasons: Record<string, string[]> | undefined): Record<string, string[]> | undefined {
+  if (!reasons) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const key of Object.keys(reasons).sort((a, b) => a.localeCompare(b))) {
+    out[key] = sortedUnique(reasons[key] ?? []);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export function computeTargetFingerprint(parts: unknown): string {

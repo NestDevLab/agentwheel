@@ -44,6 +44,7 @@ function testGraphLock(): GraphLock {
       edges: [],
       includeEdges: [],
       artifacts: [],
+      namespacing: [],
       plainNameIncumbents: [],
     },
   };

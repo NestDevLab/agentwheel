@@ -6,7 +6,7 @@ import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from ".
 import type { Artifact, PackageItemRequire } from "../model/artifact.js";
 import { artifactTypeSchema } from "../model/artifact.js";
 import type { GraphNodeId, ResolvedNode } from "../model/graph.js";
-import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
 import type { PackageManifest } from "../model/package.js";
 import { readPackageManifest } from "../model/package.js";
 import type { RegistryClient } from "../registry/client.js";
@@ -15,6 +15,7 @@ import type { ResolvedSource, SourceDriver } from "../source/types.js";
 import { hashPath } from "../utils/fs.js";
 import { artifactSelectorKey, normalizeArtifactSelectors } from "../model/selection.js";
 import { normalizeDependencySource, type NormalizedDependencySource } from "./identity.js";
+import { satisfiesVersionRange } from "./semver.js";
 
 export interface GraphRootRequest {
   rootId?: string;
@@ -22,6 +23,7 @@ export interface GraphRootRequest {
   select?: string[];
   mode?: "pinned" | "tracking";
   ref?: string;
+  aliases?: Record<string, string>;
 }
 
 export interface ResolveGraphOptions {
@@ -44,6 +46,7 @@ export interface ResolvedGraphRoot {
   graphNodeId: GraphNodeId;
   mode: "pinned" | "tracking";
   selected: string[];
+  aliases?: Record<string, string>;
 }
 
 export interface ResolvedGraphRawNode {
@@ -71,6 +74,7 @@ interface Requirement {
   declaringPackageRoot: string;
   requiredBy: string;
   rootId?: string;
+  aliases?: Record<string, string>;
   alias?: string;
   parentId?: GraphNodeId;
   depth: number;
@@ -126,7 +130,6 @@ export async function resolveDependencyGraph(
   const graphRoot = await mkdtemp(join(tmpdir(), "agentwheel-graph-"));
   const fetchCache = new Map<string, Promise<FetchedPackage>>();
   const nodesByKey = new Map<string, NodeState>();
-  const nodeKeyByName = new Map<string, string>();
   const rootResults: ResolvedGraphRoot[] = [];
   const edgeMap = new Map<string, GraphLockEdge>();
   const queue: Requirement[] = roots.map((root, index) => {
@@ -139,6 +142,7 @@ export async function resolveDependencyGraph(
       declaringPackageRoot: options.workspaceRoot,
       requiredBy: `workspace:${rootId}`,
       rootId,
+      aliases: root.aliases,
       depth: 0,
       optional: false,
       chain: [`workspace:${rootId}`],
@@ -154,7 +158,7 @@ export async function resolveDependencyGraph(
 
     const batch = queue.splice(0, queue.length);
     const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
-      processRequirement(requirement, options, fetchCache, nodesByKey, nodeKeyByName, rootResults, edgeMap));
+      processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap));
     queue.push(...next.flat());
   }
 
@@ -177,7 +181,13 @@ export async function resolveDependencyGraph(
   };
 }
 
-export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifact[] = [], targetFingerprint?: string, includeEdges: GraphLockIncludeEdge[] = []): GraphLock {
+export function createGraphLock(
+  graph: ResolvedGraph,
+  artifacts: GraphLockArtifact[] = [],
+  targetFingerprint?: string,
+  includeEdges: GraphLockIncludeEdge[] = [],
+  namespacing: GraphLockNamespacing[] = [],
+): GraphLock {
   const roots: GraphLockRoot[] = graph.roots.map((root) => ({
     rootId: root.rootId,
     source: root.source,
@@ -185,6 +195,7 @@ export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifa
     graphNodeId: root.graphNodeId,
     mode: root.mode,
     selected: root.selected,
+    aliases: root.aliases,
   }));
 
   return {
@@ -197,6 +208,7 @@ export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifa
       edges: graph.edges,
       includeEdges,
       artifacts,
+      namespacing,
       plainNameIncumbents: [],
     },
   };
@@ -207,7 +219,6 @@ async function processRequirement(
   options: ResolveGraphOptions,
   fetchCache: Map<string, Promise<FetchedPackage>>,
   nodesByKey: Map<string, NodeState>,
-  nodeKeyByName: Map<string, string>,
   rootResults: ResolvedGraphRoot[],
   edgeMap: Map<string, GraphLockEdge>,
 ): Promise<Requirement[]> {
@@ -221,16 +232,10 @@ async function processRequirement(
     const frozen = options.frozenLock ? lockedNodeForSource(normalized.normalizedSource, options.previousLock) : undefined;
     const fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
     verifyIntegrity(requirement.integrity, fetched.sourceHash, `${fetched.name}@${fetched.version}`);
-    const nodeKey = `${normalized.normalizedSource}\0${fetched.name}`;
-    const existingNameKey = nodeKeyByName.get(fetched.name);
-    if (existingNameKey && existingNameKey !== nodeKey) {
-      const existing = nodesByKey.get(existingNameKey);
-      throw new Error(
-        `Incompatible duplicate package "${fetched.name}" from ${existing?.node.normalizedSource ?? existingNameKey} `
-        + `and ${normalized.normalizedSource}. B1 does not auto-namespace duplicate package identities.`,
-      );
+    if (!satisfiesVersionRange(fetched.version, requirement.version)) {
+      throw new Error(`Package ${fetched.name}@${fetched.version} does not satisfy requested version ${requirement.version}`);
     }
-    nodeKeyByName.set(fetched.name, nodeKey);
+    const nodeKey = `${normalized.normalizedSource}\0${fetched.name}`;
 
     const selected = computeSelectedSelectors(fetched.artifacts, requirement.select, requirement.depth === 0, requirement.chain);
     let state = nodesByKey.get(nodeKey);
@@ -279,6 +284,7 @@ async function processRequirement(
         graphNodeId: state.node.id,
         mode: state.node.mode,
         selected: state.node.selected,
+        aliases: requirement.aliases,
       });
     }
 
@@ -783,7 +789,7 @@ function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
   }
 }
 
-function graphNodeId(name: string, version: string, normalizedSource: string, resolvedCommit: string | undefined, sourceHash: string): GraphNodeId {
+export function graphNodeId(name: string, version: string, normalizedSource: string, resolvedCommit: string | undefined, sourceHash: string): GraphNodeId {
   const digest = createHash("sha256")
     .update(normalizedSource)
     .update("\0")

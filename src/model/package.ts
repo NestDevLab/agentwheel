@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
-import { artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema } from "./artifact.js";
+import { artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema } from "./artifact.js";
 import { pathExists } from "../utils/fs.js";
 
 const legacyArtifactTypeSchema = z.enum([
@@ -25,22 +25,10 @@ const packageProvideBaseSchema = z.object({
   required: z.boolean().optional(),
 });
 
-export const packageItemRequireObjectSchema = z.object({
-  selector: z.string().min(1),
-  optional: z.boolean().optional(),
-  runtimes: runtimeListSchema.optional(),
-}).passthrough();
-
-export const packageItemRequireSchema = z.union([
-  z.string().min(1),
-  packageItemRequireObjectSchema,
-]);
+export { packageItemRequireObjectSchema, packageItemRequireSchema } from "./artifact.js";
 
 export const packageItemSchema = z.object({
-  requires: z.union([
-    z.array(z.string().min(1)),
-    z.array(packageItemRequireObjectSchema),
-  ]).optional(),
+  requires: z.array(packageItemRequireSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   runtimes: runtimeListSchema.optional(),
 });

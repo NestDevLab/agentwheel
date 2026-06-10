@@ -33,6 +33,18 @@ export const packageComposeEntrySchema = z.object({
 });
 export type PackageComposeEntry = z.infer<typeof packageComposeEntrySchema>;
 
+export const packageItemRequireObjectSchema = z.object({
+  selector: z.string().min(1),
+  optional: z.boolean().optional(),
+  runtimes: z.array(z.string().min(1)).optional(),
+}).passthrough();
+
+export const packageItemRequireSchema = z.union([
+  z.string().min(1),
+  packageItemRequireObjectSchema,
+]);
+export type PackageItemRequire = z.infer<typeof packageItemRequireSchema>;
+
 export const composedFromEntrySchema = z.object({
   selector: z.string().min(1),
   hash: z.string().min(16),
@@ -51,6 +63,7 @@ export const artifactSchema = z.object({
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   assets: z.array(packageAssetSchema).optional(),
   required: z.boolean().optional(),
+  requires: z.array(packageItemRequireSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   runtimes: z.array(z.string().min(1)).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),

@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import type { Artifact, ArtifactType, PackageComposeEntry } from "../model/artifact.js";
+import type { Artifact, ArtifactType, PackageComposeEntry, PackageItemRequire } from "../model/artifact.js";
 import { readPackageManifest, type PackageManifest, type PackageProvide } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
@@ -233,6 +233,7 @@ async function artifactForFile(
     channel: "managed",
     assets: provide?.assets,
     required: provide?.required,
+    requires: item.requires,
     compose: item.compose,
     runtimes: item.runtimes ?? provideRuntimes(provide) ?? manifestRuntimes(manifest),
   };
@@ -260,16 +261,17 @@ async function artifactForDir(
     channel: "managed",
     assets: provide?.assets,
     required: provide?.required,
+    requires: item.requires,
     compose: item.compose,
     runtimes: item.runtimes ?? provideRuntimes(provide) ?? manifestRuntimes(manifest),
   };
 }
 
-function itemMetadata(provide: PackageProvide | undefined, itemName: string | undefined): { compose?: PackageComposeEntry[]; runtimes?: string[] } {
+function itemMetadata(provide: PackageProvide | undefined, itemName: string | undefined): { requires?: PackageItemRequire[]; compose?: PackageComposeEntry[]; runtimes?: string[] } {
   if (!provide || !("items" in provide) || !provide.items || !itemName) return {};
   const item = provide.items[itemName];
   if (!item) return {};
-  return { compose: item.compose, runtimes: item.runtimes };
+  return { requires: item.requires, compose: item.compose, runtimes: item.runtimes };
 }
 
 function provideRuntimes(provide: PackageProvide | undefined): string[] | undefined {

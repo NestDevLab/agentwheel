@@ -387,6 +387,42 @@ describe("transactional apply", () => {
 });
 
 describe("ownership uninstall and merge target guard", () => {
+  it("reports blocked desired composed changes on drifted files", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const original = await writeArtifact(source, "rules/composed.md", "old\n");
+    const withCompose = {
+      ...original,
+      composedFrom: [{ selector: "fragments/risk.md", hash: "a".repeat(64) }],
+      meta: {
+        ...original.meta,
+        composedFrom: [{ selector: "fragments/risk.md", hash: "a".repeat(64) }],
+      },
+    };
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([withCompose], adapter, target));
+    await writeFile(join(target, ".runtime", "rules", "composed.md"), "local edit\n", "utf8");
+
+    const updatedPath = join(source, "rules", "composed-updated.md");
+    await writeFile(updatedPath, "new\n", "utf8");
+    const updated = {
+      ...withCompose,
+      sourcePath: updatedPath,
+      stagedPath: updatedPath,
+      hash: await hashPath(updatedPath),
+      composedFrom: [{ selector: "fragments/risk.md", hash: "b".repeat(64) }],
+      meta: {
+        ...withCompose.meta,
+        composedFrom: [{ selector: "fragments/risk.md", hash: "b".repeat(64) }],
+      },
+    };
+    const plan = await createCombinedInstallPlan([updated], adapter, target, await readInstallManifest(target, adapter.name));
+    const drift = plan.operations.find((operation) => operation.action === "drift");
+
+    expect(drift?.blockedDesiredHash).toBe(updated.hash);
+    expect(drift?.blockedReason).toMatch(/drift blocks update: included fragment changed fragments\/risk\.md/);
+    expect(drift?.composedFromDiff).toEqual(["fragments/risk.md"]);
+  });
+
   it("blocks all unresolved install-path collisions before create/update operations are emitted", async () => {
     const source = await tempRoot();
     const target = await tempRoot();

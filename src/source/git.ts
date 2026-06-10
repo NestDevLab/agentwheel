@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -128,15 +128,12 @@ async function snapshotCheckout(checkoutPath: string, commit: string): Promise<s
   await cp(checkoutPath, tempPath, { recursive: true, dereference: true });
   await rm(join(tempPath, ".git"), { recursive: true, force: true });
   try {
-    await mkdir(snapshotPath);
+    await rename(tempPath, snapshotPath);
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
     await rm(tempPath, { recursive: true, force: true });
     return snapshotPath;
   }
-  await rm(snapshotPath, { recursive: true, force: true });
-  await cp(tempPath, snapshotPath, { recursive: true, dereference: true });
-  await rm(tempPath, { recursive: true, force: true });
   return snapshotPath;
 }
 

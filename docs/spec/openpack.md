@@ -56,9 +56,10 @@ composition metadata, runtime targeting, or fragments.
 }
 ```
 
-Dependency declarations in `requires` are part of the schema in this draft. Full dependency graph
-resolution semantics are intentionally deferred to a later OpenPack spec revision; current tools
-may validate and record these fields without resolving them.
+Dependency declarations in `requires` are part of the schema in this draft. Tools implementing
+L4 resolve the dependency graph recursively, apply parseable semver ranges, and lock the selected
+source identities. Tools below L4 may still validate and record these fields without resolving
+them.
 
 ## Layout And Types
 
@@ -121,8 +122,26 @@ The hash is the first 16 hex characters of the SHA-256 of the expanded included 
 for that item. `markers: false` suppresses the wrapper for that manifest-declared include only.
 
 Nested includes are allowed. Composition cycles are fatal and must report the include chain.
-Includes must stay inside the package root. Cross-package `alias:` includes require dependency
-support and are outside this draft implementation phase.
+Includes must stay inside the package root. Cross-package `alias:` includes require L4 dependency
+support; dependency aliases are locked as include edges with source hashes.
+
+## Registry Metadata
+
+Registry entries may include optional compatibility metadata:
+
+```jsonc
+{
+  "name": "example/agent-pack",
+  "source": "github:Example/agent-pack",
+  "openpack": {
+    "schemaVersion": 2,
+    "specVersion": "1.0-draft"
+  }
+}
+```
+
+Installers should parse this metadata permissively. An installer that sees a registry entry with
+an OpenPack `schemaVersion` newer than it supports should warn before resolution.
 
 ## Runtimes
 

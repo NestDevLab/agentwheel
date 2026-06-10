@@ -334,13 +334,22 @@ agentwheel package migrate             # rename agentwheel.json -> openpack.json
 # installing (no new ceremony)
 agentwheel sync --dry-run              # prints dependency tree + hoist/namespacing + plan
 agentwheel sync
-agentwheel sync --no-deps | --frozen-lock | --prefer-lock | --trust 'github:NestDevLab/*'
+agentwheel sync --no-deps | --frozen-lock | --offline | --prefer-lock | --trust 'github:NestDevLab/*'
+agentwheel trust forget 'github:NestDevLab/*'
 ```
 
 `--dry-run` shows, before file operations: the resolved tree (RESOLVE/HOIST/NEST lines), the
 selection per node, every namespacing decision, runtime-targeting skips, ownership reasons on
 keeps/removes, the one-shot migration report (first run only), and blocked updates behind drift.
 Output is target-group aware.
+
+Trust policy lives in `.agentwheel/config.json` under `trust`: `allow` source globs,
+`denyArtifactTypes`, `requireReviewForTransitive`, and persisted exact `acceptedSources`.
+`--trust` and `--yes` are additive CLI approvals; prompted/`--yes` decisions are remembered as
+exact sources until revoked with `agentwheel trust forget <pattern>`. `--offline` uses the graph
+lock plus local caches only and errors with the locked node/source that cannot be materialized.
+When a previous graph lock exists, sync/update output includes a concise graph diff for added,
+removed, moved, include-edge, and namespacing changes.
 
 Overrides/eject: the **canonical** form addresses an exact graph node id / source digest;
 `pkg/...` and `pkg@version/...` are accepted shorthand only when they resolve to exactly one
@@ -371,9 +380,11 @@ installed node — ambiguity is fatal and prints the exact disambiguated command
 - **Phase D — Conflict satisfaction.** Semver ranges where parseable (exact otherwise);
   transitive auto-namespacing policy; `aliases` in workspace config; `deps tree|why`; node-id
   override/eject with shorthand.
-- **Phase E — Trust & ergonomics polish.** Rich policy files, broad `--offline` UX, graph diff
-  polish on update, registry compatibility metadata. (The minimal lock/frozen/integrity
-  guarantees are **in Phase B** — deferring them was rejected at review.)
+- **Phase E — Trust & ergonomics polish.** Workspace trust policy (`allow`,
+  `denyArtifactTypes`, `requireReviewForTransitive`, persisted `acceptedSources` with
+  `trust forget`), broad `--offline` UX over graph locks and caches, graph diff polish on
+  sync/update, registry `openpack` compatibility metadata warnings. (The minimal
+  lock/frozen/integrity guarantees are **in Phase B** — deferring them was rejected at review.)
 - **Phase F — Later.** `reference`/`hybrid` compose modes for capable runtimes, content-dedupe,
   per-subentry merge ownership v2, capability-based requires (`{"capability": "..."}`).
 

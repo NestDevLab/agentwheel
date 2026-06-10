@@ -19,8 +19,8 @@ import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
-import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, rememberTrustedSources } from "./trust.js";
-import { readWorkspaceConfig } from "../model/workspace.js";
+import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
+import { readMergedWorkspaceConfig } from "../model/workspace.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -32,6 +32,9 @@ export interface SourcePlanOptions {
   select?: string[];
   skills?: string[];
   transport?: TargetTransport;
+  frozenLock?: boolean;
+  offline?: boolean;
+  warn?: (message: string) => void;
 }
 
 export interface SourcePlanResult {
@@ -57,6 +60,8 @@ export interface GraphSourcePlanOptions {
   isTTY?: boolean;
   promptTrust?: (sources: string[]) => Promise<boolean>;
   warn?: (message: string) => void;
+  trustStorePath?: string;
+  globalRoot?: string;
 }
 
 export interface GraphSourcePlanResult {
@@ -75,7 +80,8 @@ export interface GraphSourcePlanResult {
 
 export async function createSourcePlan(options: SourcePlanOptions): Promise<SourcePlanResult> {
   const workspaceRoot = options.workspaceRoot ?? options.targetRoot;
-  const resolvedInput = await resolvePackageSource(options.source, workspaceRoot);
+  const lockMode = options.frozenLock === true || options.offline === true;
+  const resolvedInput = await resolvePackageSource(options.source, workspaceRoot, { offline: lockMode, warn: options.warn });
   const resolvedSource = resolvedInput.source;
   const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedSource));
   const bundle = await stageSource(driver, resolvedSource, {
@@ -83,6 +89,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     adapter: options.adapter,
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     mode: options.mode,
+    frozenLock: lockMode,
     select: options.select,
     skills: options.skills,
   });
@@ -104,8 +111,11 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     options.warn?.(message);
   };
   const recoveredPendingApply = await recoverPendingApplyIfSafe(options.targetRoot, options.adapter.name, transport);
-  const workspaceConfig = await readWorkspaceConfig(workspaceRoot);
-  const trustPolicy = normalizeTrustPolicy(workspaceConfig.trust);
+  const workspaceConfig = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: options.globalRoot });
+  const trustPolicy = {
+    ...normalizeTrustPolicy(workspaceConfig.trust),
+    acceptedSources: await readTrustedSources(workspaceRoot, options.trustStorePath),
+  };
   const lockMode = options.frozenLock === true || options.offline === true;
   const lockLabel = options.offline === true ? "Offline" : "Frozen lock";
   const targetFingerprint = computeTargetFingerprint(options.targetFingerprintParts ?? {
@@ -132,7 +142,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   assertTrustArtifactPolicy(graph, trustPolicy);
   const trustEvaluation = evaluateTransitiveTrust(graph, previousLock, trustPolicy, options.trustPatterns ?? [], options.yes === true);
   await assertTrusted(trustEvaluation.promptSources, options);
-  const persistedTrustSources = await rememberTrustedSources(workspaceRoot, trustEvaluation.persistSources);
+  const persistedTrustSources = await rememberTrustedSources(workspaceRoot, trustEvaluation.persistSources, options.trustStorePath);
   for (const source of persistedTrustSources) warn(`remembered trusted transitive source: ${source}`);
   const bundle = await renderGraphForTarget(graph, {
     workspaceRoot,

@@ -151,7 +151,10 @@ function resolveProfileRuntime(
 }
 
 async function packageFromSource(source: string, options: ProfileSyncOptions): Promise<WorkspacePackage> {
-  const resolved = await resolvePackageSource(source, options.workspaceRoot);
+  const resolved = await resolvePackageSource(source, options.workspaceRoot, {
+    offline: options.frozenLock === true || options.offline === true,
+    warn: options.warn,
+  });
   const driver = options.driver ?? inferSourceDriverName(resolved.source);
   return {
     name: resolved.registryEntry?.name ?? source,

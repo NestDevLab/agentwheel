@@ -1,7 +1,12 @@
 import type { ArtifactType } from "../model/artifact.js";
-import { readWorkspaceConfig, writeWorkspaceConfig, type WorkspaceTrust } from "../model/workspace.js";
+import { mkdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { z } from "zod";
+import type { WorkspaceTrust } from "../model/workspace.js";
 import type { GraphLock } from "../model/graph-lock.js";
 import type { ResolvedGraph } from "../resolve/graph.js";
+import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
 export interface NormalizedTrustPolicy {
   allow: string[];
@@ -14,6 +19,13 @@ export interface TrustEvaluation {
   promptSources: string[];
   persistSources: string[];
 }
+
+const trustStoreSchema = z.object({
+  version: z.literal(1),
+  acceptedSources: z.array(z.string().min(1)).default([]),
+});
+
+type TrustStore = z.infer<typeof trustStoreSchema>;
 
 export function normalizeTrustPolicy(policy: WorkspaceTrust | undefined): NormalizedTrustPolicy {
   return {
@@ -53,7 +65,6 @@ export function assertTrustArtifactPolicy(graph: ResolvedGraph, policy: Normaliz
   if (denied.size === 0) return;
   const violations: string[] = [];
   for (const raw of graph.rawNodes) {
-    if (raw.depth === 0) continue;
     for (const selector of raw.node.selected) {
       const type = selector.slice(0, selector.indexOf("/")) as ArtifactType;
       if (!denied.has(type)) continue;
@@ -67,34 +78,27 @@ export function assertTrustArtifactPolicy(graph: ResolvedGraph, policy: Normaliz
   );
 }
 
-export async function rememberTrustedSources(workspaceRoot: string, sources: string[]): Promise<string[]> {
-  const unique = sortedUnique(sources);
-  if (unique.length === 0) return [];
-  const config = await readWorkspaceConfig(workspaceRoot);
-  const trust = config.trust ?? {};
-  const acceptedSources = sortedUnique([...(trust.acceptedSources ?? []), ...unique]);
-  await writeWorkspaceConfig(workspaceRoot, {
-    ...config,
-    trust: {
-      ...trust,
-      acceptedSources,
-    },
-  });
-  return unique.filter((source) => !(trust.acceptedSources ?? []).includes(source));
+export async function readTrustedSources(_workspaceRoot?: string, storePath = defaultTrustStorePath()): Promise<string[]> {
+  return (await readTrustStore(storePath)).acceptedSources;
 }
 
-export async function forgetTrustedSources(workspaceRoot: string, pattern: string): Promise<string[]> {
-  const config = await readWorkspaceConfig(workspaceRoot);
-  const trust = config.trust ?? {};
-  const acceptedSources = trust.acceptedSources ?? [];
+export async function rememberTrustedSources(_workspaceRoot: string, sources: string[], storePath = defaultTrustStorePath()): Promise<string[]> {
+  const unique = sortedUnique(sources);
+  if (unique.length === 0) return [];
+  const store = await readTrustStore(storePath);
+  const acceptedSources = sortedUnique([...store.acceptedSources, ...unique]);
+  await writeTrustStore(storePath, { version: 1, acceptedSources });
+  return unique.filter((source) => !store.acceptedSources.includes(source));
+}
+
+export async function forgetTrustedSources(_workspaceRoot: string, pattern: string, storePath = defaultTrustStorePath()): Promise<string[]> {
+  const store = await readTrustStore(storePath);
+  const acceptedSources = store.acceptedSources;
   const removed = acceptedSources.filter((source) => matchesGlob(source, pattern));
   if (removed.length === 0) return [];
-  await writeWorkspaceConfig(workspaceRoot, {
-    ...config,
-    trust: {
-      ...trust,
-      acceptedSources: acceptedSources.filter((source) => !matchesGlob(source, pattern)),
-    },
+  await writeTrustStore(storePath, {
+    version: 1,
+    acceptedSources: acceptedSources.filter((source) => !matchesGlob(source, pattern)),
   });
   return removed;
 }
@@ -109,4 +113,18 @@ export function matchesGlob(value: string, pattern: string): boolean {
 
 function sortedUnique(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+async function readTrustStore(path: string): Promise<TrustStore> {
+  if (!(await pathExists(path))) return { version: 1, acceptedSources: [] };
+  return trustStoreSchema.parse(JSON.parse(await readFile(path, "utf8")));
+}
+
+async function writeTrustStore(path: string, store: TrustStore): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeJsonAtomic(path, trustStoreSchema.parse(store));
+}
+
+function defaultTrustStorePath(): string {
+  return process.env.AGENTWHEEL_TRUST_STORE ?? join(homedir(), ".agentwheel", "trust.json");
 }

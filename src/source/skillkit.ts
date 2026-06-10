@@ -68,6 +68,7 @@ export class SkillKitSourceDriver implements SourceDriver {
       packageName: `skillkit/${packageSlug(spec)}`,
       mode: options.mode ?? "tracking",
       requestedRef: options.ref,
+      frozenLock: options.frozenLock,
     };
   }
 
@@ -75,6 +76,15 @@ export class SkillKitSourceDriver implements SourceDriver {
     const spec = parseSkillKitSource(resolved.source);
     if (await pathExists(spec)) {
       return resolved;
+    }
+    if (resolved.frozenLock) {
+      if (!(await pathExists(resolved.resolvedPath))) {
+        throw new Error(`Frozen lock requires cached SkillKit source at ${resolved.resolvedPath}`);
+      }
+      return {
+        ...resolved,
+        sourceHash: await hashPath(resolved.resolvedPath),
+      };
     }
 
     const providerSpec = normalizeProviderSource(spec);

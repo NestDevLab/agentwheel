@@ -475,6 +475,7 @@ program
   .option("--select <type/name>", "uninstall only selected artifact type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "uninstall only selected skill name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--frozen-lock", "resolve remaining packages strictly from the existing graph lock and cached sources", false)
+  .option("--offline", "resolve remaining packages strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources while resolving remaining packages", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (packageName, options) => {
@@ -505,7 +506,7 @@ program
     }
   });
 
-async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking"; select?: string[]; skill?: string[]; skills?: string[] }) {
+async function buildPlan(source: string, target: RuntimeTarget, options: { driver?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; mode?: "pinned" | "tracking"; select?: string[]; skill?: string[]; skills?: string[]; frozenLock?: boolean; offline?: boolean }) {
   const adapter = await resolveAdapterForTarget(target, options);
   const transport = transportForTarget(target);
   const result = await createSourcePlan({
@@ -516,6 +517,9 @@ async function buildPlan(source: string, target: RuntimeTarget, options: { drive
     driver: options.driver,
     mode: options.mode,
     select: selectedArtifactsFromOptions(options),
+    frozenLock: options.frozenLock,
+    offline: options.offline,
+    warn: (message) => console.warn(message),
     transport,
   });
   return { plan: result.plan, bundle: result.bundle };

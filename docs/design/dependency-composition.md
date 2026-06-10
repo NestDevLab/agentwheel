@@ -1,6 +1,6 @@
 # Dependencies & Composition for agentwheel
 
-Status: **agreed plan v2, not yet implemented.**
+Status: **implemented through Phase E** on the `feat/openpack-*` branch stack on 2026-06-10; gated by adversarial review: B gate found/fixed 3 blockers + 7 majors, C–E focused gate found/fixed 2 blockers + 4 majors + 1 minor; final verdict **SHIP**.
 Authors: Claude (Opus 4.8) + Codex (gpt-5.5), co-designed 2026-06-10.
 Process: independent proposals → round-2 convergence → **adversarial xhigh review pass**
 (gpt-5.5 at `model_reasoning_effort=xhigh`) whose verdicts (7 CONFIRM / 15 AMEND / 2 REJECT,
@@ -481,3 +481,6 @@ the missing orchestration layer plus a transactional installer — not a rewrite
   "OpenPack"** — manifest `openpack.json(c)`, markers `openpack:include`, spec doc with
   conformance levels; `agentwheel.json(c)` becomes a deprecated discovery alias with
   `package migrate` for in-place upgrades. Properties audited: already neutral, no renames.
+- 2026-06-10 — Phases 0–E implemented on the `feat/openpack-*` branch stack; adversarial gates
+  found/fixed B gate 3 blockers + 7 majors and C–E focused gate 2 blockers + 4 majors + 1 minor;
+  final verdict **SHIP**. Full gate archive: `dependency-composition.gate-review.md`.

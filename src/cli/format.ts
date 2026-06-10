@@ -58,6 +58,9 @@ export function formatGraphPlan(result: GraphSourcePlanResult): string {
       lines.push(`TRUST   ${source}`);
     }
   }
+  for (const edge of result.bundle.graphLock.canonical.includeEdges) {
+    lines.push(`INCLUDE ${edge.fromNodeId} <- ${edge.toNodeId}:${edge.selector} via ${edge.alias} sha256:${edge.sourceHash.slice(0, 16)}`);
+  }
   lines.push(formatPlan(result.plan));
   return lines.join("\n");
 }
@@ -66,7 +69,7 @@ export function formatDependencyTree(graph: ResolvedGraph): string[] {
   const lines = ["Dependency graph"];
   for (const raw of graph.rawNodes.sort((a, b) => a.depth - b.depth || a.node.id.localeCompare(b.node.id))) {
     const label = raw.depth === 0 ? "RESOLVE" : "HOIST";
-    const selected = raw.node.selected.length > 0 ? raw.node.selected.join(",") : "<none>";
+    const selected = raw.node.selected.length > 0 ? formatSelected(raw.node.selected, raw.node.selectionReasons) : "<none>";
     const requiredBy = raw.node.requiredBy.length > 0 ? raw.node.requiredBy.join(",") : "<root>";
     lines.push(`${label.padEnd(7)} ${raw.node.id} source=${raw.node.normalizedSource} selected=[${selected}] requiredBy=[${requiredBy}]`);
   }
@@ -75,4 +78,11 @@ export function formatDependencyTree(graph: ResolvedGraph): string[] {
     lines.push(`EDGE    ${edge.from} --${edge.alias}--> ${edge.to} selected=[${selected}]`);
   }
   return lines;
+}
+
+function formatSelected(selected: string[], reasons?: Record<string, string[]>): string {
+  return selected.map((selector) => {
+    const notes = reasons?.[selector];
+    return notes?.length ? `${selector} (${notes.join("; ")})` : selector;
+  }).join(",");
 }

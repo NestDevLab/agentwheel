@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import type { Artifact } from "../model/artifact.js";
+import { basename, extname, join } from "node:path";
+import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from "../compose/markdown.js";
+import type { Artifact, PackageItemRequire } from "../model/artifact.js";
+import { artifactTypeSchema } from "../model/artifact.js";
 import type { GraphNodeId, ResolvedNode } from "../model/graph.js";
-import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
 import type { PackageManifest } from "../model/package.js";
 import { readPackageManifest } from "../model/package.js";
 import type { RegistryClient } from "../registry/client.js";
@@ -76,7 +78,12 @@ interface Requirement {
   chain: string[];
   version?: string;
   integrity?: string;
+  selectionReason?: string;
 }
+
+type PackageManifestV2 = Extract<PackageManifest, { schemaVersion: 2 }>;
+type PackageDependencies = NonNullable<PackageManifestV2["requires"]>;
+type PackageDependency = PackageDependencies[string];
 
 interface FetchedPackage {
   normalized: NormalizedDependencySource;
@@ -101,7 +108,11 @@ interface NodeState {
   artifacts: Artifact[];
   requiredBy: Set<string>;
   selected: Set<string>;
+  selectionReasons: Map<string, Set<string>>;
+  processedNeeds: Set<string>;
+  processedPackageAliases: Set<string>;
   depth: number;
+  fullPackageSelected: boolean;
 }
 
 const cacheLocks = new Map<string, Promise<void>>();
@@ -150,6 +161,10 @@ export async function resolveDependencyGraph(
   const rawNodes = [...nodesByKey.values()]
     .sort((a, b) => a.node.id.localeCompare(b.node.id))
     .map((state) => materializeRawNode(state));
+  const selectedByNodeId = new Map(rawNodes.map((raw) => [raw.node.id, raw.node.selected]));
+  for (const root of rootResults) {
+    root.selected = selectedByNodeId.get(root.graphNodeId) ?? root.selected;
+  }
   detectDirectCollisions(rawNodes);
 
   return {
@@ -162,7 +177,7 @@ export async function resolveDependencyGraph(
   };
 }
 
-export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifact[] = [], targetFingerprint?: string): GraphLock {
+export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifact[] = [], targetFingerprint?: string, includeEdges: GraphLockIncludeEdge[] = []): GraphLock {
   const roots: GraphLockRoot[] = graph.roots.map((root) => ({
     rootId: root.rootId,
     source: root.source,
@@ -180,7 +195,7 @@ export function createGraphLock(graph: ResolvedGraph, artifacts: GraphLockArtifa
       roots,
       nodes: graph.nodes,
       edges: graph.edges,
-      includeEdges: [],
+      includeEdges,
       artifacts,
       plainNameIncumbents: [],
     },
@@ -219,7 +234,6 @@ async function processRequirement(
 
     const selected = computeSelectedSelectors(fetched.artifacts, requirement.select, requirement.depth === 0, requirement.chain);
     let state = nodesByKey.get(nodeKey);
-    const wasNew = !state;
     if (!state) {
       const id = graphNodeId(fetched.name, fetched.version, normalized.normalizedSource, fetched.resolved.resolvedCommit, fetched.sourceHash);
       state = {
@@ -242,14 +256,19 @@ async function processRequirement(
         artifacts: fetched.artifacts,
         requiredBy: new Set(),
         selected: new Set(),
+        selectionReasons: new Map(),
+        processedNeeds: new Set(),
+        processedPackageAliases: new Set(),
         depth: requirement.depth,
+        fullPackageSelected: false,
       };
       nodesByKey.set(nodeKey, state);
     }
 
     state.depth = Math.min(state.depth, requirement.depth);
+    state.fullPackageSelected = state.fullPackageSelected || requirement.select === undefined;
     state.requiredBy.add(requirement.requiredBy);
-    for (const selector of selected) state.selected.add(selector);
+    for (const selector of selected) addSelectedSelector(state, selector, requirement.selectionReason);
     refreshNode(state);
 
     if (requirement.depth === 0 && requirement.rootId) {
@@ -265,6 +284,7 @@ async function processRequirement(
 
     if (requirement.parentId && requirement.alias) {
       const edgeKey = `${requirement.parentId}\0${requirement.alias}\0${state.node.id}`;
+      const previous = edgeMap.get(edgeKey);
       edgeMap.set(edgeKey, {
         from: requirement.parentId,
         to: state.node.id,
@@ -275,43 +295,323 @@ async function processRequirement(
         version: requirement.version,
         mode: requirement.mode,
         optional: requirement.optional,
-        selected,
+        selected: sortedUnique([...(previous?.selected ?? []), ...selected]),
       });
     }
 
-    if (!wasNew) return [];
-    if (fetched.manifest?.schemaVersion !== 2) return [];
-    if (options.noDeps) {
-      const aliases = Object.keys(fetched.manifest.requires ?? {}).sort();
-      if (aliases.length > 0) {
-        options.warn?.(`--no-deps ignored dependencies for ${state.node.id}: ${aliases.join(", ")}`);
-      }
+    return await collectDependencyNeeds(state, fetched, options, requirement.chain);
+  } catch (error) {
+    if (requirement.optional) {
+      const message = error instanceof Error ? error.message : String(error);
+      options.warn?.(`optional dependency skipped: ${message}`);
       return [];
     }
-
-    return Object.entries(fetched.manifest.requires ?? {})
-      .sort(([a], [b]) => a.localeCompare(b))
-      .filter(([alias, dependency]) => dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn))
-      .map(([alias, dependency]) => ({
-        source: dependency.source,
-        select: dependency.select,
-        mode: dependency.mode ?? "pinned",
-        ref: dependency.ref,
-        declaringPackageRoot: fetched.resolved.resolvedPath,
-        requiredBy: state.node.id,
-        alias,
-        parentId: state.node.id,
-        depth: requirement.depth + 1,
-        optional: dependency.optional ?? false,
-        chain: [...requirement.chain, `${state.node.id}:${alias}`],
-        version: dependency.version,
-        integrity: dependency.integrity,
-      }));
-  } catch (error) {
-    if (requirement.optional) return [];
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${message}\nDependency chain: ${requirement.chain.join(" -> ")}`);
   }
+}
+
+async function collectDependencyNeeds(
+  state: NodeState,
+  fetched: FetchedPackage,
+  options: ResolveGraphOptions,
+  chain: string[],
+): Promise<Requirement[]> {
+  if (fetched.manifest?.schemaVersion !== 2) return [];
+
+  const dependencies = fetched.manifest.requires ?? {};
+  const dependencyEntries = Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b));
+  const requirements: Requirement[] = [];
+
+  if (options.noDeps) {
+    warnNoDepsOnce(state, dependencyEntries.map(([alias]) => alias), options.warn);
+  } else {
+    for (const [alias, dependency] of dependencyEntries) {
+      if (state.processedPackageAliases.has(alias)) continue;
+      if (!dependency.select?.length && !(state.fullPackageSelected && dependency.select === undefined)) continue;
+      state.processedPackageAliases.add(alias);
+      if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
+      requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain));
+    }
+  }
+
+  const artifactsBySelector: Map<string, Artifact> = new Map(fetched.artifacts.map((artifact) => [artifactSelectorKey(artifact), artifact]));
+  const artifactsByRelativePath: Map<string, Artifact> = new Map(fetched.artifacts.map((artifact) => [artifact.relativePath.replaceAll("\\", "/"), artifact]));
+
+  while (true) {
+    const pending = [...state.selected]
+      .filter((selector) => !state.processedNeeds.has(selector))
+      .sort((a, b) => a.localeCompare(b));
+    if (pending.length === 0) break;
+
+    for (const parentSelector of pending) {
+      state.processedNeeds.add(parentSelector);
+      const artifact = artifactsBySelector.get(parentSelector);
+      if (!artifact) continue;
+      if (!artifactTargetsRuntime(artifact.runtimes, options.runtime, state.node.id, parentSelector, options.warn)) continue;
+
+      for (const requirement of artifact.requires ?? []) {
+        const parsed = parseArtifactRequirement(requirement);
+        if (!requirementTargetsRuntime(parsed.runtimes, options.runtime, `${state.node.id}:${parentSelector} -> ${parsed.raw}`, options.warn)) continue;
+        if (parsed.alias) {
+          if (options.noDeps) {
+            warnNoDepsOnce(state, [parsed.alias], options.warn);
+            continue;
+          }
+          const dependency = dependencyForAlias(dependencies, state.node.id, parsed.alias);
+          if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, parsed.alias, options.warn)) continue;
+          requirements.push(dependencyRequirement(
+            state,
+            fetched,
+            parsed.alias,
+            dependency,
+            sortedUnique([...(dependency.select ?? []), parsed.selector]),
+            chain,
+            parsed.optional || dependency.optional === true,
+            `required by ${parentSelector}`,
+          ));
+          continue;
+        }
+
+        if (!artifactsBySelector.has(parsed.selector)) {
+          if (parsed.optional) {
+            options.warn?.(`optional artifact requirement skipped: ${parsed.selector} required by ${state.node.id}:${parentSelector}`);
+            continue;
+          }
+          throw new Error(`Artifact requirement not found in ${state.node.id}: ${parsed.selector} required by ${parentSelector}`);
+        }
+        addSelectedSelector(state, parsed.selector, `required by ${parentSelector}`);
+      }
+
+      for (const include of await collectIncludeNeeds(artifact, artifactsByRelativePath)) {
+        if (!include.alias) continue;
+        if (options.noDeps) {
+          warnNoDepsOnce(state, [include.alias], options.warn);
+          continue;
+        }
+        const dependency = dependencyForAlias(dependencies, state.node.id, include.alias);
+        if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, include.alias, options.warn)) continue;
+        requirements.push(dependencyRequirement(
+          state,
+          fetched,
+          include.alias,
+          dependency,
+          sortedUnique([...(dependency.select ?? []), include.selector]),
+          chain,
+          include.optional || dependency.optional === true,
+        ));
+      }
+      refreshNode(state);
+    }
+  }
+
+  refreshNode(state);
+  return requirements;
+}
+
+function dependencyRequirement(
+  state: NodeState,
+  fetched: FetchedPackage,
+  alias: string,
+  dependency: PackageDependency,
+  select: string[] | undefined,
+  chain: string[],
+  optional = dependency.optional ?? false,
+  selectionReason?: string,
+): Requirement {
+  return {
+    source: dependency.source,
+    select,
+    mode: dependency.mode ?? "pinned",
+    ref: dependency.ref,
+    declaringPackageRoot: fetched.resolved.resolvedPath,
+    requiredBy: state.node.id,
+    alias,
+    parentId: state.node.id,
+    depth: state.depth + 1,
+    optional,
+    chain: [...chain, `${state.node.id}:${alias}`],
+    version: dependency.version,
+    integrity: dependency.integrity,
+    selectionReason,
+  };
+}
+
+function dependencyForAlias(
+  dependencies: PackageDependencies,
+  nodeId: string,
+  alias: string,
+): PackageDependency {
+  const dependency = dependencies[alias];
+  if (!dependency) {
+    throw new Error(`Dependency alias not found in ${nodeId}: ${alias}`);
+  }
+  return dependency;
+}
+
+function warnNoDepsOnce(state: NodeState, aliases: string[], warn?: (message: string) => void): void {
+  const unique = sortedUnique(aliases.filter(Boolean));
+  if (unique.length === 0 || state.processedPackageAliases.has("__noDepsWarned")) return;
+  state.processedPackageAliases.add("__noDepsWarned");
+  warn?.(`--no-deps ignored dependencies for ${state.node.id}: ${unique.join(", ")}`);
+}
+
+interface ParsedArtifactRequirement {
+  raw: string;
+  selector: string;
+  alias?: string;
+  optional: boolean;
+  runtimes?: string[];
+}
+
+function parseArtifactRequirement(requirement: PackageItemRequire): ParsedArtifactRequirement {
+  const raw = typeof requirement === "string" ? requirement : requirement.selector;
+  const parsed = parseDependencySelector(raw);
+  return {
+    raw,
+    selector: parsed.selector,
+    alias: parsed.alias,
+    optional: typeof requirement === "string" ? false : requirement.optional === true,
+    runtimes: typeof requirement === "string" ? undefined : requirement.runtimes,
+  };
+}
+
+function parseDependencySelector(value: string): { alias?: string; selector: string } {
+  const cleaned = value.trim();
+  const slash = cleaned.indexOf("/");
+  const colon = cleaned.indexOf(":");
+  let alias: string | undefined;
+  let selector = cleaned;
+  if (colon >= 0 && (slash < 0 || colon < slash)) {
+    alias = cleaned.slice(0, colon);
+    if (!alias || alias.includes("/")) {
+      throw new Error(`Invalid dependency selector alias: ${value}`);
+    }
+    selector = cleaned.slice(colon + 1);
+  }
+  const selectorSlash = selector.indexOf("/");
+  if (selectorSlash <= 0 || selectorSlash === selector.length - 1) {
+    throw new Error(`Invalid dependency selector: ${value}. Expected type/name or alias:type/name.`);
+  }
+  const type = selector.slice(0, selectorSlash);
+  const parsedType = artifactTypeSchema.safeParse(type);
+  if (!parsedType.success) {
+    throw new Error(`Invalid dependency selector type: ${type}`);
+  }
+  if (selector.includes("\\") || selector.split("/").some((part) => part === "." || part === ".." || part.length === 0)) {
+    throw new Error(`Invalid dependency selector path: ${value}`);
+  }
+  return { alias, selector: `${parsedType.data}/${selector.slice(selectorSlash + 1)}` };
+}
+
+interface IncludeNeed {
+  alias?: string;
+  selector: string;
+  optional: boolean;
+}
+
+async function collectIncludeNeeds(artifact: Artifact, artifactsByRelativePath: Map<string, Artifact>): Promise<IncludeNeed[]> {
+  const needs: IncludeNeed[] = [];
+  const scanned = new Set<string>();
+  const stack = await markdownFilesForArtifact(artifact);
+  for (const entry of artifact.compose ?? []) {
+    await collectIncludeSelector(entry.include, entry.optional === true, artifactsByRelativePath, scanned, stack, needs);
+  }
+
+  while (stack.length > 0) {
+    const file = stack.shift()!;
+    if (scanned.has(file)) continue;
+    scanned.add(file);
+    const content = await readFile(file, "utf8");
+    for (const include of extractOpenPackIncludeSelectors(content)) {
+      await collectIncludeSelector(include.raw, include.optional, artifactsByRelativePath, scanned, stack, needs);
+    }
+  }
+
+  return uniqueIncludeNeeds(needs);
+}
+
+async function collectIncludeSelector(
+  raw: string,
+  optional: boolean,
+  artifactsByRelativePath: Map<string, Artifact>,
+  scanned: Set<string>,
+  stack: string[],
+  needs: IncludeNeed[],
+): Promise<void> {
+  const parsed = parseOpenPackIncludeSelector(raw);
+  if (parsed.alias) {
+    needs.push({ alias: parsed.alias, selector: parsed.selector, optional });
+    return;
+  }
+  const artifact = artifactsByRelativePath.get(parsed.selector);
+  if (!artifact) {
+    if (optional) return;
+    throw new Error(`OpenPack include not found: ${parsed.selector}`);
+  }
+  for (const file of await markdownFilesForArtifact(artifact)) {
+    if (!scanned.has(file)) stack.push(file);
+  }
+}
+
+function artifactTargetsRuntime(
+  runtimes: string[] | undefined,
+  runtime: string | undefined,
+  nodeId: string,
+  selector: string,
+  warn?: (message: string) => void,
+): boolean {
+  if (!runtimes?.length || !runtime || runtimes.includes(runtime)) return true;
+  warn?.(`skip artifact ${nodeId}:${selector} (not targeted: runtimes=[${runtimes.join(",")}])`);
+  return false;
+}
+
+function requirementTargetsRuntime(
+  runtimes: string[] | undefined,
+  runtime: string | undefined,
+  label: string,
+  warn?: (message: string) => void,
+): boolean {
+  if (!runtimes?.length || !runtime || runtimes.includes(runtime)) return true;
+  warn?.(`skip requirement ${label} (not targeted: runtimes=[${runtimes.join(",")}])`);
+  return false;
+}
+
+async function markdownFilesForArtifact(artifact: Artifact): Promise<string[]> {
+  const root = artifact.sourcePath;
+  const stats = await stat(root);
+  if (stats.isFile()) return extname(root).toLowerCase() === ".md" ? [root] : [];
+  if (!stats.isDirectory()) return [];
+  return listMarkdownFiles(root);
+}
+
+async function listMarkdownFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".md") {
+        out.push(full);
+      }
+    }
+  }
+  await walk(root);
+  return out;
+}
+
+function addSelectedSelector(state: NodeState, selector: string, reason?: string): void {
+  state.selected.add(selector);
+  if (!reason) return;
+  const reasons = state.selectionReasons.get(selector) ?? new Set<string>();
+  reasons.add(reason);
+  state.selectionReasons.set(selector, reasons);
+}
+
+function uniqueIncludeNeeds(needs: IncludeNeed[]): IncludeNeed[] {
+  const byKey = new Map(needs.map((need) => [`${need.alias ?? ""}\0${need.selector}\0${need.optional}`, need]));
+  return [...byKey.values()].sort((a, b) => `${a.alias ?? ""}:${a.selector}:${a.optional}`.localeCompare(`${b.alias ?? ""}:${b.selector}:${b.optional}`));
 }
 
 function dependencyTargetsRuntime(
@@ -447,6 +747,11 @@ function materializeRawNode(state: NodeState): ResolvedGraphRawNode {
 function refreshNode(state: NodeState): void {
   state.node.requiredBy = sortedUnique([...state.requiredBy]);
   state.node.selected = sortedUnique([...state.selected]);
+  const selectionReasons: Record<string, string[]> = {};
+  for (const [selector, reasons] of [...state.selectionReasons.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    selectionReasons[selector] = sortedUnique([...reasons]);
+  }
+  state.node.selectionReasons = Object.keys(selectionReasons).length > 0 ? selectionReasons : undefined;
 }
 
 function upsertRoot(roots: ResolvedGraphRoot[], root: ResolvedGraphRoot): void {

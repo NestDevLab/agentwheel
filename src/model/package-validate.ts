@@ -47,14 +47,14 @@ export async function validatePackage(root: string): Promise<PackageValidationRe
       packageVersion: manifest.version,
       mode: "pinned",
     });
-    await validateMarkdownIncludes(artifacts, packageRoot);
+    await validateMarkdownIncludes(artifacts, packageRoot, { allowCrossPackage: true });
   } catch (error) {
     findings.push({ level: "error", message: error instanceof Error ? error.message : String(error), path: packageRoot });
   }
 
   if (manifest.schemaVersion === 2 && manifest.compose) {
     for (const entry of manifest.compose) {
-      await validateManifestComposeInclude(packageRoot, entry.include, entry.optional === true, findings, manifestPath);
+      await validateManifestComposeInclude(packageRoot, entry.include, entry.optional === true, findings, manifestPath, Object.keys(manifest.requires ?? {}));
     }
   }
 
@@ -68,7 +68,7 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
         findings.push({ level: "error", message: "Dependency alias must be non-empty", path: manifestPath });
       }
       for (const selector of dependency.select ?? []) {
-        validateSelector(selector, `requires.${alias}.select`, findings, manifestPath);
+        validateSelector(selector, `requires.${alias}.select`, findings, manifestPath, { localOnly: true });
       }
     }
   }
@@ -78,7 +78,13 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
     for (const [itemName, item] of Object.entries(provide.items)) {
       for (const requirement of item.requires ?? []) {
         const selector = typeof requirement === "string" ? requirement : requirement.selector;
-        validateSelector(selector, `provides[${provideIndex}].items.${itemName}.requires`, findings, manifestPath);
+        validateSelector(selector, `provides[${provideIndex}].items.${itemName}.requires`, findings, manifestPath, { aliases: manifest.schemaVersion === 2 ? Object.keys(manifest.requires ?? {}) : [] });
+      }
+      for (const entry of item.compose ?? []) {
+        validateSelector(entry.include, `provides[${provideIndex}].items.${itemName}.compose.include`, findings, manifestPath, {
+          aliases: manifest.schemaVersion === 2 ? Object.keys(manifest.requires ?? {}) : [],
+          fragmentsOnly: true,
+        });
       }
     }
   }
@@ -90,9 +96,11 @@ async function validateManifestComposeInclude(
   optional: boolean,
   findings: PackageValidationFinding[],
   manifestPath: string,
+  aliases: string[] = [],
 ): Promise<void> {
   try {
-    validateSelector(selector, "compose.include", findings, manifestPath, { localOnly: true, fragmentsOnly: true });
+    validateSelector(selector, "compose.include", findings, manifestPath, { fragmentsOnly: true, aliases });
+    if (isCrossPackageSelector(selector)) return;
     const full = resolve(packageRoot, selector);
     if (full !== packageRoot && !full.startsWith(`${packageRoot}/`)) {
       findings.push({ level: "error", message: `Compose include escapes package root: ${selector}`, path: manifestPath });
@@ -111,18 +119,22 @@ function validateSelector(
   context: string,
   findings: PackageValidationFinding[],
   manifestPath: string,
-  options: { localOnly?: boolean; fragmentsOnly?: boolean } = {},
+  options: { localOnly?: boolean; fragmentsOnly?: boolean; aliases?: string[] } = {},
 ): void {
   const colon = value.indexOf(":");
   const slash = value.indexOf("/");
   if (colon >= 0 && (slash < 0 || colon < slash)) {
     if (options.localOnly) {
-      findings.push({ level: "error", message: `${context}: cross-package selector is not supported in Phase A: ${value}`, path: manifestPath });
+      findings.push({ level: "error", message: `${context}: cross-package selector is not allowed here: ${value}`, path: manifestPath });
       return;
     }
     const alias = value.slice(0, colon);
     if (!alias || alias.includes("/")) {
       findings.push({ level: "error", message: `${context}: invalid selector alias: ${value}`, path: manifestPath });
+      return;
+    }
+    if (options.aliases && !options.aliases.includes(alias)) {
+      findings.push({ level: "error", message: `${context}: dependency alias not declared: ${alias}`, path: manifestPath });
       return;
     }
   }
@@ -141,6 +153,12 @@ function validateSelector(
     return;
   }
   if (options.fragmentsOnly && parsedType.data !== "fragments") {
-    findings.push({ level: "error", message: `${context}: compose includes may inline only fragments in Phase A: ${value}`, path: manifestPath });
+    findings.push({ level: "error", message: `${context}: compose includes may inline only fragments: ${value}`, path: manifestPath });
   }
+}
+
+function isCrossPackageSelector(value: string): boolean {
+  const colon = value.indexOf(":");
+  const slash = value.indexOf("/");
+  return colon >= 0 && (slash < 0 || colon < slash);
 }

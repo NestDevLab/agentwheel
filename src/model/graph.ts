@@ -16,6 +16,7 @@ export interface ResolvedNode {
   mode: "pinned" | "tracking";
   requiredBy: string[];
   selected: string[];
+  selectionReasons?: Record<string, string[]>;
 }
 
 export interface ResolvedArtifact extends Artifact {

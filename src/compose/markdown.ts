@@ -10,7 +10,35 @@ const escapedIncludePattern = /<!--\s*openpack\\:include(\?)?\s+([^>]+?)\s*-->/g
 const generatedPattern = /<!--\s*(?:BEGIN|END)\s+openpack:include\b/;
 const markerHashLength = 16;
 
-export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot: string): Promise<Artifact[]> {
+export interface ParsedOpenPackIncludeSelector {
+  alias?: string;
+  selector: string;
+}
+
+export interface CrossPackageIncludeRequest {
+  fromNodeId: string;
+  alias: string;
+  selector: string;
+  optional: boolean;
+}
+
+export interface CrossPackageIncludeResolution {
+  toNodeId: string;
+  packageRoot: string;
+  artifactPaths: Map<string, string>;
+  sourcePath: string;
+  sourceContent: string;
+  sourceHash: string;
+}
+
+export interface MarkdownIncludeOptions {
+  nodeId?: string;
+  originNodeId?: string;
+  allowCrossPackage?: boolean;
+  resolveCrossPackageInclude?: (request: CrossPackageIncludeRequest) => Promise<CrossPackageIncludeResolution | undefined>;
+}
+
+export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot: string, options: MarkdownIncludeOptions = {}): Promise<Artifact[]> {
   const byKey = new Map<string, Artifact>();
   for (const artifact of artifacts) byKey.set(artifactKey(artifact), artifact);
   const artifactPaths = artifactPathMap(artifacts);
@@ -21,7 +49,7 @@ export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot:
 
     const composedFrom: ComposedFromEntry[] = [];
     for (const file of files) {
-      const result = await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths);
+      const result = await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths, options);
       if (result.changed) await writeFile(file, result.content, "utf8");
       composedFrom.push(...result.composedFrom);
     }
@@ -38,11 +66,11 @@ export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot:
   return artifacts.map((artifact) => byKey.get(artifactKey(artifact)) ?? artifact);
 }
 
-export async function validateMarkdownIncludes(artifacts: Artifact[], packageRoot: string): Promise<void> {
+export async function validateMarkdownIncludes(artifacts: Artifact[], packageRoot: string, options: MarkdownIncludeOptions = {}): Promise<void> {
   const artifactPaths = artifactPathMap(artifacts);
   for (const artifact of artifacts) {
     for (const file of await markdownFilesForArtifact(artifact)) {
-      await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths);
+      await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths, options);
     }
   }
 }
@@ -52,15 +80,17 @@ async function expandFile(
   packageRoot: string,
   appendEntries: PackageComposeEntry[],
   artifactPaths: Map<string, string>,
+  options: MarkdownIncludeOptions,
 ): Promise<{ content: string; changed: boolean; composedFrom: ComposedFromEntry[] }> {
   const raw = await readFile(file, "utf8");
-  const owner = relativeSelector(packageRoot, file);
-  const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths);
+  const owner = ownerSelector(packageRoot, file, options.nodeId);
+  const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths, options);
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
 
   for (const entry of appendEntries) {
     const included = await expandInclude(entry.include, packageRoot, artifactPaths, {
+      ...options,
       optional: entry.optional === true,
       markers: entry.markers !== false,
       chain: [owner],
@@ -82,6 +112,7 @@ async function expandContent(
   packageRoot: string,
   chain: string[],
   artifactPaths: Map<string, string>,
+  options: MarkdownIncludeOptions,
 ): Promise<{ content: string; composedFrom: ComposedFromEntry[] }> {
   const owner = chain[chain.length - 1] ?? "<unknown>";
   if (generatedPattern.test(content)) {
@@ -93,6 +124,7 @@ async function expandContent(
   for (const match of content.matchAll(includePattern)) {
     const selector = cleanSelector(match[2] ?? "");
     const included = await expandInclude(selector, packageRoot, artifactPaths, {
+      ...options,
       optional: match[1] === "?",
       markers: true,
       chain,
@@ -117,62 +149,109 @@ async function expandInclude(
   selector: string,
   packageRoot: string,
   artifactPaths: Map<string, string>,
-  options: { optional: boolean; markers: boolean; chain: string[] },
+  options: MarkdownIncludeOptions & { optional: boolean; markers: boolean; chain: string[] },
 ): Promise<{ rendered: string; composedFrom: ComposedFromEntry[] } | undefined> {
-  const parsed = parseIncludeSelector(selector);
-  if (options.chain.includes(parsed.selector)) {
-    throw new Error(`OpenPack include cycle: ${[...options.chain, parsed.selector].join(" -> ")}`);
+  const parsed = parseOpenPackIncludeSelector(selector);
+  let sourcePath: string;
+  let sourceContent: string | undefined;
+  let includePackageRoot = packageRoot;
+  let includeArtifactPaths = artifactPaths;
+  let includeNodeId = options.nodeId;
+  let displaySelector = displaySelectorForInclude(parsed.selector, options.nodeId, options.originNodeId);
+  if (parsed.alias) {
+    if (!options.nodeId || !options.resolveCrossPackageInclude) {
+      if (options.allowCrossPackage) return undefined;
+      throw new Error(`Cross-package includes require dependency graph support: ${parsed.alias}:${parsed.selector}`);
+    }
+    const resolved = await options.resolveCrossPackageInclude({
+      fromNodeId: options.nodeId,
+      alias: parsed.alias,
+      selector: parsed.selector,
+      optional: options.optional,
+    });
+    if (!resolved) return undefined;
+    sourcePath = resolved.sourcePath;
+    sourceContent = resolved.sourceContent;
+    includePackageRoot = resolved.packageRoot;
+    includeArtifactPaths = resolved.artifactPaths;
+    includeNodeId = resolved.toNodeId;
+    displaySelector = `${resolved.toNodeId}:${parsed.selector}`;
+  } else {
+    sourcePath = artifactPaths.get(parsed.selector) ?? resolvePackageSelector(packageRoot, parsed.selector);
   }
 
-  const sourcePath = artifactPaths.get(parsed.selector) ?? resolvePackageSelector(packageRoot, parsed.selector);
+  if (options.chain.includes(displaySelector)) {
+    throw new Error(`OpenPack include cycle: ${[...options.chain, displaySelector].join(" -> ")}`);
+  }
+
   if (!(await pathExists(sourcePath))) {
     if (options.optional) return undefined;
-    throw new Error(`OpenPack include not found: ${parsed.selector}`);
+    throw new Error(`OpenPack include not found: ${displaySelector}`);
   }
   const stats = await stat(sourcePath);
   if (!stats.isFile()) {
-    throw new Error(`OpenPack include is not a file: ${parsed.selector}`);
+    throw new Error(`OpenPack include is not a file: ${displaySelector}`);
   }
 
-  const raw = await readFile(sourcePath, "utf8");
-  const expanded = await expandContent(raw, packageRoot, [...options.chain, parsed.selector], artifactPaths);
+  const raw = sourceContent ?? await readFile(sourcePath, "utf8");
+  const { optional: _optional, markers: _markers, chain: _chain, ...childOptions } = options;
+  const expanded = await expandContent(raw, includePackageRoot, [...options.chain, displaySelector], includeArtifactPaths, {
+    ...childOptions,
+    nodeId: includeNodeId,
+  });
   const contentHash = sha256(expanded.content);
-  const ownEntry = { selector: parsed.selector, hash: contentHash };
+  const ownEntry = { selector: displaySelector, hash: contentHash };
   const composedFrom = uniqueComposedFrom([ownEntry, ...expanded.composedFrom]);
   if (!options.markers) return { rendered: expanded.content, composedFrom };
 
   return {
     rendered: [
-      `<!-- BEGIN openpack:include ${parsed.selector} sha256:${contentHash.slice(0, markerHashLength)} -->`,
+      `<!-- BEGIN openpack:include ${displaySelector} sha256:${contentHash.slice(0, markerHashLength)} -->`,
       expanded.content.trimEnd(),
-      `<!-- END openpack:include ${parsed.selector} -->`,
+      `<!-- END openpack:include ${displaySelector} -->`,
     ].join("\n"),
     composedFrom,
   };
 }
 
-function parseIncludeSelector(selector: string): { selector: string } {
+export function parseOpenPackIncludeSelector(selector: string): ParsedOpenPackIncludeSelector {
   const cleaned = cleanSelector(selector);
   const slash = cleaned.indexOf("/");
   const colon = cleaned.indexOf(":");
+  let alias: string | undefined;
+  let localSelector = cleaned;
   if (colon >= 0 && (slash < 0 || colon < slash)) {
-    throw new Error(`Cross-package includes require dependency support in Phase C: ${cleaned}`);
+    alias = cleaned.slice(0, colon);
+    if (!alias || alias.includes("/")) {
+      throw new Error(`Invalid OpenPack include alias: ${cleaned}`);
+    }
+    localSelector = cleaned.slice(colon + 1);
   }
-  if (slash <= 0 || slash === cleaned.length - 1) {
+  const localSlash = localSelector.indexOf("/");
+  if (localSlash <= 0 || localSlash === localSelector.length - 1) {
     throw new Error(`Invalid OpenPack include selector: ${cleaned}. Expected fragments/<path>.`);
   }
-  const type = cleaned.slice(0, slash);
+  const type = localSelector.slice(0, localSlash);
   const parsedType = artifactTypeSchema.safeParse(type);
   if (!parsedType.success) {
     throw new Error(`Invalid OpenPack include type: ${type}`);
   }
   if (parsedType.data !== "fragments") {
-    throw new Error(`OpenPack includes may inline only fragments in Phase A: ${cleaned}`);
+    throw new Error(`OpenPack includes may inline only fragments: ${cleaned}`);
   }
-  if (cleaned.includes("\\") || cleaned.split("/").some((part) => part === "." || part === ".." || part.length === 0)) {
+  if (localSelector.includes("\\") || localSelector.split("/").some((part) => part === "." || part === ".." || part.length === 0)) {
     throw new Error(`Invalid OpenPack include path: ${cleaned}`);
   }
-  return { selector: cleaned };
+  return { alias, selector: localSelector };
+}
+
+export function extractOpenPackIncludeSelectors(content: string): Array<{ selector: ParsedOpenPackIncludeSelector; optional: boolean; raw: string }> {
+  const selectors: Array<{ selector: ParsedOpenPackIncludeSelector; optional: boolean; raw: string }> = [];
+  for (const match of content.matchAll(includePattern)) {
+    const raw = cleanSelector(match[2] ?? "");
+    selectors.push({ selector: parseOpenPackIncludeSelector(raw), optional: match[1] === "?", raw });
+  }
+  return selectors;
 }
 
 function resolvePackageSelector(packageRoot: string, selector: string): string {
@@ -232,6 +311,16 @@ function applyReplacements(content: string, replacements: Array<{ start: number;
 
 function relativeSelector(root: string, file: string): string {
   return relative(root, file).replaceAll("\\", "/");
+}
+
+function ownerSelector(root: string, file: string, nodeId: string | undefined): string {
+  const selector = relativeSelector(root, file);
+  return nodeId ? `${nodeId}:${selector}` : selector;
+}
+
+function displaySelectorForInclude(selector: string, nodeId: string | undefined, originNodeId: string | undefined): string {
+  if (nodeId && originNodeId && nodeId !== originNodeId) return `${nodeId}:${selector}`;
+  return selector;
 }
 
 function cleanSelector(value: string): string {

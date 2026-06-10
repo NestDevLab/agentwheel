@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="agentwheel keeps agent skills, rules, and instructions in sync across runtimes.">
+  <meta name="description" content="agentwheel installs OpenPack packages — skills, rules, and instructions with dependencies and composition — into every AI agent runtime, resolved, locked, and kept in sync.">
   <title>agentwheel - One source. Every agent.</title>
   <link rel="icon" href="./favicon.png" type="image/png">
   <style>
@@ -449,11 +449,12 @@
         <span>agentwheel</span>
       </a>
       <nav class="nav" aria-label="Primary">
+        <a href="#openpack">OpenPack</a>
         <a href="#features">Features</a>
         <a href="#how">How it works</a>
-        <a href="#docs">Docs</a>
-        <a href="#adapters">Adapters</a>
         <a href="#packages">Packages</a>
+        <a href="#adapters">Adapters</a>
+        <a href="#docs">Docs</a>
         <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
       </nav>
@@ -463,9 +464,9 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> early v0.7 Claude + Codex adapters</span>
+          <span class="eyebrow"><span class="dot"></span> v0.8 — OpenPack dependencies &amp; composition</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
-          <p class="subhead">agentwheel turns skills, rules, and instructions into a clean, drift-aware sync flow for the agent runtimes your team actually uses.</p>
+          <p class="subhead">agentwheel installs OpenPack packages — skills, rules, and instructions with real dependencies — into every agent runtime your team uses: resolved, locked, and kept in sync.</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/NestDevLab/agentwheel">GitHub repo</a>
             <a class="button secondary" href="#get-started">Get started</a>
@@ -483,8 +484,39 @@
 <span class="prompt">$</span> cd ~/.openclaw
 <span class="prompt">$</span> agentwheel sync --dry-run
 <span class="prompt">$</span> agentwheel sync
-<span class="muted"># managed files stay managed; local overlays stay yours</span></code></pre>
+<span class="muted"># dependencies resolved &amp; locked · managed files stay managed · overlays stay yours</span></code></pre>
       </div>
+
+      <section id="openpack">
+        <h2 class="section-title">Built on OpenPack — packages that depend on packages.</h2>
+        <p class="intro-text">OpenPack is the vendor-neutral package format behind agentwheel: one manifest for skills, rules, instructions, and shared fragments — with dependencies, composition, and runtime targeting. Any tool can implement the <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">spec</a>; agentwheel is the reference implementation.</p>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">G</div>
+            <h3>Dependency graph, locked</h3>
+            <p>Packages require other packages. agentwheel resolves the full graph recursively, dedupes npm-style where versions are satisfiable, and writes a deterministic graph lock — every machine installs the same thing.</p>
+            <div class="pill-list">
+              <span class="pill">requires</span><span class="pill">semver</span><span class="pill">graph lock</span><span class="pill">deps tree · why</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">∞</div>
+            <h3>Fragment composition</h3>
+            <p>Keep one canonical copy of shared guidance and transclude it at sync time with <code>&lt;!-- openpack:include --&gt;</code> markers — within a package or across dependencies, with provenance and drift detection on the result.</p>
+            <div class="pill-list">
+              <span class="pill">fragments</span><span class="pill">include markers</span><span class="pill">asset-includes</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">⛨</div>
+            <h3>Trust &amp; offline</h3>
+            <p>New transitive sources never install silently — approve them once, pin a workspace trust policy, or deny artifact types outright. <code>--frozen-lock</code> and <code>--offline</code> give reproducible, zero-network installs.</p>
+            <div class="pill-list">
+              <span class="pill">trust policy</span><span class="pill">--offline</span><span class="pill">--frozen-lock</span>
+            </div>
+          </article>
+        </div>
+      </section>
 
       <section id="features">
         <h2 class="section-title">Everything your agent stack needs to stay aligned.</h2>
@@ -494,13 +526,13 @@
             <h3>Full artifact model</h3>
             <p>Install every common agent asset type without collapsing them into one generic file.</p>
             <div class="pill-list">
-              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">plugins</span>
+              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">fragments</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span>
             </div>
           </article>
           <article class="card">
             <div class="icon">S</div>
-            <h3>Drift-aware sync</h3>
-            <p>Plan first, then apply. Hash manifests track managed output, detect drift, and keep updates idempotent.</p>
+            <h3>Drift-aware, transactional sync</h3>
+            <p>Plan first, then apply atomically. Hash manifests track managed output, detect drift, journal every apply for recovery, and keep updates idempotent.</p>
           </article>
           <article class="card">
             <div class="icon">A</div>
@@ -516,19 +548,14 @@
             <p>Consume local paths, git packages, SkillKit sources, and Vercel-style skills without making the registry mandatory.</p>
           </article>
           <article class="card">
-            <div class="icon">R</div>
-            <h3>Asset-includes</h3>
-            <p>Compose shared files into self-contained skills at staging time, preserving executable bits and hashing the final bundle.</p>
-          </article>
-          <article class="card">
             <div class="icon">T</div>
             <h3>Selective installs</h3>
             <p>Install the exact artifacts you want with <code>--select</code> or <code>--skill</code>, while package-declared required artifacts stay protected.</p>
           </article>
           <article class="card">
             <div class="icon">P</div>
-            <h3>Runtime targeting</h3>
-            <p>Run inside a runtime folder with no target flag, or sync a named fleet with <code>--agent</code>, <code>--all</code>, and profiles.</p>
+            <h3>Runtime targeting &amp; fleet</h3>
+            <p>Run inside a runtime folder with no target flag, or sync a named fleet — local and SSH — with <code>--agent</code>, <code>--all</code>, and profiles.</p>
           </article>
         </div>
       </section>
@@ -538,12 +565,12 @@
         <div class="flow">
           <div class="step">
             <strong>Author package</strong>
-            <span>Skills, rules, instructions, and future artifacts live upstream.</span>
+            <span>Skills, rules, instructions, and fragments live upstream — with declared dependencies on other packages.</span>
           </div>
           <div class="arrow">→</div>
           <div class="step">
             <strong>Workspace control plane</strong>
-            <span>.agentwheel stores locks, overlays, overrides, and local intent.</span>
+            <span>.agentwheel stores graph locks, overlays, overrides, trust decisions, and local intent.</span>
           </div>
           <div class="arrow">→</div>
           <div class="step">
@@ -560,6 +587,14 @@
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
             <strong>README</strong>
             <span>Quick start, concepts, roadmap, and supported commands.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">
+            <strong>OpenPack spec</strong>
+            <span>The vendor-neutral package format: manifest, selectors, composition, conformance levels.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/dependency-composition.md">
+            <strong>Dependency design</strong>
+            <span>Graph resolution, locks, conflict satisfaction, trust, and transactional apply.</span>
           </a>
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/DESIGN.md">
             <strong>DESIGN.md</strong>
@@ -608,7 +643,7 @@
 
       <section id="packages">
         <h2 class="section-title">How to add a package</h2>
-        <p class="intro-text">Package discovery is powered by the public <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>. The registry is optional, but it gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>. Packages can also use asset-includes to keep one canonical copy of shared scripts while installing self-contained skills.</p>
+        <p class="intro-text">A package is a git repo with an <code>openpack.json</code> manifest. Since v0.8 it can require other packages — agentwheel resolves and locks the whole graph. Discovery is powered by the optional <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>, which gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>; any git URL works without it.</p>
 
         <div class="flow">
           <div class="step">
@@ -625,6 +660,30 @@
             <strong>3 · Install by short name</strong>
             <span>Users run `agentwheel registry update`, then `agentwheel add &lt;name&gt;`.</span>
           </div>
+        </div>
+
+        <div class="code" aria-label="Dependencies example">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>openpack.json — dependencies &amp; fragments</span>
+          </div>
+          <pre><code>{
+  "schemaVersion": 2,
+  "name": "your-org/agent-pack",
+  "version": "1.0.0",
+  "requires": {
+    "core": {
+      "source": "github:your-org/core-pack",
+      "version": "^1.2.0",
+      "select": ["rules/safe-actions.md", "fragments/risk.md"]
+    }
+  },
+  "provides": [
+    { "type": "fragments", "path": "fragments" },
+    { "type": "skills", "path": "skills" }
+  ]
+}
+<span class="muted"># in a skill's markdown: &lt;!-- openpack:include core:fragments/risk.md --&gt;</span></code></pre>
         </div>
 
         <div class="code" aria-label="Registry entry example">
@@ -673,7 +732,7 @@
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.7) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
+        <p class="intro-text">agentwheel is early (v0.8) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
 
         <div class="code" aria-label="Install agentwheel">
           <div class="codebar">
@@ -704,6 +763,17 @@
           <pre><code><span class="prompt">$</span> cd ~/.openclaw
 <span class="prompt">$</span> agentwheel sync --dry-run    <span class="muted"># auto-detects the runtime target</span>
 <span class="prompt">$</span> agentwheel sync              <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
+        </div>
+
+        <div class="code" aria-label="Dependencies, trust, and offline">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>dependencies &amp; trust</span>
+          </div>
+          <pre><code><span class="prompt">$</span> agentwheel sync --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
+<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
+<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
+<span class="prompt">$</span> agentwheel sync --offline                     <span class="muted"># zero network, straight from the lock</span></code></pre>
         </div>
 
         <div class="code" aria-label="Fleet targeting">
@@ -738,7 +808,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.7.</span>
+      <span>agentwheel is early / v0.8.</span>
       <a href="https://github.com/NestDevLab/agentwheel">github.com/NestDevLab/agentwheel</a>
     </footer>
   </div>

@@ -33,11 +33,12 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 
 ---
 
-> **Status: early (v0.7).** The lifecycle core is real and tested — local/git/skillkit/vercel
+> **Status: early (v0.8).** The lifecycle core is real and tested — local/git/skillkit/vercel
 > sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
 > profiles, runtime auto-detection, fleet targeting, asset-includes, selective installs,
 > update notifications, full Claude/Codex adapters, rich JSON/TOML merge, and pluggable adapters.
-> Expect sharp edges.
+> New in v0.8: [OpenPack](docs/spec/openpack.md) — package dependencies with a locked graph,
+> fragment composition, trust policy, and offline mode. Expect sharp edges.
 
 ## What it does
 
@@ -45,6 +46,8 @@ No lock-in. No central gatekeeper. Your packages live in plain git repos, your c
 - **Keeps them in sync** — re-runnable, idempotent, with a manifest and drift detection so nothing silently clobbers your work.
 - **Pluggable adapters** — each runtime is described by a small config; add your own without forking.
 - **Pluggable sources** — pull packages from local paths, git, or skill ecosystems.
+- **Dependencies & composition** — packages can require other packages; agentwheel resolves the
+  full graph, locks it, and composes shared fragments at sync time.
 - **Your customizations are first-class** — layer, extend, override, or take full ownership, and survive updates.
 
 ## Quick start
@@ -219,6 +222,54 @@ belonged to the skill.
 Publish by pushing to any git host. A registry exists only for short names and discovery — it's
 optional, and `agentwheel add <url|path>` always works without it.
 
+## Dependencies & composition (OpenPack)
+
+Since v0.8 the package format is [**OpenPack**](docs/spec/openpack.md) — a vendor-neutral spec any
+tool can implement. With `schemaVersion: 2`, packages can depend on other packages and compose
+shared markdown fragments:
+
+```jsonc
+// openpack.json
+{
+  "schemaVersion": 2,
+  "name": "your-org/agent-pack",
+  "version": "1.0.0",
+  "requires": {
+    "core": {
+      "source": "github:your-org/core-pack",
+      "version": "^1.2.0",
+      "select": ["rules/safe-actions.md", "fragments/risk.md"]
+    }
+  },
+  "provides": [
+    { "type": "fragments", "path": "fragments" },
+    { "type": "skills", "path": "skills" }
+  ]
+}
+```
+
+- **Recursive resolution, locked.** `sync` resolves the whole dependency graph and writes a
+  deterministic graph lock under `.agentwheel/locks/`, so every machine installs the same thing.
+- **npm-style conflict satisfaction.** Compatible requirements dedupe and hoist; incompatible
+  *transitive* duplicates coexist under deterministic namespaced install names; conflicts between
+  packages you installed directly block with a clear error — nothing you chose is ever
+  auto-renamed.
+- **Fragment composition.** Markdown files can transclude shared fragments at sync time with
+  `<!-- openpack:include fragments/review-style.md -->` (or `core:fragments/risk.md` across
+  packages). Generated blocks carry provenance markers and are hashed for drift detection.
+  Skills are never inlined into other skills — required skills install as their own artifacts.
+- **Trust.** New transitive sources prompt before anything is fetched. Pre-approve with
+  `--trust <glob>` or `--yes`, set a workspace trust policy (`allow` patterns,
+  `denyArtifactTypes`, `requireReviewForTransitive`), and manage persisted decisions with
+  `agentwheel trust`.
+- **Offline & frozen installs.** `--frozen-lock` resolves strictly from the existing lock;
+  `--offline` additionally guarantees zero network — CI-friendly and reproducible.
+- **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why
+  <selector>` explains why an artifact is installed and how its install name was chosen.
+
+Migrating an existing package takes one command: `agentwheel package migrate` renames
+`agentwheel.json` to `openpack.json` and upgrades the schema.
+
 ## How to add a package
 
 The public package registry lives at
@@ -307,11 +358,14 @@ clear conversion format.
 - [x] **v0.5** — asset-includes compose shared files into skills at install time; executable bits preserved; hashes include composed assets.
 - [x] **v0.6** — selective installs with `--select`/`--skill`; required artifacts; cached npm update notifier.
 - [x] **v0.7** — full Claude/Codex adapters; Codex TOML MCP merge; subagent enumeration; `--skill` selector fix.
+- [x] **v0.8** — OpenPack: vendor-neutral spec (`openpack.json`, schemaVersion 2); recursive dependencies with a deterministic graph lock; npm-style conflict satisfaction + transitive namespacing; fragment composition with include markers; trust policy; `--offline` / `--frozen-lock`; `deps tree` / `deps why`; transactional apply; `package migrate`.
 
 ## Design docs
 
+- [`docs/spec/openpack.md`](docs/spec/openpack.md) — the OpenPack package spec (vendor-neutral).
 - [`DESIGN.md`](DESIGN.md) — architecture & module layout.
 - [`LIFECYCLE.md`](LIFECYCLE.md) — publish / install / update / customize model.
+- [`docs/design/dependency-composition.md`](docs/design/dependency-composition.md) — dependency & composition design.
 
 ## License
 

@@ -11,6 +11,7 @@ import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
+import { assertOperationContained } from "./path-safety.js";
 import {
   acquireApplyLock,
   localPathExists,
@@ -87,6 +88,7 @@ export async function recoverPendingApply(
     const entries: InstallManifestEntry[] = [];
     const startedByIndex = new Map(journal.completed.map((operation) => [operation.index, operation]));
     for (const [index, operation] of journal.operations.entries()) {
+      assertOperationContained(operation, journal.targetRoot);
       const started = startedByIndex.get(index);
       if (started?.completed || (started && await operationLanded(operation, transport))) {
         started.completed = true;
@@ -165,6 +167,7 @@ async function applyPlanTransactionally(
 
     const entries: InstallManifestEntry[] = [];
     for (const [index, operation] of plan.operations.entries()) {
+      assertOperationContained(operation, plan.targetRoot);
       const backup = isJournaledMutation(operation)
         ? await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport)
         : undefined;
@@ -210,6 +213,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
 
   const preserved = [...kept, ...skipped];
+  for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   const finalManifest = withManifestRevision({
     version: 2,

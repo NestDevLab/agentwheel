@@ -8,6 +8,7 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { normalizeOwners } from "./desired.js";
+import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
@@ -129,6 +130,7 @@ async function createPlanFromOperations(
   transport: TargetTransport,
   options: CombinedInstallPlanOptions,
 ): Promise<InstallPlan> {
+  for (const op of desiredOps) assertOperationContained(op, targetRoot);
   const migration = await migrateManifestForPlan(manifest, desiredOps, targetRoot, transport);
   const effectiveEntries = migration.entries;
   const manifestByPath = new Map(effectiveEntries.map((entry) => [entry.path, entry]));
@@ -254,6 +256,7 @@ async function createPlanFromOperations(
     }
   }
 
+  for (const operation of operations) assertOperationContained(operation, targetRoot);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   return {
     adapter: adapter.name,
@@ -493,6 +496,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
   if (!target?.enabled) return undefined;
   const metadata = operationMetadataFromDesired(artifact, meta);
   const installName = metadata.installName ?? artifact.name;
+  assertSafeInstallName(installName, `${artifact.type}/${artifact.name}`);
 
   if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
     const sourcePath = artifact.stagedPath ?? artifact.sourcePath;

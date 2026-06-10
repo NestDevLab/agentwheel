@@ -183,8 +183,17 @@ function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+interface WorkspaceAlias {
+  rootId: string;
+  rootNodeId: string;
+  selector: string;
+  installName: string;
+  reachable: Set<string>;
+}
+
 function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[] } {
   const aliases = workspaceAliases(graph);
+  validateAliasScopes(graph, artifacts, aliases);
   const decisions = new Map<string, GraphLockNamespacing>();
   const withAliases: ResolvedArtifact[] = artifacts.map((artifact) => {
     const alias = aliasForArtifact(artifact, graph, aliases);
@@ -245,29 +254,59 @@ function namespaceCandidate(artifact: ResolvedArtifact, level: 2 | 3 | 4): strin
   return `${slug}@${sanitizeInstallSegment(versionPart)}--${artifact.name}`;
 }
 
-function aliasForArtifact(artifact: ResolvedArtifact, graph: ResolvedGraph, aliases: Map<string, string>): string | undefined {
+function aliasForArtifact(artifact: ResolvedArtifact, graph: ResolvedGraph, aliases: WorkspaceAlias[]): string | undefined {
   const node = graph.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
-  const selector = `${artifact.type}/${artifact.name}`;
-  const keys = [
-    `${artifact.graphNodeId}:${selector}`,
-    node ? `${node.name}@${node.version}:${selector}` : undefined,
-    node ? `${node.name}:${selector}` : undefined,
-  ].filter((value): value is string => Boolean(value));
-  for (const key of keys) {
-    const alias = aliases.get(key);
-    if (alias) return alias;
+  for (const alias of aliases) {
+    if (!alias.reachable.has(artifact.graphNodeId)) continue;
+    if (aliasMatchesArtifact(alias.selector, artifact, node)) return alias.installName;
   }
   return undefined;
 }
 
-function workspaceAliases(graph: ResolvedGraph): Map<string, string> {
-  const aliases = new Map<string, string>();
+function workspaceAliases(graph: ResolvedGraph): WorkspaceAlias[] {
+  const aliases: WorkspaceAlias[] = [];
   for (const root of graph.roots) {
+    const reachable = reachableNodeIds(graph, root.graphNodeId);
     for (const [selector, installName] of Object.entries(root.aliases ?? {})) {
-      aliases.set(selector, installName);
+      aliases.push({ rootId: root.rootId, rootNodeId: root.graphNodeId, selector, installName, reachable });
     }
   }
   return aliases;
+}
+
+function validateAliasScopes(graph: ResolvedGraph, artifacts: ResolvedArtifact[], aliases: WorkspaceAlias[]): void {
+  for (const alias of aliases) {
+    const matching = artifacts.filter((artifact) => {
+      const node = graph.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
+      return aliasMatchesArtifact(alias.selector, artifact, node);
+    });
+    if (matching.length === 0 || matching.some((artifact) => alias.reachable.has(artifact.graphNodeId))) continue;
+    throw new Error(
+      `Workspace alias ${alias.selector} from ${alias.rootId} cannot rename artifacts outside that root's dependency graph: `
+      + matching.map((artifact) => artifact.logicalSelector).sort().join(", "),
+    );
+  }
+}
+
+function aliasMatchesArtifact(selector: string, artifact: ResolvedArtifact, node: ResolvedGraph["nodes"][number] | undefined): boolean {
+  const artifactSelector = `${artifact.type}/${artifact.name}`;
+  return selector === `${artifact.graphNodeId}:${artifactSelector}`
+    || (node !== undefined && selector === `${node.name}@${node.version}:${artifactSelector}`)
+    || (node !== undefined && selector === `${node.name}:${artifactSelector}`);
+}
+
+function reachableNodeIds(graph: ResolvedGraph, rootNodeId: string): Set<string> {
+  const reachable = new Set<string>();
+  const queue = [rootNodeId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    for (const edge of graph.edges) {
+      if (edge.from === id) queue.push(edge.to);
+    }
+  }
+  return reachable;
 }
 
 function installNameCollisionError(group: ResolvedArtifact[]): Error {

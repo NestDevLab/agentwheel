@@ -9,14 +9,24 @@ export interface CustomizationOptions {
   adapter: AdapterConfig;
   stageRoot: string;
   packageName?: string;
+  packageVersion?: string;
+  graphNodeId?: string;
+  packageNameAmbiguous?: boolean;
 }
 
 export async function applyCustomizations(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
   let next = [...artifacts];
-  next = await applyReplacements(next, options, "override");
-  next = await applyReplacements(next, options, "ejected");
+  next = await applyReplacements(next, options, "override", installableArtifactTypes());
+  next = await applyReplacements(next, options, "ejected", installableArtifactTypes());
   next = await applyAdditions(next, options);
   next = await applyInstructionOverlay(next, options);
+  return next.sort((a, b) => `${a.type}:${a.name}:${a.channel}`.localeCompare(`${b.type}:${b.name}:${b.channel}`));
+}
+
+export async function applyFragmentCustomizations(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
+  let next = [...artifacts];
+  next = await applyReplacements(next, options, "override", ["fragments"]);
+  next = await applyReplacements(next, options, "ejected", ["fragments"]);
   return next.sort((a, b) => `${a.type}:${a.name}:${a.channel}`.localeCompare(`${b.type}:${b.name}:${b.channel}`));
 }
 
@@ -85,41 +95,80 @@ async function applyReplacements(
   artifacts: Artifact[],
   options: CustomizationOptions,
   channel: "override" | "ejected",
+  artifactTypes: ArtifactType[],
 ): Promise<Artifact[]> {
   const packageName = options.packageName;
   if (!packageName) return artifacts;
-  const root = join(options.workspaceRoot, ".agentwheel", channel === "override" ? "overrides" : "ejected", ...packageName.split("/"));
-  if (!(await pathExists(root))) return artifacts;
 
   const byKey = new Map(artifacts.map((artifact) => [artifactKey(artifact), artifact]));
-  for (const type of ["instructions", "rules", "skills", "commands", "subagents", "mcp", "hooks", "settings", "plugins"] as ArtifactType[]) {
-    const typeRoot = join(root, type);
-    if (!(await pathExists(typeRoot))) continue;
-    for (const entry of await sortedDirEntries(typeRoot)) {
-      const full = join(typeRoot, entry.name);
-      const kind = entry.isDirectory() ? "dir" : "file";
-      const existing = byKey.get(`${type}:${entry.name}`);
-      const stagedPath = join(options.stageRoot, ".agentwheel-composed", channel, type, entry.name);
-      await mkdir(dirname(stagedPath), { recursive: true });
-      await cp(full, stagedPath, { recursive: kind === "dir", dereference: true });
-      byKey.set(`${type}:${entry.name}`, {
-        type,
-        name: entry.name,
-        sourcePath: full,
-        stagedPath,
-        relativePath: existing?.relativePath ?? join(type, entry.name),
-        kind,
-        hash: await hashPath(stagedPath),
-        packageName,
-        channel,
-      });
+  const roots = replacementRoots(options, channel);
+  if (roots.length === 0) return artifacts;
+  const seen = new Set<string>();
+
+  for (const { root, kind: rootKind } of roots) {
+    if (!(await pathExists(root))) continue;
+    if (rootKind === "package" && options.packageNameAmbiguous) {
+      throw new Error(
+        `Ambiguous ${channel} shorthand for ${packageName}; multiple graph nodes share this package name. `
+        + `Use .agentwheel/${channel === "override" ? "overrides" : "ejected"}/${options.graphNodeId}/... `
+        + `or .agentwheel/${channel === "override" ? "overrides" : "ejected"}/${packageName}@${options.packageVersion}/...`,
+      );
+    }
+    for (const type of artifactTypes) {
+      const typeRoot = join(root, type);
+      if (!(await pathExists(typeRoot))) continue;
+      for (const entry of await sortedDirEntries(typeRoot)) {
+        const artifactMapKey = `${type}:${entry.name}`;
+        if (seen.has(artifactMapKey)) continue;
+        seen.add(artifactMapKey);
+        const full = join(typeRoot, entry.name);
+        const artifactKind = entry.isDirectory() ? "dir" : "file";
+        const existing = byKey.get(artifactMapKey);
+        const stagedPath = join(options.stageRoot, ".agentwheel-composed", channel, type, entry.name);
+        await mkdir(dirname(stagedPath), { recursive: true });
+        await cp(full, stagedPath, { recursive: artifactKind === "dir", dereference: true });
+        byKey.set(artifactMapKey, {
+          ...existing,
+          type,
+          name: entry.name,
+          sourcePath: full,
+          stagedPath,
+          relativePath: existing?.relativePath ?? join(type, entry.name),
+          kind: artifactKind,
+          hash: await hashPath(stagedPath),
+          packageName,
+          channel,
+        });
+      }
     }
   }
   return [...byKey.values()];
 }
 
+function replacementRoots(
+  options: CustomizationOptions,
+  channel: "override" | "ejected",
+): Array<{ root: string; kind: "node" | "version" | "package" }> {
+  const stateDir = channel === "override" ? "overrides" : "ejected";
+  const roots: Array<{ root: string; kind: "node" | "version" | "package" }> = [];
+  if (options.graphNodeId) {
+    roots.push({ root: join(options.workspaceRoot, ".agentwheel", stateDir, ...options.graphNodeId.split("/")), kind: "node" });
+  }
+  if (options.packageName && options.packageVersion) {
+    roots.push({ root: join(options.workspaceRoot, ".agentwheel", stateDir, ...`${options.packageName}@${options.packageVersion}`.split("/")), kind: "version" });
+  }
+  if (options.packageName) {
+    roots.push({ root: join(options.workspaceRoot, ".agentwheel", stateDir, ...options.packageName.split("/")), kind: "package" });
+  }
+  return roots;
+}
+
 function artifactKey(artifact: Artifact): string {
   return `${artifact.type}:${artifact.name}`;
+}
+
+function installableArtifactTypes(): ArtifactType[] {
+  return ["instructions", "rules", "skills", "commands", "subagents", "mcp", "hooks", "settings", "plugins"];
 }
 
 async function sortedDirEntries(path: string) {

@@ -6,6 +6,10 @@ export const registryEntrySchema = z.object({
   type: z.enum(["package", "skill", "plugin", "mcp", "adapter"]).default("package"),
   description: z.string().default(""),
   tags: z.array(z.string().min(1)).default([]),
+  openpack: z.object({
+    schemaVersion: z.number().int().positive().optional(),
+    specVersion: z.string().min(1).optional(),
+  }).passthrough().optional(),
 });
 
 export const registryIndexSchema = z.union([

@@ -101,14 +101,24 @@ For a control-plane setup, define named agents in config. Global config lives at
 ```jsonc
 {
   "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "/Users/me/.openclaw-home" },
-    "docs-copilot": { "adapter": "copilot", "root": "/Users/me/projects/docs" }
+    "lab-openclaw": { "adapter": "openclaw", "root": "/Users/me/.openclaw-home", "transport": "local" },
+    "remote-codex": {
+      "adapter": "codex",
+      "root": "/home/agent/project",
+      "transport": "ssh",
+      "host": "agent-host.example",
+      "user": "agent",
+      "port": 22,
+      "identityFile": "~/.ssh/id_ed25519"
+    }
   },
   "profiles": {
-    "daily": [
-      { "agent": "lab-openclaw" },
-      { "agent": "docs-copilot" }
-    ]
+    "daily": {
+      "runtimes": [
+        { "agent": "lab-openclaw" },
+        { "agent": "remote-codex" }
+      ]
+    }
   }
 }
 ```
@@ -117,6 +127,16 @@ For a control-plane setup, define named agents in config. Global config lives at
 agentwheel sync --agent lab-openclaw
 agentwheel sync --all
 agentwheel sync --profile daily
+```
+
+SSH targets use the same manifest and drift model as local targets. `plan --dry-run` reads the
+remote install manifest and hashes remote files before deciding whether a file is up to date,
+drifted, or conflicting. SSH hosts need `ssh`, `tar`, and `node` available on `PATH`.
+
+To scaffold a control-plane example:
+
+```bash
+agentwheel init --fleet-example
 ```
 
 Target resolution order is exact: `--target-root` wins, then `--agent`, then auto-detect from the
@@ -139,9 +159,9 @@ Flow: **author + your workspace → `sync` → runtime**.
 A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 
 ```jsonc
-// agentwheel.json  (plain JSON or JSONC — both work)
+// openpack.json  (plain JSON or JSONC — both work; agentwheel.json remains a legacy alias)
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "your-org/agent-pack",
   "version": "0.1.0",
   "provides": [
@@ -204,7 +224,7 @@ optional, and `agentwheel add <url|path>` always works without it.
 The public package registry lives at
 [`NestDevLab/agentwheel-registry`](https://github.com/NestDevLab/agentwheel-registry).
 
-1. Create a public repo with `agentwheel.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
+1. Create a public repo with `openpack.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
 2. Open a pull request to `agentwheel-registry` that adds an entry to `index.json`.
 3. Users install by short name:
 

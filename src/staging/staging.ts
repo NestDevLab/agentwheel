@@ -6,14 +6,21 @@ import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
 import { hashPath } from "../utils/fs.js";
-import { applyCustomizations } from "./customize.js";
-import { filterArtifactsBySelection } from "../model/selection.js";
+import { expandMarkdownIncludes } from "../compose/markdown.js";
+import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
+import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface StagedBundle {
   root: string;
   source: ResolvedSource;
   artifacts: Artifact[];
   sourceLock: SourceLock;
+}
+
+export interface RawStagedBundle {
+  root: string;
+  source: ResolvedSource;
+  artifacts: Artifact[];
 }
 
 export interface StageOptions extends SourceResolveOptions {
@@ -24,8 +31,20 @@ export interface StageOptions extends SourceResolveOptions {
 }
 
 export async function stageSource(driver: SourceDriver, source: string, options: StageOptions = {}): Promise<StagedBundle> {
+  return renderStagedBundle(await stageSourceRaw(driver, source, options), options);
+}
+
+export async function stageSourceRaw(driver: SourceDriver, source: string, options: SourceResolveOptions = {}): Promise<RawStagedBundle> {
   const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(source, options))));
+  return stageResolvedSourceRaw(driver, resolved);
+}
+
+export async function stageResolvedSourceRaw(driver: SourceDriver, resolved: ResolvedSource): Promise<RawStagedBundle> {
   const artifacts = await driver.list(resolved);
+  return stageResolvedArtifactsRaw(resolved, artifacts);
+}
+
+export async function stageResolvedArtifactsRaw(resolved: ResolvedSource, artifacts: Artifact[]): Promise<RawStagedBundle> {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-stage-"));
   const stagedArtifacts: Artifact[] = [];
 
@@ -42,16 +61,39 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     });
   }
 
-  const selectedArtifacts = filterArtifactsBySelection(stagedArtifacts, options.select, options.skills);
+  return {
+    root,
+    source: resolved,
+    artifacts: stagedArtifacts,
+  };
+}
 
-  const finalArtifacts = options.workspaceRoot && options.adapter
-    ? await applyCustomizations(selectedArtifacts, {
+export async function renderStagedBundle(bundle: RawStagedBundle, options: StageOptions = {}): Promise<StagedBundle> {
+  const { root, source: resolved, artifacts: stagedArtifacts } = bundle;
+  const preExpandedArtifacts = options.workspaceRoot && options.adapter
+    ? await applyFragmentCustomizations(stagedArtifacts, {
       workspaceRoot: options.workspaceRoot,
       adapter: options.adapter,
       stageRoot: root,
       packageName: resolved.packageName,
     })
+    : stagedArtifacts;
+
+  const expandedArtifacts = await expandMarkdownIncludes(preExpandedArtifacts, root);
+  const selectedArtifacts = filterArtifactsBySelection(expandedArtifacts, options.select, options.skills);
+  const runtimeSelectedSet = new Set(normalizeArtifactSelectors(options.select, options.skills) ?? []);
+  const runtimeArtifacts = options.adapter
+    ? filterArtifactsByRuntime(selectedArtifacts, options.adapter.name, runtimeSelectedSet)
     : selectedArtifacts;
+
+  const finalArtifacts = options.workspaceRoot && options.adapter
+    ? await applyCustomizations(runtimeArtifacts, {
+      workspaceRoot: options.workspaceRoot,
+      adapter: options.adapter,
+      stageRoot: root,
+      packageName: resolved.packageName,
+    })
+    : runtimeArtifacts;
 
   const generatedAt = new Date().toISOString();
   return {
@@ -76,9 +118,20 @@ export async function stageSource(driver: SourceDriver, source: string, options:
         relativePath: artifact.relativePath,
         kind: artifact.kind,
         hash: artifact.hash,
+        composedFrom: artifact.composedFrom,
       })),
     },
   };
+}
+
+function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string, selectedSet: Set<string>): Artifact[] {
+  return artifacts.filter((artifact) => {
+    if (!artifact.runtimes?.length || artifact.runtimes.includes(adapterName)) return true;
+    const selector = artifactSelectorKey(artifact);
+    const reason = selectedSet.has(selector) ? "selected but not targeted" : "not targeted";
+    console.warn(`skip (${reason}: runtimes=[${artifact.runtimes.join(",")}]) ${selector}`);
+    return false;
+  });
 }
 
 async function composeAssets(artifact: Artifact, packageRoot: string, stagedPath: string): Promise<void> {

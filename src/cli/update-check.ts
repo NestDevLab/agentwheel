@@ -56,6 +56,7 @@ function isDisabled(options: UpdateCheckOptions): boolean {
   if (env.AGENTWHEEL_NO_UPDATE_CHECK === "1" || env.AGENTWHEEL_NO_UPDATE_CHECK === "true") return true;
   if (env.CI) return true;
   if (options.argv?.includes("--no-update-check")) return true;
+  if (options.argv?.includes("--offline")) return true;
   const isTTY = options.isTTY ?? process.stderr.isTTY === true;
   return !isTTY;
 }

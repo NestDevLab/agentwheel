@@ -1,6 +1,6 @@
 {
   "name": "agentwheel",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Weave skills, rules, and instructions across every AI agent.",
   "type": "module",
   "license": "MIT",
@@ -29,6 +29,8 @@
   },
   "files": [
     "dist",
+    "skills",
+    "openpack.json",
     "README.md",
     "LICENSE"
   ],

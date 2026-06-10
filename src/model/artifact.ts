@@ -10,6 +10,7 @@ export const artifactTypeSchema = z.enum([
   "hooks",
   "settings",
   "plugins",
+  "fragments",
 ]);
 
 export type ArtifactType = z.infer<typeof artifactTypeSchema>;
@@ -25,6 +26,31 @@ export const packageAssetSchema = z.object({
 });
 export type PackageAsset = z.infer<typeof packageAssetSchema>;
 
+export const packageComposeEntrySchema = z.object({
+  include: z.string().min(1),
+  markers: z.boolean().optional(),
+  optional: z.boolean().optional(),
+});
+export type PackageComposeEntry = z.infer<typeof packageComposeEntrySchema>;
+
+export const packageItemRequireObjectSchema = z.object({
+  selector: z.string().min(1),
+  optional: z.boolean().optional(),
+  runtimes: z.array(z.string().min(1)).optional(),
+}).passthrough();
+
+export const packageItemRequireSchema = z.union([
+  z.string().min(1),
+  packageItemRequireObjectSchema,
+]);
+export type PackageItemRequire = z.infer<typeof packageItemRequireSchema>;
+
+export const composedFromEntrySchema = z.object({
+  selector: z.string().min(1),
+  hash: z.string().min(16),
+});
+export type ComposedFromEntry = z.infer<typeof composedFromEntrySchema>;
+
 export const artifactSchema = z.object({
   type: artifactTypeSchema,
   name: z.string().min(1),
@@ -37,6 +63,10 @@ export const artifactSchema = z.object({
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   assets: z.array(packageAssetSchema).optional(),
   required: z.boolean().optional(),
+  requires: z.array(packageItemRequireSchema).optional(),
+  compose: z.array(packageComposeEntrySchema).optional(),
+  runtimes: z.array(z.string().min(1)).optional(),
+  composedFrom: z.array(composedFromEntrySchema).optional(),
 });
 
 export type Artifact = z.infer<typeof artifactSchema>;

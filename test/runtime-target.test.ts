@@ -8,6 +8,7 @@ import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
 import { readMergedWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget } from "../src/runtime/target.js";
+import { localTransport, type TargetTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
 
@@ -77,8 +78,8 @@ describe("runtime target resolution", () => {
       registry: {},
       profiles: {},
       agents: {
-        lab: { adapter: "openclaw", root: globalAgentRoot },
-        globalOnly: { adapter: "hermes", root: join(globalRoot, "hermes") },
+        lab: { adapter: "openclaw", root: globalAgentRoot, transport: "local" },
+        globalOnly: { adapter: "hermes", root: join(globalRoot, "hermes"), transport: "local" },
       },
     });
     await writeWorkspaceConfig(project, {
@@ -87,12 +88,12 @@ describe("runtime target resolution", () => {
       registry: {},
       profiles: {},
       agents: {
-        lab: { adapter: "codex", root: projectAgentRoot },
+        lab: { adapter: "codex", root: projectAgentRoot, transport: "local" },
       },
     });
 
     const merged = await readMergedWorkspaceConfig(project, { globalRoot });
-    expect(merged.agents.lab).toEqual({ adapter: "codex", root: projectAgentRoot });
+    expect(merged.agents.lab).toEqual({ adapter: "codex", root: projectAgentRoot, transport: "local" });
     expect(merged.agents.globalOnly?.adapter).toBe("hermes");
   });
 
@@ -108,8 +109,8 @@ describe("runtime target resolution", () => {
       registry: {},
       profiles: {},
       agents: {
-        alpha: { adapter: "openclaw", root: alpha },
-        beta: { adapter: "openclaw", root: beta },
+        alpha: { adapter: "openclaw", root: alpha, transport: "local" },
+        beta: { adapter: "openclaw", root: beta, transport: "local" },
       },
     });
 
@@ -138,7 +139,7 @@ describe("runtime target resolution", () => {
       registry: {},
       profiles: {},
       agents: {
-        named: { adapter: "hermes", root: agentRoot },
+        named: { adapter: "hermes", root: agentRoot, transport: "local" },
       },
     });
 
@@ -166,7 +167,7 @@ describe("runtime target resolution", () => {
       packages: [],
       registry: {},
       agents: {
-        alpha: { adapter: "openclaw", root: alpha },
+        alpha: { adapter: "openclaw", root: alpha, transport: "local" },
       },
       profiles: {
         default: {
@@ -183,5 +184,63 @@ describe("runtime target resolution", () => {
     });
     expect(results[0]?.targetRoot).toBe(alpha);
     await expect(stat(join(alpha, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+  });
+
+  it("resolves ssh agents without local path expansion", async () => {
+    const project = await tempRoot("agentwheel-ssh-agent-");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      profiles: {},
+      agents: {
+        remote: {
+          adapter: "codex",
+          root: "/srv/agent-runtime",
+          transport: "ssh",
+          host: "ct110.example.test",
+          user: "administrator",
+          port: 2222,
+          identityFile: ".ssh/id_ed25519",
+        },
+      },
+    });
+
+    const target = await resolveRuntimeTarget({ cwd: project, agent: "remote" });
+    expect(target.adapter).toBe("codex");
+    expect(target.targetRoot).toBe("/srv/agent-runtime");
+    expect(target.transport).toBe("ssh");
+    expect(target.ssh).toEqual({
+      host: "ct110.example.test",
+      user: "administrator",
+      port: 2222,
+      identityFile: join(project, ".ssh/id_ed25519"),
+    });
+  });
+
+  it("can plan and apply through a non-local target transport", async () => {
+    const project = await tempRoot("agentwheel-transport-project-");
+    const source = await tempRoot("agentwheel-transport-source-");
+    const remoteRoot = join(project, "remote-root");
+    await writePackage(source);
+
+    const transport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+    };
+
+    const result = await createSourcePlan({
+      source,
+      targetRoot: remoteRoot,
+      workspaceRoot: project,
+      adapter: openClawAdapter,
+      transport,
+    });
+    await applyInstallPlan(result.plan, result.bundle.sourceLock, { transport });
+    await rm(result.bundle.root, { recursive: true, force: true });
+
+    await expect(stat(join(remoteRoot, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(remoteRoot, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
   });
 });

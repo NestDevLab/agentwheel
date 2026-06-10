@@ -98,6 +98,27 @@ describe("lifecycle core", () => {
     expect(pinned.source.resolvedCommit).toBe(commit1);
   });
 
+  it("uses a filesystem lock around git cache mutation", async () => {
+    const repo = await tempRoot("agentwheel-git-lock-src-");
+    await writePackage(repo, { coreRule: "# locked\n" });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "locked"]);
+
+    const workspace = await tempRoot("agentwheel-git-lock-ws-");
+    const driver = new GitSourceDriver();
+    const resolved = await driver.resolve(`git:${repo}#main`, {
+      cacheRoot: join(workspace, ".agentwheel", "cache"),
+      mode: "tracking",
+      cacheLockTimeoutMs: 25,
+    });
+    await mkdir(`${resolved.resolvedPath}.lock`, { recursive: true });
+
+    await expect(driver.fetch(resolved)).rejects.toThrow(/Timed out waiting for git cache lock/);
+  });
+
   it("decides update behavior for pinned and tracking packages", () => {
     const pinned = {
       name: "pkg",

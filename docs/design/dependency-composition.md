@@ -343,13 +343,16 @@ selection per node, every namespacing decision, runtime-targeting skips, ownersh
 keeps/removes, the one-shot migration report (first run only), and blocked updates behind drift.
 Output is target-group aware.
 
-Trust policy lives in `.agentwheel/config.json` under `trust`: `allow` source globs,
-`denyArtifactTypes`, `requireReviewForTransitive`, and persisted exact `acceptedSources`.
-`--trust` and `--yes` are additive CLI approvals; prompted/`--yes` decisions are remembered as
-exact sources until revoked with `agentwheel trust forget <pattern>`. `--offline` uses the graph
-lock plus local caches only and errors with the locked node/source that cannot be materialized.
-When a previous graph lock exists, sync/update output includes a concise graph diff for added,
-removed, moved, include-edge, and namespacing changes.
+Trust policy lives in merged workspace config under `trust`: `allow` source globs,
+`denyArtifactTypes`, and `requireReviewForTransitive`. Persisted first-use accepted sources are
+stored in a user-level trust store, not in project config, so a repository cannot pre-trust its
+own transitive dependencies. `--trust` and `--yes` are additive CLI approvals; prompted/`--yes`
+decisions are remembered as exact sources until revoked with `agentwheel trust forget <pattern>`.
+`--offline` uses the graph lock plus local caches only and errors with the locked node/source
+that cannot be materialized. When a previous graph lock exists, sync/update output includes a
+concise graph diff for added, removed, moved, include-edge, and namespacing changes. Persisted
+graph lock files omit volatile timestamps; timestamp-like diagnostics belong outside the lock
+bytes.
 
 Overrides/eject: the **canonical** form addresses an exact graph node id / source digest;
 `pkg/...` and `pkg@version/...` are accepted shorthand only when they resolve to exactly one
@@ -381,9 +384,10 @@ installed node — ambiguity is fatal and prints the exact disambiguated command
   transitive auto-namespacing policy; `aliases` in workspace config; `deps tree|why`; node-id
   override/eject with shorthand.
 - **Phase E — Trust & ergonomics polish.** Workspace trust policy (`allow`,
-  `denyArtifactTypes`, `requireReviewForTransitive`, persisted `acceptedSources` with
-  `trust forget`), broad `--offline` UX over graph locks and caches, graph diff polish on
-  sync/update, registry `openpack` compatibility metadata warnings. (The minimal
+  `denyArtifactTypes`, `requireReviewForTransitive`), user-level persisted accepted sources with
+  `trust forget`, broad `--offline` UX over graph locks and caches, graph diff polish on
+  sync/update, registry `openpack` compatibility metadata warnings, and byte-stable graph lock
+  files. (The minimal
   lock/frozen/integrity guarantees are **in Phase B** — deferring them was rejected at review.)
 - **Phase F — Later.** `reference`/`hybrid` compose modes for capable runtimes, content-dedupe,
   per-subentry merge ownership v2, capability-based requires (`{"capability": "..."}`).

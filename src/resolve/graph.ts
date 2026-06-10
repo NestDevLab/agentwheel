@@ -201,7 +201,6 @@ export function createGraphLock(
 
   return {
     version: 1,
-    generatedAt: graph.generatedAt,
     canonical: {
       targetFingerprint,
       roots,

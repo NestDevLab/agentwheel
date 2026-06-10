@@ -95,7 +95,7 @@ export const graphLockCanonicalSchema = z.object({
 
 export const graphLockSchema = z.object({
   version: z.literal(1),
-  generatedAt: z.string().datetime(),
+  generatedAt: z.string().datetime().optional(),
   canonical: graphLockCanonicalSchema,
 });
 
@@ -132,7 +132,6 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
   const parsed = graphLockSchema.parse(lock);
   return {
     version: 1,
-    generatedAt: parsed.generatedAt,
     canonical: {
       targetFingerprint: parsed.canonical.targetFingerprint,
       roots: [...parsed.canonical.roots]

@@ -3,6 +3,7 @@ import type { DependencyRole } from "../model/manifest.js";
 
 export interface DesiredEntryMeta {
   graphNodeId?: string;
+  installName?: string;
   logicalSelector?: string;
   dependencyRole?: DependencyRole;
   owners: string[];

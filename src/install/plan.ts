@@ -449,7 +449,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
   "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "composedFrom"
 > {
   return {
-    installName: artifact.name,
+    installName: meta.installName ?? artifact.name,
     logicalSelector: meta.logicalSelector ?? `${artifact.type}/${artifact.name}`,
     graphNodeId: meta.graphNodeId,
     dependencyRole: meta.dependencyRole ?? "root",
@@ -492,6 +492,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
   const target = adapter.targets[artifact.type];
   if (!target?.enabled) return undefined;
   const metadata = operationMetadataFromDesired(artifact, meta);
+  const installName = metadata.installName ?? artifact.name;
 
   if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
     const sourcePath = artifact.stagedPath ?? artifact.sourcePath;
@@ -502,7 +503,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
       kind: artifact.kind,
       sourcePath,
       destPath: targetRoot,
-      relativeDestPath: `plugins/${artifact.name}`,
+      relativeDestPath: `plugins/${installName}`,
       desiredHash: artifact.hash,
       reason: "semantic plugin install planned",
       channel: artifact.channel ?? "managed",
@@ -515,7 +516,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
 
   const destPath = artifact.type === "instructions" || artifact.type === "settings" || isFileTarget(target.dest)
     ? join(targetRoot, target.dest)
-    : join(targetRoot, target.dest, artifact.name);
+    : join(targetRoot, target.dest, installName);
 
   return {
     action: "create",

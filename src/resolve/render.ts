@@ -5,12 +5,13 @@ import { join } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
-import type { GraphLockArtifact, GraphLockIncludeEdge } from "../model/graph-lock.js";
+import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing } from "../model/graph-lock.js";
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
+import { semverMajorOrVersion } from "./semver.js";
 
 export interface GraphRenderTargetContext {
   workspaceRoot?: string;
@@ -26,6 +27,7 @@ export async function renderGraphForTarget(
   const artifacts: ResolvedArtifact[] = [];
   const stagedNodes = new Map<string, StagedGraphNode>();
   const includeEdges = new Map<string, GraphLockIncludeEdge>();
+  const ambiguousPackageNames = ambiguousGraphPackageNames(graph);
 
   for (const rawNode of graph.rawNodes) {
     if (rawNode.node.selected.length === 0) continue;
@@ -36,6 +38,9 @@ export async function renderGraphForTarget(
         adapter: targetContext.adapter,
         stageRoot: rawBundle.root,
         packageName: rawNode.resolved.packageName,
+        packageVersion: rawNode.resolved.packageVersion,
+        graphNodeId: rawNode.node.id,
+        packageNameAmbiguous: ambiguousPackageNames.has(rawNode.node.name),
       })
       : rawBundle.artifacts;
     stagedNodes.set(rawNode.node.id, {
@@ -107,6 +112,9 @@ export async function renderGraphForTarget(
         adapter: targetContext.adapter,
         stageRoot: staged.root,
         packageName: rawNode.resolved.packageName,
+        packageVersion: rawNode.resolved.packageVersion,
+        graphNodeId: rawNode.node.id,
+        packageNameAmbiguous: ambiguousPackageNames.has(rawNode.node.name),
       })
       : runtimeArtifacts;
 
@@ -121,12 +129,13 @@ export async function renderGraphForTarget(
     } satisfies ResolvedArtifact)));
   }
 
-  const sortedArtifacts = artifacts.sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector));
+  const { artifacts: namedArtifacts, namespacing } = assignInstallNames(graph, artifacts);
+  const sortedArtifacts = namedArtifacts.sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector));
   return {
     root,
     nodes: graph.nodes,
     artifacts: sortedArtifacts,
-    graphLock: createGraphLock(graph, sortedArtifacts.map(lockArtifactFor), targetContext.targetFingerprint, [...includeEdges.values()]),
+    graphLock: createGraphLock(graph, sortedArtifacts.map(lockArtifactFor), targetContext.targetFingerprint, [...includeEdges.values()], namespacing),
   };
 }
 
@@ -140,6 +149,11 @@ interface StagedGraphNode {
 
 function aliasEdgeMap(graph: ResolvedGraph): Map<string, { to: string }> {
   return new Map(graph.edges.map((edge) => [`${edge.from}\0${edge.alias}`, { to: edge.to }]));
+}
+
+function ambiguousGraphPackageNames(graph: ResolvedGraph): Set<string> {
+  const byName = groupBy(graph.nodes, (node) => node.name);
+  return new Set([...byName.entries()].filter(([, nodes]) => nodes.length > 1).map(([name]) => name));
 }
 
 function artifactPathMap(artifacts: Artifact[]): Map<string, string> {
@@ -167,6 +181,136 @@ function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string, se
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[] } {
+  const aliases = workspaceAliases(graph);
+  const decisions = new Map<string, GraphLockNamespacing>();
+  const withAliases: ResolvedArtifact[] = artifacts.map((artifact) => {
+    const alias = aliasForArtifact(artifact, graph, aliases);
+    if (!alias) return artifact;
+    const updated = { ...artifact, installName: alias };
+    decisions.set(decisionKey(updated), namespaceDecision(updated, "alias"));
+    return updated;
+  });
+
+  const collisionGroups = [...groupBy(withAliases, (artifact) => `${artifact.type}\0${artifact.installName}`).values()]
+    .filter((group) => group.length > 1);
+  const toRename = new Set<ResolvedArtifact>();
+  for (const group of collisionGroups) {
+    if (group.some((artifact) => decisions.has(decisionKey(artifact)))) throw installNameCollisionError(group);
+    const pinned = group.filter((artifact) => artifact.dependencyRole !== "transitive");
+    if (pinned.length > 1) throw installNameCollisionError(group);
+    for (const artifact of group) {
+      if (artifact.dependencyRole === "transitive") toRename.add(artifact);
+    }
+  }
+
+  const used = new Map<string, ResolvedArtifact>();
+  for (const artifact of withAliases) {
+    if (toRename.has(artifact)) continue;
+    used.set(`${artifact.type}\0${artifact.installName}`, artifact);
+  }
+
+  const out = withAliases.filter((artifact) => !toRename.has(artifact));
+  for (const group of groupBy([...toRename], (artifact) => `${artifact.type}\0${artifact.name}`).values()) {
+    const renamed = namespaceTransitiveGroup(group, used);
+    for (const artifact of renamed) {
+      decisions.set(decisionKey(artifact), namespaceDecision(artifact, "transitive-collision"));
+      used.set(`${artifact.type}\0${artifact.installName}`, artifact);
+      out.push(artifact);
+    }
+  }
+
+  return { artifacts: out, namespacing: [...decisions.values()] };
+}
+
+function namespaceTransitiveGroup(group: ResolvedArtifact[], used: Map<string, ResolvedArtifact>): ResolvedArtifact[] {
+  const sorted = [...group].sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector));
+  for (const level of [2, 3, 4] as const) {
+    const candidates = sorted.map((artifact) => ({ artifact, installName: namespaceCandidate(artifact, level) }));
+    const candidateKeys = candidates.map(({ artifact, installName }) => `${artifact.type}\0${installName}`);
+    if (new Set(candidateKeys).size !== candidateKeys.length) continue;
+    if (candidateKeys.some((key) => used.has(key))) continue;
+    return candidates.map(({ artifact, installName }) => ({ ...artifact, installName }));
+  }
+  throw new Error(`Could not choose unique transitive namespace for ${sorted.map((artifact) => artifact.logicalSelector).join(", ")}`);
+}
+
+function namespaceCandidate(artifact: ResolvedArtifact, level: 2 | 3 | 4): string {
+  const slug = packageSlug(artifact.packageName ?? artifact.graphNodeId.split("@")[0] ?? "package");
+  if (level === 2) return `${slug}--${artifact.name}`;
+  const version = versionFromGraphNodeId(artifact.graphNodeId);
+  const versionPart = level === 3 ? semverMajorOrVersion(version) : `${version}+${artifact.graphNodeId.split("+").pop()?.slice(0, 8) ?? "source"}`;
+  return `${slug}@${sanitizeInstallSegment(versionPart)}--${artifact.name}`;
+}
+
+function aliasForArtifact(artifact: ResolvedArtifact, graph: ResolvedGraph, aliases: Map<string, string>): string | undefined {
+  const node = graph.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
+  const selector = `${artifact.type}/${artifact.name}`;
+  const keys = [
+    `${artifact.graphNodeId}:${selector}`,
+    node ? `${node.name}@${node.version}:${selector}` : undefined,
+    node ? `${node.name}:${selector}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  for (const key of keys) {
+    const alias = aliases.get(key);
+    if (alias) return alias;
+  }
+  return undefined;
+}
+
+function workspaceAliases(graph: ResolvedGraph): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const root of graph.roots) {
+    for (const [selector, installName] of Object.entries(root.aliases ?? {})) {
+      aliases.set(selector, installName);
+    }
+  }
+  return aliases;
+}
+
+function installNameCollisionError(group: ResolvedArtifact[]): Error {
+  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}: ${group.map((artifact) => artifact.logicalSelector).sort().join(" vs ")}`);
+}
+
+function namespaceDecision(artifact: ResolvedArtifact, reason: GraphLockNamespacing["reason"]): GraphLockNamespacing {
+  return {
+    graphNodeId: artifact.graphNodeId,
+    type: artifact.type,
+    name: artifact.name,
+    installName: artifact.installName,
+    reason,
+  };
+}
+
+function decisionKey(artifact: ResolvedArtifact): string {
+  return `${artifact.graphNodeId}\0${artifact.type}\0${artifact.name}`;
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const item of items) {
+    const values = out.get(key(item)) ?? [];
+    values.push(item);
+    out.set(key(item), values);
+  }
+  return out;
+}
+
+function packageSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "package";
+}
+
+function sanitizeInstallSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._+-]+/g, "-").replace(/^-+|-+$/g, "") || "version";
+}
+
+function versionFromGraphNodeId(nodeId: string): string {
+  const at = nodeId.lastIndexOf("@");
+  const plus = nodeId.lastIndexOf("+");
+  if (at < 0 || plus < at) return "0.0.0";
+  return nodeId.slice(at + 1, plus);
 }
 
 function dependencyRole(node: ResolvedGraphRawNode, type: string): ResolvedArtifact["dependencyRole"] {

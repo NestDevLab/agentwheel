@@ -165,6 +165,7 @@ function desiredArtifactFromResolved(artifact: ResolvedArtifact): DesiredArtifac
     ...artifact,
     meta: {
       graphNodeId: artifact.graphNodeId,
+      installName: artifact.installName,
       logicalSelector: artifact.logicalSelector,
       dependencyRole: artifact.dependencyRole,
       owners: artifact.owners,

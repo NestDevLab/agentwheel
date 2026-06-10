@@ -27,6 +27,7 @@ export interface ApplyJournalCompletedOperation {
 
 export interface ApplyJournal {
   version: 1;
+  mode?: "apply" | "uninstall";
   adapter: string;
   targetRoot: string;
   baseRevision: string | null;
@@ -39,6 +40,9 @@ export interface ApplyJournal {
   sourceLock?: SourceLock;
   graphLockPath?: string;
   graphLock?: GraphLock;
+  graphLockRemovePath?: string;
+  workspaceConfigPath?: string;
+  workspaceConfig?: unknown;
 }
 
 export function applyLockPath(targetRoot: string, adapter: string): string {

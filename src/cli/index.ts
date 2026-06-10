@@ -9,11 +9,11 @@ import { formatGraphPlan, formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
-import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, writeWorkspaceConfig } from "../model/workspace.js";
+import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
-import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, graphLockPathForTarget, writeGraphSourceLock } from "../lifecycle/source-plan.js";
+import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, graphLockPathForTarget } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
@@ -651,29 +651,31 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
     const plan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, { graphLockDigest: remainingGraphPlan?.graphLockDigest });
     console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
     console.log(formatPlan(plan));
-    const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force, transport });
+    const graphLockFinalState = remainingGraphPlan
+      ? { graphLock: { path: remainingGraphPlan.graphLockPath, lock: remainingGraphPlan.bundle.graphLock } }
+      : {
+          removeGraphLockPath: graphLockPathForTarget(
+            removedTarget.workspaceRoot,
+            removedTarget.agentName ?? removedTarget.source,
+            adapter.name,
+            targetFingerprintParts(removedTarget, adapter, removedAdapterOptions),
+          ),
+        };
+    const result = await uninstall(plan, {
+      dryRun: options.dryRun,
+      force: options.force,
+      transport,
+      ...graphLockFinalState,
+      workspaceConfig: {
+        path: workspaceConfigPath(target.workspaceRoot),
+        data: { ...config, packages: remaining },
+      },
+    });
     if (!options.dryRun) {
       console.log(formatUninstallResult(result));
-      if (remainingGraphPlan) {
-        await writeGraphSourceLock(remainingGraphPlan);
-      } else {
-        await rm(graphLockPathForTarget(
-          removedTarget.workspaceRoot,
-          removedTarget.agentName ?? removedTarget.source,
-          adapter.name,
-          targetFingerprintParts(removedTarget, adapter, removedAdapterOptions),
-        ), { force: true });
-      }
     }
     if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
     if (plan.hasBlockingChanges) process.exitCode = 1;
-  }
-
-  if (!options.dryRun) {
-    await writeWorkspaceConfig(target.workspaceRoot, {
-      ...config,
-      packages: remaining,
-    });
   }
 }
 

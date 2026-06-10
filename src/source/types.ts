@@ -11,6 +11,7 @@ export interface ResolvedSource {
   resolvedCommit?: string;
   sourceHash?: string;
   frozenLock?: boolean;
+  cacheLockTimeoutMs?: number;
 }
 
 export interface ScanFinding {
@@ -39,4 +40,5 @@ export interface SourceResolveOptions {
   mode?: "pinned" | "tracking";
   ref?: string;
   frozenLock?: boolean;
+  cacheLockTimeoutMs?: number;
 }

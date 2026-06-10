@@ -25,11 +25,12 @@ export class GitSourceDriver implements SourceDriver {
       mode,
       requestedRef,
       frozenLock: options.frozenLock,
+      cacheLockTimeoutMs: options.cacheLockTimeoutMs,
     };
   }
 
   async fetch(resolved: ResolvedSource): Promise<ResolvedSource> {
-    return withFilesystemLock(`${resolved.resolvedPath}.lock`, async () => {
+    return withFilesystemLock(`${resolved.resolvedPath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const parsed = parseGitSource(resolved.source);
       await mkdir(resolve(resolved.resolvedPath, ".."), { recursive: true });
       if (!(await pathExists(join(resolved.resolvedPath, ".git")))) {
@@ -137,7 +138,7 @@ async function snapshotCheckout(checkoutPath: string, commit: string): Promise<s
   return snapshotPath;
 }
 
-async function withFilesystemLock<T>(lockPath: string, fn: () => Promise<T>): Promise<T> {
+async function withFilesystemLock<T>(lockPath: string, timeoutMs: number, fn: () => Promise<T>): Promise<T> {
   await mkdir(dirname(lockPath), { recursive: true });
   const started = Date.now();
   while (true) {
@@ -147,7 +148,7 @@ async function withFilesystemLock<T>(lockPath: string, fn: () => Promise<T>): Pr
       break;
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;
-      if (Date.now() - started > 30_000) {
+      if (Date.now() - started > timeoutMs) {
         throw new Error(`Timed out waiting for git cache lock at ${lockPath}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 50));

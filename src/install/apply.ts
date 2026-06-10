@@ -24,6 +24,7 @@ import {
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { normalizeOwners } from "./desired.js";
+import { writeJsonAtomic } from "../utils/fs.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -42,6 +43,16 @@ export interface UninstallOptions {
   dryRun?: boolean;
   force?: boolean;
   transport?: TargetTransport;
+  graphLock?: {
+    path: string;
+    lock: GraphLock;
+  };
+  removeGraphLockPath?: string;
+  workspaceConfig?: {
+    path: string;
+    data: unknown;
+  };
+  lock?: ApplyLockOptions;
 }
 
 export interface UninstallResult {
@@ -105,16 +116,7 @@ export async function recoverPendingApply(
       }
     }
 
-    const manifest = withManifestRevision({
-      ...journal.manifest,
-      generatedAt: now,
-      entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
-    });
-    if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
-    if (journal.sourceLock) await writeSourceLock(targetRoot, adapter, journal.sourceLock, transport);
-    await writeInstallManifest(manifest, transport);
-    await removeApplyJournal(targetRoot, adapter, transport);
-    return manifest;
+    return await commitJournalState(journal, transport, journal.mode === "uninstall" ? undefined : entries, now);
   } finally {
     await lock.release();
   }
@@ -184,15 +186,7 @@ async function applyPlanTransactionally(
       }
     }
 
-    const manifest = withManifestRevision({
-      ...journal.manifest,
-      entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
-    });
-    if (options.graphLock) await writeGraphLock(options.graphLock.path, options.graphLock.lock);
-    if (options.sourceLock) await writeSourceLock(plan.targetRoot, plan.adapter, options.sourceLock, transport);
-    await writeInstallManifest(manifest, transport);
-    await removeApplyJournal(plan.targetRoot, plan.adapter, transport);
-    return manifest;
+    return await commitJournalState(journal, transport, entries, now);
   } finally {
     await lock.release();
   }
@@ -205,43 +199,101 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     const blockers = plan.operations.filter((operation) => operation.action === "conflict");
     throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
-  const removable = plan.operations.filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"));
+  const removable = plan.operations
+    .filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"))
+    .map((operation) => operation.action === "keep"
+      ? { ...operation, action: "remove" as const, reason: `${operation.reason}; force removing drifted managed file` }
+      : operation);
   const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
   const skipped = plan.operations.filter((operation) => operation.action === "skip");
   const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
   if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
-  for (const operation of plan.operations) {
-    if (operation.action === "remove" || (resolvedOptions.force && operation.action === "keep")) {
-      await transport.rm(operation.destPath);
-    }
-  }
+
   const preserved = [...kept, ...skipped];
-  if (preserved.length > 0) {
-    const now = new Date().toISOString();
-    await writeInstallManifest({
-      version: 2,
+  const now = new Date().toISOString();
+  const finalManifest = withManifestRevision({
+    version: 2,
+    adapter: plan.adapter,
+    targetRoot: plan.targetRoot,
+    generatedAt: now,
+    revision: "pending-uninstall-0",
+    legacy: false,
+    adapterCode: plan.adapterCode,
+    entries: preserved.map((operation) => {
+      if (!operation.manifestHash || !operation.desiredHash) {
+        throw new Error(`Invalid preserved operation missing manifest/source hash: ${operation.relativeDestPath}`);
+      }
+      return manifestEntryForOperation(operation, {
+        now,
+        hash: operation.manifestHash,
+        sourceHash: operation.desiredHash,
+        graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
+      });
+    }).sort((a, b) => a.path.localeCompare(b.path)),
+  });
+
+  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, resolvedOptions.lock);
+  try {
+    await assertBaseRevision(plan, transport);
+    const journal: ApplyJournal = {
+      version: 1,
+      mode: "uninstall",
       adapter: plan.adapter,
       targetRoot: plan.targetRoot,
-      generatedAt: now,
-      revision: "pending-uninstall-0",
-      legacy: false,
-      adapterCode: plan.adapterCode,
-      entries: preserved.map((operation) => {
-        if (!operation.manifestHash || !operation.desiredHash) {
-          throw new Error(`Invalid preserved operation missing manifest/source hash: ${operation.relativeDestPath}`);
-        }
-        return manifestEntryForOperation(operation, {
-          now,
-          hash: operation.manifestHash,
-          sourceHash: operation.desiredHash,
-          graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
-        });
-      }).sort((a, b) => a.path.localeCompare(b.path)),
-    }, transport);
-  } else {
-    await removeStateFiles(plan.targetRoot, plan.adapter, transport);
+      baseRevision: plan.baseRevision,
+      graphLockDigest: plan.graphLockDigest,
+      createdAt: now,
+      updatedAt: now,
+      operations: removable,
+      completed: [],
+      manifest: finalManifest,
+      graphLockPath: resolvedOptions.graphLock?.path,
+      graphLock: resolvedOptions.graphLock?.lock,
+      graphLockRemovePath: resolvedOptions.removeGraphLockPath,
+      workspaceConfigPath: resolvedOptions.workspaceConfig?.path,
+      workspaceConfig: resolvedOptions.workspaceConfig?.data,
+    };
+    await writeApplyJournal(journal, transport);
+
+    for (const [index, operation] of removable.entries()) {
+      const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
+      journal.completed.push(backup);
+      await writeApplyJournal(journal, transport);
+      await applyOperation(operation, { transport, now, graphLockDigest: plan.graphLockDigest });
+      backup.completed = true;
+      await writeApplyJournal(journal, transport);
+    }
+
+    await commitJournalState(journal, transport, undefined, now);
+  } finally {
+    await lock.release();
   }
   return { removed: removable.length, kept: kept.length, removedDrifted };
+}
+
+async function commitJournalState(
+  journal: ApplyJournal,
+  transport: TargetTransport,
+  entries: InstallManifestEntry[] | undefined,
+  now: string,
+): Promise<InstallManifest> {
+  const manifest = withManifestRevision({
+    ...journal.manifest,
+    generatedAt: now,
+    entries: entries ? entries.sort((a, b) => a.path.localeCompare(b.path)) : journal.manifest.entries,
+  });
+
+  if (journal.mode === "uninstall" && manifest.entries.length === 0) {
+    await removeStateFiles(journal.targetRoot, journal.adapter, transport);
+  } else {
+    if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport);
+    await writeInstallManifest(manifest, transport);
+  }
+  if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
+  if (journal.graphLockRemovePath) await rm(journal.graphLockRemovePath, { force: true });
+  if (journal.workspaceConfigPath && journal.workspaceConfig) await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
+  await removeApplyJournal(journal.targetRoot, journal.adapter, transport);
+  return manifest;
 }
 
 async function applyOperation(

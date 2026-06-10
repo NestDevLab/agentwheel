@@ -7,7 +7,7 @@ import { codexAdapter } from "../src/adapters/codex.js";
 import { applyCombinedInstallPlan, createOwnershipUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, writeGraphSourceLock } from "../src/lifecycle/source-plan.js";
-import { writeWorkspaceConfig } from "../src/model/workspace.js";
+import { readWorkspaceConfig, workspaceConfigPath, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { pathExists } from "../src/utils/fs.js";
 
 const tempRoots: string[] = [];
@@ -269,5 +269,96 @@ describe("OpenPack phase B dogfood", () => {
     expect(manifest.entries.find((entry) => entry.artifactName === "shared.md")?.owners).toHaveLength(2);
     const lockDir = join(workspace, ".agentwheel", "locks", "claude", "claude");
     expect((await readdir(lockDir)).some((name) => name.endsWith(".graph-lock.json"))).toBe(true);
+  });
+
+  it("does not reinstall a package after package uninstall persists the requested set", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-b3-uninstall-sync-");
+    const shared = join(workspace, "shared");
+    const rootA = join(workspace, "root-a");
+    const rootB = join(workspace, "root-b");
+
+    await writeText(join(shared, "rules", "shared.md"), "# Shared\n");
+    await writeText(join(rootA, "rules", "root-a.md"), "# Root A\n");
+    await writeText(join(rootB, "rules", "root-b.md"), "# Root B\n");
+    await writeOpenPack(shared, { name: "uninstall/shared" });
+    await writeOpenPack(rootA, {
+      name: "uninstall/root-a",
+      requires: { shared: { source: "../shared", select: ["rules/shared.md"] } },
+    });
+    await writeOpenPack(rootB, {
+      name: "uninstall/root-b",
+      requires: { shared: { source: "../shared", select: ["rules/shared.md"] } },
+    });
+    const config = {
+      schemaVersion: 1 as const,
+      registry: {},
+      packages: [
+        { name: "root-a", source: rootA, driver: "local" as const, adapter: "claude", mode: "pinned" as const },
+        { name: "root-b", source: rootB, driver: "local" as const, adapter: "claude", mode: "pinned" as const },
+      ],
+      profiles: {},
+      agents: {},
+    };
+    await writeWorkspaceConfig(workspace, config);
+
+    const combined = await createGraphSourcePlan({
+      roots: config.packages.map((pkg) => ({ rootId: pkg.name, source: pkg.source })),
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "uninstall-sync",
+      yes: true,
+    });
+    await applyCombinedInstallPlan(combined.plan, {
+      graphLockDigest: combined.graphLockDigest,
+      graphLock: { path: combined.graphLockPath, lock: combined.bundle.graphLock },
+    });
+    const manifest = await readInstallManifest(target, claudeAdapter.name);
+    if (manifest?.version !== 2) throw new Error("expected v2 manifest");
+
+    const remaining = await createGraphSourcePlan({
+      roots: [{ rootId: "root-b", source: rootB }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "uninstall-sync",
+      yes: true,
+    });
+    const uninstallPlan = await createOwnershipUninstallPlan(
+      manifest,
+      desiredArtifactsFromGraphBundle(remaining.bundle),
+      claudeAdapter,
+      undefined,
+      { graphLockDigest: remaining.graphLockDigest },
+    );
+    await uninstall(uninstallPlan, {
+      graphLock: { path: remaining.graphLockPath, lock: remaining.bundle.graphLock },
+      workspaceConfig: {
+        path: workspaceConfigPath(workspace),
+        data: { ...config, packages: [config.packages[1]!] },
+      },
+    });
+
+    expect((await readWorkspaceConfig(workspace)).packages.map((pkg) => pkg.name)).toEqual(["root-b"]);
+    await expect(stat(join(target, ".claude", "rules", "root-a.md"))).rejects.toThrow();
+
+    const nextConfig = await readWorkspaceConfig(workspace);
+    const followUp = await createGraphSourcePlan({
+      roots: nextConfig.packages.map((pkg) => ({ rootId: pkg.name, source: pkg.source })),
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "uninstall-sync",
+      yes: true,
+    });
+    await applyCombinedInstallPlan(followUp.plan, {
+      graphLockDigest: followUp.graphLockDigest,
+      graphLock: { path: followUp.graphLockPath, lock: followUp.bundle.graphLock },
+    });
+
+    await expect(stat(join(target, ".claude", "rules", "root-a.md"))).rejects.toThrow();
+    await expect(stat(join(target, ".claude", "rules", "root-b.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "rules", "shared.md"))).resolves.toBeTruthy();
   });
 });

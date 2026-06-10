@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AdapterConfig } from "../src/model/adapter.js";
 import type { ArtifactType, FileKind } from "../src/model/artifact.js";
+import type { GraphLock } from "../src/model/graph-lock.js";
 import type { InstallManifestV1Entry, InstallManifestV2 } from "../src/model/manifest.js";
 import {
   applyCombinedInstallPlan,
@@ -17,9 +18,10 @@ import {
 } from "../src/install/index.js";
 import { acquireApplyLock, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
 import { installManifestPath } from "../src/install/paths.js";
+import type { InstallOperation } from "../src/install/plan.js";
 import { localTransport } from "../src/transport/index.js";
 import type { TargetTransport } from "../src/transport/index.js";
-import { hashPath } from "../src/utils/fs.js";
+import { hashPath, pathExists } from "../src/utils/fs.js";
 
 const tempRoots: string[] = [];
 
@@ -30,6 +32,22 @@ const adapter: AdapterConfig = {
     mcp: { enabled: true, dest: ".runtime/mcp", merge: "json-deep" },
   },
 };
+
+function testGraphLock(): GraphLock {
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    canonical: {
+      targetFingerprint: "test",
+      roots: [],
+      nodes: [],
+      edges: [],
+      includeEdges: [],
+      artifacts: [],
+      plainNameIncumbents: [],
+    },
+  };
+}
 
 afterEach(async () => {
   await Promise.all(tempRoots.map((path) => rm(path, { recursive: true, force: true })));
@@ -383,6 +401,73 @@ describe("transactional apply", () => {
 
     expect(recovered?.entries.map((entry) => entry.path)).toEqual([".runtime/rules/a.md"]);
     expect(await readFile(join(target, ".runtime", "rules", "a.md"), "utf8")).toBe("A\n");
+  });
+
+  it("recovers a graph-lock write failure after the manifest was written", async () => {
+    const source = await tempRoot();
+    const workspace = await tempRoot();
+    const target = await tempRoot();
+    const artifact = await writeArtifact(source, "rules/a.md", "A\n");
+    const plan = await createCombinedInstallPlan([artifact], adapter, target);
+    const graphLockPath = join(workspace, ".agentwheel", "locks", "blocked", "test.graph-lock.json");
+    const blocker = dirname(graphLockPath);
+    await mkdir(dirname(blocker), { recursive: true });
+    await writeFile(blocker, "not a directory", "utf8");
+
+    await expect(applyCombinedInstallPlan(plan, {
+      graphLockDigest: "digest",
+      graphLock: { path: graphLockPath, lock: testGraphLock() },
+    })).rejects.toThrow();
+    expect(await readInstallManifest(target, adapter.name)).toBeDefined();
+    expect(await pathExists(applyJournalPath(target, adapter.name))).toBe(true);
+
+    await rm(blocker, { force: true });
+    await recoverPendingApply(target, adapter.name);
+
+    expect(await pathExists(graphLockPath)).toBe(true);
+    expect(await pathExists(applyJournalPath(target, adapter.name))).toBe(false);
+  });
+
+  it("fails explicitly when ssh recovery would need rollback without remote backups", async () => {
+    const target = await tempRoot();
+    const destPath = join(target, ".runtime", "rules", "a.md");
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, "old\n", "utf8");
+    const operation: InstallOperation = {
+      action: "update",
+      artifactType: "rules",
+      artifactName: "a.md",
+      kind: "file",
+      sourcePath: join(target, "missing-source.md"),
+      destPath,
+      relativeDestPath: ".runtime/rules/a.md",
+      desiredHash: "b".repeat(64),
+      reason: "test update",
+      channel: "managed",
+    };
+    await localTransport.writeJsonAtomic(applyJournalPath(target, adapter.name), {
+      version: 1,
+      adapter: adapter.name,
+      targetRoot: target,
+      baseRevision: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      operations: [operation],
+      completed: [{
+        index: 0,
+        destPath,
+        kind: "file",
+        hadExisting: true,
+      }],
+      manifest: emptyManifest(target),
+    });
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh",
+    };
+
+    await expect(recoverPendingApply(target, adapter.name, sshTransport)).rejects.toThrow(/Cannot automatically roll back fake ssh/);
   });
 });
 

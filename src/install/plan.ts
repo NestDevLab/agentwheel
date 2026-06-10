@@ -29,6 +29,7 @@ export interface InstallOperation {
   mergeStrategy?: "json-deep" | "codex-toml-mcp";
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
+  composedFrom?: Artifact["composedFrom"];
 }
 
 export interface InstallPlan {
@@ -145,7 +146,13 @@ export async function createInstallPlan(
     if (currentHash === op.desiredHash) {
       operations.push({ ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "already up to date" });
     } else {
-      operations.push({ ...op, action: "update", currentHash, manifestHash: existing.hash, reason: "source changed" });
+      operations.push({
+        ...op,
+        action: "update",
+        currentHash,
+        manifestHash: existing.hash,
+        reason: reasonWithComposedDiff("source changed", op.composedFrom, existing.composedFrom),
+      });
     }
   }
 
@@ -167,6 +174,7 @@ export async function createInstallPlan(
         reason: "managed stale destination changed outside agentwheel",
         channel: entry.channel,
         packageName: entry.packageName,
+        composedFrom: entry.composedFrom,
       });
     } else {
       operations.push({
@@ -181,6 +189,7 @@ export async function createInstallPlan(
         reason: "artifact removed from source",
         channel: entry.channel,
         packageName: entry.packageName,
+        composedFrom: entry.composedFrom,
       });
     }
   }
@@ -216,6 +225,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
       channel: artifact.channel ?? "managed",
       packageName: artifact.packageName,
       semanticCommand: openClawPluginInstallCommand({ path: sourcePath, dryRun: true }),
+      composedFrom: artifact.composedFrom,
     };
   }
 
@@ -236,11 +246,26 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     channel: artifact.channel ?? "managed",
     packageName: artifact.packageName,
     mergeStrategy: target.merge,
+    composedFrom: artifact.composedFrom,
   };
 }
 
 function isFileTarget(dest: string): boolean {
   return /\.(json|jsonc|toml|md)$/i.test(dest);
+}
+
+function reasonWithComposedDiff(reason: string, desired?: Artifact["composedFrom"], current?: Artifact["composedFrom"]): string {
+  const changed = changedComposedSelectors(desired, current);
+  if (changed.length === 0) return reason;
+  return `${reason} (included fragment changed: ${changed.join(", ")})`;
+}
+
+function changedComposedSelectors(desired?: Artifact["composedFrom"], current?: Artifact["composedFrom"]): string[] {
+  const currentBySelector = new Map((current ?? []).map((entry) => [entry.selector, entry.hash]));
+  return (desired ?? [])
+    .filter((entry) => currentBySelector.get(entry.selector) !== entry.hash)
+    .map((entry) => entry.selector)
+    .sort();
 }
 
 export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {

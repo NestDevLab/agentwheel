@@ -21,6 +21,9 @@ import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorLi
 import { maybeCheckForUpdate } from "./update-check.js";
 import { pathExists } from "../utils/fs.js";
 import { transportForTarget } from "../transport/index.js";
+import { validatePackage } from "../model/package-validate.js";
+import { migratePackageManifest } from "../model/package-migrate.js";
+import { findPackageManifestPath } from "../model/package.js";
 
 const program = new Command();
 
@@ -281,6 +284,34 @@ program
   );
 
 program
+  .command("package")
+  .description("validate and migrate OpenPack packages")
+  .addCommand(
+    new Command("validate")
+      .description("validate an OpenPack package manifest and local composition")
+      .argument("[source]", "package directory", ".")
+      .action(async (source) => {
+        const result = await validatePackage(source);
+        for (const finding of result.findings) {
+          console.log(`${finding.level.toUpperCase()}: ${finding.message}${finding.path ? ` (${finding.path})` : ""}`);
+        }
+        if (result.findings.length === 0) {
+          console.log(`Package validate ok${result.manifestPath ? `: ${result.manifestPath}` : ""}`);
+        }
+        if (!result.ok) process.exitCode = 1;
+      }),
+  )
+  .addCommand(
+    new Command("migrate")
+      .description("rename agentwheel.json(c) to openpack.json(c) and upgrade schemaVersion")
+      .argument("[path]", "package directory", ".")
+      .action(async (path) => {
+        const result = await migratePackageManifest(path);
+        console.log(result.message);
+      }),
+  );
+
+program
   .command("remember")
   .requiredOption("--runtime <runtime>", "runtime/adapter name")
   .option("--target-root <path>", "workspace root", process.cwd())
@@ -461,9 +492,9 @@ async function initPackage(root: string): Promise<void> {
   await mkdir(join(root, "instructions"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills"), { recursive: true });
-  const manifestPath = join(root, "agentwheel.json");
+  const manifestPath = join(root, "openpack.json");
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     name: "example/agentwheel-package",
     version: "0.1.0",
     provides: [
@@ -524,7 +555,7 @@ function withFleetExample(config: Awaited<ReturnType<typeof readWorkspaceConfig>
 async function findAgentwheelPackageRoot(start: string): Promise<string | undefined> {
   let current = resolve(start);
   while (true) {
-    if (await pathExists(join(current, "agentwheel.json"))) return current;
+    if (await findPackageManifestPath(current, { warnLegacy: false })) return current;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;

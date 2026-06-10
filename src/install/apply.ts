@@ -71,6 +71,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         packageName: operation.packageName,
         semanticCommand: operation.semanticCommand,
         executed: options.executePlugins === true,
+        composedFrom: operation.composedFrom,
       });
     } else if (operation.action === "program") {
       if (!plan.adapterCode || !operation.desiredHash || !operation.programmaticOperation) {
@@ -95,6 +96,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         updatedAt: now,
         channel: operation.channel,
         packageName: operation.packageName,
+        composedFrom: operation.composedFrom,
       });
     } else if (operation.action === "create" || operation.action === "update") {
       if (!operation.sourcePath || !operation.desiredHash) {
@@ -119,6 +121,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         packageName: operation.packageName,
         semanticCommand: operation.semanticCommand,
         mergeStrategy: operation.mergeStrategy,
+        composedFrom: operation.composedFrom,
       });
     } else if (operation.action === "skip") {
       if (!operation.desiredHash) {
@@ -136,6 +139,7 @@ export async function applyInstallPlan(plan: InstallPlan, sourceLock: SourceLock
         packageName: operation.packageName,
         semanticCommand: operation.semanticCommand,
         mergeStrategy: operation.mergeStrategy,
+        composedFrom: operation.composedFrom,
       });
     } else if (operation.action === "remove") {
       await transport.rm(operation.destPath);
@@ -197,6 +201,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
           packageName: operation.packageName,
           semanticCommand: operation.semanticCommand,
           mergeStrategy: operation.mergeStrategy,
+          composedFrom: operation.composedFrom,
         };
       }).sort((a, b) => a.path.localeCompare(b.path)),
     }, transport);

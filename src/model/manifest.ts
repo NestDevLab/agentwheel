@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactTypeSchema, fileKindSchema } from "./artifact.js";
+import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 
 export const manifestEntrySchema = z.object({
   path: z.string().min(1),
@@ -14,6 +14,7 @@ export const manifestEntrySchema = z.object({
   semanticCommand: z.array(z.string()).optional(),
   executed: z.boolean().optional(),
   mergeStrategy: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
+  composedFrom: z.array(composedFromEntrySchema).optional(),
 });
 
 export const installManifestSchema = z.object({
@@ -47,6 +48,7 @@ export const sourceLockSchema = z.object({
       relativePath: z.string().min(1),
       kind: fileKindSchema,
       hash: z.string().min(16),
+      composedFrom: z.array(composedFromEntrySchema).optional(),
     }),
   ),
 });

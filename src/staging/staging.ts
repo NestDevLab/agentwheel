@@ -6,7 +6,8 @@ import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
 import { hashPath } from "../utils/fs.js";
-import { applyCustomizations } from "./customize.js";
+import { expandMarkdownIncludes } from "../compose/markdown.js";
+import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
 import { filterArtifactsBySelection } from "../model/selection.js";
 
 export interface StagedBundle {
@@ -42,7 +43,20 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     });
   }
 
-  const selectedArtifacts = filterArtifactsBySelection(stagedArtifacts, options.select, options.skills);
+  const preExpandedArtifacts = options.workspaceRoot && options.adapter
+    ? await applyFragmentCustomizations(stagedArtifacts, {
+      workspaceRoot: options.workspaceRoot,
+      adapter: options.adapter,
+      stageRoot: root,
+      packageName: resolved.packageName,
+    })
+    : stagedArtifacts;
+
+  const expandedArtifacts = await expandMarkdownIncludes(preExpandedArtifacts, root);
+  const runtimeArtifacts = options.adapter
+    ? filterArtifactsByRuntime(expandedArtifacts, options.adapter.name)
+    : expandedArtifacts;
+  const selectedArtifacts = filterArtifactsBySelection(runtimeArtifacts, options.select, options.skills);
 
   const finalArtifacts = options.workspaceRoot && options.adapter
     ? await applyCustomizations(selectedArtifacts, {
@@ -76,9 +90,18 @@ export async function stageSource(driver: SourceDriver, source: string, options:
         relativePath: artifact.relativePath,
         kind: artifact.kind,
         hash: artifact.hash,
+        composedFrom: artifact.composedFrom,
       })),
     },
   };
+}
+
+function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string): Artifact[] {
+  return artifacts.filter((artifact) => {
+    if (!artifact.runtimes?.length || artifact.runtimes.includes(adapterName)) return true;
+    console.warn(`skip (not targeted: runtimes=[${artifact.runtimes.join(",")}]) ${artifact.type}/${artifact.name}`);
+    return false;
+  });
 }
 
 async function composeAssets(artifact: Artifact, packageRoot: string, stagedPath: string): Promise<void> {

@@ -159,9 +159,9 @@ Flow: **author + your workspace → `sync` → runtime**.
 A package is a git repo (or folder) with a JSON manifest and a canonical layout:
 
 ```jsonc
-// agentwheel.json  (plain JSON or JSONC — both work)
+// openpack.json  (plain JSON or JSONC — both work; agentwheel.json remains a legacy alias)
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "your-org/agent-pack",
   "version": "0.1.0",
   "provides": [
@@ -224,7 +224,7 @@ optional, and `agentwheel add <url|path>` always works without it.
 The public package registry lives at
 [`NestDevLab/agentwheel-registry`](https://github.com/NestDevLab/agentwheel-registry).
 
-1. Create a public repo with `agentwheel.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
+1. Create a public repo with `openpack.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
 2. Open a pull request to `agentwheel-registry` that adds an entry to `index.json`.
 3. Users install by short name:
 

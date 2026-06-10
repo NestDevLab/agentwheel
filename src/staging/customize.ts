@@ -13,10 +13,17 @@ export interface CustomizationOptions {
 
 export async function applyCustomizations(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
   let next = [...artifacts];
-  next = await applyReplacements(next, options, "override");
-  next = await applyReplacements(next, options, "ejected");
+  next = await applyReplacements(next, options, "override", installableArtifactTypes());
+  next = await applyReplacements(next, options, "ejected", installableArtifactTypes());
   next = await applyAdditions(next, options);
   next = await applyInstructionOverlay(next, options);
+  return next.sort((a, b) => `${a.type}:${a.name}:${a.channel}`.localeCompare(`${b.type}:${b.name}:${b.channel}`));
+}
+
+export async function applyFragmentCustomizations(artifacts: Artifact[], options: CustomizationOptions): Promise<Artifact[]> {
+  let next = [...artifacts];
+  next = await applyReplacements(next, options, "override", ["fragments"]);
+  next = await applyReplacements(next, options, "ejected", ["fragments"]);
   return next.sort((a, b) => `${a.type}:${a.name}:${a.channel}`.localeCompare(`${b.type}:${b.name}:${b.channel}`));
 }
 
@@ -85,6 +92,7 @@ async function applyReplacements(
   artifacts: Artifact[],
   options: CustomizationOptions,
   channel: "override" | "ejected",
+  artifactTypes: ArtifactType[],
 ): Promise<Artifact[]> {
   const packageName = options.packageName;
   if (!packageName) return artifacts;
@@ -92,7 +100,7 @@ async function applyReplacements(
   if (!(await pathExists(root))) return artifacts;
 
   const byKey = new Map(artifacts.map((artifact) => [artifactKey(artifact), artifact]));
-  for (const type of ["instructions", "rules", "skills", "commands", "subagents", "mcp", "hooks", "settings", "plugins"] as ArtifactType[]) {
+  for (const type of artifactTypes) {
     const typeRoot = join(root, type);
     if (!(await pathExists(typeRoot))) continue;
     for (const entry of await sortedDirEntries(typeRoot)) {
@@ -120,6 +128,10 @@ async function applyReplacements(
 
 function artifactKey(artifact: Artifact): string {
   return `${artifact.type}:${artifact.name}`;
+}
+
+function installableArtifactTypes(): ArtifactType[] {
+  return ["instructions", "rules", "skills", "commands", "subagents", "mcp", "hooks", "settings", "plugins"];
 }
 
 async function sortedDirEntries(path: string) {

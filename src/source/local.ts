@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import type { Artifact, ArtifactType, PackageAsset } from "../model/artifact.js";
-import { readPackageManifest } from "../model/package.js";
+import type { Artifact, ArtifactType, PackageComposeEntry } from "../model/artifact.js";
+import { readPackageManifest, type PackageManifest, type PackageProvide } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
 
@@ -61,6 +61,25 @@ export class LocalSourceDriver implements SourceDriver {
             name: entry.name,
             sourcePath: full,
             relativePath: join("rules", entry.name),
+            kind: "file",
+            hash: await hashPath(full),
+            packageName: resolved.packageName,
+            channel: "managed",
+          });
+        }
+      }
+    }
+
+    const fragmentsDir = join(root, "fragments");
+    if (await pathExists(fragmentsDir)) {
+      for (const entry of await sortedDirEntries(fragmentsDir)) {
+        const full = join(fragmentsDir, entry.name);
+        if (entry.isFile()) {
+          artifacts.push({
+            type: "fragments",
+            name: entry.name,
+            sourcePath: full,
+            relativePath: join("fragments", entry.name),
             kind: "file",
             hash: await hashPath(full),
             packageName: resolved.packageName,
@@ -158,7 +177,7 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
     const stats = await stat(full);
     if (provide.type === "instructions") {
       if (stats.isFile()) {
-        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets, provide.required));
+        artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide, manifest, basename(full)));
       }
       continue;
     }
@@ -166,14 +185,14 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
       for (const entry of await sortedDirEntries(full)) {
         const child = join(full, entry.name);
         if ((provide.type === "skills" || provide.type === "plugins" || provide.type === "subagents") && entry.isDirectory()) {
-          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
+          artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide, manifest, entry.name));
         } else if (entry.isFile()) {
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
-          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide.assets, provide.required));
+          artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide, manifest, name));
         }
       }
     } else if (stats.isFile()) {
-      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide.assets, provide.required));
+      artifacts.push(await artifactForFile(provide.type, basename(full), full, provide.path, packageName, provide, manifest, basename(full)));
     }
   }
   return artifacts;
@@ -192,7 +211,17 @@ async function listGenericArtifacts(type: ArtifactType, dir: string, relativeRoo
   return artifacts;
 }
 
-async function artifactForFile(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[], required?: boolean): Promise<Artifact> {
+async function artifactForFile(
+  type: ArtifactType,
+  name: string,
+  sourcePath: string,
+  relativePath: string,
+  packageName?: string,
+  provide?: PackageProvide,
+  manifest?: PackageManifest,
+  itemName?: string,
+): Promise<Artifact> {
+  const item = itemMetadata(provide, itemName);
   return {
     type,
     name,
@@ -202,12 +231,24 @@ async function artifactForFile(type: ArtifactType, name: string, sourcePath: str
     hash: await hashPath(sourcePath),
     packageName,
     channel: "managed",
-    assets,
-    required,
+    assets: provide?.assets,
+    required: provide?.required,
+    compose: item.compose,
+    runtimes: item.runtimes ?? provideRuntimes(provide) ?? manifestRuntimes(manifest),
   };
 }
 
-async function artifactForDir(type: ArtifactType, name: string, sourcePath: string, relativePath: string, packageName?: string, assets?: PackageAsset[], required?: boolean): Promise<Artifact> {
+async function artifactForDir(
+  type: ArtifactType,
+  name: string,
+  sourcePath: string,
+  relativePath: string,
+  packageName?: string,
+  provide?: PackageProvide,
+  manifest?: PackageManifest,
+  itemName?: string,
+): Promise<Artifact> {
+  const item = itemMetadata(provide, itemName);
   return {
     type,
     name,
@@ -217,7 +258,24 @@ async function artifactForDir(type: ArtifactType, name: string, sourcePath: stri
     hash: await hashPath(sourcePath),
     packageName,
     channel: "managed",
-    assets,
-    required,
+    assets: provide?.assets,
+    required: provide?.required,
+    compose: item.compose,
+    runtimes: item.runtimes ?? provideRuntimes(provide) ?? manifestRuntimes(manifest),
   };
+}
+
+function itemMetadata(provide: PackageProvide | undefined, itemName: string | undefined): { compose?: PackageComposeEntry[]; runtimes?: string[] } {
+  if (!provide || !("items" in provide) || !provide.items || !itemName) return {};
+  const item = provide.items[itemName];
+  if (!item) return {};
+  return { compose: item.compose, runtimes: item.runtimes };
+}
+
+function provideRuntimes(provide: PackageProvide | undefined): string[] | undefined {
+  return provide && "runtimes" in provide ? provide.runtimes : undefined;
+}
+
+function manifestRuntimes(manifest: PackageManifest | undefined): string[] | undefined {
+  return manifest && manifest.schemaVersion === 2 ? manifest.runtimes : undefined;
 }

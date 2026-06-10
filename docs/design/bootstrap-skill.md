@@ -18,7 +18,7 @@ The package should expose it through the repository/package manifest:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "NestDevLab/agentwheel",
   "version": "0.7.0",
   "provides": [
@@ -29,8 +29,8 @@ The package should expose it through the repository/package manifest:
 
 Minimal wiring:
 
-- `package.json`: include `"skills"` and `"agentwheel.json"` in `files` so the npm package ships the bundled skill and manifest.
-- `agentwheel.json`: add the manifest above at the package root, or merge the `provides` entry into a future root manifest if one exists by then.
+- `package.json`: include `"skills"` and `"openpack.json"` in `files` so the npm package ships the bundled skill and manifest.
+- `openpack.json`: add the manifest above at the package root, or merge the `provides` entry into a future root manifest if one exists by then.
 - `src/cli/index.ts`: in the `init` workspace branch, write a default package entry when creating/updating `.agentwheel/config.json`.
 - Recommended helper in `src/cli/index.ts`: `defaultBootstrapPackage(root)` or similar, using the installed package root as a local source.
 
@@ -73,11 +73,11 @@ skills/
 
 ## C. Manifest Provides Entry
 
-Root `agentwheel.json` draft:
+Root `openpack.json` draft:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "NestDevLab/agentwheel",
   "version": "0.7.0",
   "provides": [
@@ -86,7 +86,7 @@ Root `agentwheel.json` draft:
 }
 ```
 
-The current manifest schema allows only `schemaVersion`, `name`, `version`, and `provides`; do not add `description`, `license`, `homepage`, `targets`, `compatibility`, or `dependencies` until the schema accepts them.
+The manifest schema accepts `schemaVersion`, `name`, `version`, and `provides`; do not add `description`, `license`, `homepage`, `targets`, `compatibility`, or dependencies beyond the OpenPack schema until the implementation resolves them.
 
 ## D. Rollout Note
 

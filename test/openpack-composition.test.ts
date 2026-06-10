@@ -233,4 +233,44 @@ describe("OpenPack composition", () => {
       warn.mockRestore();
     }
   });
+
+  it("treats selected runtime-excluded artifacts as notices, not missing selectors", async () => {
+    const source = await tempRoot();
+    await mkdir(join(source, "skills", "a"), { recursive: true });
+    await mkdir(join(source, "skills", "b"), { recursive: true });
+    await writeFile(join(source, "skills", "a", "SKILL.md"), "# A\n", "utf8");
+    await writeFile(join(source, "skills", "b", "SKILL.md"), "# B\n", "utf8");
+    await writeJson(join(source, "openpack.json"), {
+      schemaVersion: 2,
+      name: "acme/mixed-runtime",
+      version: "1.0.0",
+      provides: [
+        {
+          type: "skills",
+          path: "skills",
+          items: {
+            a: { runtimes: ["codex"] },
+            b: {},
+          },
+        },
+      ],
+    });
+
+    const select = ["skills/a", "skills/b"];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const claudeBundle = await stage(source, { adapter: claudeAdapter, select });
+      const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, await tempRoot());
+      expect(claudePlan.operations.map((operation) => operation.artifactName)).toEqual(["b"]);
+      expect(warn).toHaveBeenCalledWith("skip (selected but not targeted: runtimes=[codex]) skills/a");
+
+      const codexBundle = await stage(source, { adapter: codexAdapter, select });
+      const codexPlan = await createInstallPlan(codexBundle, codexAdapter, await tempRoot());
+      expect(codexPlan.operations.map((operation) => operation.artifactName)).toEqual(["a", "b"]);
+      await rm(claudeBundle.root, { recursive: true, force: true });
+      await rm(codexBundle.root, { recursive: true, force: true });
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

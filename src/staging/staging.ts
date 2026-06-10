@@ -8,7 +8,7 @@ import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../sour
 import { hashPath } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
-import { filterArtifactsBySelection } from "../model/selection.js";
+import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface StagedBundle {
   root: string;
@@ -53,19 +53,20 @@ export async function stageSource(driver: SourceDriver, source: string, options:
     : stagedArtifacts;
 
   const expandedArtifacts = await expandMarkdownIncludes(preExpandedArtifacts, root);
+  const selectedArtifacts = filterArtifactsBySelection(expandedArtifacts, options.select, options.skills);
+  const runtimeSelectedSet = new Set(normalizeArtifactSelectors(options.select, options.skills) ?? []);
   const runtimeArtifacts = options.adapter
-    ? filterArtifactsByRuntime(expandedArtifacts, options.adapter.name)
-    : expandedArtifacts;
-  const selectedArtifacts = filterArtifactsBySelection(runtimeArtifacts, options.select, options.skills);
+    ? filterArtifactsByRuntime(selectedArtifacts, options.adapter.name, runtimeSelectedSet)
+    : selectedArtifacts;
 
   const finalArtifacts = options.workspaceRoot && options.adapter
-    ? await applyCustomizations(selectedArtifacts, {
+    ? await applyCustomizations(runtimeArtifacts, {
       workspaceRoot: options.workspaceRoot,
       adapter: options.adapter,
       stageRoot: root,
       packageName: resolved.packageName,
     })
-    : selectedArtifacts;
+    : runtimeArtifacts;
 
   const generatedAt = new Date().toISOString();
   return {
@@ -96,10 +97,12 @@ export async function stageSource(driver: SourceDriver, source: string, options:
   };
 }
 
-function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string): Artifact[] {
+function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string, selectedSet: Set<string>): Artifact[] {
   return artifacts.filter((artifact) => {
     if (!artifact.runtimes?.length || artifact.runtimes.includes(adapterName)) return true;
-    console.warn(`skip (not targeted: runtimes=[${artifact.runtimes.join(",")}]) ${artifact.type}/${artifact.name}`);
+    const selector = artifactSelectorKey(artifact);
+    const reason = selectedSet.has(selector) ? "selected but not targeted" : "not targeted";
+    console.warn(`skip (${reason}: runtimes=[${artifact.runtimes.join(",")}]) ${selector}`);
     return false;
   });
 }

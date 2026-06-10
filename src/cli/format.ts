@@ -32,7 +32,8 @@ export function formatPlan(plan: InstallPlan): string {
   for (const operation of plan.operations) {
     const source = operation.sourcePath ? `${operation.sourcePath} -> ` : "";
     const command = operation.semanticCommand ? ` :: ${operation.semanticCommand.join(" ")}` : "";
-    lines.push(`${labels[operation.action].padEnd(8)} ${channelLabels[operation.channel].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason})${command}`);
+    const blocked = operation.blockedReason ? `; ${operation.blockedReason}` : "";
+    lines.push(`${labels[operation.action].padEnd(8)} ${channelLabels[operation.channel].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason}${blocked})${command}`);
   }
   const summary = summarizePlan(plan);
   lines.push(

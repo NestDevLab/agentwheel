@@ -74,6 +74,7 @@ export async function createOwnershipUninstallPlan(
   remainingDesired: DesiredArtifact[],
   adapter: AdapterConfig,
   transport: TargetTransport = localTransport,
+  options: { graphLockDigest?: string } = {},
 ): Promise<InstallPlan> {
   const desiredPlan = await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport);
   const ownersByPath = new Map(
@@ -107,6 +108,7 @@ export async function createOwnershipUninstallPlan(
         mergeStrategy: entry.mergeStrategy,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry, remainingOwners),
+        graphLockDigest: options.graphLockDigest,
       });
       continue;
     }
@@ -129,6 +131,7 @@ export async function createOwnershipUninstallPlan(
         mergeStrategy: entry.mergeStrategy,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
+        graphLockDigest: options.graphLockDigest,
       });
     } else {
       operations.push({
@@ -160,6 +163,7 @@ export async function createOwnershipUninstallPlan(
     hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
     baseRevision: manifest.revision,
     adapterCode: manifest.adapterCode,
+    graphLockDigest: options.graphLockDigest,
   };
 }
 

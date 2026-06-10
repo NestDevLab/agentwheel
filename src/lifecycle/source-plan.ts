@@ -116,6 +116,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     frozenLock: options.frozenLock,
     previousLock,
     warn,
+    runtime: options.adapter.name,
   });
   assertFrozenGraph(previousLock, graph, options.frozenLock === true);
   const newTransitiveSources = newTransitiveSourcesForTrust(graph, previousLock, options.trustPatterns ?? [], options.yes === true);
@@ -149,6 +150,10 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
 export async function writeGraphSourceLock(result: GraphSourcePlanResult): Promise<void> {
   await mkdir(dirname(result.graphLockPath), { recursive: true });
   await writeGraphLock(result.graphLockPath, result.bundle.graphLock);
+}
+
+export function graphLockPathForTarget(workspaceRoot: string, targetKey: string, adapter: string, targetFingerprintParts: unknown): string {
+  return pathForGraphLock(workspaceRoot, targetKey, adapter, computeTargetFingerprint(targetFingerprintParts));
 }
 
 export function desiredArtifactsFromGraphBundle(bundle: ResolvedGraphBundle): DesiredArtifact[] {

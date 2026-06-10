@@ -1,6 +1,7 @@
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { InstallManifestV2, SourceLock } from "../model/manifest.js";
+import type { GraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { InstallOperation } from "./plan.js";
@@ -21,6 +22,7 @@ export interface ApplyJournalCompletedOperation {
   kind: "file" | "dir";
   hadExisting: boolean;
   backupPath?: string;
+  completed?: boolean;
 }
 
 export interface ApplyJournal {
@@ -35,6 +37,8 @@ export interface ApplyJournal {
   completed: ApplyJournalCompletedOperation[];
   manifest: InstallManifestV2;
   sourceLock?: SourceLock;
+  graphLockPath?: string;
+  graphLock?: GraphLock;
 }
 
 export function applyLockPath(targetRoot: string, adapter: string): string {

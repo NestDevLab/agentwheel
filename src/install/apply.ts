@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
+import type { GraphLock } from "../model/graph-lock.js";
+import { writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
@@ -29,6 +31,10 @@ export interface ApplyOptions {
   executePlugins?: boolean;
   transport?: TargetTransport;
   graphLockDigest?: string;
+  graphLock?: {
+    path: string;
+    lock: GraphLock;
+  };
   lock?: ApplyLockOptions;
 }
 
@@ -66,28 +72,35 @@ export async function recoverPendingApply(
       throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
     }
 
-    const completedIndexes = new Set(journal.completed.map((operation) => operation.index));
-    const missingSources = await missingRemainingSources(journal, completedIndexes);
-    if (missingSources.length > 0) {
-      await rollbackCompletedOperations(journal.completed, transport);
-      await removeApplyJournal(targetRoot, adapter, transport);
-      return undefined;
-    }
-
     const now = new Date().toISOString();
     const entries: InstallManifestEntry[] = [];
+    const startedByIndex = new Map(journal.completed.map((operation) => [operation.index, operation]));
     for (const [index, operation] of journal.operations.entries()) {
-      if (completedIndexes.has(index)) {
+      const started = startedByIndex.get(index);
+      if (started?.completed || (started && await operationLanded(operation, transport))) {
+        started.completed = true;
+        await writeApplyJournal(journal, transport);
         const entry = await entryForCompletedOperation(operation, transport, now, journal.graphLockDigest);
         if (entry) entries.push(entry);
         continue;
       }
 
-      const backup = await recordBackup(operation, index, targetRoot, adapter, transport);
+      if (operationNeedsSource(operation) && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
+        await rollbackStartedOperations(journal, transport);
+        await removeApplyJournal(targetRoot, adapter, transport);
+        return undefined;
+      }
+
+      const backup = started ?? await recordBackup(operation, index, targetRoot, adapter, transport);
+      if (!started && isJournaledMutation(operation)) {
+        journal.completed.push(backup);
+        startedByIndex.set(index, backup);
+        await writeApplyJournal(journal, transport);
+      }
       const entry = await applyOperation(operation, { transport, now, graphLockDigest: journal.graphLockDigest });
       if (entry) entries.push(entry);
       if (isJournaledMutation(operation)) {
-        journal.completed.push(backup);
+        backup.completed = true;
         await writeApplyJournal(journal, transport);
       }
     }
@@ -97,6 +110,7 @@ export async function recoverPendingApply(
       generatedAt: now,
       entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
     });
+    if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
     if (journal.sourceLock) await writeSourceLock(targetRoot, adapter, journal.sourceLock, transport);
     await writeInstallManifest(manifest, transport);
     await removeApplyJournal(targetRoot, adapter, transport);
@@ -142,12 +156,20 @@ async function applyPlanTransactionally(
         entries: [],
       },
       sourceLock: options.sourceLock,
+      graphLockPath: options.graphLock?.path,
+      graphLock: options.graphLock?.lock,
     };
     await writeApplyJournal(journal, transport);
 
     const entries: InstallManifestEntry[] = [];
     for (const [index, operation] of plan.operations.entries()) {
-      const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
+      const backup = isJournaledMutation(operation)
+        ? await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport)
+        : undefined;
+      if (backup) {
+        journal.completed.push(backup);
+        await writeApplyJournal(journal, transport);
+      }
       const entry = await applyOperation(operation, {
         transport,
         now,
@@ -156,8 +178,8 @@ async function applyPlanTransactionally(
         plan,
       });
       if (entry) entries.push(entry);
-      if (isJournaledMutation(operation)) {
-        journal.completed.push(backup);
+      if (backup) {
+        backup.completed = true;
         await writeApplyJournal(journal, transport);
       }
     }
@@ -166,6 +188,7 @@ async function applyPlanTransactionally(
       ...journal.manifest,
       entries: entries.sort((a, b) => a.path.localeCompare(b.path)),
     });
+    if (options.graphLock) await writeGraphLock(options.graphLock.path, options.graphLock.lock);
     if (options.sourceLock) await writeSourceLock(plan.targetRoot, plan.adapter, options.sourceLock, transport);
     await writeInstallManifest(manifest, transport);
     await removeApplyJournal(plan.targetRoot, plan.adapter, transport);
@@ -392,19 +415,28 @@ async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport)
   }
 }
 
-async function missingRemainingSources(journal: ApplyJournal, completedIndexes: Set<number>): Promise<string[]> {
-  const missing: string[] = [];
-  for (const [index, operation] of journal.operations.entries()) {
-    if (completedIndexes.has(index)) continue;
-    if ((operation.action === "create" || operation.action === "update") && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
-      missing.push(operation.sourcePath);
-    }
-  }
-  return missing;
-}
-
 function isJournaledMutation(operation: InstallOperation): boolean {
   return operation.action === "create" || operation.action === "update" || operation.action === "remove";
+}
+
+function operationNeedsSource(operation: InstallOperation): boolean {
+  return operation.action === "create" || operation.action === "update";
+}
+
+async function operationLanded(operation: InstallOperation, transport: TargetTransport): Promise<boolean> {
+  if (operation.action === "remove") return !(await transport.pathExists(operation.destPath));
+  if (operation.action !== "create" && operation.action !== "update") return false;
+  if (!(await transport.pathExists(operation.destPath))) return false;
+  if (operation.mergeStrategy) return true;
+  if (!operation.desiredHash) return false;
+  return (await transport.hashPath(operation.destPath)) === operation.desiredHash;
+}
+
+async function rollbackStartedOperations(journal: ApplyJournal, transport: TargetTransport): Promise<void> {
+  if (transport.kind !== "local" && journal.completed.some((item) => item.hadExisting && !item.backupPath)) {
+    throw new Error(`Cannot automatically roll back ${transport.description}: remote journal has no restorable backups; restore manually or rerun with staged sources available to finish recovery.`);
+  }
+  await rollbackCompletedOperations(journal.completed, transport);
 }
 
 function requireDesiredHash(operation: InstallOperation): string {

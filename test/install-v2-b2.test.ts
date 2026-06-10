@@ -211,16 +211,43 @@ describe("one-shot v1 to v2 migration", () => {
     ]);
 
     const manifest = await readInstallManifest(target, adapter.name);
-    const plan = await createCombinedInstallPlan([a, b], adapter, target, manifest);
-    expect(plan.migrationReport).toEqual({ adopted: 2, dropped: [".runtime/rules/orphan.md"] });
+    const adoptableA = { ...a, packageName: "legacy-a", meta: { ...a.meta, owners: ["legacy-a"] } };
+    const plan = await createCombinedInstallPlan([adoptableA, b], adapter, target, manifest);
+    expect(plan.migrationReport).toEqual({ adopted: 1, dropped: [".runtime/rules/renamed.md", ".runtime/rules/orphan.md"] });
     expect(plan.operations.some((operation) => operation.relativeDestPath === ".runtime/rules/orphan.md")).toBe(false);
 
     await applyCombinedInstallPlan(plan);
     await expect(stat(join(target, ".runtime", "rules", "orphan.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".runtime", "rules", "renamed.md"))).rejects.toThrow();
+    await expect(stat(join(target, ".runtime", "rules", "renamed.md"))).resolves.toBeTruthy();
     const next = await readInstallManifest(target, adapter.name);
     expect(next?.version).toBe(2);
     expect(next?.entries.map((entry) => entry.path).sort()).toEqual([".runtime/rules/a.md", ".runtime/rules/b.md"]);
+  });
+
+  it("drops same-path legacy entries with mismatched package identity so desired artifacts conflict", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const artifact = await writeArtifact(source, "rules/a.md", "A\n");
+    const desired = { ...artifact, packageName: "new/pkg", meta: { ...artifact.meta, owners: ["new/pkg"] } };
+
+    await mkdir(join(target, ".runtime", "rules"), { recursive: true });
+    await writeFile(join(target, ".runtime", "rules", "a.md"), "A\n", "utf8");
+    await writeV1Manifest(target, [{
+      path: ".runtime/rules/a.md",
+      artifactType: "rules",
+      artifactName: "a.md",
+      kind: "file",
+      hash: artifact.hash,
+      sourceHash: artifact.hash,
+      updatedAt: new Date().toISOString(),
+      channel: "managed",
+      packageName: "old/pkg",
+    }]);
+
+    const plan = await createCombinedInstallPlan([desired], adapter, target, await readInstallManifest(target, adapter.name));
+
+    expect(plan.migrationReport).toEqual({ adopted: 0, dropped: [".runtime/rules/a.md"] });
+    expect(plan.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/a.md")?.action).toBe("conflict");
   });
 });
 
@@ -337,9 +364,49 @@ describe("transactional apply", () => {
     expect(recovered?.entries).toHaveLength(1);
     expect(await readFile(join(target, ".runtime", "rules", "a.md"), "utf8")).toBe("A\n");
   });
+
+  it("recovers when a copy landed before journal completion was persisted", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const artifact = await writeArtifact(source, "rules/a.md", "A\n");
+    const crashingTransport: TargetTransport = {
+      ...localTransport,
+      async atomicCopy(sourcePath, destPath, kind) {
+        await localTransport.atomicCopy(sourcePath, destPath, kind);
+        throw new Error("injected post-copy crash");
+      },
+    };
+    const plan = await createCombinedInstallPlan([artifact], adapter, target);
+
+    await expect(applyCombinedInstallPlan(plan, { transport: crashingTransport })).rejects.toThrow(/post-copy crash/);
+    const recovered = await recoverPendingApply(target, adapter.name);
+
+    expect(recovered?.entries.map((entry) => entry.path)).toEqual([".runtime/rules/a.md"]);
+    expect(await readFile(join(target, ".runtime", "rules", "a.md"), "utf8")).toBe("A\n");
+  });
 });
 
 describe("ownership uninstall and merge target guard", () => {
+  it("blocks all unresolved install-path collisions before create/update operations are emitted", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const root = await writeArtifact(source, "root/shared.md", "root\n");
+    const direct = await writeArtifact(source, "direct/shared.md", "direct\n");
+    const transitive = await writeArtifact(source, "transitive/shared.md", "transitive\n");
+    const colliding = [
+      { ...root, name: "shared.md", meta: { ...root.meta, dependencyRole: "root" as const, owners: ["root"] } },
+      { ...direct, name: "shared.md", meta: { ...direct.meta, dependencyRole: "direct" as const, owners: ["direct"] } },
+      { ...transitive, name: "shared.md", meta: { ...transitive.meta, dependencyRole: "transitive" as const, owners: ["transitive"] } },
+    ];
+
+    const plan = await createCombinedInstallPlan(colliding, adapter, target);
+
+    expect(plan.hasBlockingChanges).toBe(true);
+    expect(plan.operations).toHaveLength(3);
+    expect(plan.operations.every((operation) => operation.action === "conflict")).toBe(true);
+    expect(plan.operations.some((operation) => operation.action === "create" || operation.action === "update")).toBe(false);
+  });
+
   it("keeps still-owned entries and removes entries whose owner set becomes empty", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
@@ -383,7 +450,25 @@ describe("ownership uninstall and merge target guard", () => {
       role: "transitive",
     });
 
-    await expect(createCombinedInstallPlan([artifact], adapter, await tempRoot())).rejects.toThrow(/Transitive mcp artifacts cannot be installed/);
+    await expect(createCombinedInstallPlan([artifact], adapter, await tempRoot())).rejects.toThrow(/Dependency-provided mcp artifacts cannot be installed/);
+  });
+
+  it("rejects direct dependency merge-target artifacts at plan time", async () => {
+    const source = await tempRoot();
+    const mcpPath = join(source, "mcp", "server.json");
+    await mkdir(dirname(mcpPath), { recursive: true });
+    await writeFile(mcpPath, JSON.stringify({ mcpServers: { demo: { command: "demo" } } }), "utf8");
+    const artifact = desiredArtifact({
+      type: "mcp",
+      name: "server.json",
+      sourcePath: mcpPath,
+      relativePath: "mcp/server.json",
+      hash: await hashPath(mcpPath),
+      owners: ["dep"],
+      role: "direct",
+    });
+
+    await expect(createCombinedInstallPlan([artifact], adapter, await tempRoot())).rejects.toThrow(/Dependency-provided mcp artifacts cannot be installed/);
   });
 });
 

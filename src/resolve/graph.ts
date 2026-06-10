@@ -32,6 +32,7 @@ export interface ResolveGraphOptions {
   frozenLock?: boolean;
   previousLock?: GraphLock;
   warn?: (message: string) => void;
+  runtime?: string;
 }
 
 export interface ResolvedGraphRoot {
@@ -290,6 +291,7 @@ async function processRequirement(
 
     return Object.entries(fetched.manifest.requires ?? {})
       .sort(([a], [b]) => a.localeCompare(b))
+      .filter(([alias, dependency]) => dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn))
       .map(([alias, dependency]) => ({
         source: dependency.source,
         select: dependency.select,
@@ -310,6 +312,18 @@ async function processRequirement(
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${message}\nDependency chain: ${requirement.chain.join(" -> ")}`);
   }
+}
+
+function dependencyTargetsRuntime(
+  runtimes: string[] | undefined,
+  runtime: string | undefined,
+  nodeId: string,
+  alias: string,
+  warn?: (message: string) => void,
+): boolean {
+  if (!runtimes?.length || !runtime || runtimes.includes(runtime)) return true;
+  warn?.(`skip dependency ${nodeId}:${alias} (not targeted: runtimes=[${runtimes.join(",")}])`);
+  return false;
 }
 
 async function fetchPackage(

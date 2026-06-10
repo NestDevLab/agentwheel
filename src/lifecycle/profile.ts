@@ -1,15 +1,14 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import { resolveAdapter } from "../adapters/resolve.js";
-import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../install/index.js";
+import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
+import { createGraphSourcePlan } from "./source-plan.js";
 import { readMergedWorkspaceConfig, resolveConfigPath, type WorkspacePackage, type WorkspaceProfileRuntime } from "../model/workspace.js";
 import { resolvePackageSource } from "../registry/client.js";
-import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
-import { stageSource } from "../staging/staging.js";
 import { localTransport, transportForTarget } from "../transport/index.js";
 import type { SshTransportConfig, TargetTransport, TransportKind } from "../transport/index.js";
+import { normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -22,6 +21,11 @@ export interface ProfileSyncOptions {
   dryRun?: boolean;
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
+  noDeps?: boolean;
+  frozenLock?: boolean;
+  yes?: boolean;
+  trustPatterns?: string[];
+  isTTY?: boolean;
   warn?: (message: string) => void;
 }
 
@@ -48,36 +52,63 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   }
 
   const results: ProfileSyncResult[] = [];
-  for (const pkg of packages) {
-    for (const runtime of profile.runtimes) {
-      const target = resolveProfileRuntime(runtime, config, options.workspaceRoot);
-      const adapter = await resolveAdapter({
-        adapter: target.adapter,
+  for (const runtime of profile.runtimes) {
+    const target = resolveProfileRuntime(runtime, config, options.workspaceRoot);
+    const adapter = await resolveAdapter({
+      adapter: target.adapter,
+      adapterConfig: runtime.adapterConfig,
+      adapterModule: runtime.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+      baseDir: options.workspaceRoot,
+      warn: options.warn,
+    });
+    const selected = normalizeArtifactSelectors(options.select, options.skills);
+    const graphPlan = await createGraphSourcePlan({
+      roots: packages.map((pkg) => ({
+        rootId: pkg.name,
+        source: pkg.source,
+        mode: options.mode ?? pkg.mode,
+        ref: pkg.requestedRef,
+        select: selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+      })),
+      targetRoot: target.targetRoot,
+      workspaceRoot: options.workspaceRoot,
+      adapter,
+      transport: target.transport,
+      targetKey: runtime.agent ?? adapter.name,
+      targetFingerprintParts: {
+        adapter: adapter.name,
         adapterConfig: runtime.adapterConfig,
         adapterModule: runtime.adapterModule,
-        allowAdapterCode: options.allowAdapterCode,
-        baseDir: options.workspaceRoot,
-        warn: options.warn,
+        adapterCodeHash: adapter.programmatic?.hash,
+        targetRoot: target.targetRoot,
+        transport: target.transport.kind,
+      },
+      noDeps: options.noDeps,
+      frozenLock: options.frozenLock,
+      yes: options.yes,
+      trustPatterns: options.trustPatterns ?? [],
+      isTTY: options.isTTY,
+      warn: options.warn,
+    });
+    try {
+      results.push({
+        runtime: adapter.name,
+        targetRoot: target.targetRoot,
+        transport: target.transport.kind,
+        packageName: packages.map((pkg) => pkg.name).join(","),
+        plan: graphPlan.plan,
       });
-      const driver = getSourceDriver(pkg.driver);
-      const bundle = await stageSource(driver, pkg.source, {
-        workspaceRoot: options.workspaceRoot,
-        adapter,
-        cacheRoot: join(options.workspaceRoot, ".agentwheel", "cache"),
-        mode: options.mode ?? pkg.mode,
-        select: options.select ?? pkg.select,
-        skills: options.select ? undefined : pkg.skills,
-      });
-      try {
-        const manifest = await readInstallManifest(target.targetRoot, adapter.name, target.transport);
-        const plan = await createInstallPlan(bundle, adapter, target.targetRoot, manifest, target.transport);
-        results.push({ runtime: adapter.name, targetRoot: target.targetRoot, transport: target.transport.kind, packageName: pkg.name, plan });
-        if (!options.dryRun) {
-          await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: runtime.executePlugins ?? options.executePlugins, transport: target.transport });
-        }
-      } finally {
-        await rm(bundle.root, { recursive: true, force: true });
+      if (!options.dryRun) {
+        await applyCombinedInstallPlan(graphPlan.plan, {
+          executePlugins: runtime.executePlugins ?? options.executePlugins,
+          transport: target.transport,
+          graphLockDigest: graphPlan.graphLockDigest,
+          graphLock: { path: graphPlan.graphLockPath, lock: graphPlan.bundle.graphLock },
+        });
       }
+    } finally {
+      await rm(graphPlan.bundle.root, { recursive: true, force: true });
     }
   }
   return results;

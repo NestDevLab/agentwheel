@@ -38,6 +38,9 @@ export interface InstallOperation {
   dependencyRole?: DependencyRole;
   owners?: string[];
   graphLockDigest?: string;
+  blockedDesiredHash?: string;
+  blockedReason?: string;
+  composedFromDiff?: string[];
 }
 
 export interface MigrationReport {
@@ -73,7 +76,7 @@ export async function createInstallPlan(
   manifest?: InstallManifest,
   transport: TargetTransport = localTransport,
 ): Promise<InstallPlan> {
-  const desired = new Map<string, InstallOperation>();
+  const desired: InstallOperation[] = [];
 
   for (const artifact of bundle.artifacts) {
     const op = operationForArtifact(artifact, adapter, targetRoot, {
@@ -83,7 +86,7 @@ export async function createInstallPlan(
       composedFrom: artifact.composedFrom,
     });
     if (op) {
-      desired.set(op.relativeDestPath, op);
+      desired.push(op);
     }
   }
 
@@ -101,16 +104,16 @@ export async function createCombinedInstallPlan(
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   for (const artifact of desiredArtifacts) {
-    if (artifact.meta.dependencyRole === "transitive" && isGuardedMergeTarget(artifact.type)) {
-      throw new Error(`Transitive ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
+    if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {
+      throw new Error(`Dependency-provided ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
     }
   }
 
-  const desired = new Map<string, InstallOperation>();
+  const desired: InstallOperation[] = [];
   for (const artifact of desiredArtifacts) {
     const op = operationForArtifact(artifact, adapter, targetRoot, artifact.meta);
     if (op) {
-      desired.set(op.relativeDestPath, op);
+      desired.push(op);
     }
   }
 
@@ -119,17 +122,19 @@ export async function createCombinedInstallPlan(
 }
 
 async function createPlanFromOperations(
-  desired: Map<string, InstallOperation>,
+  desiredOps: InstallOperation[],
   adapter: AdapterConfig,
   targetRoot: string,
   manifest: InstallManifest | undefined,
   transport: TargetTransport,
   options: CombinedInstallPlanOptions,
 ): Promise<InstallPlan> {
-  const migration = migrateManifestForPlan(manifest, desired);
+  const migration = await migrateManifestForPlan(manifest, desiredOps, targetRoot, transport);
   const effectiveEntries = migration.entries;
   const manifestByPath = new Map(effectiveEntries.map((entry) => [entry.path, entry]));
+  const { desired, collisions } = await splitCollisionOperations(desiredOps, manifestByPath, transport);
   const operations: InstallOperation[] = [];
+  operations.push(...collisions);
 
   for (const op of desired.values()) {
     if (op.action === "plugin") {
@@ -182,12 +187,16 @@ async function createPlanFromOperations(
     }
 
     if (currentHash !== existing.hash) {
+      const composedFromDiff = changedComposedSelectors(op.composedFrom, existing.composedFrom);
       operations.push({
         ...op,
         action: "drift",
         currentHash,
         manifestHash: existing.hash,
         reason: "managed destination changed outside agentwheel",
+        blockedDesiredHash: op.desiredHash,
+        blockedReason: blockedDriftReason(op.composedFrom, existing.composedFrom),
+        composedFromDiff,
       });
       continue;
     }
@@ -263,13 +272,13 @@ async function createPlanFromOperations(
 type PlanningManifestEntry = InstallManifestEntry | InstallManifestV1Entry;
 
 async function addProgrammaticOperations(
-  desired: Map<string, InstallOperation>,
+  desired: InstallOperation[],
   adapter: AdapterConfig,
   targetRoot: string,
 ): Promise<void> {
   if (!adapter.programmatic?.plan) return;
   for (const op of await adapter.programmatic.plan({ targetRoot, adapterName: adapter.name })) {
-    desired.set(`programmatic/${op.name}`, {
+    desired.push({
       action: "program",
       artifactType: "settings",
       artifactName: op.name,
@@ -289,26 +298,24 @@ async function addProgrammaticOperations(
   }
 }
 
-function migrateManifestForPlan(
+async function migrateManifestForPlan(
   manifest: InstallManifest | undefined,
-  desired: Map<string, InstallOperation>,
-): { entries: PlanningManifestEntry[]; report?: MigrationReport } {
+  desired: InstallOperation[],
+  targetRoot: string,
+  transport: TargetTransport,
+): Promise<{ entries: PlanningManifestEntry[]; report?: MigrationReport }> {
   if (!manifest) return { entries: [] };
   if (!manifest.legacy) return { entries: manifest.entries };
 
   const entries: InstallManifestEntry[] = [];
   const dropped: string[] = [];
   let adopted = 0;
-  const desiredOps = [...desired.values()].sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
+  const desiredByPath = groupOperationsByPath(desired);
 
   for (const entry of manifest.entries) {
-    const pathMatch = desired.get(entry.path);
-    const packageMatch = !pathMatch && entry.packageName
-      ? desiredOps.find((op) => op.owners?.includes(entry.packageName!) && op.artifactType === entry.artifactType && op.artifactName === entry.artifactName)
-        ?? desiredOps.find((op) => op.owners?.includes(entry.packageName!))
-      : undefined;
-    const match = pathMatch ?? packageMatch;
-    if (!match) {
+    const candidates = desiredByPath.get(entry.path) ?? [];
+    const match = candidates.length === 1 ? candidates[0] : undefined;
+    if (!match || !(await canStrictlyAdoptLegacyEntry(entry, match, targetRoot, transport))) {
       dropped.push(entry.path);
       continue;
     }
@@ -323,6 +330,103 @@ function migrateManifestForPlan(
       dropped,
     },
   };
+}
+
+async function canStrictlyAdoptLegacyEntry(
+  entry: InstallManifestV1Entry,
+  op: InstallOperation,
+  targetRoot: string,
+  transport: TargetTransport,
+): Promise<boolean> {
+  if (entry.artifactType !== op.artifactType || entry.artifactName !== op.artifactName) return false;
+  if (!op.desiredHash || entry.sourceHash !== op.desiredHash) return false;
+  if (!packageIdentityMatches(entry, op)) return false;
+  const destPath = join(targetRoot, entry.path);
+  if (!(await transport.pathExists(destPath))) return false;
+  return (await transport.hashPath(destPath)) === entry.hash;
+}
+
+function packageIdentityMatches(entry: InstallManifestV1Entry, op: InstallOperation): boolean {
+  if (!entry.packageName) return !op.packageName;
+  return op.packageName === entry.packageName || op.owners?.includes(entry.packageName) === true;
+}
+
+async function splitCollisionOperations(
+  desiredOps: InstallOperation[],
+  manifestByPath: Map<string, PlanningManifestEntry>,
+  transport: TargetTransport,
+): Promise<{ desired: Map<string, InstallOperation>; collisions: InstallOperation[] }> {
+  const byPath = groupOperationsByPath(desiredOps);
+
+  const desired = new Map<string, InstallOperation>();
+  const collisions: InstallOperation[] = [];
+  for (const [path, group] of byPath) {
+    if (group.length === 1) {
+      desired.set(path, group[0]!);
+      continue;
+    }
+
+    const existing = manifestByPath.get(path);
+    const cleanIncumbent = existing ? await cleanManifestIncumbent(existing, group, transport) : undefined;
+    if (cleanIncumbent) {
+      desired.set(path, cleanIncumbent);
+      for (const op of group) {
+        if (op === cleanIncumbent) continue;
+        collisions.push(collisionOperation(op, group, cleanIncumbent));
+      }
+      continue;
+    }
+
+    for (const op of group) {
+      collisions.push(collisionOperation(op, group));
+    }
+  }
+
+  return { desired, collisions };
+}
+
+function groupOperationsByPath(ops: InstallOperation[]): Map<string, InstallOperation[]> {
+  const byPath = new Map<string, InstallOperation[]>();
+  for (const op of ops) {
+    const group = byPath.get(op.relativeDestPath) ?? [];
+    group.push(op);
+    byPath.set(op.relativeDestPath, group);
+  }
+  return byPath;
+}
+
+async function cleanManifestIncumbent(
+  existing: PlanningManifestEntry,
+  group: InstallOperation[],
+  transport: TargetTransport,
+): Promise<InstallOperation | undefined> {
+  const destPath = group[0]?.destPath;
+  if (!destPath || !(await transport.pathExists(destPath))) return undefined;
+  if ((await transport.hashPath(destPath)) !== existing.hash) return undefined;
+  const matches = group.filter((op) => operationMatchesManifestEntry(op, existing));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function operationMatchesManifestEntry(op: InstallOperation, entry: PlanningManifestEntry): boolean {
+  if (op.artifactType !== entry.artifactType || op.artifactName !== entry.artifactName) return false;
+  if ("logicalSelector" in entry && entry.logicalSelector && op.logicalSelector && entry.logicalSelector === op.logicalSelector) return true;
+  if ("graphNodeId" in entry && entry.graphNodeId && op.graphNodeId && entry.graphNodeId === op.graphNodeId) return true;
+  return op.packageName !== undefined && entry.packageName === op.packageName;
+}
+
+function collisionOperation(op: InstallOperation, group: InstallOperation[], incumbent?: InstallOperation): InstallOperation {
+  const owners = group.map(describeOperationOwner).sort();
+  const incumbentText = incumbent ? `; incumbent ${describeOperationOwner(incumbent)} keeps the plain name` : "";
+  return {
+    ...op,
+    action: "conflict",
+    reason: `install path collision at ${op.relativeDestPath}: ${owners.join("; ")}${incumbentText}. Resolve by aliasing, deselecting one artifact, or overriding the dependency selection.`,
+  };
+}
+
+function describeOperationOwner(op: InstallOperation): string {
+  const owner = op.owners?.join(",") ?? op.packageName ?? "unknown-owner";
+  return `${op.dependencyRole ?? "root"} ${op.logicalSelector ?? `${op.artifactType}/${op.artifactName}`} owned by ${owner}`;
 }
 
 function adoptLegacyEntry(entry: InstallManifestV1Entry, op: InstallOperation): InstallManifestEntry {
@@ -439,6 +543,12 @@ function reasonWithComposedDiff(reason: string, desired?: Artifact["composedFrom
   const changed = changedComposedSelectors(desired, current);
   if (changed.length === 0) return reason;
   return `${reason} (included fragment changed: ${changed.join(", ")})`;
+}
+
+function blockedDriftReason(desired?: Artifact["composedFrom"], current?: Artifact["composedFrom"]): string | undefined {
+  const changed = changedComposedSelectors(desired, current);
+  if (changed.length === 0) return undefined;
+  return `drift blocks update: included fragment changed ${changed.join(", ")}`;
 }
 
 function changedComposedSelectors(desired?: Artifact["composedFrom"], current?: Artifact["composedFrom"]): string[] {

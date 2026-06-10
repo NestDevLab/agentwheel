@@ -13,7 +13,7 @@ import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, writeWor
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
-import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, writeGraphSourceLock } from "../lifecycle/source-plan.js";
+import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, graphLockPathForTarget, writeGraphSourceLock } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
@@ -223,6 +223,11 @@ program
         dryRun: options.dryRun,
         executePlugins: options.executePlugins,
         allowAdapterCode: options.allowAdapterCode,
+        noDeps: options.noDeps,
+        frozenLock: options.frozenLock,
+        yes: options.yes,
+        trustPatterns: options.trust ?? [],
+        isTTY: process.stdin.isTTY === true,
         warn: (message) => console.warn(message),
       });
       for (const result of results) {
@@ -255,8 +260,12 @@ program
       for (const result of await buildGraphPlansForTarget(target, source, options, { useUpdateDecision: false })) {
         console.log(formatGraphPlan(result));
         if (!options.dryRun) {
-          await applyCombinedInstallPlan(result.plan, { executePlugins: options.executePlugins, transport: transportForTarget(target), graphLockDigest: result.graphLockDigest });
-          await writeGraphSourceLock(result);
+          await applyCombinedInstallPlan(result.plan, {
+            executePlugins: options.executePlugins,
+            transport: transportForTarget(target),
+            graphLockDigest: result.graphLockDigest,
+            graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+          });
           console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
         }
         await rm(result.bundle.root, { recursive: true, force: true });
@@ -487,8 +496,12 @@ async function runConfiguredGraphPackages(
     console.log(`${behavior.useUpdateDecision ? "Update" : "Sync"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
     console.log(formatGraphPlan(result));
     if (!options.dryRun) {
-      await applyCombinedInstallPlan(result.plan, { executePlugins: options.executePlugins, transport: transportForTarget(target), graphLockDigest: result.graphLockDigest });
-      await writeGraphSourceLock(result);
+      await applyCombinedInstallPlan(result.plan, {
+        executePlugins: options.executePlugins,
+        transport: transportForTarget(target),
+        graphLockDigest: result.graphLockDigest,
+        graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+      });
       console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
     }
     await rm(result.bundle.root, { recursive: true, force: true });
@@ -607,6 +620,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
     const key = graphGroupKey(removedTarget, removedAdapterOptions);
     const remainingGroup = groups.get(key);
     let remainingDesired: ReturnType<typeof desiredArtifactsFromGraphBundle> = [];
+    let remainingGraphPlan: Awaited<ReturnType<typeof createGraphSourcePlan>> | undefined;
     let renderedRoot: string | undefined;
     if (remainingGroup && remainingGroup.packages.length > 0) {
       const remainingAdapter = await resolveAdapterForTarget(remainingGroup.target, remainingGroup.adapterOptions);
@@ -629,19 +643,37 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         trustPatterns: options.trust ?? [],
         isTTY: process.stdin.isTTY === true,
       });
+      remainingGraphPlan = result;
       remainingDesired = desiredArtifactsFromGraphBundle(result.bundle);
       renderedRoot = result.bundle.root;
     }
 
-    const plan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport);
+    const plan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, { graphLockDigest: remainingGraphPlan?.graphLockDigest });
     console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
     console.log(formatPlan(plan));
     const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force, transport });
     if (!options.dryRun) {
       console.log(formatUninstallResult(result));
+      if (remainingGraphPlan) {
+        await writeGraphSourceLock(remainingGraphPlan);
+      } else {
+        await rm(graphLockPathForTarget(
+          removedTarget.workspaceRoot,
+          removedTarget.agentName ?? removedTarget.source,
+          adapter.name,
+          targetFingerprintParts(removedTarget, adapter, removedAdapterOptions),
+        ), { force: true });
+      }
     }
     if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
     if (plan.hasBlockingChanges) process.exitCode = 1;
+  }
+
+  if (!options.dryRun) {
+    await writeWorkspaceConfig(target.workspaceRoot, {
+      ...config,
+      packages: remaining,
+    });
   }
 }
 

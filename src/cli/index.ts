@@ -3,8 +3,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
-import { applyInstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
-import { formatPlan } from "./format.js";
+import type { AdapterConfig } from "../model/adapter.js";
+import { applyCombinedInstallPlan, applyInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, readSourceLock, uninstall } from "../install/index.js";
+import { formatGraphPlan, formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -12,11 +13,12 @@ import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, writeWor
 import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
-import { createSourcePlan } from "../lifecycle/source-plan.js";
+import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, createSourcePlan, writeGraphSourceLock } from "../lifecycle/source-plan.js";
 import { shouldUpdatePackage } from "../lifecycle/update.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import type { InstallPlan } from "../install/plan.js";
+import type { GraphRootRequest } from "../resolve/graph.js";
 import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
 import { maybeCheckForUpdate } from "./update-check.js";
 import { pathExists } from "../utils/fs.js";
@@ -150,9 +152,9 @@ program
 
 program
   .command("plan")
-  .argument("<source>", "source directory")
+  .argument("[source]", "source directory")
   .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter", "openclaw")
+  .option("--adapter <adapter>", "built-in adapter")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -163,13 +165,26 @@ program
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
+  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--yes", "trust all new transitive sources", false)
+  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
-      const { plan, bundle } = await buildPlan(source, target, options);
-      console.log(formatPlan(plan));
-      await rm(bundle.root, { recursive: true, force: true });
-      if (plan.hasBlockingChanges) process.exitCode = 1;
+      if (source && options.noDeps && options.onlySource) {
+        const { plan, bundle } = await buildPlan(source, target, options);
+        console.log(formatPlan(plan));
+        await rm(bundle.root, { recursive: true, force: true });
+        if (plan.hasBlockingChanges) process.exitCode = 1;
+        continue;
+      }
+      for (const result of await buildGraphPlansForTarget(target, source, options, { useUpdateDecision: false })) {
+        console.log(formatGraphPlan(result));
+        await rm(result.bundle.root, { recursive: true, force: true });
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
+      }
     }
   });
 
@@ -177,7 +192,7 @@ program
   .command("sync")
   .argument("[source]", "source directory")
   .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter", "openclaw")
+  .option("--adapter <adapter>", "built-in adapter")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -190,6 +205,11 @@ program
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
+  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--yes", "trust all new transitive sources", false)
+  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
     if (options.profile) {
       const target = await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent });
@@ -216,19 +236,32 @@ program
     const targets = await resolveCliTargets(options);
     if (!source) {
       for (const target of targets) {
-        await runConfiguredPackages(target, options, { useUpdateDecision: false });
+        await runConfiguredGraphPackages(target, options, { useUpdateDecision: false });
       }
       return;
     }
     for (const target of targets) {
-      const { plan, bundle } = await buildPlan(source, target, options);
-      console.log(formatPlan(plan));
-      if (!options.dryRun) {
-        await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins, transport: transportForTarget(target) });
-        console.log(`Applied ${target.adapter} at ${target.targetRoot}.`);
+      if (options.noDeps && options.onlySource) {
+        const { plan, bundle } = await buildPlan(source, target, options);
+        console.log(formatPlan(plan));
+        if (!options.dryRun) {
+          await applyInstallPlan(plan, bundle.sourceLock, { executePlugins: options.executePlugins, transport: transportForTarget(target) });
+          console.log(`Applied ${target.adapter} at ${target.targetRoot}.`);
+        }
+        await rm(bundle.root, { recursive: true, force: true });
+        if (plan.hasBlockingChanges) process.exitCode = 1;
+        continue;
       }
-      await rm(bundle.root, { recursive: true, force: true });
-      if (plan.hasBlockingChanges) process.exitCode = 1;
+      for (const result of await buildGraphPlansForTarget(target, source, options, { useUpdateDecision: false })) {
+        console.log(formatGraphPlan(result));
+        if (!options.dryRun) {
+          await applyCombinedInstallPlan(result.plan, { executePlugins: options.executePlugins, transport: transportForTarget(target), graphLockDigest: result.graphLockDigest });
+          await writeGraphSourceLock(result);
+          console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        }
+        await rm(result.bundle.root, { recursive: true, force: true });
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
+      }
     }
   });
 
@@ -243,10 +276,14 @@ program
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--no-deps", "resolve only root sources and ignore requires with a warning", false)
+  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--yes", "trust all new transitive sources", false)
+  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
-      await runConfiguredPackages(target, options, { useUpdateDecision: true });
+      await runConfiguredGraphPackages(target, options, { useUpdateDecision: true });
     }
   });
 
@@ -334,7 +371,8 @@ program
 
 program
   .command("uninstall")
-  .option("--adapter <adapter>", "adapter", "openclaw")
+  .argument("[package]", "configured package name or source to remove from the ownership graph")
+  .option("--adapter <adapter>", "adapter")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("--target-root <path>", "runtime/project root")
@@ -344,9 +382,16 @@ program
   .option("--force", "remove drifted managed files too", false)
   .option("--select <type/name>", "uninstall only selected artifact type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "uninstall only selected skill name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .action(async (options) => {
+  .option("--frozen-lock", "resolve remaining packages strictly from the existing graph lock and cached sources", false)
+  .option("--yes", "trust all new transitive sources while resolving remaining packages", false)
+  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .action(async (packageName, options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
+      if (packageName) {
+        await uninstallConfiguredPackage(target, packageName, options);
+        continue;
+      }
       const adapter = await resolveAdapterForTarget(target, options);
       const transport = transportForTarget(target);
       const manifest = await readInstallManifest(target.targetRoot, adapter.name, transport);
@@ -400,6 +445,257 @@ async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapter
     baseDir: target.workspaceRoot,
     warn: (message) => console.warn(message),
   });
+}
+
+interface GraphCliOptions {
+  dryRun?: boolean;
+  executePlugins?: boolean;
+  allowAdapterCode?: boolean;
+  adapterConfig?: string;
+  adapterModule?: string;
+  adapter?: string;
+  driver?: string;
+  mode?: "pinned" | "tracking";
+  select?: string[];
+  skill?: string[];
+  skills?: string[];
+  noDeps?: boolean;
+  onlySource?: boolean;
+  frozenLock?: boolean;
+  yes?: boolean;
+  trust?: string[];
+}
+
+interface PackageGraphGroup {
+  target: RuntimeTarget;
+  adapterOptions: {
+    adapterConfig?: string;
+    adapterModule?: string;
+    allowAdapterCode?: boolean;
+  };
+  packages: WorkspacePackage[];
+  extraRoots: GraphRootRequest[];
+}
+
+async function runConfiguredGraphPackages(
+  target: RuntimeTarget,
+  options: GraphCliOptions,
+  behavior: { useUpdateDecision: boolean },
+): Promise<void> {
+  const results = await buildGraphPlansForTarget(target, undefined, options, behavior);
+  for (const result of results) {
+    console.log(`${behavior.useUpdateDecision ? "Update" : "Sync"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
+    console.log(formatGraphPlan(result));
+    if (!options.dryRun) {
+      await applyCombinedInstallPlan(result.plan, { executePlugins: options.executePlugins, transport: transportForTarget(target), graphLockDigest: result.graphLockDigest });
+      await writeGraphSourceLock(result);
+      console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+    }
+    await rm(result.bundle.root, { recursive: true, force: true });
+    if (result.plan.hasBlockingChanges) process.exitCode = 1;
+  }
+}
+
+async function buildGraphPlansForTarget(
+  target: RuntimeTarget,
+  source: string | undefined,
+  options: GraphCliOptions,
+  _behavior: { useUpdateDecision: boolean },
+) {
+  const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  const groups = new Map<string, PackageGraphGroup>();
+  const selectedArtifacts = selectedArtifactsFromOptions(options);
+
+  if (!source || !options.onlySource) {
+    for (const pkg of config.packages) {
+      const group = graphGroupForPackage(groups, target, pkg, options);
+      group.packages.push(pkg);
+    }
+  }
+
+  if (source) {
+    const sourceTarget = target;
+    const key = graphGroupKey(sourceTarget, {
+      adapterConfig: options.adapterConfig,
+      adapterModule: options.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+    });
+    const group = groups.get(key) ?? {
+      target: sourceTarget,
+      adapterOptions: {
+        adapterConfig: options.adapterConfig,
+        adapterModule: options.adapterModule,
+        allowAdapterCode: options.allowAdapterCode,
+      },
+      packages: [],
+      extraRoots: [],
+    };
+    group.extraRoots.push({
+      rootId: `source:${source}`,
+      source,
+      mode: options.mode ?? "pinned",
+      select: selectedArtifacts,
+    });
+    groups.set(key, group);
+  }
+
+  if (groups.size === 0) {
+    console.log(`No packages configured at ${target.workspaceRoot}.`);
+    return [];
+  }
+
+  const results = [];
+  for (const group of groups.values()) {
+    const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+    const roots: GraphRootRequest[] = [
+      ...group.packages.map((pkg) => ({
+        rootId: pkg.name,
+        source: pkg.source,
+        mode: pkg.mode,
+        ref: pkg.requestedRef,
+        select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+      })),
+      ...group.extraRoots,
+    ];
+    if (roots.length === 0) continue;
+    results.push(await createGraphSourcePlan({
+      roots,
+      targetRoot: group.target.targetRoot,
+      workspaceRoot: group.target.workspaceRoot,
+      adapter,
+      transport: transportForTarget(group.target),
+      targetKey: group.target.agentName ?? group.target.source,
+      targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions),
+      noDeps: options.noDeps,
+      frozenLock: options.frozenLock,
+      yes: options.yes,
+      trustPatterns: options.trust ?? [],
+      isTTY: process.stdin.isTTY === true,
+    }));
+  }
+  return results;
+}
+
+async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: string, options: GraphCliOptions & { force?: boolean }): Promise<void> {
+  const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  const removed = config.packages.filter((pkg) => pkg.name === packageName || pkg.source === packageName);
+  if (removed.length === 0) {
+    throw new Error(`Configured package not found: ${packageName}`);
+  }
+  const remaining = config.packages.filter((pkg) => !removed.includes(pkg));
+  const groups = new Map<string, PackageGraphGroup>();
+  for (const pkg of remaining) {
+    const group = graphGroupForPackage(groups, target, pkg, options);
+    group.packages.push(pkg);
+  }
+
+  for (const pkg of removed) {
+    const removedTarget = targetForPackage(target, pkg, options);
+    const removedAdapterOptions = {
+      adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
+      adapterModule: options.adapterModule ?? pkg.adapterModule,
+      allowAdapterCode: options.allowAdapterCode,
+    };
+    const adapter = await resolveAdapterForTarget(removedTarget, removedAdapterOptions);
+    const transport = transportForTarget(removedTarget);
+    const manifest = await readInstallManifest(removedTarget.targetRoot, adapter.name, transport);
+    if (!manifest) {
+      console.log(`No install manifest for ${adapter.name} at ${removedTarget.targetRoot}`);
+      continue;
+    }
+
+    const key = graphGroupKey(removedTarget, removedAdapterOptions);
+    const remainingGroup = groups.get(key);
+    let remainingDesired: ReturnType<typeof desiredArtifactsFromGraphBundle> = [];
+    let renderedRoot: string | undefined;
+    if (remainingGroup && remainingGroup.packages.length > 0) {
+      const remainingAdapter = await resolveAdapterForTarget(remainingGroup.target, remainingGroup.adapterOptions);
+      const result = await createGraphSourcePlan({
+        roots: remainingGroup.packages.map((pkg) => ({
+          rootId: pkg.name,
+          source: pkg.source,
+          mode: pkg.mode,
+          ref: pkg.requestedRef,
+          select: normalizeArtifactSelectors(pkg.select, pkg.skills),
+        })),
+        targetRoot: remainingGroup.target.targetRoot,
+        workspaceRoot: remainingGroup.target.workspaceRoot,
+        adapter: remainingAdapter,
+        transport,
+        targetKey: remainingGroup.target.agentName ?? remainingGroup.target.source,
+        targetFingerprintParts: targetFingerprintParts(remainingGroup.target, remainingAdapter, remainingGroup.adapterOptions),
+        frozenLock: options.frozenLock,
+        yes: options.yes,
+        trustPatterns: options.trust ?? [],
+        isTTY: process.stdin.isTTY === true,
+      });
+      remainingDesired = desiredArtifactsFromGraphBundle(result.bundle);
+      renderedRoot = result.bundle.root;
+    }
+
+    const plan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport);
+    console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
+    console.log(formatPlan(plan));
+    const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force, transport });
+    if (!options.dryRun) {
+      console.log(formatUninstallResult(result));
+    }
+    if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
+    if (plan.hasBlockingChanges) process.exitCode = 1;
+  }
+}
+
+function graphGroupForPackage(
+  groups: Map<string, PackageGraphGroup>,
+  target: RuntimeTarget,
+  pkg: WorkspacePackage,
+  options: GraphCliOptions,
+): PackageGraphGroup {
+  const packageTarget = targetForPackage(target, pkg, options);
+  const adapterOptions = {
+    adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
+    adapterModule: options.adapterModule ?? pkg.adapterModule,
+    allowAdapterCode: options.allowAdapterCode,
+  };
+  const key = graphGroupKey(packageTarget, adapterOptions);
+  const existing = groups.get(key);
+  if (existing) return existing;
+  const created = {
+    target: packageTarget,
+    adapterOptions,
+    packages: [],
+    extraRoots: [],
+  };
+  groups.set(key, created);
+  return created;
+}
+
+function targetForPackage(target: RuntimeTarget, pkg: WorkspacePackage, options: GraphCliOptions): RuntimeTarget {
+  return options.adapter || target.source !== "cwd" ? target : { ...target, adapter: pkg.adapter };
+}
+
+function graphGroupKey(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }): string {
+  return JSON.stringify({
+    adapter: target.adapter,
+    targetRoot: target.targetRoot,
+    transport: target.transport,
+    agentName: target.agentName,
+    adapterConfig: options.adapterConfig,
+    adapterModule: options.adapterModule,
+  });
+}
+
+function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, options: { adapterConfig?: string; adapterModule?: string }): unknown {
+  return {
+    adapter: adapter.name,
+    adapterConfig: options.adapterConfig,
+    adapterModule: options.adapterModule,
+    adapterCodeHash: adapter.programmatic?.hash,
+    agentName: target.agentName,
+    targetRoot: target.targetRoot,
+    transport: target.transport,
+    ssh: target.ssh,
+  };
 }
 
 async function runConfiguredPackages(
@@ -457,6 +753,10 @@ function collectSelectOption(value: string, previous: string[]): string[] {
 
 function collectSkillOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
+}
+
+function collectTrustOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }
 
 function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {

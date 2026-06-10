@@ -16,6 +16,7 @@ export interface RegistryClientOptions {
   cachePath?: string;
   ttlMs?: number;
   now?: () => Date;
+  offline?: boolean;
 }
 
 export interface RegistryIndex {
@@ -39,8 +40,12 @@ export class RegistryClient {
     const sources = await this.getSources();
     const ttlMs = await this.getTtlMs();
     const cached = await this.readCache();
-    if (!options.refresh && cached && sameSources(cached.sources, sources) && !this.isExpired(cached, ttlMs)) {
+    if (!options.refresh && cached && sameSources(cached.sources, sources) && (this.options.offline || !this.isExpired(cached, ttlMs))) {
       return { entries: cached.entries, sources: cached.sources, fetchedAt: cached.fetchedAt, fromCache: true };
+    }
+    if (this.options.offline) {
+      const reason = cached ? "registry sources changed" : "registry cache is missing";
+      throw new Error(`Frozen lock cannot refresh registry indexes (${reason}). Run without --frozen-lock first.`);
     }
 
     const entries = mergeIndexes(await Promise.all(sources.map((source) => this.fetchSource(source))));

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { Artifact } from "../model/artifact.js";
 import type { GraphNodeId, ResolvedNode } from "../model/graph.js";
-import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockRoot } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
 import type { PackageManifest } from "../model/package.js";
 import { readPackageManifest } from "../model/package.js";
 import type { RegistryClient } from "../registry/client.js";
@@ -28,6 +28,10 @@ export interface ResolveGraphOptions {
   concurrency?: number;
   registryClient?: Pick<RegistryClient, "resolve">;
   now?: () => Date;
+  noDeps?: boolean;
+  frozenLock?: boolean;
+  previousLock?: GraphLock;
+  warn?: (message: string) => void;
 }
 
 export interface ResolvedGraphRoot {
@@ -70,6 +74,7 @@ interface Requirement {
   optional: boolean;
   chain: string[];
   version?: string;
+  integrity?: string;
 }
 
 interface FetchedPackage {
@@ -81,6 +86,11 @@ interface FetchedPackage {
   name: string;
   version: string;
   sourceHash: string;
+}
+
+interface FrozenNodeMatch {
+  node: GraphLockNode;
+  requestedRef?: string;
 }
 
 interface NodeState {
@@ -192,7 +202,9 @@ async function processRequirement(
       ref: requirement.ref,
       registryClient: options.registryClient,
     });
-    const fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache);
+    const frozen = options.frozenLock ? lockedNodeForSource(normalized.normalizedSource, options.previousLock) : undefined;
+    const fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
+    verifyIntegrity(requirement.integrity, fetched.sourceHash, `${fetched.name}@${fetched.version}`);
     const nodeKey = `${normalized.normalizedSource}\0${fetched.name}`;
     const existingNameKey = nodeKeyByName.get(fetched.name);
     if (existingNameKey && existingNameKey !== nodeKey) {
@@ -268,6 +280,13 @@ async function processRequirement(
 
     if (!wasNew) return [];
     if (fetched.manifest?.schemaVersion !== 2) return [];
+    if (options.noDeps) {
+      const aliases = Object.keys(fetched.manifest.requires ?? {}).sort();
+      if (aliases.length > 0) {
+        options.warn?.(`--no-deps ignored dependencies for ${state.node.id}: ${aliases.join(", ")}`);
+      }
+      return [];
+    }
 
     return Object.entries(fetched.manifest.requires ?? {})
       .sort(([a], [b]) => a.localeCompare(b))
@@ -284,6 +303,7 @@ async function processRequirement(
         optional: dependency.optional ?? false,
         chain: [...requirement.chain, `${state.node.id}:${alias}`],
         version: dependency.version,
+        integrity: dependency.integrity,
       }));
   } catch (error) {
     if (requirement.optional) return [];
@@ -297,8 +317,9 @@ async function fetchPackage(
   mode: "pinned" | "tracking",
   options: ResolveGraphOptions,
   fetchCache: Map<string, Promise<FetchedPackage>>,
+  refOverride?: string,
 ): Promise<FetchedPackage> {
-  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}`;
+  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${options.frozenLock ? "frozen" : ""}`;
   const existing = fetchCache.get(key);
   if (existing) return existing;
 
@@ -307,7 +328,8 @@ async function fetchPackage(
     const resolved = await driver.resolve(normalized.source, {
       cacheRoot: options.cacheRoot ?? join(options.workspaceRoot, ".agentwheel", "cache"),
       mode,
-      ref: normalized.requestedRef,
+      ref: refOverride ?? normalized.requestedRef,
+      frozenLock: options.frozenLock,
     });
     const fetched = await withCachePathLock(resolved.resolvedPath, () => driver.fetch(resolved));
     const translated = await driver.translate(fetched);
@@ -335,6 +357,32 @@ async function fetchPackage(
   })();
   fetchCache.set(key, promise);
   return promise;
+}
+
+function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefined): FrozenNodeMatch {
+  if (!lock) {
+    throw new Error(`Frozen lock requires an existing graph lock before resolving ${normalizedSource}.`);
+  }
+  const matches = lock.canonical.nodes.filter((node) => node.normalizedSource === normalizedSource);
+  if (matches.length === 0) {
+    throw new Error(`Frozen lock cannot resolve new source: ${normalizedSource}. Run without --frozen-lock first.`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Frozen lock has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
+  }
+  const node = matches[0]!;
+  return {
+    node,
+    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+  };
+}
+
+function verifyIntegrity(integrity: string | undefined, sourceHash: string, label: string): void {
+  if (!integrity) return;
+  const expected = integrity.replace(/^sha256[-:]/i, "");
+  if (expected !== sourceHash) {
+    throw new Error(`Integrity mismatch for ${label}: expected ${integrity}, got sha256-${sourceHash}`);
+  }
 }
 
 async function withCachePathLock<T>(path: string, fn: () => Promise<T>): Promise<T> {

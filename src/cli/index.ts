@@ -28,13 +28,16 @@ import { validatePackage } from "../model/package-validate.js";
 import { migratePackageManifest } from "../model/package-migrate.js";
 import { findPackageManifestPath } from "../model/package.js";
 import { readGraphLock } from "../model/graph-lock.js";
+import { resolveCliVersion } from "./version.js";
+
+const CLI_VERSION = resolveCliVersion();
 
 const program = new Command();
 
 program
   .name("agentwheel")
   .description("Multi-runtime agent artifact orchestrator")
-  .version("0.7.0")
+  .version(CLI_VERSION)
   .option("--no-update-check", "disable npm version update check", false);
 
 program
@@ -1025,7 +1028,7 @@ function printRegistryEntries(entries: Array<{ name: string; type: string; sourc
 
 async function main(): Promise<void> {
   await maybeCheckForUpdate({
-    currentVersion: "0.7.0",
+    currentVersion: CLI_VERSION,
     argv: process.argv,
     env: process.env,
     isTTY: process.stderr.isTTY === true,

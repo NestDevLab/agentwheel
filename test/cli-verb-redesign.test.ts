@@ -146,6 +146,25 @@ describe("CLI verb redesign", () => {
     await expect(readFile(sharedDest, "utf8")).rejects.toThrow();
   });
 
+  it("installs and uninstalls local meta-packages through selected dependencies", async () => {
+    const workspace = await tempRoot();
+    const dep = await rulePackageFixture("dep", "dep");
+    const meta = await metaPackageFixture("meta-pack", {
+      dep: { source: dep, select: ["rules/dep.md"] },
+    });
+    const depDest = join(workspace, ".codex", "rules", "dep.md");
+    const before = await runtimeFiles(workspace);
+
+    await runCli(["install", meta, "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await expect(readFile(depDest, "utf8")).resolves.toContain("# dep");
+    const manifest = await readCodexManifest(workspace);
+    expect(manifest.entries.map((entry) => entry.path)).toEqual([".codex/rules/dep.md"]);
+
+    await runCli(["uninstall", "meta-pack", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(depDest, "utf8")).rejects.toThrow();
+    expect(await runtimeFiles(workspace)).toEqual(before);
+  });
+
   it("scoped install preserves out-of-scope merge update hashes until full install", async () => {
     const workspace = await tempRoot();
     const alpha = await packageFixture("scope-update-a");
@@ -305,6 +324,17 @@ async function rulePackageFixture(name: string, content: string, options: { requ
   return root;
 }
 
+async function metaPackageFixture(name: string, requires: unknown): Promise<string> {
+  const root = await tempRoot(`agentwheel-${name}-`);
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    requires,
+  }, null, 2)}\n`, "utf8");
+  return root;
+}
+
 async function writeRuleManifest(root: string, name: string, options: { requires?: unknown } = {}): Promise<void> {
   await writeFile(join(root, "openpack.json"), `${JSON.stringify({
     schemaVersion: 2,
@@ -365,6 +395,27 @@ function manifestEntry(manifest: TestManifest, path: string): TestManifestEntry 
   const entry = manifest.entries.find((candidate) => candidate.path === path);
   if (!entry) throw new Error(`Missing manifest entry: ${path}`);
   return entry;
+}
+
+async function runtimeFiles(root: string, prefix = ""): Promise<string[]> {
+  const dir = join(root, prefix);
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const relativePath = prefix ? join(prefix, entry.name) : entry.name;
+    if (relativePath === ".agentwheel" || relativePath.startsWith(".agentwheel/")) continue;
+    if (entry.isDirectory()) {
+      files.push(...await runtimeFiles(root, relativePath));
+    } else if (entry.isFile()) {
+      files.push(relativePath);
+    }
+  }
+  return files.sort();
 }
 
 async function removeConfiguredPackage(workspace: string, name: string): Promise<void> {

@@ -113,6 +113,66 @@ describe("OpenPack package manifests", () => {
     expect(manifest?.provides.map((provide) => provide.type)).toEqual(["fragments", "skills"]);
   });
 
+  it("parses v2 meta-packages without a provides key", async () => {
+    const root = await tempRoot();
+    await writeJson(join(root, "openpack.json"), {
+      schemaVersion: 2,
+      name: "test/meta-pack",
+      version: "0.1.0",
+      requires: {
+        dep: { source: "../dep-a", select: ["rules/a.md"] },
+      },
+    });
+
+    const manifest = await readPackageManifest(root);
+    expect(manifest?.schemaVersion).toBe(2);
+    expect(manifest?.provides).toEqual([]);
+  });
+
+  it("parses v2 meta-packages with an empty provides array", async () => {
+    const root = await tempRoot();
+    await writeJson(join(root, "openpack.json"), {
+      schemaVersion: 2,
+      name: "test/meta-pack",
+      version: "0.1.0",
+      requires: {
+        dep: { source: "../dep-a", select: ["rules/a.md"] },
+      },
+      provides: [],
+    });
+
+    const manifest = await readPackageManifest(root);
+    expect(manifest?.schemaVersion).toBe(2);
+    expect(manifest?.provides).toEqual([]);
+  });
+
+  it("rejects empty v2 manifests with neither provides nor requires", async () => {
+    const root = await tempRoot();
+    await writeJson(join(root, "openpack.json"), {
+      schemaVersion: 2,
+      name: "test/empty-pack",
+      version: "0.1.0",
+    });
+
+    await expect(readPackageManifest(root)).rejects.toThrow(/must declare at least one provides entry or one requires dependency/);
+  });
+
+  it("still rejects v1 manifests without provides", async () => {
+    const root = await tempRoot();
+    await writeJson(join(root, "agentwheel.json"), {
+      schemaVersion: 1,
+      name: "test/v1-pack",
+      version: "0.1.0",
+    });
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(readPackageManifest(root)).rejects.toThrow(/provides/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("rejects v1 manifests that masquerade as dependency or fragment packages", async () => {
     const root = await tempRoot();
     await writeJson(join(root, "agentwheel.json"), {

@@ -74,6 +74,40 @@ describe("dependency graph resolver", () => {
     ]);
   });
 
+  it("resolves root meta-packages that select local dependency artifacts", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const depA = join(workspace, "dep-a");
+    const depB = join(workspace, "dep-b");
+    await writeText(join(depA, "rules", "a.md"), "# A\n");
+    await writeText(join(depB, "rules", "b.md"), "# B\n");
+    await writeOpenPack(depA, {
+      name: "acme/dep-a",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(depB, {
+      name: "acme/dep-b",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(root, {
+      name: "acme/meta-root",
+      requires: {
+        a: { source: "../dep-a", select: ["rules/a.md"] },
+        b: { source: "../dep-b", select: ["rules/b.md"] },
+      },
+    });
+
+    const graph = await resolveDependencyGraph([{ rootId: "main", source: root }], { workspaceRoot: workspace });
+    const depANode = graph.nodes.find((node) => node.name === "acme/dep-a");
+    const depBNode = graph.nodes.find((node) => node.name === "acme/dep-b");
+    const rootNode = graph.nodes.find((node) => node.name === "acme/meta-root");
+
+    expect(graph.nodes.map((node) => node.name).sort()).toEqual(["acme/dep-a", "acme/dep-b", "acme/meta-root"]);
+    expect(depANode?.selected).toEqual(["rules/a.md"]);
+    expect(depBNode?.selected).toEqual(["rules/b.md"]);
+    expect(rootNode?.selected).toEqual([]);
+  });
+
   it("uses locked registry dependency nodes before refreshing registry entries", async () => {
     const workspace = await tempRoot();
     const registry = join(workspace, "registry.json");

@@ -9,9 +9,6 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0d1117;
-      --panel: #111827;
-      --panel-2: #151b26;
       --text: #f8fafc;
       --muted: #9ca3af;
       --line: rgba(148, 163, 184, 0.2);
@@ -675,9 +672,23 @@
   </div>
 
   <script>
+    const DEFAULT_DATA_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-data.json";
     const params = new URLSearchParams(location.search);
-    const DATA_URL = params.get("data")
-      ?? "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-data.json";
+
+    function dataUrlFromParam(value) {
+      if (!value) return DEFAULT_DATA_URL;
+      if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith("//")) return DEFAULT_DATA_URL;
+
+      try {
+        // Only relative same-origin ?data overrides are accepted; everything else uses production data.
+        const u = new URL(value, location.href);
+        return u.origin === location.origin ? u.href : DEFAULT_DATA_URL;
+      } catch {
+        return DEFAULT_DATA_URL;
+      }
+    }
+
+    const DATA_URL = dataUrlFromParam(params.get("data"));
 
     const state = {
       entries: [],
@@ -691,12 +702,6 @@
     const count = document.querySelector("#count");
     const queryInput = document.querySelector("#q");
     const sortSelect = document.querySelector("#sort");
-
-    function esc(value) {
-      const span = document.createElement("span");
-      span.textContent = value == null ? "" : String(value);
-      return span.innerHTML;
-    }
 
     function text(value) {
       return value == null ? "" : String(value);
@@ -851,7 +856,6 @@
       values.slice(0, 8).forEach((value) => {
         const pill = document.createElement("span");
         pill.className = "pill";
-        esc(value);
         pill.textContent = text(value);
         list.appendChild(pill);
       });
@@ -923,18 +927,20 @@
       }
       card.appendChild(meta);
 
-      const install = document.createElement("div");
-      install.className = "install";
-      const code = document.createElement("code");
-      code.textContent = text(entry.installCommand);
-      const copy = document.createElement("button");
-      copy.className = "copy";
-      copy.type = "button";
-      copy.textContent = "Copy";
-      copy.addEventListener("click", () => copyText(entry.installCommand, copy));
-      install.appendChild(code);
-      install.appendChild(copy);
-      card.appendChild(install);
+      if (typeof entry.installCommand === "string" && entry.installCommand.trim()) {
+        const install = document.createElement("div");
+        install.className = "install";
+        const code = document.createElement("code");
+        code.textContent = entry.installCommand;
+        const copy = document.createElement("button");
+        copy.className = "copy";
+        copy.type = "button";
+        copy.textContent = "Copy";
+        copy.addEventListener("click", () => copyText(entry.installCommand, copy));
+        install.appendChild(code);
+        install.appendChild(copy);
+        card.appendChild(install);
+      }
 
       const links = document.createElement("div");
       links.className = "links";

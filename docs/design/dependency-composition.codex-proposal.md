@@ -769,7 +769,6 @@ Optional controls:
 
 ```bash
 agentwheel install --no-deps
-agentwheel install --deps=direct       # direct only, no transitive; mostly for debugging
 agentwheel install --offline
 agentwheel install --frozen-lock
 agentwheel install --trust github:NestDevLab/*

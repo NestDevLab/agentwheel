@@ -108,6 +108,76 @@ describe("dependency graph resolver", () => {
     expect(rootNode?.selected).toEqual([]);
   });
 
+  it("resolves meta-packages used as transitive dependencies", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const meta = join(workspace, "meta");
+    const leaf = join(workspace, "leaf");
+    await writeText(join(root, "rules", "root.md"), "# Root\n");
+    await writeText(join(leaf, "rules", "leaf.md"), "# Leaf\n");
+    await writeOpenPack(leaf, {
+      name: "acme/leaf",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(meta, {
+      name: "acme/meta",
+      requires: {
+        leaf: { source: "../leaf", select: ["rules/leaf.md"] },
+      },
+    });
+    await writeOpenPack(root, {
+      name: "acme/root",
+      requires: {
+        meta: { source: "../meta" },
+      },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    const graph = await resolveDependencyGraph([{ rootId: "main", source: root }], { workspaceRoot: workspace });
+    const bundle = await renderGraphForTarget(graph, { workspaceRoot: workspace, adapter: openClawAdapter });
+    const leafNode = graph.nodes.find((node) => node.name === "acme/leaf");
+    const metaNode = graph.nodes.find((node) => node.name === "acme/meta");
+
+    expect(graph.nodes.map((node) => node.name).sort()).toEqual(["acme/leaf", "acme/meta", "acme/root"]);
+    expect(leafNode?.selected).toEqual(["rules/leaf.md"]);
+    expect(metaNode?.selected).toEqual([]);
+    expect(bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`).sort()).toEqual(["rules/leaf.md", "rules/root.md"]);
+  });
+
+  it("resolves nested meta-packages that select leaf artifacts", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const meta = join(workspace, "meta");
+    const leaf = join(workspace, "leaf");
+    await writeText(join(leaf, "rules", "leaf.md"), "# Leaf\n");
+    await writeOpenPack(leaf, {
+      name: "acme/leaf",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(meta, {
+      name: "acme/meta",
+      requires: {
+        leaf: { source: "../leaf", select: ["rules/leaf.md"] },
+      },
+    });
+    await writeOpenPack(root, {
+      name: "acme/meta-root",
+      requires: {
+        meta: { source: "../meta" },
+      },
+    });
+
+    const graph = await resolveDependencyGraph([{ rootId: "main", source: root }], { workspaceRoot: workspace });
+    const leafNode = graph.nodes.find((node) => node.name === "acme/leaf");
+    const metaNode = graph.nodes.find((node) => node.name === "acme/meta");
+    const rootNode = graph.nodes.find((node) => node.name === "acme/meta-root");
+
+    expect(graph.nodes.map((node) => node.name).sort()).toEqual(["acme/leaf", "acme/meta", "acme/meta-root"]);
+    expect(leafNode?.selected).toEqual(["rules/leaf.md"]);
+    expect(metaNode?.selected).toEqual([]);
+    expect(rootNode?.selected).toEqual([]);
+  });
+
   it("uses locked registry dependency nodes before refreshing registry entries", async () => {
     const workspace = await tempRoot();
     const registry = join(workspace, "registry.json");

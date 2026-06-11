@@ -843,8 +843,9 @@
       document.body.appendChild(input);
       input.select();
       try {
-        document.execCommand("copy");
-        done();
+        if (document.execCommand("copy")) {
+          done();
+        }
       } finally {
         document.body.removeChild(input);
       }
@@ -944,7 +945,7 @@
 
       const links = document.createElement("div");
       links.className = "links";
-      const repo = safeUrl(entry.repoUrl);
+      const repo = typeof entry.repoUrl === "string" && entry.repoUrl.trim() ? safeUrl(entry.repoUrl) : null;
       if (repo) {
         const link = document.createElement("a");
         link.className = "resource-link";

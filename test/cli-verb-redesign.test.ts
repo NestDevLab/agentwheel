@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -12,7 +12,9 @@ let cliHome: string;
 
 beforeAll(async () => {
   cliHome = await mkdtemp(join(tmpdir(), "agentwheel-cli-home-"));
-  await execFileAsync("pnpm", ["build"], { cwd: process.cwd(), maxBuffer: 20 * 1024 * 1024 });
+  if (await cliBuildIsStale()) {
+    await execFileAsync("pnpm", ["build"], { cwd: process.cwd(), maxBuffer: 20 * 1024 * 1024 });
+  }
 });
 
 afterEach(async () => {
@@ -215,4 +217,26 @@ async function gitPackageFixture(label: string): Promise<string> {
 
 async function git(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", ["-c", "user.email=test@example.com", "-c", "user.name=Test", ...args], { cwd });
+}
+
+async function cliBuildIsStale(): Promise<boolean> {
+  try {
+    const built = await stat(cli);
+    return built.mtimeMs < await newestTypescriptMtime(join(process.cwd(), "src"));
+  } catch {
+    return true;
+  }
+}
+
+async function newestTypescriptMtime(root: string): Promise<number> {
+  let newest = 0;
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, await newestTypescriptMtime(path));
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      newest = Math.max(newest, (await stat(path)).mtimeMs);
+    }
+  }
+  return newest;
 }

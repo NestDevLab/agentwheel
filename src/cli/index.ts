@@ -527,6 +527,7 @@ async function runInstallCommand(
     const configured = nameOrSource ? findConfiguredPackage(config.packages, nameOrSource) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
+    let extraPackage: WorkspacePackage | undefined;
 
     if (nameOrSource && !configured) {
       try {
@@ -536,13 +537,14 @@ async function runInstallCommand(
           await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), entry));
         } else {
           source = nameOrSource;
+          extraPackage = entry;
         }
       } catch (error) {
         throw teachingInstallError(nameOrSource, error);
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...options, scope }, { mode: "install" })) {
+    for (const result of await buildGraphPlansForTarget(target, source, { ...options, scope, extraPackage }, { mode: "install" })) {
       console.log(formatGraphPlan(result));
       if (behavior.apply) {
         await applyCombinedInstallPlan(result.plan, {
@@ -678,6 +680,7 @@ interface GraphCliOptions {
   trust?: string[];
   scope?: string;
   keepFiles?: boolean;
+  extraPackage?: WorkspacePackage;
 }
 
 interface PackageGraphGroup {
@@ -753,7 +756,7 @@ async function buildGraphPlansForTarget(
       extraRoots: [],
       extraPackages: [],
     };
-    const entry = await packageEntryFromSource(source, target.workspaceRoot, options);
+    const entry = options.extraPackage ?? await packageEntryFromSource(source, target.workspaceRoot, options);
     group.extraPackages.push(entry);
     groups.set(key, group);
   }

@@ -199,6 +199,9 @@ async function applyPlanTransactionally(
 export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
   const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
   const transport = resolvedOptions.transport ?? localTransport;
+  if (resolvedOptions.keepFiles && resolvedOptions.force) {
+    throw new Error("--keep-files cannot be combined with --force.");
+  }
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "conflict");
     throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);

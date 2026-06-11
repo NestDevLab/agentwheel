@@ -557,6 +557,17 @@ describe("ownership uninstall and merge target guard", () => {
     ]);
   });
 
+  it("rejects keep-files with force at the uninstall API boundary", async () => {
+    const target = await tempRoot();
+    await expect(uninstall({
+      adapter: adapter.name,
+      targetRoot: target,
+      operations: [],
+      hasBlockingChanges: false,
+      baseRevision: null,
+    }, { keepFiles: true, force: true })).rejects.toThrow("--keep-files cannot be combined with --force.");
+  });
+
   it("keep-files makes drifted entries with no remaining owners unmanaged", async () => {
     const source = await tempRoot();
     const target = await tempRoot();

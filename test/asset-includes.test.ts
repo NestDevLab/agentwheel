@@ -32,8 +32,8 @@ async function createPackage(): Promise<string> {
   await writeFile(join(root, "packages", "tmux-bridge", "bin", "README.txt"), "not included\n", "utf8");
   await chmod(join(root, "packages", "tmux-bridge", "bin", "agent-send.sh"), 0o755);
   await chmod(join(root, "packages", "tmux-bridge", "bin", "agent-read.sh"), 0o755);
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "asset-package",
     version: "1.0.0",
     provides: [

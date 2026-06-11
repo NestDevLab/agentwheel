@@ -30,8 +30,8 @@ async function writePackage(root: string): Promise<void> {
   await mkdir(join(root, "mcp"), { recursive: true });
   await mkdir(join(root, "hooks"), { recursive: true });
   await mkdir(join(root, "shared", "bin"), { recursive: true });
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "adapter-package",
     version: "1.0.0",
     provides: [

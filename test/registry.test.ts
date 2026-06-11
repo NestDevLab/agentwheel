@@ -46,8 +46,8 @@ async function writeSkill(dir: string, name: string): Promise<void> {
 async function writePackage(dir: string): Promise<void> {
   await mkdir(join(dir, "rules"), { recursive: true });
   await mkdir(join(dir, "skills", "demo-skill"), { recursive: true });
-  await writeFile(join(dir, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(dir, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "fixture/short-package",
     version: "0.1.0",
     provides: [

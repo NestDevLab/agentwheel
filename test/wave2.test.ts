@@ -32,8 +32,8 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   await mkdir(join(root, "mcp"), { recursive: true });
   await mkdir(join(root, "hooks"), { recursive: true });
   await mkdir(join(root, "plugins", "demo-plugin"), { recursive: true });
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "acme/wave2",
     version: "0.2.0",
     provides: [

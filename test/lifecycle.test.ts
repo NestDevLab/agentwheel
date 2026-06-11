@@ -29,8 +29,8 @@ async function writePackage(root: string, options: { name?: string; coreRule?: s
   await mkdir(join(root, "instructions"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo-skill"), { recursive: true });
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: options.name ?? "acme/core",
     version: "0.1.0",
     provides: [

@@ -26,8 +26,8 @@ async function tempRoot(prefix = "agentwheel-target-"): Promise<string> {
 async function writePackage(root: string): Promise<void> {
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo"), { recursive: true });
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "fixture/runtime-target",
     version: "0.1.0",
     provides: [

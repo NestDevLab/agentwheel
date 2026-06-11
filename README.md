@@ -286,6 +286,7 @@ Built-in runtime targets:
 
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
+- Resource catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html.
 - [`DESIGN.md`](DESIGN.md) — architecture and module layout.
 - [`LIFECYCLE.md`](LIFECYCLE.md) — publish, install, update, and customization model.
 

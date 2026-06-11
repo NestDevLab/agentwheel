@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse agentwheel-installable resources from the official registry, Vercel skills.sh, and SkillKit-compatible repositories.">
+  <title>Catalogue - agentwheel</title>
+  <link rel="icon" href="./favicon.png" type="image/png">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #111827;
+      --panel-2: #151b26;
+      --text: #f8fafc;
+      --muted: #9ca3af;
+      --line: rgba(148, 163, 184, 0.2);
+      --indigo: #4f46e5;
+      --violet: #7c3aed;
+      --cyan: #06b6d4;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(79, 70, 229, 0.2), transparent 28rem),
+        radial-gradient(circle at 82% 18%, rgba(6, 182, 212, 0.16), transparent 26rem),
+        linear-gradient(180deg, #0d1117 0%, #0b0f16 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--indigo);
+      outline-offset: 3px;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 20px 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .brand img {
+      width: 38px;
+      height: 38px;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .nav a:hover,
+    footer a:hover,
+    .resource-link:hover {
+      color: #e5e7eb;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .catalogue-hero {
+      padding: 30px 0 22px;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0 0 12px;
+      font-size: clamp(38px, 5vw, 60px);
+      line-height: 1.04;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .gradient-title {
+      display: inline-block;
+      padding-bottom: 0.14em;
+      margin-bottom: -0.06em;
+      background: linear-gradient(135deg, var(--indigo), var(--violet), var(--cyan));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .subhead {
+      max-width: 790px;
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(17px, 2vw, 20px);
+    }
+
+    .controls-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 12px 0 14px;
+      background: rgba(13, 17, 23, 0.78);
+      backdrop-filter: blur(8px);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(17, 24, 39, 0.88);
+      box-shadow: 0 18px 56px rgba(0, 0, 0, 0.22);
+    }
+
+    .search {
+      position: relative;
+      flex: 1 1 280px;
+      min-width: 240px;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      width: 18px;
+      height: 18px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    input[type="search"],
+    select {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0b0f14;
+      color: var(--text);
+      font: inherit;
+    }
+
+    input[type="search"] {
+      width: 100%;
+      padding: 0 14px 0 42px;
+    }
+
+    input[type="search"]::placeholder {
+      color: var(--muted);
+    }
+
+    select {
+      padding: 0 34px 0 12px;
+      color: #e5e7eb;
+    }
+
+    .chip-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip:hover {
+      border-color: rgba(203, 213, 225, 0.46);
+      color: #e5e7eb;
+    }
+
+    .chip[aria-pressed="true"] {
+      border-color: rgba(79, 70, 229, 0.72);
+      background: linear-gradient(135deg, rgba(79, 70, 229, 0.18), rgba(124, 58, 237, 0.14));
+      color: var(--text);
+    }
+
+    section {
+      padding: 24px 0 36px;
+    }
+
+    .section-title {
+      max-width: 760px;
+      margin: 0 0 24px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .result-count {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .catalogue-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 16px;
+    }
+
+    .resource-card {
+      display: flex;
+      min-height: 334px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(15, 23, 42, 0.66));
+      flex-direction: column;
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .resource-card:hover {
+      border-color: var(--accent-color, rgba(203, 213, 225, 0.46));
+      box-shadow: var(--shadow);
+      transform: translateY(-2px);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      min-width: 0;
+    }
+
+    .card-title h2 {
+      margin: 0;
+      overflow-wrap: anywhere;
+      font-size: 18px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .version {
+      display: inline-block;
+      margin-left: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .badge {
+      flex: 0 0 auto;
+      padding: 5px 8px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .badge.official {
+      background: rgba(79, 70, 229, 0.15);
+      color: var(--indigo);
+    }
+
+    .badge.vercel {
+      background: rgba(124, 58, 237, 0.15);
+      color: var(--violet);
+    }
+
+    .badge.skillkit {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--cyan);
+    }
+
+    .description {
+      display: -webkit-box;
+      min-height: 67px;
+      margin: 0 0 14px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 15px;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    .pill-list {
+      display: flex;
+      max-height: 27px;
+      margin: 0 0 10px;
+      gap: 8px;
+      flex-wrap: wrap;
+      overflow: hidden;
+    }
+
+    .pill {
+      padding: 5px 8px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.08);
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .provides .pill {
+      border-color: rgba(6, 182, 212, 0.22);
+      background: rgba(6, 182, 212, 0.08);
+      color: #bae6fd;
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      min-height: 20px;
+      margin: 2px 0 14px;
+      gap: 7px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .star {
+      color: #eab308;
+    }
+
+    .archive {
+      padding: 2px 7px;
+      border: 1px solid rgba(234, 179, 8, 0.28);
+      border-radius: 999px;
+      color: #fde68a;
+      background: rgba(234, 179, 8, 0.1);
+      font-weight: 800;
+    }
+
+    .install {
+      display: flex;
+      align-items: center;
+      min-height: 48px;
+      margin-top: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, 0.7);
+      overflow: hidden;
+    }
+
+    .install code {
+      min-width: 0;
+      padding: 13px 12px;
+      overflow-x: auto;
+      color: #dbeafe;
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: nowrap;
+      scrollbar-width: thin;
+    }
+
+    .copy {
+      align-self: stretch;
+      min-width: 78px;
+      margin-left: auto;
+      border: 0;
+      border-left: 1px solid var(--line);
+      background: rgba(17, 24, 39, 0.72);
+      color: #e5e7eb;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .copy:hover {
+      background: rgba(79, 70, 229, 0.18);
+    }
+
+    .copy.copied {
+      background: rgba(22, 163, 74, 0.18);
+      color: #86efac;
+    }
+
+    .links {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      color: #cbd5e1;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .links a {
+      color: #cbd5e1;
+    }
+
+    .state-panel {
+      display: grid;
+      grid-column: 1 / -1;
+      min-height: 250px;
+      padding: 32px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(17, 24, 39, 0.72);
+      place-items: center;
+      text-align: center;
+    }
+
+    .state-panel svg {
+      width: 46px;
+      height: 46px;
+      margin-bottom: 14px;
+      color: var(--cyan);
+    }
+
+    .state-panel h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .state-panel p {
+      max-width: 420px;
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .state-panel a {
+      display: inline-block;
+      margin-top: 14px;
+      color: #cbd5e1;
+      font-weight: 800;
+    }
+
+    .skeleton {
+      min-height: 334px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(15, 23, 42, 0.66));
+    }
+
+    .skeleton-line {
+      height: 14px;
+      margin-bottom: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.24), rgba(148, 163, 184, 0.1));
+      background-size: 220% 100%;
+      animation: shimmer 1.25s ease-in-out infinite;
+    }
+
+    .skeleton-line.title {
+      width: 66%;
+      height: 20px;
+      margin-bottom: 22px;
+    }
+
+    .skeleton-line.short {
+      width: 42%;
+    }
+
+    .skeleton-line.medium {
+      width: 78%;
+    }
+
+    .skeleton-spacer {
+      height: 82px;
+    }
+
+    @keyframes shimmer {
+      from {
+        background-position: 120% 0;
+      }
+      to {
+        background-position: -120% 0;
+      }
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 48px 0 38px;
+      color: var(--muted);
+      font-size: 14px;
+      border-top: 1px solid var(--line);
+      margin-top: 48px;
+    }
+
+    footer a {
+      color: #cbd5e1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+        animation: none !important;
+      }
+
+      .resource-card:hover {
+        transform: none;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .catalogue-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .wrap {
+        width: min(100% - 28px, 1120px);
+      }
+
+      header,
+      footer {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .nav {
+        flex-wrap: wrap;
+      }
+
+      .catalogue-hero {
+        padding-top: 24px;
+      }
+
+      h1 {
+        font-size: clamp(34px, 10.5vw, 48px);
+      }
+
+      .controls-sticky {
+        padding-top: 8px;
+      }
+
+      .controls {
+        align-items: stretch;
+      }
+
+      .search {
+        flex-basis: 100%;
+        min-width: 0;
+      }
+
+      .chip-group {
+        width: 100%;
+      }
+
+      select {
+        margin-left: auto;
+      }
+
+      .catalogue-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./" aria-label="agentwheel home">
+        <img src="./assets/logo.png" alt="" width="38" height="38">
+        <span>agentwheel</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.html">Home</a>
+        <a href="index.html#openpack">OpenPack</a>
+        <a href="index.html#get-started">Get started</a>
+        <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="catalogue-hero" aria-labelledby="catalogue-title">
+        <h1 id="catalogue-title"><span class="gradient-title">Catalogue</span></h1>
+        <p class="subhead">Browsable index of agentwheel-installable resources: official registry packages plus curated skills from the Vercel skills.sh and SkillKit ecosystems, with one install command for all of them.</p>
+      </section>
+
+      <div class="controls-sticky" aria-label="Catalogue filters">
+        <div class="controls">
+          <label class="search" for="q">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-3.5-3.5"></path>
+            </svg>
+            <input type="search" id="q" placeholder="Search resources">
+          </label>
+
+          <div class="chip-group" aria-label="Ecosystem filter">
+            <button class="chip" type="button" data-filter="ecosystem" data-value="all" aria-pressed="true">All</button>
+            <button class="chip" type="button" data-filter="ecosystem" data-value="official" aria-pressed="false">Official</button>
+            <button class="chip" type="button" data-filter="ecosystem" data-value="vercel" aria-pressed="false">Vercel skills</button>
+            <button class="chip" type="button" data-filter="ecosystem" data-value="skillkit" aria-pressed="false">SkillKit</button>
+          </div>
+
+          <div class="chip-group" aria-label="Type filter">
+            <button class="chip" type="button" data-filter="type" data-value="all" aria-pressed="true">All</button>
+            <button class="chip" type="button" data-filter="type" data-value="package" aria-pressed="false">Packages</button>
+            <button class="chip" type="button" data-filter="type" data-value="skill" aria-pressed="false">Skills</button>
+          </div>
+
+          <label>
+            <span class="sr-only">Sort resources</span>
+            <select id="sort">
+              <option value="stars">Stars</option>
+              <option value="name">Name</option>
+              <option value="recent">Recently updated</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <section aria-labelledby="results-title">
+        <h2 class="section-title" id="results-title">Resources</h2>
+        <p class="result-count" id="count" aria-live="polite">Loading resources</p>
+        <div class="catalogue-grid" id="grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer>
+      <span>agentwheel is early / v0.9.</span>
+      <a href="https://github.com/NestDevLab/agentwheel">github.com/NestDevLab/agentwheel</a>
+    </footer>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const DATA_URL = params.get("data")
+      ?? "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-data.json";
+
+    const state = {
+      entries: [],
+      query: "",
+      ecosystem: "all",
+      type: "all",
+      sort: "stars",
+    };
+
+    const grid = document.querySelector("#grid");
+    const count = document.querySelector("#count");
+    const queryInput = document.querySelector("#q");
+    const sortSelect = document.querySelector("#sort");
+
+    function esc(value) {
+      const span = document.createElement("span");
+      span.textContent = value == null ? "" : String(value);
+      return span.innerHTML;
+    }
+
+    function text(value) {
+      return value == null ? "" : String(value);
+    }
+
+    function appendText(parent, value) {
+      parent.textContent = text(value);
+      return parent;
+    }
+
+    function safeUrl(value) {
+      try {
+        const url = new URL(String(value));
+        return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function ecosystemLabel(ecosystem) {
+      if (ecosystem === "official") return "Official";
+      if (ecosystem === "vercel") return "Vercel skills";
+      if (ecosystem === "skillkit") return "SkillKit";
+      return ecosystem || "Unknown";
+    }
+
+    function ecosystemColor(ecosystem) {
+      if (ecosystem === "official") return "var(--indigo)";
+      if (ecosystem === "vercel") return "var(--violet)";
+      if (ecosystem === "skillkit") return "var(--cyan)";
+      return "rgba(203, 213, 225, 0.46)";
+    }
+
+    function formatStars(stars) {
+      if (typeof stars !== "number") return null;
+      return new Intl.NumberFormat("en", { notation: stars >= 10000 ? "compact" : "standard" }).format(stars);
+    }
+
+    function formatDate(value) {
+      if (!value) return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return date.toISOString().slice(0, 10);
+    }
+
+    function setPressed(group, value) {
+      document.querySelectorAll(`[data-filter="${group}"]`).forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.value === value));
+      });
+    }
+
+    function clearGrid() {
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+    }
+
+    function showSkeletons() {
+      clearGrid();
+      count.textContent = "Loading resources";
+      for (let i = 0; i < 6; i += 1) {
+        const card = document.createElement("article");
+        card.className = "skeleton";
+        card.setAttribute("aria-hidden", "true");
+        ["title", "medium", "medium", "short"].forEach((name) => {
+          const line = document.createElement("div");
+          line.className = `skeleton-line ${name}`;
+          card.appendChild(line);
+        });
+        const spacer = document.createElement("div");
+        spacer.className = "skeleton-spacer";
+        card.appendChild(spacer);
+        const line = document.createElement("div");
+        line.className = "skeleton-line medium";
+        card.appendChild(line);
+        grid.appendChild(card);
+      }
+    }
+
+    function stateIcon(kind) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.8");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      const paths = kind === "error"
+        ? ["M12 9v4", "M12 17h.01", "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"]
+        : ["M4 6h16", "M4 12h10", "M4 18h7", "M18 14v6", "M15 17h6"];
+      paths.forEach((d) => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        svg.appendChild(path);
+      });
+      return svg;
+    }
+
+    function showState(kind, title, message) {
+      clearGrid();
+      count.textContent = kind === "empty" ? "0 resources" : "Catalogue data unavailable";
+      const panel = document.createElement("div");
+      panel.className = "state-panel";
+      panel.appendChild(stateIcon(kind));
+      panel.appendChild(appendText(document.createElement("h2"), title));
+      panel.appendChild(appendText(document.createElement("p"), message));
+      if (kind === "error") {
+        const link = document.createElement("a");
+        link.href = "https://github.com/NestDevLab/agentwheel-registry";
+        link.textContent = "Open the registry repo";
+        panel.appendChild(link);
+      }
+      grid.appendChild(panel);
+    }
+
+    function copyText(value, button) {
+      const command = text(value);
+      const done = () => {
+        button.classList.add("copied");
+        button.textContent = "✓ Copied";
+        window.setTimeout(() => {
+          button.classList.remove("copied");
+          button.textContent = "Copy";
+        }, 1500);
+      };
+
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(command).then(done).catch(() => fallbackCopy(command, done));
+      } else {
+        fallbackCopy(command, done);
+      }
+    }
+
+    function fallbackCopy(value, done) {
+      const input = document.createElement("textarea");
+      input.value = value;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      try {
+        document.execCommand("copy");
+        done();
+      } finally {
+        document.body.removeChild(input);
+      }
+    }
+
+    function pillList(values, className) {
+      const list = document.createElement("div");
+      list.className = `pill-list ${className || ""}`.trim();
+      values.slice(0, 8).forEach((value) => {
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        esc(value);
+        pill.textContent = text(value);
+        list.appendChild(pill);
+      });
+      return list;
+    }
+
+    function resourceCard(entry) {
+      const card = document.createElement("article");
+      card.className = "resource-card";
+      card.style.setProperty("--accent-color", ecosystemColor(entry.ecosystem));
+
+      const top = document.createElement("div");
+      top.className = "card-top";
+
+      const titleWrap = document.createElement("div");
+      titleWrap.className = "card-title";
+      const title = document.createElement("h2");
+      title.textContent = text(entry.name);
+      if (entry.version) {
+        const version = document.createElement("span");
+        version.className = "version";
+        version.textContent = `v${text(entry.version)}`;
+        title.appendChild(version);
+      }
+      titleWrap.appendChild(title);
+      top.appendChild(titleWrap);
+
+      const badge = document.createElement("span");
+      badge.className = `badge ${text(entry.ecosystem)}`;
+      badge.textContent = ecosystemLabel(entry.ecosystem);
+      top.appendChild(badge);
+      card.appendChild(top);
+
+      const description = document.createElement("p");
+      description.className = "description";
+      description.textContent = text(entry.description);
+      card.appendChild(description);
+
+      if (Array.isArray(entry.tags) && entry.tags.length) {
+        card.appendChild(pillList(entry.tags, "tags"));
+      }
+
+      if (Array.isArray(entry.provides) && entry.provides.length) {
+        card.appendChild(pillList(entry.provides, "provides"));
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const stars = formatStars(entry.stars);
+      const updated = formatDate(entry.lastPush);
+      if (stars) {
+        const star = document.createElement("span");
+        star.className = "star";
+        star.textContent = "★";
+        meta.appendChild(star);
+        meta.appendChild(appendText(document.createElement("span"), stars));
+      }
+      if (stars && updated) {
+        meta.appendChild(appendText(document.createElement("span"), "·"));
+      }
+      if (updated) {
+        meta.appendChild(appendText(document.createElement("span"), `updated ${updated}`));
+      }
+      if (entry.archived) {
+        const archived = document.createElement("span");
+        archived.className = "archive";
+        archived.textContent = "archived";
+        meta.appendChild(archived);
+      }
+      card.appendChild(meta);
+
+      const install = document.createElement("div");
+      install.className = "install";
+      const code = document.createElement("code");
+      code.textContent = text(entry.installCommand);
+      const copy = document.createElement("button");
+      copy.className = "copy";
+      copy.type = "button";
+      copy.textContent = "Copy";
+      copy.addEventListener("click", () => copyText(entry.installCommand, copy));
+      install.appendChild(code);
+      install.appendChild(copy);
+      card.appendChild(install);
+
+      const links = document.createElement("div");
+      links.className = "links";
+      const repo = safeUrl(entry.repoUrl);
+      if (repo) {
+        const link = document.createElement("a");
+        link.className = "resource-link";
+        link.href = repo;
+        link.textContent = "GitHub";
+        links.appendChild(link);
+      }
+      const homepage = safeUrl(entry.homepageUrl);
+      if (homepage) {
+        const link = document.createElement("a");
+        link.className = "resource-link";
+        link.href = homepage;
+        link.textContent = "skills.sh";
+        links.appendChild(link);
+      }
+      card.appendChild(links);
+
+      return card;
+    }
+
+    function filteredEntries() {
+      const query = state.query.trim().toLowerCase();
+      const filtered = state.entries.filter((entry) => {
+        if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
+        if (state.type !== "all" && entry.type !== state.type) return false;
+        if (!query) return true;
+        const haystack = [
+          entry.name,
+          entry.description,
+          ...(Array.isArray(entry.tags) ? entry.tags : []),
+        ].join(" ").toLowerCase();
+        return haystack.includes(query);
+      });
+
+      filtered.sort((a, b) => {
+        if (state.sort === "name") {
+          return text(a.name) < text(b.name) ? -1 : text(a.name) > text(b.name) ? 1 : 0;
+        }
+        if (state.sort === "recent") {
+          const aTime = a.lastPush ? new Date(a.lastPush).getTime() : -Infinity;
+          const bTime = b.lastPush ? new Date(b.lastPush).getTime() : -Infinity;
+          return bTime - aTime;
+        }
+        const aStars = typeof a.stars === "number" ? a.stars : -Infinity;
+        const bStars = typeof b.stars === "number" ? b.stars : -Infinity;
+        return bStars - aStars;
+      });
+
+      return filtered;
+    }
+
+    function render() {
+      const entries = filteredEntries();
+      clearGrid();
+      count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
+      if (!entries.length) {
+        showState("empty", "No resources match", "Try a different search, ecosystem, type, or sort combination.");
+        return;
+      }
+      entries.forEach((entry) => grid.appendChild(resourceCard(entry)));
+    }
+
+    queryInput.addEventListener("input", (event) => {
+      state.query = event.target.value;
+      render();
+    });
+
+    sortSelect.addEventListener("change", (event) => {
+      state.sort = event.target.value;
+      render();
+    });
+
+    document.querySelectorAll("[data-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state[button.dataset.filter] = button.dataset.value;
+        setPressed(button.dataset.filter, button.dataset.value);
+        render();
+      });
+    });
+
+    async function load() {
+      showSkeletons();
+      try {
+        const response = await fetch(DATA_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        state.entries = Array.isArray(data.entries) ? data.entries : [];
+        render();
+      } catch {
+        showState("error", "Catalogue data is temporarily unavailable", "The registry data could not be loaded right now.");
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

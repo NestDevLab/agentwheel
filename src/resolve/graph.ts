@@ -719,7 +719,8 @@ function lockedNodeForRequirement(
     return undefined;
   }
   if (matches.length > 1) {
-    throw new Error(`${hard ? label : "Locked install"} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
+    if (!hard) return undefined;
+    throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
   }
   const node = matches[0]!;
   return {

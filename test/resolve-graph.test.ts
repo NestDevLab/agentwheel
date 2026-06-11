@@ -148,6 +148,31 @@ describe("dependency graph resolver", () => {
     expect(locked.nodes[0]?.sourceHash).toBe(lock.canonical.nodes[0]?.sourceHash);
   });
 
+  it("falls back to fresh resolve when a soft lock has ambiguous source matches", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    await writeText(join(root, "rules", "root.md"), "# Root v1\n");
+    await writeOpenPack(root, {
+      name: "acme/ambiguous-root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: root }], { workspaceRoot: workspace });
+    const lock = createGraphLock(first);
+    const lockedNode = lock.canonical.nodes[0]!;
+    lock.canonical.nodes.push({ ...lockedNode, id: `${lockedNode.id}:duplicate` });
+
+    await writeText(join(root, "rules", "root.md"), "# Root v2\n");
+    const fresh = await resolveDependencyGraph([{ rootId: "renamed", source: root }], {
+      workspaceRoot: workspace,
+      previousLock: lock,
+      lockedResolution: true,
+    });
+
+    expect(fresh.nodes).toHaveLength(1);
+    expect(fresh.nodes[0]?.sourceHash).not.toBe(lockedNode.sourceHash);
+  });
+
   it("dedupes the same dependency required by two roots", async () => {
     const workspace = await tempRoot();
     const shared = join(workspace, "shared");

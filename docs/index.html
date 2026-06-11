@@ -725,8 +725,8 @@
             <span>selective install</span>
           </div>
           <pre><code><span class="prompt">$</span> agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux
-            <span class="prompt">$</span> agentwheel install --select rules/core-safety.md
-            <span class="muted"># provides[].required artifacts are always installed</span></code></pre>
+<span class="prompt">$</span> agentwheel install --select rules/core-safety.md
+<span class="muted"># provides[].required artifacts are always installed</span></code></pre>
         </div>
       </section>
 
@@ -740,9 +740,9 @@
             <span>1 · install</span>
           </div>
           <pre><code><span class="prompt">$</span> npm i -g agentwheel
-            <span class="prompt">$</span> agentwheel --help
-            <span class="muted"># pnpm user? `pnpm add -g agentwheel` works too</span>
-            <span class="muted"># update checks are cached daily; disable with --no-update-check</span></code></pre>
+<span class="prompt">$</span> agentwheel --help
+<span class="muted"># pnpm user? `pnpm add -g agentwheel` works too</span>
+<span class="muted"># update checks are cached daily; disable with --no-update-check</span></code></pre>
         </div>
 
         <div class="code" aria-label="Initialize and add a package">
@@ -751,8 +751,8 @@
             <span>2 · add a source</span>
           </div>
           <pre><code><span class="prompt">$</span> agentwheel init                              <span class="muted"># create the .agentwheel workspace</span>
-            <span class="prompt">$</span> agentwheel add github:your-org/agent-pack --adapter openclaw
-            <span class="prompt">$</span> agentwheel add ./my-pack --adapter hermes       <span class="muted"># local source works too</span></code></pre>
+<span class="prompt">$</span> agentwheel add github:your-org/agent-pack --adapter openclaw
+<span class="prompt">$</span> agentwheel add ./my-pack --adapter hermes       <span class="muted"># local source works too</span></code></pre>
         </div>
 
         <div class="code" aria-label="Preview then apply">
@@ -761,8 +761,8 @@
             <span>3 · preview, then install</span>
           </div>
           <pre><code><span class="prompt">$</span> cd ~/.openclaw
-            <span class="prompt">$</span> agentwheel plan              <span class="muted"># auto-detects the runtime target</span>
-            <span class="prompt">$</span> agentwheel install           <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
+<span class="prompt">$</span> agentwheel plan              <span class="muted"># auto-detects the runtime target</span>
+<span class="prompt">$</span> agentwheel install           <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
         </div>
 
         <div class="code" aria-label="Dependencies, trust, and offline">
@@ -771,9 +771,9 @@
             <span>dependencies &amp; trust</span>
           </div>
           <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
-            <span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
-            <span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
-            <span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
+<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
+<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
+<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
         </div>
 
         <div class="code" aria-label="Fleet targeting">
@@ -794,10 +794,10 @@
   }
 }
 
-            <span class="prompt">$</span> agentwheel install --agent lab-openclaw
-            <span class="prompt">$</span> agentwheel install --all
-            <span class="prompt">$</span> agentwheel install --profile daily --dry-run
-            <span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
+<span class="prompt">$</span> agentwheel install --agent lab-openclaw
+<span class="prompt">$</span> agentwheel install --all
+<span class="prompt">$</span> agentwheel install --profile daily --dry-run
+<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
         </div>
 
         <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:

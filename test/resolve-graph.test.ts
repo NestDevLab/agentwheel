@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { canonicalGraphLockJson } from "../src/model/graph-lock.js";
@@ -11,6 +13,7 @@ import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
 
 const tempRoots: string[] = [];
+const execFileAsync = promisify(execFile);
 
 afterEach(async () => {
   await Promise.all(tempRoots.map((path) => rm(path, { recursive: true, force: true })));
@@ -106,6 +109,43 @@ describe("dependency graph resolver", () => {
     });
 
     expect(locked.nodes.map((node) => node.name).sort()).toEqual(["acme/dep-v1", "acme/root-registry"]);
+  });
+
+  it("uses locked git refs without requiring a warm checkout", async () => {
+    const workspace = await tempRoot();
+    const repo = join(workspace, "repo");
+    await writeText(join(repo, "rules", "root.md"), "# Root v1\n");
+    await writeOpenPack(repo, {
+      name: "acme/git-root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v1"]);
+    const commit1 = (await git(repo, ["rev-parse", "HEAD"])).trim();
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: `git:${repo}#main`, mode: "tracking" }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-first"),
+    });
+    const lock = createGraphLock(first);
+
+    await writeText(join(repo, "rules", "root.md"), "# Root v2\n");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v2"]);
+
+    const locked = await resolveDependencyGraph([{ rootId: "root", source: `git:${repo}#main`, mode: "tracking" }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-cold"),
+      previousLock: lock,
+      lockedResolution: true,
+    });
+
+    expect(locked.nodes).toHaveLength(1);
+    expect(locked.nodes[0]?.resolvedCommit).toBe(commit1);
+    expect(locked.nodes[0]?.sourceHash).toBe(lock.canonical.nodes[0]?.sourceHash);
   });
 
   it("dedupes the same dependency required by two roots", async () => {
@@ -307,6 +347,11 @@ describe("dependency graph resolver", () => {
     await rm(rendered.root, { recursive: true, force: true });
   });
 });
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd });
+  return stdout;
+}
 
 function artifactSignature(artifact: { type: string; name: string; hash: string; composedFrom?: Array<{ selector: string; hash: string }> }): string {
   return `${artifact.type}/${artifact.name}/${artifact.hash}/${JSON.stringify(artifact.composedFrom ?? [])}`;

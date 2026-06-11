@@ -660,8 +660,8 @@ async function fetchPackage(
   fetchCache: Map<string, Promise<FetchedPackage>>,
   refOverride?: string,
 ): Promise<FetchedPackage> {
-  const lockedCheckout = options.frozenLock === true || options.offline === true || refOverride !== undefined;
-  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${lockedCheckout ? "locked" : ""}`;
+  const hardLockedCheckout = options.frozenLock === true || options.offline === true;
+  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${hardLockedCheckout ? "hard-locked" : "mutable"}`;
   const existing = fetchCache.get(key);
   if (existing) return existing;
 
@@ -671,7 +671,7 @@ async function fetchPackage(
       cacheRoot: options.cacheRoot ?? join(options.workspaceRoot, ".agentwheel", "cache"),
       mode,
       ref: refOverride ?? normalized.requestedRef,
-      frozenLock: lockedCheckout,
+      frozenLock: hardLockedCheckout,
     });
     const fetched = await withCachePathLock(resolved.resolvedPath, () => driver.fetch(resolved));
     const translated = await driver.translate(fetched);

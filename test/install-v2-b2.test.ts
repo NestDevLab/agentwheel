@@ -594,6 +594,32 @@ describe("ownership uninstall and merge target guard", () => {
     ]);
   });
 
+  it("force keeps still-owned entries while removing drifted entries with no remaining owners", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const shared = await writeArtifact(source, "rules/shared.md", "shared\n");
+    const solo = await writeArtifact(source, "rules/solo.md", "solo\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([
+      { ...shared, meta: { ...shared.meta, owners: ["root-a", "root-b"] } },
+      { ...solo, meta: { ...solo.meta, owners: ["root-a"] } },
+    ], adapter, target));
+    await writeFile(join(target, ".runtime", "rules", "solo.md"), "locally changed\n", "utf8");
+
+    const manifest = await readInstallManifest(target, adapter.name);
+    const remainingShared = { ...shared, meta: { ...shared.meta, owners: ["root-b"] } };
+    const plan = await createOwnershipUninstallPlan(manifest!, [remainingShared], adapter);
+
+    await uninstall(plan, { force: true });
+
+    await expect(stat(join(target, ".runtime", "rules", "shared.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".runtime", "rules", "solo.md"))).rejects.toThrow();
+    const next = await readInstallManifest(target, adapter.name);
+    if (next?.version !== 2) throw new Error("expected v2 manifest");
+    expect(next.entries.map((entry) => ({ path: entry.path, owners: entry.owners }))).toEqual([
+      { path: ".runtime/rules/shared.md", owners: ["root-b"] },
+    ]);
+  });
+
   it("rejects transitive merge-target artifacts at plan time", async () => {
     const source = await tempRoot();
     const mcpPath = join(source, "mcp", "server.json");

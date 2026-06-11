@@ -207,13 +207,13 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
   const removable = plan.operations
-    .filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"))
+    .filter((operation) => operation.action === "remove" || (resolvedOptions.force && isForceRemovableKeep(operation)))
     .map((operation) => operation.action === "keep"
       ? { ...operation, action: "remove" as const, reason: `${operation.reason}; force removing drifted managed file` }
       : operation);
-  const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
+  const kept = plan.operations.filter((operation) => operation.action === "keep" && (!resolvedOptions.force || !isForceRemovableKeep(operation)));
   const skipped = plan.operations.filter((operation) => operation.action === "skip");
-  const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
+  const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep" && isForceRemovableKeep(operation)).length : 0;
   if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
   const preservedKept = resolvedOptions.keepFiles
@@ -284,6 +284,10 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
 
 function shouldPreserveKeptOperationWhenKeepingFiles(operation: InstallOperation): boolean {
   return operation.preserveInManifest === true;
+}
+
+function isForceRemovableKeep(operation: InstallOperation): boolean {
+  return operation.action === "keep" && operation.preserveInManifest !== true;
 }
 
 async function commitJournalState(

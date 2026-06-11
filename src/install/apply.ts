@@ -483,7 +483,7 @@ function manifestEntryForOperation(
     channel: operation.channel,
     packageName: operation.packageName,
     semanticCommand: operation.semanticCommand,
-    executed: values.executed,
+    executed: values.executed ?? operation.execute,
     mergeStrategy: operation.mergeStrategy,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,

@@ -110,9 +110,105 @@ describe("CLI verb redesign", () => {
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
 
     const secondAlphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--target-root", workspace]);
-    expect(secondAlphaInstall.stdout).toContain("KEEP");
+    expect(secondAlphaInstall.stdout).toContain("SKIP");
     await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
+  });
+
+  it("scoped install converges out-of-scope ownership without touching shared content", async () => {
+    const workspace = await tempRoot();
+    const shared = await rulePackageFixture("scope-shared", "shared-v1");
+    const rootA = await rulePackageFixture("scope-owner-a", "owner-a", {
+      requires: { shared: { source: shared, select: ["rules/scope-shared.md"] } },
+    });
+    const rootB = await rulePackageFixture("scope-owner-b", "owner-b", {
+      requires: { shared: { source: shared, select: ["rules/scope-shared.md"] } },
+    });
+    const sharedDest = join(workspace, ".codex", "rules", "scope-shared.md");
+
+    await runCli(["add", rootA, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", rootB, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    const before = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
+    expect(before.owners.filter((owner: string) => owner.includes("scope-owner-"))).toHaveLength(2);
+
+    await writeRuleManifest(rootA, "scope-owner-a");
+    await runCli(["install", "scope-owner-a", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+
+    await expect(readFile(sharedDest, "utf8")).resolves.toContain("shared-v1");
+    const after = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
+    expect(after.owners.some((owner: string) => owner.includes("scope-owner-a"))).toBe(false);
+    expect(after.owners.some((owner: string) => owner.includes("scope-owner-b"))).toBe(true);
+
+    await runCli(["uninstall", "scope-owner-a", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(sharedDest, "utf8")).resolves.toContain("shared-v1");
+    await runCli(["uninstall", "scope-owner-b", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(sharedDest, "utf8")).rejects.toThrow();
+  });
+
+  it("scoped install preserves out-of-scope merge update hashes until full install", async () => {
+    const workspace = await tempRoot();
+    const alpha = await packageFixture("scope-update-a");
+    const beta = await mcpPackageFixture("scope-update-b", "scope-update-v1");
+    const configPath = join(workspace, ".codex", "config.toml");
+
+    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const before = manifestEntry(await readCodexManifest(workspace), ".codex/config.toml");
+    expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v1"');
+
+    await writeMcpPackage(beta, "scope-update-b", "scope-update-v2");
+    await runCli(["install", "scope-update-a", "--adapter", "codex", "--target-root", workspace]);
+
+    expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v1"');
+    expect(await readFile(configPath, "utf8")).not.toContain("scope-update-v2");
+    const scoped = manifestEntry(await readCodexManifest(workspace), ".codex/config.toml");
+    expect(scoped.hash).toBe(before.hash);
+    expect(scoped.sourceHash).toBe(before.sourceHash);
+
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v2"');
+    const full = manifestEntry(await readCodexManifest(workspace), ".codex/config.toml");
+    expect(full.sourceHash).not.toBe(before.sourceHash);
+  });
+
+  it("scoped install does not let out-of-scope drift block or disappear", async () => {
+    const workspace = await tempRoot();
+    const alpha = await rulePackageFixture("scope-drift-a", "alpha");
+    const beta = await rulePackageFixture("scope-drift-b", "beta");
+    const betaDest = join(workspace, ".codex", "rules", "scope-drift-b.md");
+
+    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await writeFile(betaDest, "# local drift\n", "utf8");
+
+    const scoped = await runCli(["install", "scope-drift-a", "--adapter", "codex", "--target-root", workspace]);
+    expect(scoped.stdout).toContain("Applied codex");
+    await expect(runCli(["plan", "--adapter", "codex", "--target-root", workspace])).rejects.toMatchObject({
+      stdout: expect.stringContaining("DRIFT"),
+    });
+  });
+
+  it("scoped install preserves out-of-scope removals until full install", async () => {
+    const workspace = await tempRoot();
+    const alpha = await rulePackageFixture("scope-remove-a", "alpha");
+    const beta = await rulePackageFixture("scope-remove-b", "beta");
+    const betaDest = join(workspace, ".codex", "rules", "scope-remove-b.md");
+
+    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await removeConfiguredPackage(workspace, "scope-remove-b");
+
+    await runCli(["install", "scope-remove-a", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(betaDest, "utf8")).resolves.toContain("beta");
+    expect(manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-remove-b.md")).toBeTruthy();
+
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(betaDest, "utf8")).rejects.toThrow();
+    expect((await readCodexManifest(workspace)).entries.some((entry: { path: string }) => entry.path === ".codex/rules/scope-remove-b.md")).toBe(false);
   });
 
   it("keeps status read-only even when configured packages have untrusted dependencies", async () => {
@@ -195,7 +291,7 @@ async function packageFixture(name: string, options: { requires?: unknown } = {}
   return root;
 }
 
-async function rulePackageFixture(name: string, content: string): Promise<string> {
+async function rulePackageFixture(name: string, content: string, options: { requires?: unknown } = {}): Promise<string> {
   const root = await tempRoot(`agentwheel-${name}-`);
   await mkdir(join(root, "rules"), { recursive: true });
   await writeFile(join(root, "rules", `${name}.md`), `# ${content}\n`, "utf8");
@@ -203,9 +299,39 @@ async function rulePackageFixture(name: string, content: string): Promise<string
     schemaVersion: 2,
     name,
     version: "1.0.0",
+    requires: options.requires,
     provides: [{ type: "rules", path: "rules" }],
   }, null, 2)}\n`, "utf8");
   return root;
+}
+
+async function writeRuleManifest(root: string, name: string, options: { requires?: unknown } = {}): Promise<void> {
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    requires: options.requires,
+    provides: [{ type: "rules", path: "rules" }],
+  }, null, 2)}\n`, "utf8");
+}
+
+async function mcpPackageFixture(name: string, command: string): Promise<string> {
+  const root = await tempRoot(`agentwheel-${name}-`);
+  await writeMcpPackage(root, name, command);
+  return root;
+}
+
+async function writeMcpPackage(root: string, name: string, command: string): Promise<void> {
+  await mkdir(join(root, "mcp"), { recursive: true });
+  await writeFile(join(root, "mcp", "server.json"), JSON.stringify({
+    mcpServers: { [name]: { command } },
+  }, null, 2), "utf8");
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    provides: [{ type: "mcp", path: "mcp" }],
+  }, null, 2)}\n`, "utf8");
 }
 
 async function gitPackageFixture(label: string): Promise<string> {
@@ -218,6 +344,36 @@ async function gitPackageFixture(label: string): Promise<string> {
 
 async function git(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", ["-c", "user.email=test@example.com", "-c", "user.name=Test", ...args], { cwd });
+}
+
+type TestManifestEntry = {
+  path: string;
+  hash: string;
+  sourceHash: string;
+  owners: string[];
+};
+
+type TestManifest = {
+  entries: TestManifestEntry[];
+};
+
+async function readCodexManifest(workspace: string): Promise<TestManifest> {
+  return JSON.parse(await readFile(join(workspace, ".agentwheel", "codex.install-manifest.json"), "utf8")) as TestManifest;
+}
+
+function manifestEntry(manifest: TestManifest, path: string): TestManifestEntry {
+  const entry = manifest.entries.find((candidate) => candidate.path === path);
+  if (!entry) throw new Error(`Missing manifest entry: ${path}`);
+  return entry;
+}
+
+async function removeConfiguredPackage(workspace: string, name: string): Promise<void> {
+  const configPath = join(workspace, ".agentwheel", "config.json");
+  const config = JSON.parse(await readFile(configPath, "utf8")) as {
+    packages: Array<{ name: string; source: string }>;
+  };
+  config.packages = config.packages.filter((pkg) => pkg.name !== name && pkg.source !== name);
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 async function cliBuildIsStale(): Promise<boolean> {

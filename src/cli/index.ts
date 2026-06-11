@@ -186,6 +186,7 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
   .action(async (source, options) => {
     await runInstallCommand(source, options, { apply: !options.dryRun });
   });
@@ -846,9 +847,12 @@ function scopeInstallPlanToRoot(
     }
 
     const entry = manifestByPath.get(operation.relativeDestPath);
-    if (!entry || preservedPaths.has(entry.path)) continue;
-    preservedPaths.add(entry.path);
-    operations.push(keepManifestEntryOperation(entry, result.plan.targetRoot, rootId, operation));
+    const transformed = transformOutOfScopeOperation(operation, entry, result.plan.targetRoot, rootId);
+    for (const scopedOperation of transformed) {
+      if (preservedPaths.has(scopedOperation.relativeDestPath)) continue;
+      preservedPaths.add(scopedOperation.relativeDestPath);
+      operations.push(scopedOperation);
+    }
   }
 
   for (const entry of manifest?.entries ?? []) {
@@ -865,6 +869,26 @@ function scopeInstallPlanToRoot(
       hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
     },
   };
+}
+
+function transformOutOfScopeOperation(
+  operation: InstallOperation,
+  entry: NonNullable<InstallManifest>["entries"][number] | undefined,
+  targetRoot: string,
+  rootId: string,
+): InstallOperation[] {
+  if (operation.action === "skip") return [operation];
+  if (operation.action === "update" || operation.action === "drift") {
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId, operation, { freshMetadata: true })] : [];
+  }
+  if (operation.action === "remove") {
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId)] : [];
+  }
+  if (operation.action === "plugin" || operation.action === "program") {
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId)] : [];
+  }
+  // Out-of-scope create/conflict operations have no managed entry to preserve.
+  return [];
 }
 
 function scopedGraphOwnerKeys(result: GraphSourcePlanResult, rootId: string): Set<string> {
@@ -899,8 +923,10 @@ function keepManifestEntryOperation(
   targetRoot: string,
   rootId: string,
   operation?: InstallOperation,
+  options: { freshMetadata?: boolean } = {},
 ): InstallOperation {
   const owners = "owners" in entry ? entry.owners : [entry.packageName ?? "legacy"];
+  const fresh = options.freshMetadata ? operation : undefined;
   return {
     action: "keep",
     artifactType: entry.artifactType,
@@ -918,12 +944,12 @@ function keepManifestEntryOperation(
     execute: entry.executed,
     mergeStrategy: entry.mergeStrategy,
     composedFrom: entry.composedFrom,
-    installName: "installName" in entry ? entry.installName : entry.artifactName,
-    logicalSelector: "logicalSelector" in entry ? entry.logicalSelector : `${entry.artifactType}/${entry.artifactName}`,
-    graphNodeId: "graphNodeId" in entry ? entry.graphNodeId : undefined,
-    dependencyRole: "dependencyRole" in entry ? entry.dependencyRole : "root",
-    owners,
-    graphLockDigest: "graphLockDigest" in entry ? entry.graphLockDigest : undefined,
+    installName: fresh?.installName ?? ("installName" in entry ? entry.installName : entry.artifactName),
+    logicalSelector: fresh?.logicalSelector ?? ("logicalSelector" in entry ? entry.logicalSelector : `${entry.artifactType}/${entry.artifactName}`),
+    graphNodeId: fresh?.graphNodeId ?? ("graphNodeId" in entry ? entry.graphNodeId : undefined),
+    dependencyRole: fresh?.dependencyRole ?? ("dependencyRole" in entry ? entry.dependencyRole : "root"),
+    owners: fresh?.owners ?? owners,
+    graphLockDigest: fresh ? undefined : "graphLockDigest" in entry ? entry.graphLockDigest : undefined,
   };
 }
 

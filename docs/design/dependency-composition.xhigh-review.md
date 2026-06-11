@@ -169,7 +169,7 @@ Counts: CONFIRM 7, AMEND 15, REJECT 2.
 
    Scenario: ten roots share the same tracking dependency graph with twenty transitive git repos and two profile runtimes. A naive Phase B can perform dozens of serial `git fetch` operations per sync, hit rate limits, and still fail offline even if the lock and cached commits are present.
 
-   Concrete fix: Phase B should include fetch de-duplication by normalized source/ref, per-cache locks, parallel fetch with bounded concurrency, `--prefer-lock` default for pinned nodes, and dry-run cache-miss reporting. Full policy UX can wait, but graph resolution cannot be "N transitive git fetches every sync" by design.
+   Concrete fix: Phase B should include fetch de-duplication by normalized source/ref, per-cache locks, parallel fetch with bounded concurrency, lock-as-input resolution for pinned nodes, and dry-run cache-miss reporting. Full policy UX can wait, but graph resolution cannot be "N transitive git fetches every sync" by design.
 
 15. **minor - package cycles need canonical selector/order semantics.**
 

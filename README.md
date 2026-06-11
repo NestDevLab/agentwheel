@@ -52,6 +52,8 @@ live in your workspace, and runtimes stay generated output.
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**
+Scoped installs do not remove files owned only by other configured packages; run a full `agentwheel install`
+to reconcile those removals.
 
 ## Quick Start
 

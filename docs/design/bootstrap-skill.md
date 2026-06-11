@@ -2,7 +2,7 @@
 
 Proposed skill name: `agentwheel`.
 
-Reason: agents and users naturally ask for "agentwheel" when they need to install or manage skills. `agentwheel-skills` is accurate but narrower than the actual reference, which covers skills plus rules, instructions, commands, subagents, MCP, hooks, settings, plugins, adapters, registry discovery, sync/update, drift, eject, and uninstall.
+Reason: agents and users naturally ask for "agentwheel" when they need to install or manage skills. `agentwheel-skills` is accurate but narrower than the actual reference, which covers skills plus rules, instructions, commands, subagents, MCP, hooks, settings, plugins, adapters, registry discovery, install/update, drift, eject, and uninstall.
 
 ## A. Auto-Install Mechanism
 
@@ -106,7 +106,7 @@ Existing workspaces:
 Updates:
 
 - Because the bootstrap source is the installed agentwheel package root and the package entry is `tracking`, `agentwheel update --dry-run` can notice changes when the npm package is upgraded and the local source hash changes.
-- Drift handling remains normal: manual edits in the runtime-installed `SKILL.md` block sync/update. Intentional local ownership uses `agentwheel eject agentwheel/skills/agentwheel`.
+- Drift handling remains normal: manual edits in the runtime-installed `SKILL.md` block install/update. Intentional local ownership uses `agentwheel eject agentwheel/skills/agentwheel`.
 - Ejecting copies the current bootstrap skill to `.agentwheel/ejected/agentwheel/skills/agentwheel`; future agentwheel updates leave that ejected copy alone.
 
 Copilot caveat:

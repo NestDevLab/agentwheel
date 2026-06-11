@@ -121,7 +121,13 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     acceptedSources: await readTrustedSources(workspaceRoot, options.trustStorePath),
   };
   const lockMode = options.frozenLock === true || options.offline === true;
-  const lockLabel = options.offline === true ? "Offline" : "Frozen lock";
+  const lockLabel = options.offline === true
+    ? "Offline"
+    : options.frozenLock === true
+      ? "Frozen lock"
+      : options.lockedResolution === true
+        ? "Locked install"
+        : "Fresh resolve";
   const targetFingerprint = computeTargetFingerprint(options.targetFingerprintParts ?? {
     adapter: options.adapter.name,
     targetRoot: options.targetRoot,

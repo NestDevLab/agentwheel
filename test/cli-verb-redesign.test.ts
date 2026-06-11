@@ -128,6 +128,7 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Status for codex");
     expect(status.stdout).toContain("status-root");
     expect(status.stdout).toContain("Install manifest: missing");
+    expect(status.stdout).toContain("Pending install work:");
   });
 
   it("rejects conflicting uninstall --keep-files and --force flags", async () => {

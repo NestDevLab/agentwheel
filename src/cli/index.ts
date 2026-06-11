@@ -977,10 +977,12 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         transport,
         targetKey: remainingGroup.target.agentName ?? remainingGroup.target.source,
         targetFingerprintParts: targetFingerprintParts(remainingGroup.target, remainingAdapter, remainingGroup.adapterOptions),
+        lockedResolution: true,
         frozenLock: options.frozenLock,
         offline: options.offline,
         yes: options.yes,
         trustPatterns: options.trust ?? [],
+        readOnly: options.dryRun === true,
         isTTY: process.stdin.isTTY === true,
       });
       remainingGraphPlan = result;
@@ -1093,7 +1095,7 @@ async function readTargetGraphLock(
 
 async function printStatus(
   target: RuntimeTarget,
-  options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
+  options: GraphCliOptions,
 ): Promise<void> {
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
   const adapter = await resolveAdapterForTarget(target, options);
@@ -1115,6 +1117,31 @@ async function printStatus(
     console.log(`Locked graph: ${lock.canonical.roots.length} roots, ${lock.canonical.nodes.length} nodes, ${lock.canonical.artifacts.length} artifacts`);
   } catch {
     console.log("Graph lock: missing");
+  }
+  await printPendingInstallWork(target, options);
+}
+
+async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliOptions): Promise<void> {
+  let results: GraphSourcePlanResult[] = [];
+  try {
+    results = await buildGraphPlansForTarget(target, undefined, { ...options, dryRun: true }, { mode: "install" });
+    const operations = results.flatMap((result) => result.plan.operations);
+    const pending = operations.filter((operation) => operation.action !== "skip");
+    if (pending.length === 0) {
+      console.log("Pending install work: none");
+      return;
+    }
+    const counts = [...pending.reduce((map, operation) => {
+      map.set(operation.action, (map.get(operation.action) ?? 0) + 1);
+      return map;
+    }, new Map<string, number>())].map(([action, count]) => `${action}=${count}`).join(", ");
+    const blocking = pending.filter((operation) => operation.action === "conflict" || operation.action === "drift").length;
+    console.log(`Pending install work: ${pending.length} operations (${counts}${blocking ? `; blocking=${blocking}` : ""})`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`Pending install work: unavailable (${message})`);
+  } finally {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }
 }
 

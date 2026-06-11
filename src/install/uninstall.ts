@@ -109,6 +109,7 @@ export async function createOwnershipUninstallPlan(
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry, remainingOwners),
         graphLockDigest: options.graphLockDigest,
+        preserveInManifest: true,
       });
       continue;
     }

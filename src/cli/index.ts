@@ -573,10 +573,13 @@ async function packageEntryFromSource(
     select?: string[];
     skill?: string[];
     skills?: string[];
+    frozenLock?: boolean;
+    offline?: boolean;
   },
 ): Promise<WorkspacePackage> {
   const selectedArtifacts = selectedArtifactsFromOptions(options);
-  const resolvedInput = await resolvePackageSource(source, targetRoot);
+  const lockMode = options.frozenLock === true || options.offline === true;
+  const resolvedInput = await resolvePackageSource(source, targetRoot, { offline: lockMode });
   const resolvedSource = resolvedInput.source;
   const driverName = (options.driver ?? inferSourceDriverName(resolvedSource)) as WorkspacePackage["driver"];
   const driver = getSourceDriver(driverName);
@@ -593,6 +596,7 @@ async function packageEntryFromSource(
     adapter,
     cacheRoot: join(targetRoot, ".agentwheel", "cache"),
     mode: options.mode,
+    frozenLock: lockMode,
     select: selectedArtifacts,
   });
   try {

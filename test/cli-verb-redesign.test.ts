@@ -134,6 +134,16 @@ describe("CLI verb redesign", () => {
     });
   });
 
+  it("does not persist a new source when install source preflight is offline", async () => {
+    const workspace = await tempRoot();
+    const repo = await gitPackageFixture("offline-new");
+
+    await expect(runCli(["install", `git:${repo}#main`, "--adapter", "codex", "--target-root", workspace, "--offline"])).rejects.toMatchObject({
+      stderr: expect.stringContaining("requires cached git checkout"),
+    });
+    await expect(readFile(join(workspace, ".agentwheel", "config.json"), "utf8")).rejects.toThrow();
+  });
+
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");

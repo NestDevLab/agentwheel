@@ -213,7 +213,10 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
   if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
-  const preserved = [...kept, ...skipped];
+  const preservedKept = resolvedOptions.keepFiles
+    ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
+    : kept;
+  const preserved = [...preservedKept, ...skipped];
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   const finalManifest = withManifestRevision({
@@ -274,6 +277,10 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     await lock.release();
   }
   return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
+}
+
+function shouldPreserveKeptOperationWhenKeepingFiles(operation: InstallOperation): boolean {
+  return operation.preserveInManifest === true;
 }
 
 async function commitJournalState(

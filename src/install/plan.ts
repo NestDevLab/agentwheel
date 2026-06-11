@@ -39,6 +39,7 @@ export interface InstallOperation {
   dependencyRole?: DependencyRole;
   owners?: string[];
   graphLockDigest?: string;
+  preserveInManifest?: boolean;
   blockedDesiredHash?: string;
   blockedReason?: string;
   composedFromDiff?: string[];

@@ -113,6 +113,27 @@ describe("CLI verb redesign", () => {
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
   });
 
+  it("keeps status read-only even when configured packages have untrusted dependencies", async () => {
+    const workspace = await tempRoot();
+    const dep = await rulePackageFixture("status-dep", "dep");
+    const source = await packageFixture("status-root", {
+      requires: { dep: { source: dep, select: ["rules/status-dep.md"] } },
+    });
+    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+
+    const status = await runCli(["status", "--adapter", "codex", "--target-root", workspace]);
+
+    expect(status.stdout).toContain("Status for codex");
+    expect(status.stdout).toContain("status-root");
+    expect(status.stdout).toContain("Install manifest: missing");
+  });
+
+  it("rejects conflicting uninstall --keep-files and --force flags", async () => {
+    await expect(runCli(["uninstall", "anything", "--keep-files", "--force", "--target-root", await tempRoot()])).rejects.toMatchObject({
+      stderr: expect.stringContaining("--keep-files cannot be combined with --force."),
+    });
+  });
+
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");

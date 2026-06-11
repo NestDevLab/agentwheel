@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { canonicalGraphLockJson } from "../src/model/graph-lock.js";
-import { resolveDependencyGraph } from "../src/resolve/graph.js";
+import { RegistryClient } from "../src/registry/client.js";
+import { createGraphLock, resolveDependencyGraph } from "../src/resolve/graph.js";
 import { renderGraphForTarget } from "../src/resolve/render.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
@@ -68,6 +69,43 @@ describe("dependency graph resolver", () => {
       "direct:rules/dep.md",
       "root:rules/root.md",
     ]);
+  });
+
+  it("uses locked registry dependency nodes before refreshing registry entries", async () => {
+    const workspace = await tempRoot();
+    const registry = join(workspace, "registry.json");
+    const cachePath = join(workspace, "registry-cache.json");
+    const root = join(workspace, "root");
+    const depV1 = join(workspace, "dep-v1");
+    const depV2 = join(workspace, "dep-v2");
+    await writeText(join(root, "rules", "root.md"), "# Root\n");
+    await writeText(join(depV1, "rules", "dep.md"), "# Dep v1\n");
+    await writeText(join(depV2, "rules", "dep.md"), "# Dep v2\n");
+    await writeOpenPack(depV1, { name: "acme/dep-v1", provides: [{ type: "rules", path: "rules" }] });
+    await writeOpenPack(depV2, { name: "acme/dep-v2", provides: [{ type: "rules", path: "rules" }] });
+    await writeOpenPack(root, {
+      name: "acme/root-registry",
+      requires: { dep: { source: "registry:dep", select: ["rules/dep.md"] } },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeJson(registry, [{ name: "dep", source: depV1, type: "package", description: "dep", tags: [] }]);
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: root }], {
+      workspaceRoot: workspace,
+      registryClient: new RegistryClient({ sources: [registry], cachePath, ttlMs: -1 }),
+    });
+    const lock = createGraphLock(first);
+    expect(first.nodes.map((node) => node.name).sort()).toEqual(["acme/dep-v1", "acme/root-registry"]);
+
+    await writeJson(registry, [{ name: "dep", source: depV2, type: "package", description: "dep", tags: [] }]);
+    const locked = await resolveDependencyGraph([{ rootId: "root", source: root }], {
+      workspaceRoot: workspace,
+      previousLock: lock,
+      lockedResolution: true,
+      registryClient: new RegistryClient({ sources: [registry], cachePath, ttlMs: -1 }),
+    });
+
+    expect(locked.nodes.map((node) => node.name).sort()).toEqual(["acme/dep-v1", "acme/root-registry"]);
   });
 
   it("dedupes the same dependency required by two roots", async () => {

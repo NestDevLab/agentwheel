@@ -27,6 +27,7 @@ export interface ProfileSyncOptions {
   offline?: boolean;
   yes?: boolean;
   trustPatterns?: string[];
+  readOnly?: boolean;
   isTTY?: boolean;
   warn?: (message: string) => void;
 }
@@ -93,6 +94,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trustPatterns ?? [],
+      readOnly: options.readOnly,
       isTTY: options.isTTY,
       warn: options.warn,
     });

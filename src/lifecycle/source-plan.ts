@@ -58,6 +58,7 @@ export interface GraphSourcePlanOptions {
   offline?: boolean;
   yes?: boolean;
   trustPatterns?: string[];
+  readOnly?: boolean;
   isTTY?: boolean;
   promptTrust?: (sources: string[]) => Promise<boolean>;
   warn?: (message: string) => void;
@@ -111,7 +112,9 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     warnings.push(message);
     options.warn?.(message);
   };
-  const recoveredPendingApply = await recoverPendingApplyIfSafe(options.targetRoot, options.adapter.name, transport);
+  const recoveredPendingApply = options.readOnly === true
+    ? false
+    : await recoverPendingApplyIfSafe(options.targetRoot, options.adapter.name, transport);
   const workspaceConfig = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: options.globalRoot });
   const trustPolicy = {
     ...normalizeTrustPolicy(workspaceConfig.trust),
@@ -144,7 +147,9 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   assertTrustArtifactPolicy(graph, trustPolicy);
   const trustEvaluation = evaluateTransitiveTrust(graph, previousLock, trustPolicy, options.trustPatterns ?? [], options.yes === true);
   await assertTrusted(trustEvaluation.promptSources, options);
-  const persistedTrustSources = await rememberTrustedSources(workspaceRoot, trustEvaluation.persistSources, options.trustStorePath);
+  const persistedTrustSources = options.readOnly === true
+    ? []
+    : await rememberTrustedSources(workspaceRoot, trustEvaluation.persistSources, options.trustStorePath);
   for (const source of persistedTrustSources) warn(`remembered trusted transitive source: ${source}`);
   const bundle = await renderGraphForTarget(graph, {
     workspaceRoot,
@@ -256,6 +261,9 @@ function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedG
 
 async function assertTrusted(sources: string[], options: GraphSourcePlanOptions): Promise<void> {
   if (sources.length === 0) return;
+  if (options.readOnly === true) {
+    throw new Error(`New transitive sources require trust. Re-run with --yes or --trust <pattern>:\n${sources.map((source) => `- ${source}`).join("\n")}`);
+  }
   if (options.promptTrust) {
     if (await options.promptTrust(sources)) return;
     throw new Error(`Untrusted transitive sources:\n${sources.map((source) => `- ${source}`).join("\n")}`);

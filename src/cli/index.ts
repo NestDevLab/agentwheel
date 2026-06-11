@@ -429,6 +429,9 @@ program
   .option("--yes", "trust all new transitive sources while resolving remaining packages", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (packageName, options) => {
+    if (options.keepFiles && options.force) {
+      throw new Error("--keep-files cannot be combined with --force.");
+    }
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
       if (packageName) {
@@ -505,6 +508,7 @@ async function runInstallCommand(
       offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trust ?? [],
+      readOnly: !behavior.apply,
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
@@ -803,6 +807,7 @@ async function buildGraphPlansForTarget(
       offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trust ?? [],
+      readOnly: options.dryRun === true,
       isTTY: process.stdin.isTTY === true,
     });
     if (behavior.mode === "install" && scopedRootId) {
@@ -1098,19 +1103,11 @@ async function printStatus(
   const manifest = await readInstallManifest(target.targetRoot, adapter.name, transport);
   console.log(manifest ? `Install manifest: ${manifest.entries.length} entries, revision ${manifest.revision}` : "Install manifest: missing");
   try {
-    const { path } = await readTargetGraphLock(target, options);
+    const { path, lock } = await readTargetGraphLock(target, options);
     console.log(`Graph lock: ${path}`);
+    console.log(`Locked graph: ${lock.canonical.roots.length} roots, ${lock.canonical.nodes.length} nodes, ${lock.canonical.artifacts.length} artifacts`);
   } catch {
     console.log("Graph lock: missing");
-  }
-  for (const result of await buildGraphPlansForTarget(target, undefined, {}, { mode: "install" })) {
-    const summary = result.plan.operations.reduce<Record<string, number>>((acc, operation) => {
-      acc[operation.action] = (acc[operation.action] ?? 0) + 1;
-      return acc;
-    }, {});
-    console.log(`Plan summary: ${Object.entries(summary).map(([key, value]) => `${key} ${value}`).join(", ") || "no operations"}`);
-    if (result.plan.hasBlockingChanges) process.exitCode = 1;
-    await rm(result.bundle.root, { recursive: true, force: true });
   }
 }
 

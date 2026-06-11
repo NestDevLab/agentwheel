@@ -265,7 +265,7 @@ explicit.
 
 Roots come from:
 
-- CLI `agentwheel sync <source>`;
+- CLI `agentwheel install <source>`;
 - configured `.agentwheel/config.json` `packages[]`;
 - profile sync package entries;
 - dependencies of those roots.
@@ -761,19 +761,18 @@ No extra ceremony for users:
 
 ```bash
 agentwheel add github:NestDevLab/agent-mesh --adapter claude --mode tracking
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel install --dry-run
+agentwheel install
 ```
 
 Optional controls:
 
 ```bash
-agentwheel sync --no-deps
-agentwheel sync --deps=direct       # direct only, no transitive; mostly for debugging
-agentwheel sync --offline
-agentwheel sync --frozen-lock
-agentwheel sync --trust github:NestDevLab/*
-agentwheel sync --alias core:rules/safe-actions.md=safe-actions.md
+agentwheel install --no-deps
+agentwheel install --offline
+agentwheel install --frozen-lock
+agentwheel install --trust github:NestDevLab/*
+agentwheel install --alias core:rules/safe-actions.md=safe-actions.md
 ```
 
 ### Dry-Run Output
@@ -871,7 +870,7 @@ Resolver cache keys should include:
 - selection set;
 - adapter only when composition or adapter capabilities affect output.
 
-`agentwheel sync --offline`:
+`agentwheel install --offline`:
 
 - reads graph lock;
 - verifies cached source paths exist and hashes match;
@@ -1106,7 +1105,7 @@ ecosystem has enough packages.
 7. Fragments should be first-class in locks and validation, but not installed by default.
 8. Refcounts should be recomputed from the graph, not mutated blindly.
 9. Trust prompts/policies are required before this becomes broadly safe.
-10. `plan` / `sync --dry-run` must explain graph, namespacing, and ownership before file operations.
+10. `plan` / `install --dry-run` must explain graph, namespacing, and ownership before file operations.
 
 ## Open Questions and Risks
 

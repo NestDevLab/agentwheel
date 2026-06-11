@@ -123,7 +123,12 @@ describe("OpenPack package manifests", () => {
       provides: [{ type: "fragments", path: "fragments" }],
     });
 
-    await expect(readPackageManifest(root)).rejects.toThrow(/schemaVersion 2 is required/);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(readPackageManifest(root)).rejects.toThrow(/schemaVersion 2 is required/);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("validates selectors and compose include declarations", async () => {

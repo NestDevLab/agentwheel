@@ -464,9 +464,9 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> v0.8 — OpenPack dependencies &amp; composition</span>
+          <span class="eyebrow"><span class="dot"></span> v0.9 — install/update CLI &amp; OpenPack locks</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
-          <p class="subhead">OpenPack packages with real dependencies — skills, rules, and instructions resolved, locked, and synced into every agent runtime your team uses.</p>
+          <p class="subhead">OpenPack packages with real dependencies — skills, rules, and instructions resolved, locked, and installed into every agent runtime your team uses.</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/NestDevLab/agentwheel">GitHub repo</a>
             <a class="button secondary" href="#get-started">Get started</a>
@@ -477,13 +477,13 @@
       <div class="code" aria-label="Install snippet">
         <div class="codebar">
           <span class="light"></span><span class="light"></span><span class="light"></span>
-          <span>agentwheel sync</span>
+          <span>agentwheel install</span>
         </div>
         <pre><code><span class="prompt">$</span> npm i -g agentwheel
 <span class="prompt">$</span> agentwheel add github:NestDevLab/core-agent-pack --adapter openclaw
 <span class="prompt">$</span> cd ~/.openclaw
-<span class="prompt">$</span> agentwheel sync --dry-run
-<span class="prompt">$</span> agentwheel sync
+<span class="prompt">$</span> agentwheel plan
+<span class="prompt">$</span> agentwheel install
 <span class="muted"># dependencies resolved &amp; locked · managed files stay managed · overlays stay yours</span></code></pre>
       </div>
 
@@ -531,7 +531,7 @@
           </article>
           <article class="card">
             <div class="icon">S</div>
-            <h3>Drift-aware, transactional sync</h3>
+            <h3>Drift-aware, transactional install</h3>
             <p>Plan first, then apply atomically. Hash manifests track managed output, detect drift, journal every apply for recovery, and keep updates idempotent.</p>
           </article>
           <article class="card">
@@ -555,7 +555,7 @@
           <article class="card">
             <div class="icon">P</div>
             <h3>Runtime targeting &amp; fleet</h3>
-            <p>Run inside a runtime folder with no target flag, or sync a named fleet — local and SSH — with <code>--agent</code>, <code>--all</code>, and profiles.</p>
+            <p>Run inside a runtime folder with no target flag, or install into a named fleet — local and SSH — with <code>--agent</code>, <code>--all</code>, and profiles.</p>
           </article>
         </div>
       </section>
@@ -575,7 +575,7 @@
           <div class="arrow">→</div>
           <div class="step">
             <strong>Runtime output</strong>
-            <span>Sync writes generated files into the runtimes you use — OpenClaw, Claude, Codex, Copilot, Hermes, and any custom runtime you add via your own adapter.</span>
+            <span>Install writes generated files into the runtimes you use — OpenClaw, Claude, Codex, Copilot, Hermes, and any custom runtime you add via your own adapter.</span>
           </div>
         </div>
       </section>
@@ -643,7 +643,7 @@
 
       <section id="packages">
         <h2 class="section-title">How to add a package</h2>
-        <p class="intro-text">A package is a git repo with an <code>openpack.json</code> manifest. Since v0.8 it can require other packages — agentwheel resolves and locks the whole graph. Discovery is powered by the optional <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>, which gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>; any git URL works without it.</p>
+        <p class="intro-text">A package is a git repo with an <code>openpack.json</code> manifest. Since v0.9, install reads the lock by default while update moves tracking sources forward. Discovery is powered by the optional <a href="https://github.com/NestDevLab/agentwheel-registry">agentwheel registry</a>, which gives users clean short names like <code>agentwheel add nestdev-core-toolkit</code>; any git URL works without it.</p>
 
         <div class="flow">
           <div class="step">
@@ -725,14 +725,14 @@
             <span>selective install</span>
           </div>
           <pre><code><span class="prompt">$</span> agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux
-<span class="prompt">$</span> agentwheel sync --select rules/core-safety.md
+<span class="prompt">$</span> agentwheel install --select rules/core-safety.md
 <span class="muted"># provides[].required artifacts are always installed</span></code></pre>
         </div>
       </section>
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.8) and installs from npm. Three steps: get it, point it at a package, preview the plan, then sync. In normal use you do not need <code>--target-root</code>.</p>
+        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Three steps: get it, point it at a package, preview the plan, then install. In normal use you do not need <code>--target-root</code>.</p>
 
         <div class="code" aria-label="Install agentwheel">
           <div class="codebar">
@@ -758,11 +758,11 @@
         <div class="code" aria-label="Preview then apply">
           <div class="codebar">
             <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>3 · preview, then sync</span>
+            <span>3 · preview, then install</span>
           </div>
           <pre><code><span class="prompt">$</span> cd ~/.openclaw
-<span class="prompt">$</span> agentwheel sync --dry-run    <span class="muted"># auto-detects the runtime target</span>
-<span class="prompt">$</span> agentwheel sync              <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
+<span class="prompt">$</span> agentwheel plan              <span class="muted"># auto-detects the runtime target</span>
+<span class="prompt">$</span> agentwheel install           <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
         </div>
 
         <div class="code" aria-label="Dependencies, trust, and offline">
@@ -770,10 +770,10 @@
             <span class="light"></span><span class="light"></span><span class="light"></span>
             <span>dependencies &amp; trust</span>
           </div>
-          <pre><code><span class="prompt">$</span> agentwheel sync --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
+          <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
 <span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
 <span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
-<span class="prompt">$</span> agentwheel sync --offline                     <span class="muted"># zero network, straight from the lock</span></code></pre>
+<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
         </div>
 
         <div class="code" aria-label="Fleet targeting">
@@ -794,21 +794,21 @@
   }
 }
 
-<span class="prompt">$</span> agentwheel sync --agent lab-openclaw
-<span class="prompt">$</span> agentwheel sync --all
-<span class="prompt">$</span> agentwheel sync --profile daily --dry-run
+<span class="prompt">$</span> agentwheel install --agent lab-openclaw
+<span class="prompt">$</span> agentwheel install --all
+<span class="prompt">$</span> agentwheel install --profile daily --dry-run
 <span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
         </div>
 
         <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:
-        <code>agentwheel sync ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
+        <code>agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
         <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
         <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
       </section>
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.8.</span>
+      <span>agentwheel is early / v0.9.</span>
       <a href="https://github.com/NestDevLab/agentwheel">github.com/NestDevLab/agentwheel</a>
     </footer>
   </div>

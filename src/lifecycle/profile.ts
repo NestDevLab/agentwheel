@@ -22,10 +22,12 @@ export interface ProfileSyncOptions {
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
   noDeps?: boolean;
+  lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
   yes?: boolean;
   trustPatterns?: string[];
+  readOnly?: boolean;
   isTTY?: boolean;
   warn?: (message: string) => void;
 }
@@ -87,10 +89,12 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         transport: target.transport.kind,
       },
       noDeps: options.noDeps,
+      lockedResolution: options.lockedResolution,
       frozenLock: options.frozenLock,
       offline: options.offline,
       yes: options.yes,
       trustPatterns: options.trustPatterns ?? [],
+      readOnly: options.readOnly,
       isTTY: options.isTTY,
       warn: options.warn,
     });

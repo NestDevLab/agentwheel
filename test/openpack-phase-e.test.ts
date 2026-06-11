@@ -192,6 +192,39 @@ describe("OpenPack phase E", () => {
     expect(await readTrustedSources(workspace, trustStore)).toEqual([]);
   });
 
+  it("keeps read-only graph planning from prompting or persisting trust", async () => {
+    const workspace = await tempRoot();
+    const trustStore = join(workspace, "read-only-trust.json");
+    const { root } = await dependencyFixture(workspace, "read-only");
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: await tempRoot("agentwheel-phase-e-read-only-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "read-only",
+      readOnly: true,
+      trustStorePath: trustStore,
+      promptTrust: async () => {
+        throw new Error("read-only planning must not prompt");
+      },
+    })).rejects.toThrow(/New transitive sources require trust/);
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root }],
+      targetRoot: await tempRoot("agentwheel-phase-e-read-only-target-"),
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "read-only",
+      readOnly: true,
+      yes: true,
+      trustStorePath: trustStore,
+    });
+    await rm(result.bundle.root, { recursive: true, force: true });
+
+    expect(await readTrustedSources(workspace, trustStore)).toEqual([]);
+  });
+
   it("does not trust project-local acceptedSources on first use", async () => {
     const workspace = await tempRoot();
     const trustStore = join(workspace, "user-trust.json");

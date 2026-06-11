@@ -69,23 +69,23 @@ Profiles group runtimes:
 Run a single agent:
 
 ```bash
-agentwheel sync --agent ct110-codex --dry-run
-agentwheel sync --agent ct110-codex
+agentwheel install --agent ct110-codex --dry-run
+agentwheel install --agent ct110-codex
 ```
 
 Run all configured agents:
 
 ```bash
-agentwheel sync --all --dry-run
+agentwheel install --all --dry-run
 ```
 
 Run a profile:
 
 ```bash
-agentwheel sync --profile daily --dry-run
+agentwheel install --profile daily --dry-run
 ```
 
-`plan`, `sync --dry-run`, `sync`, `update`, and `uninstall` all use the target transport. For SSH
+`plan`, `install --dry-run`, `install`, `update`, and `uninstall` all use the target transport. For SSH
 targets, agentwheel reads the remote install manifest and hashes remote files before planning, so
 drift and conflict detection have the same semantics as local targets.
 

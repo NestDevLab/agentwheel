@@ -24,6 +24,7 @@ export interface GraphRootRequest {
   mode?: "pinned" | "tracking";
   ref?: string;
   aliases?: Record<string, string>;
+  useLock?: boolean;
 }
 
 export interface ResolveGraphOptions {
@@ -33,6 +34,7 @@ export interface ResolveGraphOptions {
   registryClient?: Pick<RegistryClient, "resolve">;
   now?: () => Date;
   noDeps?: boolean;
+  lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
   previousLock?: GraphLock;
@@ -84,6 +86,7 @@ interface Requirement {
   version?: string;
   integrity?: string;
   selectionReason?: string;
+  useLock?: boolean;
 }
 
 type PackageManifestV2 = Extract<PackageManifest, { schemaVersion: 2 }>;
@@ -144,6 +147,7 @@ export async function resolveDependencyGraph(
       requiredBy: `workspace:${rootId}`,
       rootId,
       aliases: root.aliases,
+      useLock: root.useLock ?? options.lockedResolution,
       depth: 0,
       optional: false,
       chain: [`workspace:${rootId}`],
@@ -223,19 +227,23 @@ async function processRequirement(
   edgeMap: Map<string, GraphLockEdge>,
 ): Promise<Requirement[]> {
   try {
-    const normalized = await normalizeDependencySource(requirement.source, {
-      declaringPackageRoot: requirement.declaringPackageRoot,
-      workspaceRoot: options.workspaceRoot,
-      ref: requirement.ref,
-      registryClient: options.registryClient,
-    });
-    const lockLabel = options.offline ? "Offline" : "Frozen lock";
-    const frozen = options.frozenLock ? lockedNodeForSource(normalized.normalizedSource, options.previousLock, lockLabel) : undefined;
+    const lockLabel = options.offline ? "Offline" : options.frozenLock ? "Frozen lock" : "Locked install";
+    const lockedByReference = lockedNodeForRequirementReference(requirement, options, lockLabel);
+    const normalized = lockedByReference
+      ? normalizedSourceFromLockedNode(lockedByReference.node)
+      : await normalizeDependencySource(requirement.source, {
+          declaringPackageRoot: requirement.declaringPackageRoot,
+          workspaceRoot: options.workspaceRoot,
+          ref: requirement.ref,
+          registryClient: options.registryClient,
+        });
+    const frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
     let fetched: FetchedPackage;
     try {
       fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
     } catch (error) {
-      if (!options.frozenLock) throw error;
+      const usingLockedNode = frozen?.node !== undefined;
+      if (!options.frozenLock && !options.offline && !usingLockedNode) throw error;
       const message = error instanceof Error ? error.message : String(error);
       const label = frozen?.node ? `${frozen.node.id} (${normalized.normalizedSource})` : normalized.normalizedSource;
       throw new Error(`${lockLabel} cache missing or stale for locked graph node:\n- ${label}: ${message}`);
@@ -346,7 +354,7 @@ async function collectDependencyNeeds(
       if (!dependency.select?.length && !(state.fullPackageSelected && dependency.select === undefined)) continue;
       state.processedPackageAliases.add(alias);
       if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
-      requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain));
+      requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain, options.lockedResolution === true));
     }
   }
 
@@ -382,6 +390,7 @@ async function collectDependencyNeeds(
             dependency,
             sortedUnique([...(dependency.select ?? []), parsed.selector]),
             chain,
+            options.lockedResolution === true,
             parsed.optional || dependency.optional === true,
             `required by ${parentSelector}`,
           ));
@@ -413,6 +422,7 @@ async function collectDependencyNeeds(
           dependency,
           sortedUnique([...(dependency.select ?? []), include.selector]),
           chain,
+          options.lockedResolution === true,
           include.optional || dependency.optional === true,
         ));
       }
@@ -431,6 +441,7 @@ function dependencyRequirement(
   dependency: PackageDependency,
   select: string[] | undefined,
   chain: string[],
+  lockByDefault: boolean,
   optional = dependency.optional ?? false,
   selectionReason?: string,
 ): Requirement {
@@ -439,6 +450,7 @@ function dependencyRequirement(
     select,
     mode: dependency.mode ?? "pinned",
     ref: dependency.ref,
+    useLock: lockByDefault || dependency.mode !== "tracking",
     declaringPackageRoot: fetched.resolved.resolvedPath,
     requiredBy: state.node.id,
     alias,
@@ -648,7 +660,8 @@ async function fetchPackage(
   fetchCache: Map<string, Promise<FetchedPackage>>,
   refOverride?: string,
 ): Promise<FetchedPackage> {
-  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${options.frozenLock ? "frozen" : ""}`;
+  const hardLockedCheckout = options.frozenLock === true || options.offline === true;
+  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${hardLockedCheckout ? "hard-locked" : "mutable"}`;
   const existing = fetchCache.get(key);
   if (existing) return existing;
 
@@ -658,7 +671,7 @@ async function fetchPackage(
       cacheRoot: options.cacheRoot ?? join(options.workspaceRoot, ".agentwheel", "cache"),
       mode,
       ref: refOverride ?? normalized.requestedRef,
-      frozenLock: options.frozenLock,
+      frozenLock: hardLockedCheckout,
     });
     const fetched = await withCachePathLock(resolved.resolvedPath, () => driver.fetch(resolved));
     const translated = await driver.translate(fetched);
@@ -686,6 +699,85 @@ async function fetchPackage(
   })();
   fetchCache.set(key, promise);
   return promise;
+}
+
+function lockedNodeForRequirement(
+  normalizedSource: string,
+  requirement: Requirement,
+  options: ResolveGraphOptions,
+  label: string,
+): FrozenNodeMatch | undefined {
+  const hard = options.frozenLock === true || options.offline === true;
+  if (!hard && !requirement.useLock) return undefined;
+  if (!options.previousLock) {
+    if (hard) throw new Error(`${label} requires an existing graph lock before resolving ${normalizedSource}.`);
+    return undefined;
+  }
+  const matches = options.previousLock.canonical.nodes.filter((node) => node.normalizedSource === normalizedSource);
+  if (matches.length === 0) {
+    if (hard) throw new Error(`${label} cannot resolve new source: ${normalizedSource}. Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
+    return undefined;
+  }
+  if (matches.length > 1) {
+    if (!hard) return undefined;
+    throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
+  }
+  const node = matches[0]!;
+  return {
+    node,
+    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+  };
+}
+
+function lockedNodeForRequirementReference(
+  requirement: Requirement,
+  options: ResolveGraphOptions,
+  label: string,
+): FrozenNodeMatch | undefined {
+  const hard = options.frozenLock === true || options.offline === true;
+  if (!hard && !requirement.useLock) return undefined;
+  if (!options.previousLock) {
+    if (hard) throw new Error(`${label} requires an existing graph lock before resolving ${requirement.source}.`);
+    return undefined;
+  }
+
+  let nodeId: string | undefined;
+  let description: string | undefined;
+  if (requirement.depth === 0 && requirement.rootId) {
+    const root = options.previousLock.canonical.roots.find((candidate) => candidate.rootId === requirement.rootId);
+    nodeId = root?.graphNodeId;
+    description = `root ${requirement.rootId}`;
+  } else if (requirement.parentId && requirement.alias) {
+    const edge = options.previousLock.canonical.edges.find((candidate) =>
+      candidate.from === requirement.parentId && candidate.alias === requirement.alias);
+    nodeId = edge?.to;
+    description = `dependency ${requirement.parentId}:${requirement.alias}`;
+  }
+
+  if (!nodeId) {
+    if (hard && description) {
+      throw new Error(`${label} cannot resolve new locked ${description}. Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
+    }
+    return undefined;
+  }
+
+  const node = options.previousLock.canonical.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) {
+    throw new Error(`${label} graph lock is missing node ${nodeId} for ${description ?? requirement.source}.`);
+  }
+  return {
+    node,
+    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+  };
+}
+
+function normalizedSourceFromLockedNode(node: GraphLockNode): NormalizedDependencySource {
+  return {
+    source: node.source,
+    normalizedSource: node.normalizedSource,
+    driver: node.driver as NormalizedDependencySource["driver"],
+    requestedRef: node.requestedRef,
+  };
 }
 
 function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefined, label: string): FrozenNodeMatch {

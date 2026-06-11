@@ -43,6 +43,7 @@ export interface ApplyOptions {
 export interface UninstallOptions {
   dryRun?: boolean;
   force?: boolean;
+  keepFiles?: boolean;
   transport?: TargetTransport;
   graphLock?: {
     path: string;
@@ -198,21 +199,27 @@ async function applyPlanTransactionally(
 export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
   const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
   const transport = resolvedOptions.transport ?? localTransport;
+  if (resolvedOptions.keepFiles && resolvedOptions.force) {
+    throw new Error("--keep-files cannot be combined with --force.");
+  }
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "conflict");
     throw new Error(`Refusing to uninstall with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
   const removable = plan.operations
-    .filter((operation) => operation.action === "remove" || (resolvedOptions.force && operation.action === "keep"))
+    .filter((operation) => operation.action === "remove" || (resolvedOptions.force && isForceRemovableKeep(operation)))
     .map((operation) => operation.action === "keep"
       ? { ...operation, action: "remove" as const, reason: `${operation.reason}; force removing drifted managed file` }
       : operation);
-  const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
+  const kept = plan.operations.filter((operation) => operation.action === "keep" && (!resolvedOptions.force || !isForceRemovableKeep(operation)));
   const skipped = plan.operations.filter((operation) => operation.action === "skip");
-  const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
-  if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
+  const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep" && isForceRemovableKeep(operation)).length : 0;
+  if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
-  const preserved = [...kept, ...skipped];
+  const preservedKept = resolvedOptions.keepFiles
+    ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
+    : kept;
+  const preserved = [...preservedKept, ...skipped];
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   const finalManifest = withManifestRevision({
@@ -248,7 +255,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       graphLockDigest: plan.graphLockDigest,
       createdAt: now,
       updatedAt: now,
-      operations: removable,
+      operations: resolvedOptions.keepFiles ? [] : removable,
       completed: [],
       manifest: finalManifest,
       graphLockPath: resolvedOptions.graphLock?.path,
@@ -259,7 +266,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     };
     await writeApplyJournal(journal, transport);
 
-    for (const [index, operation] of removable.entries()) {
+    for (const [index, operation] of (resolvedOptions.keepFiles ? [] : removable).entries()) {
       const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
       journal.completed.push(backup);
       await writeApplyJournal(journal, transport);
@@ -272,7 +279,15 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   } finally {
     await lock.release();
   }
-  return { removed: removable.length, kept: kept.length, removedDrifted };
+  return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
+}
+
+function shouldPreserveKeptOperationWhenKeepingFiles(operation: InstallOperation): boolean {
+  return operation.preserveInManifest === true;
+}
+
+function isForceRemovableKeep(operation: InstallOperation): boolean {
+  return operation.action === "keep" && operation.preserveInManifest !== true;
 }
 
 async function commitJournalState(
@@ -394,6 +409,18 @@ async function applyOperation(
     });
   }
 
+  if (operation.action === "keep") {
+    if (!operation.manifestHash || !operation.desiredHash) {
+      throw new Error(`Invalid keep operation missing manifest/source hash: ${operation.relativeDestPath}`);
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.manifestHash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: operation.graphLockDigest ?? context.graphLockDigest,
+    });
+  }
+
   if (operation.action === "remove") {
     await transport.rm(operation.destPath);
     return undefined;
@@ -456,7 +483,7 @@ function manifestEntryForOperation(
     channel: operation.channel,
     packageName: operation.packageName,
     semanticCommand: operation.semanticCommand,
-    executed: values.executed,
+    executed: values.executed ?? operation.execute,
     mergeStrategy: operation.mergeStrategy,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,

@@ -29,8 +29,8 @@ async function writePackage(root: string): Promise<void> {
   await mkdir(join(root, "mcp"), { recursive: true });
   await mkdir(join(root, "hooks"), { recursive: true });
   await mkdir(join(root, "settings"), { recursive: true });
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "acme/wave3",
     version: "0.3.0",
     provides: [

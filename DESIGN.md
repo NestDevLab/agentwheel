@@ -38,14 +38,14 @@ the "two competing installers" conflict; only agentwheel writes into runtime dir
 - `targets/plugins/` — **semantic** (non file-copy) targets. `targets/plugins/openclaw.ts` shells to
   `openclaw plugins install`. (Deliberately NOT a top-level `plugins/` dir — avoids confusion with
   OpenClaw/Hermes plugins.)
-- `cli/` — `init, list, fetch, scan, plan, sync, sync --dry-run, uninstall, doctor`.
-  `sync --dry-run` is the central trust command.
+- `cli/` — `init, add, list, fetch, scan, plan, install, update, uninstall, doctor`.
+  `install --dry-run` is the central trust command.
 
 **Two "spines" to define first:** the `SourceDriver` interface and the install-manifest schema.
 
 ## Scope by version
 - **v0.1** (end-to-end proof): runtimes `openclaw + claude + codex`; artifacts `skills + rules +
-  instructions`; sources `local + git + skillkit`; commands `list / scan / plan / sync[--dry-run] / uninstall`.
+  instructions`; sources `local + git + skillkit`; commands `list / scan / plan / install[--dry-run] / uninstall`.
 - **v0.2:** runtimes `hermes + copilot`; artifacts `commands + mcp + hooks`.
 - **v0.3:** semantic `plugins:` targets; advanced uninstall; profiles; explicit Vercel-skills driver.
 

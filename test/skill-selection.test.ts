@@ -34,8 +34,8 @@ async function createPackage(): Promise<string> {
   await writeFile(join(root, "rules", "optional.md"), "# Optional\n", "utf8");
   await writeFile(join(root, "shared", "bin", "tool.sh"), "#!/bin/bash\necho tool\n", "utf8");
   await chmod(join(root, "shared", "bin", "tool.sh"), 0o755);
-  await writeFile(join(root, "agentwheel.json"), JSON.stringify({
-    schemaVersion: 1,
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
     name: "selection-package",
     version: "1.0.0",
     provides: [

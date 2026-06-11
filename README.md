@@ -7,59 +7,63 @@
 <p align="center"><strong>One source. Every agent.</strong></p>
 
 <p align="center">
-  Weave your skills, rules, and instructions across every AI agent you use —
-  from any source, kept in sync, with your private tweaks intact.
+  Weave your skills, rules, and instructions across every AI agent you use,
+  from any source, reconciled into each runtime with your private tweaks intact.
 </p>
 
 ---
 
 ## Why agentwheel?
 
-Your AI agents are multiplying. Claude here, Codex there, a couple of custom runtimes in the corner — and every one of them wants its skills, its rules, its own little `AGENTS.md`, in its own folder, in its own format.
+Your AI agents are multiplying. Claude here, Codex there, custom runtimes elsewhere, and each one
+wants skills, rules, instructions, commands, MCP, hooks, and settings in its own native shape.
 
-So you copy-paste. You forget which agent has the latest version. You tweak a rule for one and it drifts out of sync with the rest. Multiply that by a team, and "keep the agents aligned" quietly becomes a part-time job.
-
-**agentwheel makes it one job, done once.** Point it at your skills and instructions, tell it which agents you run, and it installs everything where each one expects it — then keeps it that way. Update upstream and your agents update. Make a local tweak and it survives the next update. Add a brand-new runtime nobody's ever heard of? Drop in a small config and it's a first-class target too.
+**agentwheel makes that one declared state.** Add packages to `.agentwheel/config.json`, preview the
+runtime changes, then install the declared state into each target. Updates move tracking sources
+forward explicitly; installs make the current declaration true.
 
 ```bash
 npm i -g agentwheel
-agentwheel add github:your-org/agent-pack
-cd ~/.openclaw
-agentwheel sync --dry-run    # show me what would change
-agentwheel sync              # install into the detected runtime
+agentwheel init
+agentwheel add github:your-org/agent-pack --adapter codex --mode tracking
+agentwheel plan
+agentwheel install
 ```
 
-No lock-in. No central gatekeeper. Your packages live in plain git repos, your customizations live in your own repo, and anything reachable by a URL just works.
+No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
+live in your workspace, and runtimes stay generated output.
 
----
+> **Status: early (v0.9).** v0.9 switches the public CLI vocabulary to package-manager verbs:
+> `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for one release only
+> so old bootstrapped skills can self-update; use `install` in all new docs and scripts.
 
-> **Status: early (v0.8).** The lifecycle core is real and tested — local/git/skillkit/vercel
-> sources, optional registry discovery, plan/sync/update/drift/uninstall, overlays, eject/remember,
-> profiles, runtime auto-detection, fleet targeting, asset-includes, selective installs,
-> update notifications, full Claude/Codex adapters, rich JSON/TOML merge, and pluggable adapters.
-> New in v0.8: [OpenPack](docs/spec/openpack.md) — package dependencies with a locked graph,
-> fragment composition, trust policy, and offline mode. Expect sharp edges.
+## Core Commands
 
-## What it does
+| Command | Meaning |
+|---|---|
+| `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
+| `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing. |
+| `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
+| `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
+| `agentwheel update [name]` | Re-resolve tracking packages, then apply. Pinned packages stay locked. |
+| `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
+| `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
+| `agentwheel status` | Show configured packages, manifest/lock presence, and install state. |
 
-- **Installs** skills, rules, and instructions into each runtime's native location.
-- **Keeps them in sync** — re-runnable, idempotent, with a manifest and drift detection so nothing silently clobbers your work.
-- **Pluggable adapters** — each runtime is described by a small config; add your own without forking.
-- **Pluggable sources** — pull packages from local paths, git, or skill ecosystems.
-- **Dependencies & composition** — packages can require other packages; agentwheel resolves the
-  full graph, locks it, and composes shared fragments at sync time.
-- **Your customizations are first-class** — layer, extend, override, or take full ownership, and survive updates.
+Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
+then make them true.**
+Scoped installs do not remove files owned only by other configured packages; run a full `agentwheel install`
+to reconcile those removals.
 
-## Quick start
+## Quick Start
 
 ```bash
 npm i -g agentwheel
 
 agentwheel init
 agentwheel add github:your-org/agent-pack --adapter openclaw --mode tracking
-cd ~/.openclaw
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel plan
+agentwheel install
 ```
 
 Prefer pnpm? `pnpm add -g agentwheel` works too.
@@ -74,23 +78,22 @@ pnpm build
 pnpm link --global
 ```
 
-`plan`, `sync --dry-run`, and `update --dry-run` show exactly what would change before anything is written. They're the commands to trust.
-
-`uninstall` removes clean managed files by default and keeps drifted files in place with a warning.
-Use `agentwheel uninstall --force` only when you also want to remove drifted managed files.
+`plan`, `install --dry-run`, and `update --dry-run` show what would change before runtime files are
+written. `uninstall` removes clean managed files and keeps drifted files by default; use
+`agentwheel uninstall --force` only when you also want to remove drifted managed files.
 
 agentwheel checks npm for newer versions at most once every 24 hours and prints a non-blocking
 stderr warning when an update is available. Disable it with `--no-update-check` or
 `AGENTWHEEL_NO_UPDATE_CHECK=1`.
 
-## Runtime targeting
+## Runtime Targeting
 
-Normal use no longer needs `--target-root`. Run agentwheel inside a runtime folder and it detects
-the target:
+Normal use does not need `--target-root`. Run agentwheel inside a runtime folder and it detects the
+target:
 
 ```bash
 cd ~/.openclaw
-agentwheel sync github:your-org/agent-pack
+agentwheel install
 ```
 
 If the current directory is already the runtime directory (`~/.openclaw`), agentwheel uses its
@@ -127,14 +130,14 @@ For a control-plane setup, define named agents in config. Global config lives at
 ```
 
 ```bash
-agentwheel sync --agent lab-openclaw
-agentwheel sync --all
-agentwheel sync --profile daily
+agentwheel install --agent lab-openclaw
+agentwheel install --all
+agentwheel install --profile daily
 ```
 
-SSH targets use the same manifest and drift model as local targets. `plan --dry-run` reads the
-remote install manifest and hashes remote files before deciding whether a file is up to date,
-drifted, or conflicting. SSH hosts need `ssh`, `tar`, and `node` available on `PATH`.
+SSH targets use the same manifest and drift model as local targets. Planning reads the remote
+install manifest and hashes remote files before deciding whether a file is up to date, drifted, or
+conflicting. SSH hosts need `ssh`, `tar`, and `node` available on `PATH`.
 
 To scaffold a control-plane example:
 
@@ -145,49 +148,48 @@ agentwheel init --fleet-example
 Target resolution order is exact: `--target-root` wins, then `--agent`, then auto-detect from the
 current directory, then fallback to the current directory.
 
-## Core ideas
+## Core Ideas
 
 **Three places, one direction:**
 
 | | Where | What |
 |---|---|---|
-| **Author** | the package's git repo | upstream content — never edited in place |
-| **Workspace** | your repo, under `.agentwheel/` | your config, locks, and customizations |
-| **Runtime** | `.openclaw/`, `~/.claude/`, … | generated output — never hand-edited |
+| **Author** | the package's git repo | upstream content, never edited in place |
+| **Workspace** | your repo, under `.agentwheel/` | config, locks, trust decisions, and customizations |
+| **Runtime** | `.openclaw/`, `~/.claude/`, `.codex/`, ... | generated output |
 
-Flow: **author + your workspace → `sync` → runtime**.
+Flow: **author + workspace → `install` → runtime**.
 
 ## Packages
 
-A package is a git repo (or folder) with a JSON manifest and a canonical layout:
+A package is a git repo or folder with an OpenPack manifest and a canonical layout:
 
 ```jsonc
-// openpack.json  (plain JSON or JSONC — both work; agentwheel.json remains a legacy alias)
+// openpack.json
 {
   "schemaVersion": 2,
   "name": "your-org/agent-pack",
   "version": "0.1.0",
   "provides": [
     { "type": "instructions", "path": "instructions/AGENTS.md" },
-    { "type": "rules",        "path": "rules" },
-    { "type": "skills",       "path": "skills" }
+    { "type": "rules", "path": "rules" },
+    { "type": "skills", "path": "skills" }
   ]
 }
 ```
 
 Install only part of a package with `--select <type>/<name>`. `--skill <name>` is a shortcut for
-`--select skills/<name>`, and selections saved during `add` are reused by later `sync` and `update`
-runs.
+`--select skills/<name>`, and selections saved during `add` are reused by later `install` and
+`update` runs.
 
 ```bash
-agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter openclaw
-agentwheel sync --dry-run
-
-agentwheel sync github:your-org/agent-pack --select rules/safe-actions.md --select commands/build.md
+agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex
+agentwheel plan
+agentwheel install
 ```
 
-Package authors can mark dependencies as required. Required artifacts are always installed and
-cannot be deselected:
+Package authors can mark artifacts as required. Required artifacts are always installed and cannot
+be deselected:
 
 ```jsonc
 {
@@ -197,39 +199,11 @@ cannot be deselected:
 }
 ```
 
-Packages can compose shared files into each directory artifact at staging time. This keeps one
-canonical copy in the package repo while installing self-contained skills:
+## Dependencies And Composition
+
+OpenPack packages can depend on other packages and compose shared markdown fragments:
 
 ```jsonc
-{
-  "type": "skills",
-  "path": "skills",
-  "assets": [
-    {
-      "from": "packages/tmux-bridge/bin",
-      "into": "bin",
-      "include": ["*.sh"],
-      "mode": "preserve"
-    }
-  ]
-}
-```
-
-`mode: "preserve"` keeps executable bits on copied scripts. The composed files are included in
-the skill directory hash, so idempotency and drift detection work as if the assets had always
-belonged to the skill.
-
-Publish by pushing to any git host. A registry exists only for short names and discovery — it's
-optional, and `agentwheel add <url|path>` always works without it.
-
-## Dependencies & composition (OpenPack)
-
-Since v0.8 the package format is [**OpenPack**](docs/spec/openpack.md) — a vendor-neutral spec any
-tool can implement. With `schemaVersion: 2`, packages can depend on other packages and compose
-shared markdown fragments:
-
-```jsonc
-// openpack.json
 {
   "schemaVersion": 2,
   "name": "your-org/agent-pack",
@@ -248,88 +222,55 @@ shared markdown fragments:
 }
 ```
 
-- **Recursive resolution, locked.** `sync` resolves the whole dependency graph and writes a
-  deterministic graph lock under `.agentwheel/locks/`, so every machine installs the same thing.
-- **npm-style conflict satisfaction.** Compatible requirements dedupe and hoist; incompatible
-  *transitive* duplicates coexist under deterministic namespaced install names; conflicts between
-  packages you installed directly block with a clear error — nothing you chose is ever
-  auto-renamed.
-- **Fragment composition.** Markdown files can transclude shared fragments at sync time with
-  `<!-- openpack:include fragments/review-style.md -->` (or `core:fragments/risk.md` across
-  packages). Generated blocks carry provenance markers and are hashed for drift detection.
-  Skills are never inlined into other skills — required skills install as their own artifacts.
-- **Trust.** New transitive sources prompt before anything is fetched. Pre-approve with
-  `--trust <glob>` or `--yes`, set a workspace trust policy (`allow` patterns,
-  `denyArtifactTypes`, `requireReviewForTransitive`), and manage persisted decisions with
-  `agentwheel trust`.
-- **Offline & frozen installs.** `--frozen-lock` resolves strictly from the existing lock;
-  `--offline` additionally guarantees zero network — CI-friendly and reproducible.
+- **Recursive resolution, locked.** `install` reads the existing graph lock when present; newly
+  added packages resolve fresh and then write a deterministic lock.
+- **Explicit updates.** `update` re-resolves tracking sources and applies the new graph. Pinned
+  packages stay on the locked graph unless their declaration changes.
+- **Fragment composition.** Markdown files can transclude shared fragments with
+  `<!-- openpack:include fragments/review-style.md -->` or cross-package aliases such as
+  `core:fragments/risk.md`.
+- **Trust.** New transitive sources prompt before install. Pre-approve with `--trust <glob>` or
+  `--yes`, set a workspace trust policy, and manage persisted decisions with `agentwheel trust`.
+- **Offline & frozen installs.** `--offline` guarantees zero network; `--frozen-lock` hard-fails if
+  resolution would differ from the lock.
 - **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why
-  <selector>` explains why an artifact is installed and how its install name was chosen.
+  <selector>` explains why an artifact is installed.
 
-Migrating an existing package takes one command: `agentwheel package migrate` renames
-`agentwheel.json` to `openpack.json` and upgrades the schema.
-
-## How to add a package
-
-The public package registry lives at
-[`NestDevLab/agentwheel-registry`](https://github.com/NestDevLab/agentwheel-registry).
-
-1. Create a public repo with `openpack.json` and a standard layout such as `instructions/`, `rules/`, `skills/`, `commands/`, `mcp/`, or `hooks/`.
-2. Open a pull request to `agentwheel-registry` that adds an entry to `index.json`.
-3. Users install by short name:
+Migrating an existing legacy package takes one command:
 
 ```bash
-agentwheel registry update
-agentwheel add your-package-name --adapter openclaw
-agentwheel update --dry-run
-agentwheel update
+agentwheel package migrate
 ```
 
-Example registry entry:
+## Customizing Without Getting Overwritten
 
-```json
-{
-  "name": "your-package-name",
-  "source": "github:your-org/your-agent-package",
-  "type": "package",
-  "description": "Reusable skills, rules, and instructions for agentwheel.",
-  "tags": ["skills", "rules", "instructions"]
-}
-```
+Drift detection blocks accidental edits to generated runtime files. Intentional changes live under
+`.agentwheel/`:
 
-## Customizing without getting overwritten
+- **Layer** local instructions with `agentwheel remember`.
+- **Add** separate local artifacts under `.agentwheel/additions`.
+- **Override** an upstream item under `.agentwheel/overrides`.
+- **Eject** an item into `.agentwheel/ejected` when you want local ownership.
 
-Drift detection blocks *accidental* edits to generated files. *Intentional* changes have four channels,
-all stored in your `.agentwheel/` (never in the runtime dir, never in the author's repo):
+## Custom And Private Runtimes
 
-- **Layer** — an editable region in your instructions that updates never touch. (This is how an agent can "remember X durably" without fighting drift.)
-- **Add** — extra rule files composed alongside upstream.
-- **Override** — replace a specific upstream item, visibly, in the plan.
-- **Eject** — take an item into local ownership; updates leave it alone.
-
-## Custom & private runtimes
-
-A runtime adapter is just a config (capabilities + paths). Have an internal runtime you can't publish?
-Write a `.jsonc` adapter and point at it — it's a first-class target, and nothing leaves your machine:
+A runtime adapter is a config with capabilities and paths. Internal runtimes do not need to be
+published:
 
 ```jsonc
 {
   "name": "myco-internal",
   "targets": {
     "instructions": { "dest": ".myco/context/AGENTS.md" },
-    "rules":        { "dest": ".myco/policy/rules" },
-    "skills":       { "dest": ".myco/lib/skills" }
+    "rules": { "dest": ".myco/policy/rules" },
+    "skills": { "dest": ".myco/lib/skills" }
   }
 }
 ```
 
 ```bash
-agentwheel sync ./my-pack --adapter-config ./myco-internal.jsonc
+agentwheel install ./my-pack --adapter-config ./myco-internal.jsonc
 ```
-
-Built-in adapters ship for common runtimes; declarative adapters need no code and stay private.
-Programmatic adapters, for private runtime logic beyond file placement, require explicit `--allow-adapter-code`.
 
 Built-in runtime targets:
 
@@ -341,31 +282,12 @@ Built-in runtime targets:
 | **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, MCP/hooks/settings |
 | **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts` |
 
-Claude MCP and hooks/settings are merged as JSON. Codex MCP entries are merged into
-`[mcp_servers]` in `.codex/config.toml` without deleting unrelated user config; hooks use
-`.codex/hooks.json`.
+## Docs
 
-Copilot support is intentionally file-drop only: instructions, rules, and prompt/command files are
-placed in GitHub-native locations, while raw `SKILL.md` directories stay disabled until there is a
-clear conversion format.
-
-## Roadmap
-
-- [x] **v0.1** — install spine: local sources; openclaw/claude/codex adapters; skills/rules/instructions; `plan` · `sync` · `--dry-run` · `uninstall`; manifest + drift + idempotency.
-- [x] **v0.2** — git source driver; `update` (pinned & tracking); overlays/additive/override/eject; `init`; hermes + copilot adapters; commands/mcp/hooks artifacts; OpenClaw semantic plugin planning.
-- [x] **v0.3** — skillkit/vercel source drivers; optional registry & federation; programmatic adapters behind `--allow-adapter-code`; rich JSON merge for mcp/hooks/settings; profiles.
-- [x] **v0.4** — runtime auto-detection; no `--target-root` needed for normal use; fleet config with named agents; global + project config merge; `--agent` and `--all`.
-- [x] **v0.5** — asset-includes compose shared files into skills at install time; executable bits preserved; hashes include composed assets.
-- [x] **v0.6** — selective installs with `--select`/`--skill`; required artifacts; cached npm update notifier.
-- [x] **v0.7** — full Claude/Codex adapters; Codex TOML MCP merge; subagent enumeration; `--skill` selector fix.
-- [x] **v0.8** — OpenPack: vendor-neutral spec (`openpack.json`, schemaVersion 2); recursive dependencies with a deterministic graph lock; npm-style conflict satisfaction + transitive namespacing; fragment composition with include markers; trust policy; `--offline` / `--frozen-lock`; `deps tree` / `deps why`; transactional apply; `package migrate`.
-
-## Design docs
-
-- [`docs/spec/openpack.md`](docs/spec/openpack.md) — the OpenPack package spec (vendor-neutral).
-- [`DESIGN.md`](DESIGN.md) — architecture & module layout.
-- [`LIFECYCLE.md`](LIFECYCLE.md) — publish / install / update / customize model.
-- [`docs/design/dependency-composition.md`](docs/design/dependency-composition.md) — dependency & composition design.
+- [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
+- [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
+- [`DESIGN.md`](DESIGN.md) — architecture and module layout.
+- [`LIFECYCLE.md`](LIFECYCLE.md) — publish, install, update, and customization model.
 
 ## License
 

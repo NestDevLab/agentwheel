@@ -395,6 +395,18 @@ async function applyOperation(
     });
   }
 
+  if (operation.action === "keep") {
+    if (!operation.manifestHash || !operation.desiredHash) {
+      throw new Error(`Invalid keep operation missing manifest/source hash: ${operation.relativeDestPath}`);
+    }
+    return manifestEntryForOperation(operation, {
+      now,
+      hash: operation.manifestHash,
+      sourceHash: operation.desiredHash,
+      graphLockDigest: operation.graphLockDigest ?? context.graphLockDigest,
+    });
+  }
+
   if (operation.action === "remove") {
     await transport.rm(operation.destPath);
     return undefined;

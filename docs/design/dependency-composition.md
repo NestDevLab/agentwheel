@@ -318,7 +318,7 @@ Drifted composed artifacts are never silently updated.
 Naive resolution would `git fetch` every transitive repo on every sync (the git driver fetches on
 each staging pass today). Phase B includes: fetch de-duplication by normalized source/ref,
 per-cache locks (concurrent resolutions of different refs currently mutate one checkout per URL),
-bounded-concurrency parallel fetch, `--prefer-lock` default for pinned nodes, and dry-run
+bounded-concurrency parallel fetch, lock-as-input installs for pinned nodes, and dry-run
 cache-miss reporting. Per-commit/sourceHash cache snapshots replace mutable per-URL checkouts.
 
 ## CLI / UX
@@ -334,7 +334,7 @@ agentwheel package migrate             # rename agentwheel.json -> openpack.json
 # installing (no new ceremony)
 agentwheel install --dry-run              # prints dependency tree + hoist/namespacing + plan
 agentwheel install
-agentwheel install --no-deps | --frozen-lock | --offline | --prefer-lock | --trust 'github:NestDevLab/*'
+agentwheel install --no-deps | --frozen-lock | --offline | --trust 'github:NestDevLab/*'
 agentwheel trust forget 'github:NestDevLab/*'
 ```
 
@@ -375,7 +375,7 @@ installed node — ambiguity is fatal and prints the exact disambiguated command
   Recursive `requires`; source-identity resolution + dedup (no semver); **target-grouped combined
   plans**; **transactional apply** (lock, base revision, journal, recovery); **one-shot v1→v2
   manifest migration**; multi-owner manifest; canonical graph lock keyed by target
-  fingerprint; ownership-recomputing uninstall; fetch dedup/concurrency/`--prefer-lock`;
+  fingerprint; ownership-recomputing uninstall; fetch dedup/concurrency/lock-as-input install;
   **minimal trust prompt + integrity + `--frozen-lock`**; merge-target deps blocked (or
   root-selected with prompt); incompatible duplicates = good diagnostic (no auto-namespacing yet).
 - **Phase C — Cross-package composition + artifact-level requires.** `alias:` includes through

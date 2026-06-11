@@ -14,10 +14,11 @@ import type { WorkspacePackage } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
-import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget } from "../lifecycle/source-plan.js";
+import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
-import type { InstallPlan } from "../install/plan.js";
+import type { InstallOperation, InstallPlan } from "../install/plan.js";
+import type { InstallManifest } from "../model/manifest.js";
 import type { GraphRootRequest } from "../resolve/graph.js";
 import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
 import { maybeCheckForUpdate } from "./update-check.js";
@@ -716,6 +717,7 @@ async function buildGraphPlansForTarget(
   const groups = new Map<string, PackageGraphGroup>();
   const selectedArtifacts = selectedArtifactsFromOptions(options);
   const scopedPackage = options.scope ? findConfiguredPackage(config.packages, options.scope) : undefined;
+  const scopedRootId = scopedPackage?.name ?? (source ? options.scope : undefined);
   if (options.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${options.scope}`);
 
   if (!source || !options.onlySource) {
@@ -756,7 +758,10 @@ async function buildGraphPlansForTarget(
   const results = [];
   for (const group of groups.values()) {
     const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+    const transport = transportForTarget(group.target);
     const allPackages = [...group.packages, ...group.extraPackages];
+    const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === options.scope);
+    if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const roots: GraphRootRequest[] = [
       ...allPackages.map((pkg) => {
@@ -764,14 +769,14 @@ async function buildGraphPlansForTarget(
           && pkg.mode === "tracking"
           && (!updateScope || updateScope.has(pkg.name) || updateScope.has(pkg.source));
         return {
-        rootId: pkg.name,
-        source: pkg.source,
-        mode: pkg.mode,
-        ref: pkg.requestedRef,
-        select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
-        aliases: pkg.aliases,
-        useLock: behavior.mode === "install" ? true : !updateThisPackage,
-      };
+          rootId: pkg.name,
+          source: pkg.source,
+          mode: pkg.mode,
+          ref: pkg.requestedRef,
+          select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+          aliases: pkg.aliases,
+          useLock: behavior.mode === "install" ? true : !updateThisPackage,
+        };
       }),
       ...group.extraRoots,
     ];
@@ -784,12 +789,12 @@ async function buildGraphPlansForTarget(
       }
     }
     if (roots.length === 0) continue;
-    results.push(await createGraphSourcePlan({
+    const result = await createGraphSourcePlan({
       roots,
       targetRoot: group.target.targetRoot,
       workspaceRoot: group.target.workspaceRoot,
       adapter,
-      transport: transportForTarget(group.target),
+      transport,
       targetKey: group.target.agentName ?? group.target.source,
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions),
       noDeps: noDepsFromOptions(options),
@@ -799,9 +804,115 @@ async function buildGraphPlansForTarget(
       yes: options.yes,
       trustPatterns: options.trust ?? [],
       isTTY: process.stdin.isTTY === true,
-    }));
+    });
+    if (behavior.mode === "install" && scopedRootId) {
+      const manifest = await readInstallManifest(group.target.targetRoot, adapter.name, transport);
+      results.push(scopeInstallPlanToRoot(result, scopedRootId, manifest));
+    } else {
+      results.push(result);
+    }
   }
   return results;
+}
+
+function scopeInstallPlanToRoot(
+  result: GraphSourcePlanResult,
+  rootId: string,
+  manifest: InstallManifest | undefined,
+): GraphSourcePlanResult {
+  const scopedOwners = scopedGraphOwnerKeys(result, rootId);
+  const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
+  const preservedPaths = new Set<string>();
+  const plannedPaths = new Set<string>();
+  const operations: InstallOperation[] = [];
+
+  for (const operation of result.plan.operations) {
+    plannedPaths.add(operation.relativeDestPath);
+    if (operationBelongsToScopedRoot(operation, scopedOwners)) {
+      operations.push(operation);
+      continue;
+    }
+
+    const entry = manifestByPath.get(operation.relativeDestPath);
+    if (!entry || preservedPaths.has(entry.path)) continue;
+    preservedPaths.add(entry.path);
+    operations.push(keepManifestEntryOperation(entry, result.plan.targetRoot, rootId, operation));
+  }
+
+  for (const entry of manifest?.entries ?? []) {
+    if (plannedPaths.has(entry.path) || preservedPaths.has(entry.path) || entryBelongsToScopedRoot(entry, scopedOwners)) continue;
+    preservedPaths.add(entry.path);
+    operations.push(keepManifestEntryOperation(entry, result.plan.targetRoot, rootId));
+  }
+
+  return {
+    ...result,
+    plan: {
+      ...result.plan,
+      operations,
+      hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
+    },
+  };
+}
+
+function scopedGraphOwnerKeys(result: GraphSourcePlanResult, rootId: string): Set<string> {
+  const root = result.graph.roots.find((candidate) => candidate.rootId === rootId);
+  if (!root) throw new Error(`Resolved graph root not found for scoped install: ${rootId}`);
+  const keys = new Set<string>([`workspace:${rootId}`]);
+  const queue = [root.graphNodeId];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (keys.has(nodeId)) continue;
+    keys.add(nodeId);
+    for (const edge of result.graph.edges) {
+      if (edge.from === nodeId) queue.push(edge.to);
+    }
+  }
+  return keys;
+}
+
+function operationBelongsToScopedRoot(operation: InstallOperation, scopedOwners: Set<string>): boolean {
+  if (operation.graphNodeId && scopedOwners.has(operation.graphNodeId)) return true;
+  return operation.owners?.some((owner) => scopedOwners.has(owner)) === true;
+}
+
+function entryBelongsToScopedRoot(entry: NonNullable<InstallManifest>["entries"][number], scopedOwners: Set<string>): boolean {
+  if ("graphNodeId" in entry && entry.graphNodeId && scopedOwners.has(entry.graphNodeId)) return true;
+  const owners = "owners" in entry ? entry.owners : [entry.packageName ?? "legacy"];
+  return owners.some((owner) => scopedOwners.has(owner));
+}
+
+function keepManifestEntryOperation(
+  entry: NonNullable<InstallManifest>["entries"][number],
+  targetRoot: string,
+  rootId: string,
+  operation?: InstallOperation,
+): InstallOperation {
+  const owners = "owners" in entry ? entry.owners : [entry.packageName ?? "legacy"];
+  return {
+    action: "keep",
+    artifactType: entry.artifactType,
+    artifactName: entry.artifactName,
+    kind: entry.kind,
+    destPath: operation?.destPath ?? join(targetRoot, entry.path),
+    relativeDestPath: entry.path,
+    desiredHash: entry.sourceHash,
+    currentHash: operation?.currentHash ?? entry.hash,
+    manifestHash: entry.hash,
+    reason: `preserved outside scoped install ${rootId}`,
+    channel: entry.channel,
+    packageName: entry.packageName,
+    semanticCommand: entry.semanticCommand,
+    execute: entry.executed,
+    mergeStrategy: entry.mergeStrategy,
+    composedFrom: entry.composedFrom,
+    installName: "installName" in entry ? entry.installName : entry.artifactName,
+    logicalSelector: "logicalSelector" in entry ? entry.logicalSelector : `${entry.artifactType}/${entry.artifactName}`,
+    graphNodeId: "graphNodeId" in entry ? entry.graphNodeId : undefined,
+    dependencyRole: "dependencyRole" in entry ? entry.dependencyRole : "root",
+    owners,
+    graphLockDigest: "graphLockDigest" in entry ? entry.graphLockDigest : undefined,
+  };
 }
 
 async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: string, options: GraphCliOptions & { force?: boolean }): Promise<void> {

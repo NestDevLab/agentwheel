@@ -100,5 +100,5 @@ They are **pluggable without forking agentwheel and without publishing to our re
   load a local module via an adapter contract — still without publishing upstream.
 
 ## CLI surface (target)
-`init, add, list, scan, plan, sync, install --dry-run, update, eject, uninstall, doctor, remember`
+`init, add, list, scan, plan, install, install --dry-run, update, eject, uninstall, doctor, remember`
 (`plan` / `install --dry-run` are the central trusted commands.)

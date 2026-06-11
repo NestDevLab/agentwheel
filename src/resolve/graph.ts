@@ -233,13 +233,14 @@ async function processRequirement(
       ref: requirement.ref,
       registryClient: options.registryClient,
     });
-    const lockLabel = options.offline ? "Offline" : "Frozen lock";
+    const lockLabel = options.offline ? "Offline" : options.frozenLock ? "Frozen lock" : "Locked install";
     const frozen = lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
     let fetched: FetchedPackage;
     try {
       fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
     } catch (error) {
-      if (!options.frozenLock && !options.offline && !requirement.useLock) throw error;
+      const usingLockedNode = frozen?.node !== undefined;
+      if (!options.frozenLock && !options.offline && !usingLockedNode) throw error;
       const message = error instanceof Error ? error.message : String(error);
       const label = frozen?.node ? `${frozen.node.id} (${normalized.normalizedSource})` : normalized.normalizedSource;
       throw new Error(`${lockLabel} cache missing or stale for locked graph node:\n- ${label}: ${message}`);

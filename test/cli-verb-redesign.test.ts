@@ -89,6 +89,30 @@ describe("CLI verb redesign", () => {
     expect(update.stdout).toContain("UPDATE");
   });
 
+  it("scopes install <name> without installing or removing other configured packages", async () => {
+    const workspace = await tempRoot();
+    const alpha = await rulePackageFixture("scoped-alpha", "alpha-v1");
+    const beta = await rulePackageFixture("scoped-beta", "beta-v1");
+    const alphaDest = join(workspace, ".codex", "rules", "scoped-alpha.md");
+    const betaDest = join(workspace, ".codex", "rules", "scoped-beta.md");
+
+    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
+
+    const alphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--target-root", workspace]);
+    expect(alphaInstall.stdout).toContain("CREATE");
+    await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
+    await expect(readFile(betaDest, "utf8")).rejects.toThrow();
+
+    await runCli(["install", "scoped-beta", "--adapter", "codex", "--target-root", workspace]);
+    await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
+
+    const secondAlphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--target-root", workspace]);
+    expect(secondAlphaInstall.stdout).toContain("KEEP");
+    await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
+    await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
+  });
+
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");
@@ -133,6 +157,19 @@ async function packageFixture(name: string, options: { requires?: unknown } = {}
     version: "1.0.0",
     requires: options.requires,
     provides: [{ type: "instructions", path: "instructions/AGENTS.md" }],
+  }, null, 2)}\n`, "utf8");
+  return root;
+}
+
+async function rulePackageFixture(name: string, content: string): Promise<string> {
+  const root = await tempRoot(`agentwheel-${name}-`);
+  await mkdir(join(root, "rules"), { recursive: true });
+  await writeFile(join(root, "rules", `${name}.md`), `# ${content}\n`, "utf8");
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    provides: [{ type: "rules", path: "rules" }],
   }, null, 2)}\n`, "utf8");
   return root;
 }

@@ -1,6 +1,6 @@
 ---
 name: agentwheel
-description: Use agentwheel to discover, install, sync, update, customize, eject, and uninstall agent skills, rules, instructions, commands, MCP, hooks, settings, and plugin artifacts across runtimes.
+description: Use agentwheel to discover, add, install, update, customize, eject, and uninstall agent skills, rules, instructions, commands, MCP, hooks, settings, and plugin artifacts across runtimes.
 allowed-tools: [Bash]
 ---
 
@@ -8,11 +8,18 @@ allowed-tools: [Bash]
 
 Use this skill when a user wants to install, manage, update, remove, or inspect agent skills or other agentwheel-managed artifacts.
 
-agentwheel is the control plane. It reads packages from sources, stages artifacts, plans changes for a runtime adapter, and writes only through `sync`. Treat runtime output directories as generated files.
+agentwheel is the control plane. It reads packages from sources, stores desired state in `.agentwheel/config.json`, plans runtime changes, and writes only through `install`. Treat runtime output directories as generated files.
+
+Mental model:
+
+- `add` records desired packages.
+- `install` makes the declared state true in the target runtime.
+- `update` re-resolves tracking packages, then applies.
+- `uninstall` removes configured packages and their managed runtime output.
 
 ## Safety Rules
 
-- Prefer `agentwheel plan ...` or `agentwheel sync --dry-run` before applying changes.
+- Prefer `agentwheel plan ...` or `agentwheel install --dry-run` before applying changes.
 - Do not hand-edit generated runtime files such as `.openclaw/skills`, `.claude/skills`, `.codex/skills`, `.hermes/skills`, or generated instructions.
 - If a plan reports `drift` or `conflict`, stop and explain it. Do not use `--force` unless the user explicitly approves that scope.
 - Gmail, Drive, registry publishing, git commits, pushes, and runtime restarts are separate external side effects. Get explicit approval for them.
@@ -24,15 +31,21 @@ agentwheel is the control plane. It reads packages from sources, stages artifact
 ```bash
 agentwheel registry search tmux
 agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex --mode tracking
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel plan
+agentwheel install
 ```
 
-If a workspace already has configured packages in `.agentwheel/config.json`, run sync without a source:
+If a workspace already has configured packages in `.agentwheel/config.json`, install without a source:
 
 ```bash
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel plan
+agentwheel install
+```
+
+To add and install in one step:
+
+```bash
+agentwheel install github:owner/repo --adapter codex
 ```
 
 ## Workspace Setup
@@ -49,7 +62,7 @@ Initialize a package authoring directory:
 agentwheel init package
 ```
 
-`agentwheel init package` creates `agentwheel.json`, `instructions/`, `rules/`, `skills/`, and `instructions/AGENTS.md`.
+`agentwheel init package` creates `openpack.json`, `instructions/`, `rules/`, `skills/`, and `instructions/AGENTS.md`.
 
 ## Discovery
 
@@ -110,7 +123,7 @@ agentwheel add <source> --driver vercel-skills
 
 ## Add Packages
 
-Add saves a package entry in `.agentwheel/config.json`; it does not install runtime files by itself.
+`add` saves a package entry in `.agentwheel/config.json`; it does not install runtime files by itself.
 
 ```bash
 agentwheel add github:owner/repo --adapter openclaw
@@ -141,35 +154,44 @@ agentwheel add github:owner/repo#v1.0.0 --mode pinned
 agentwheel add github:owner/repo#main --mode tracking
 ```
 
-## Plan And Sync
+## Plan And Install
 
-Plan a source directly:
+Preview configured packages:
 
 ```bash
-agentwheel plan github:owner/repo --adapter codex
-agentwheel plan github:owner/repo --adapter codex --target-root /path/to/project
+agentwheel plan
 ```
 
-Dry-run a source directly:
+Apply configured packages:
 
 ```bash
-agentwheel sync github:owner/repo --adapter codex --dry-run
+agentwheel install
 ```
 
-Apply a source directly:
+Preview or apply one configured package:
 
 ```bash
-agentwheel sync github:owner/repo --adapter codex
+agentwheel plan team-agent-pack
+agentwheel install team-agent-pack
 ```
 
-Sync configured packages:
+Add and install a source in one step:
 
 ```bash
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel install github:owner/repo --adapter codex
 ```
 
 Target selection order is `--target-root`, then `--agent`, then runtime auto-detection from the current directory, then the current directory.
+
+## Status
+
+Use status to see configured packages, lock/manifest state, and pending install work:
+
+```bash
+agentwheel status
+agentwheel status --agent lab-codex
+agentwheel status --all
+```
 
 ## Named Agents And Profiles
 
@@ -200,12 +222,12 @@ Current config shape:
 Use named targets:
 
 ```bash
-agentwheel sync --agent lab-codex --dry-run
-agentwheel sync --agent lab-codex
-agentwheel sync --all --dry-run
-agentwheel sync --all
-agentwheel sync --profile daily --dry-run
-agentwheel sync --profile daily
+agentwheel install --agent lab-codex --dry-run
+agentwheel install --agent lab-codex
+agentwheel install --all --dry-run
+agentwheel install --all
+agentwheel install --profile daily --dry-run
+agentwheel install --profile daily
 ```
 
 ## Adapters
@@ -221,19 +243,19 @@ Built-in adapters:
 Use a declarative adapter config:
 
 ```bash
-agentwheel sync ./my-pack --adapter-config ./my-runtime.jsonc --dry-run
-agentwheel sync ./my-pack --adapter-config ./my-runtime.jsonc
+agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc --dry-run
+agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc
 ```
 
 Use a local programmatic adapter only after approval:
 
 ```bash
-agentwheel sync ./my-pack --adapter-module ./adapter.ts --allow-adapter-code --dry-run
+agentwheel install ./my-pack --adapter-module ./adapter.ts --allow-adapter-code --dry-run
 ```
 
 ## Update
 
-Preview updates for configured packages:
+Preview updates for configured tracking packages:
 
 ```bash
 agentwheel update --dry-run
@@ -252,14 +274,14 @@ agentwheel update --agent lab-codex --dry-run
 agentwheel update --all --dry-run
 ```
 
-Temporarily limit an update to selected artifacts:
+Limit an update to one configured package:
 
 ```bash
-agentwheel update --skill code-review --dry-run
-agentwheel update --select skills/code-review --dry-run
+agentwheel update team-agent-pack --dry-run
+agentwheel update team-agent-pack
 ```
 
-`update` skips pinned packages unless the lock indicates they should be updated. Tracking packages can re-resolve upstream.
+`install` uses the graph lock as input when present. `update` re-resolves tracking packages and writes a new lock. Pinned packages stay on the locked graph unless their declaration changes.
 
 ## Drift And Customization
 
@@ -274,16 +296,16 @@ Append durable local instruction text:
 
 ```bash
 agentwheel remember --runtime codex "Always run the formatter before tests."
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel plan
+agentwheel install
 ```
 
 Eject an artifact:
 
 ```bash
 agentwheel eject <package-name>/skills/<skill-name>
-agentwheel sync --dry-run
-agentwheel sync
+agentwheel plan
+agentwheel install
 ```
 
 For package names with slashes, keep the full package name:
@@ -294,45 +316,37 @@ agentwheel eject NestDevLab/agent-mesh/skills/codex-tmux
 
 ## Uninstall
 
-Preview uninstall for the current target:
+Preview uninstall for a configured package:
 
 ```bash
-agentwheel uninstall --dry-run
+agentwheel uninstall team-agent-pack --dry-run
 ```
 
-Uninstall clean managed files:
+Uninstall clean managed files and remove the package from config:
 
 ```bash
-agentwheel uninstall
+agentwheel uninstall team-agent-pack
 ```
 
-Uninstall a selected skill:
+Remove from config and manifest but keep runtime files unmanaged:
 
 ```bash
-agentwheel uninstall --skill code-review --dry-run
-agentwheel uninstall --skill code-review
-```
-
-Uninstall a selected artifact:
-
-```bash
-agentwheel uninstall --select skills/code-review --dry-run
-agentwheel uninstall --select skills/code-review
+agentwheel uninstall team-agent-pack --keep-files
 ```
 
 By default, uninstall keeps drifted managed files. Use `--force` only with explicit approval:
 
 ```bash
-agentwheel uninstall --force
+agentwheel uninstall team-agent-pack --force
 ```
 
 ## Package Manifest Reference
 
-An agentwheel package uses `agentwheel.json` or `agentwheel.jsonc`:
+An OpenPack package uses `openpack.json` or `openpack.jsonc`:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "owner/agent-pack",
   "version": "0.1.0",
   "provides": [
@@ -343,7 +357,7 @@ An agentwheel package uses `agentwheel.json` or `agentwheel.jsonc`:
 }
 ```
 
-Supported artifact types are `instructions`, `rules`, `skills`, `commands`, `subagents`, `mcp`, `hooks`, `settings`, and `plugins`.
+Supported artifact types are `instructions`, `rules`, `skills`, `commands`, `subagents`, `mcp`, `hooks`, `settings`, `plugins`, and `fragments`.
 
 Skills convention:
 
@@ -367,13 +381,14 @@ If there are no configured packages:
 
 ```bash
 agentwheel add <source> --adapter <runtime>
-agentwheel sync --dry-run
+agentwheel plan
+agentwheel install
 ```
 
 If the current directory has multiple runtime markers:
 
 ```bash
-agentwheel sync --adapter codex --dry-run
+agentwheel install --adapter codex --dry-run
 ```
 
 If a selected artifact is missing:
@@ -392,6 +407,6 @@ agentwheel registry search <query>
 If npm update checks are noisy:
 
 ```bash
-agentwheel --no-update-check sync --dry-run
-AGENTWHEEL_NO_UPDATE_CHECK=1 agentwheel sync --dry-run
+agentwheel --no-update-check install --dry-run
+AGENTWHEEL_NO_UPDATE_CHECK=1 agentwheel install --dry-run
 ```

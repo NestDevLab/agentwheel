@@ -332,9 +332,9 @@ agentwheel package validate            # spec conformance: schema + selectors + 
 agentwheel package migrate             # rename agentwheel.json -> openpack.json + upgrade schema v1 -> v2
 
 # installing (no new ceremony)
-agentwheel sync --dry-run              # prints dependency tree + hoist/namespacing + plan
-agentwheel sync
-agentwheel sync --no-deps | --frozen-lock | --offline | --prefer-lock | --trust 'github:NestDevLab/*'
+agentwheel install --dry-run              # prints dependency tree + hoist/namespacing + plan
+agentwheel install
+agentwheel install --no-deps | --frozen-lock | --offline | --prefer-lock | --trust 'github:NestDevLab/*'
 agentwheel trust forget 'github:NestDevLab/*'
 ```
 

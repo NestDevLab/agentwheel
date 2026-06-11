@@ -47,11 +47,11 @@ Config entry shape:
 }
 ```
 
-The adapter in a package entry is only the default used when `agentwheel sync` is run from a generic workspace target. When the current directory auto-detects a runtime, or when `--agent`, `--all`, `--profile`, or `--adapter` is used, existing target resolution can still select the actual runtime adapter.
+The adapter in a package entry is only the default used when `agentwheel install` is run from a generic workspace target. When the current directory auto-detects a runtime, or when `--agent`, `--all`, `--profile`, or `--adapter` is used, existing target resolution can still select the actual runtime adapter.
 
 Why this is the cleanest fit:
 
-- It uses the existing configured-package path: `agentwheel init` writes config, then `agentwheel sync --dry-run` and `agentwheel sync` install configured packages.
+- It uses the existing configured-package path: `agentwheel init` writes config, then `agentwheel install --dry-run` and `agentwheel install` install configured packages.
 - It keeps the bootstrap skill visible in `.agentwheel/config.json` instead of hiding it in every adapter.
 - It avoids a postinstall side effect. Installing the npm package should not mutate arbitrary workspaces.
 - It avoids adapter-level always-include behavior, which would bypass package selection, source locks, dry-runs, update planning, and uninstall semantics.
@@ -94,8 +94,8 @@ New workspaces:
 
 1. `agentwheel init` creates `.agentwheel/config.json`.
 2. The config includes the bootstrap package entry for `skills/agentwheel`.
-3. `agentwheel sync --dry-run` shows the skill install for the detected or selected runtime.
-4. `agentwheel sync` installs it into runtimes whose adapter enables `skills`.
+3. `agentwheel install --dry-run` shows the skill install for the detected or selected runtime.
+4. `agentwheel install` installs it into runtimes whose adapter enables `skills`.
 
 Existing workspaces:
 
@@ -118,7 +118,7 @@ Copilot caveat:
 - `AGENTS.md` was requested in the brief, but there is no `AGENTS.md` file in this working tree. The provided conversation instructions were used instead.
 - README profile examples show `"daily": [ ... ]`, but `src/model/workspace.ts` requires `"daily": { "runtimes": [ ... ] }`. The draft skill uses the schema that the code accepts.
 - The brief asks for "every workspace agentwheel manages ends up with it WITHOUT a manual add." Previous code did not do this; the implemented `init` config seeding is the minimal code change that fits existing flows.
-- `agentwheel add` saves config but does not install runtime files. Agents must run `agentwheel sync --dry-run` and then `agentwheel sync`.
-- `agentwheel plan` requires a source argument; only `sync` can run configured packages without a source.
+- `agentwheel add` saves config but does not install runtime files. Agents must run `agentwheel install --dry-run` and then `agentwheel install`.
+- `agentwheel plan` requires a source argument; only `install` can run configured packages without a source.
 - `uninstall` operates from the install manifest and has no source argument.
 - The current Copilot adapter disables raw `SKILL.md` skills.

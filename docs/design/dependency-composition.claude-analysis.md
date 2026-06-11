@@ -74,7 +74,7 @@ namespace: `.claude/skills/run-nx-checks/`. The agent invokes a skill by its dir
 4. **Pipeline change**: introduce a "resolve closure -> stage many -> merge into one bundle/plan -> one
    manifest" path; make the manifest ADDITIVE/owned-by-closure instead of replaced-per-source. This is the
    crux and the main risk.
-5. **UX**: `--dry-run` prints the dependency TREE; `sync` shows hoist/dedup decisions and any conflicts;
+5. **UX**: `--dry-run` prints the dependency TREE; `install` shows hoist/dedup decisions and any conflicts;
    `requires` resolvable offline from cache; trust prompt before pulling transitive sources from new repos.
 6. **Phasing**:
    - P1: `requires[]` (package-level), closure resolution, combined plan + refcount manifest, dedup-hoist,

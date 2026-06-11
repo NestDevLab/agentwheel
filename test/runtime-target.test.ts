@@ -99,6 +99,7 @@ describe("runtime target resolution", () => {
 
   it("resolves --agent and --all targets to distinct roots with separate manifests", async () => {
     const project = await tempRoot("agentwheel-fleet-");
+    const globalRoot = await tempRoot("agentwheel-fleet-global-");
     const source = await tempRoot("agentwheel-fleet-source-");
     const alpha = join(project, "alpha-root");
     const beta = join(project, "beta-root");
@@ -116,7 +117,7 @@ describe("runtime target resolution", () => {
 
     const one = await resolveRuntimeTarget({ cwd: project, agent: "alpha" });
     expect(one.targetRoot).toBe(alpha);
-    const all = await resolveAllRuntimeTargets({ cwd: project, all: true });
+    const all = await resolveAllRuntimeTargets({ cwd: project, all: true, globalRoot });
     expect(all.map((target) => target.targetRoot).sort()).toEqual([alpha, beta].sort());
 
     for (const target of all) {

@@ -22,6 +22,7 @@ export interface ProfileSyncOptions {
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
   noDeps?: boolean;
+  lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
   yes?: boolean;
@@ -87,6 +88,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         transport: target.transport.kind,
       },
       noDeps: options.noDeps,
+      lockedResolution: options.lockedResolution,
       frozenLock: options.frozenLock,
       offline: options.offline,
       yes: options.yes,

@@ -31,7 +31,7 @@ export function formatPlan(plan: InstallPlan): string {
     const dropped = plan.migrationReport.dropped.length > 0 ? `; dropped unmanaged ${plan.migrationReport.dropped.join(", ")}` : "";
     lines.push(`MIGRATE  adopted ${plan.migrationReport.adopted} legacy entries${dropped}`);
   }
-  for (const operation of plan.operations) {
+  for (const operation of sortedPlanOperations(plan.operations)) {
     const source = operation.sourcePath ? `${operation.sourcePath} -> ` : "";
     const command = operation.semanticCommand ? ` :: ${operation.semanticCommand.join(" ")}` : "";
     const blocked = operation.blockedReason ? `; ${operation.blockedReason}` : "";
@@ -42,6 +42,15 @@ export function formatPlan(plan: InstallPlan): string {
     `Summary: create ${summary.create}, update ${summary.update}, skip ${summary.skip}, remove ${summary.remove}, keep ${summary.keep}, drift ${summary.drift}, conflict ${summary.conflict}, plugin ${summary.plugin}`,
   );
   return lines.join("\n");
+}
+
+function sortedPlanOperations(operations: InstallPlan["operations"]): InstallPlan["operations"] {
+  return [...operations].sort((a, b) => {
+    const destructiveA = a.action === "remove" || a.action === "drift" || a.action === "conflict";
+    const destructiveB = b.action === "remove" || b.action === "drift" || b.action === "conflict";
+    if (destructiveA !== destructiveB) return destructiveA ? -1 : 1;
+    return a.relativeDestPath.localeCompare(b.relativeDestPath);
+  });
 }
 
 export function formatGraphPlan(result: GraphSourcePlanResult): string {

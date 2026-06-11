@@ -97,7 +97,7 @@ Counts: CONFIRM 7, AMEND 15, REJECT 2.
 
    Source grounding: `GitSourceDriver.fetch` fetches/prunes on every existing cache use (`agentwheel/src/source/git.ts:30-38`) and mutates a single cache checkout per normalized URL (`agentwheel/src/source/git.ts:101-108`). `RegistryClient` refetches registries when TTL expires and merges duplicate names first-wins by source order (`agentwheel/src/registry/client.ts:38-49`, `136-143`). Existing locks include `generatedAt` (`agentwheel/src/model/manifest.ts:31-52`), which is volatile if compared naively.
 
-   Scenario: `agentwheel sync --frozen-lock` with a bare registry dependency whose registry cache is expired can hit the network and resolve a different short-name entry before even checking the graph lock. Two concurrent graph resolutions of different refs from the same repo mutate the same cache checkout.
+   Scenario: `agentwheel install --frozen-lock` with a bare registry dependency whose registry cache is expired can hit the network and resolve a different short-name entry before even checking the graph lock. Two concurrent graph resolutions of different refs from the same repo mutate the same cache checkout.
 
    Concrete fix: define a canonical graph lock with sorted roots/nodes/edges/owners/selections and separate volatile metadata (`generatedAt`, human diagnostics) from the frozen comparison. Under `--frozen-lock`, do not call registry refresh or `git fetch`; use only locked source URLs, commits, source hashes, and verified cached snapshots. Replace mutable per-URL checkout use with per-commit/sourceHash snapshots or lock the cache repo during checkout/export. `--offline` should fail with a precise missing-cache node list.
 

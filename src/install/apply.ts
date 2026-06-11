@@ -43,6 +43,7 @@ export interface ApplyOptions {
 export interface UninstallOptions {
   dryRun?: boolean;
   force?: boolean;
+  keepFiles?: boolean;
   transport?: TargetTransport;
   graphLock?: {
     path: string;
@@ -210,7 +211,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const kept = resolvedOptions.force ? [] : plan.operations.filter((operation) => operation.action === "keep");
   const skipped = plan.operations.filter((operation) => operation.action === "skip");
   const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep").length : 0;
-  if (resolvedOptions.dryRun) return { removed: removable.length, kept: kept.length, removedDrifted };
+  if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
   const preserved = [...kept, ...skipped];
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
@@ -248,7 +249,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       graphLockDigest: plan.graphLockDigest,
       createdAt: now,
       updatedAt: now,
-      operations: removable,
+      operations: resolvedOptions.keepFiles ? [] : removable,
       completed: [],
       manifest: finalManifest,
       graphLockPath: resolvedOptions.graphLock?.path,
@@ -259,7 +260,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     };
     await writeApplyJournal(journal, transport);
 
-    for (const [index, operation] of removable.entries()) {
+    for (const [index, operation] of (resolvedOptions.keepFiles ? [] : removable).entries()) {
       const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
       journal.completed.push(backup);
       await writeApplyJournal(journal, transport);
@@ -272,7 +273,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   } finally {
     await lock.release();
   }
-  return { removed: removable.length, kept: kept.length, removedDrifted };
+  return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 }
 
 async function commitJournalState(

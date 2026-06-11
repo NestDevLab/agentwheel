@@ -10,9 +10,9 @@ Everything maps to exactly one of three places:
 |---|---|---|---|
 | **(P)** | the package **Author's** repo | upstream content | NO — we read/fetch, never edit it there |
 | **(W)** | **our workspace**, under `.agentwheel/` | control plane: config, locks, **our customizations** | YES — this is where we work |
-| **(R)** | the **Runtime** dirs (`.openclaw/`, `~/.claude/`, …) | **generated output** of `sync` | NO — drift-protected, never hand-edit |
+| **(R)** | the **Runtime** dirs (`.openclaw/`, `~/.claude/`, …) | **generated output** of `install` | NO — drift-protected, never hand-edit |
 
-Flow: **(P) upstream + (W) our layer → `sync` → (R) output**.
+Flow: **(P) upstream + (W) our layer → `install` → (R) output**.
 
 ## 1. Package format (how you publish)
 An **agentwheel package** = a repo/dir with a JSON manifest + canonical per-type layout:
@@ -81,7 +81,7 @@ dir, never in the author's repo:
   <!-- BEGIN agentwheel local: editable -->    ...your edits survive updates...  <!-- END ... -->
   ```
 - **Agent-editable AGENTS.md** ("remember X durably"): the agent writes to
-  `.agentwheel/overlays/<runtime>/instructions.local.md` (in W), then `sync` regenerates R.
+  `.agentwheel/overlays/<runtime>/instructions.local.md` (in W), then `install` regenerates R.
   **No round-trip from the runtime file** (that would create two editable sources and muddy drift).
   Future command: `agentwheel remember --runtime openclaw "X"`.
 
@@ -93,12 +93,12 @@ Adapters describe a runtime's layout (capabilities + paths + transforms) as a co
 They are **pluggable without forking agentwheel and without publishing to our repo**:
 - **Built-in**: openclaw / claude / codex (then hermes / copilot), bundled.
 - **Local declarative adapter (JSONC/JSON)**: a private/custom runtime is just an adapter config file —
-  `agentwheel sync --adapter-config ./my-runtime.jsonc`, or dropped in `.agentwheel/adapters/`. Stays
+  `agentwheel install --adapter-config ./my-runtime.jsonc`, or dropped in `.agentwheel/adapters/`. Stays
   private in your own repo/machine; never needs the registry or our repo. (v0.1 already supports
   `--adapter-config`.)
 - **Programmatic adapter (later)**: for runtimes needing custom logic beyond declarative file-drop,
   load a local module via an adapter contract — still without publishing upstream.
 
 ## CLI surface (target)
-`init, add, list, scan, plan, sync, sync --dry-run, update, eject, uninstall, doctor, remember`
-(`plan` / `sync --dry-run` are the central trusted commands.)
+`init, add, list, scan, plan, sync, install --dry-run, update, eject, uninstall, doctor, remember`
+(`plan` / `install --dry-run` are the central trusted commands.)

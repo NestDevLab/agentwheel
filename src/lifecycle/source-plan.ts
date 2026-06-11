@@ -53,6 +53,7 @@ export interface GraphSourcePlanOptions {
   targetKey?: string;
   targetFingerprintParts?: unknown;
   noDeps?: boolean;
+  lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
   yes?: boolean;
@@ -132,6 +133,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     registryClient,
     noDeps: options.noDeps,
+    lockedResolution: options.lockedResolution,
     frozenLock: lockMode,
     offline: options.offline,
     previousLock,

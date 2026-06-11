@@ -407,7 +407,7 @@ async function runtimeFiles(root: string, prefix = ""): Promise<string[]> {
   }
   const files: string[] = [];
   for (const entry of entries) {
-    const relativePath = prefix ? join(prefix, entry.name) : entry.name;
+    const relativePath = (prefix ? join(prefix, entry.name) : entry.name).replaceAll("\\", "/");
     if (relativePath === ".agentwheel" || relativePath.startsWith(".agentwheel/")) continue;
     if (entry.isDirectory()) {
       files.push(...await runtimeFiles(root, relativePath));

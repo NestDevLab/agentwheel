@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.10.0
+
+- Added `install --all-detected` to reconcile every detected runtime under a target root.
+- Install manifests now record workspace ownership and reconcile only artifacts owned by the invoking workspace, preserving foreign managed state.
+- Legacy unowned manifest entries are adopted when path and content match, including source identity drift such as renamed or differently-cased cached sources.
 - Adapter parity: subagents for OpenClaw and Hermes, skills for GitHub Copilot (.github/skills).
 - GitHub Copilot adapter supports custom agents in `.github/agents` and workspace MCP config in `.vscode/mcp.json`.
 

@@ -476,6 +476,7 @@ function manifestEntryForOperation(
     dependencyRole: operation.dependencyRole ?? "root",
     owners,
     refCount: owners.length,
+    workspaceOwner: operation.workspaceOwner ?? "workspace:unknown",
     kind: operation.kind,
     hash: values.hash,
     sourceHash: values.sourceHash,

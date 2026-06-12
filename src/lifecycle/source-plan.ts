@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
 import { canonicalGraphLockJson, computeTargetFingerprint, readGraphLock, writeGraphLock, type GraphLock } from "../model/graph-lock.js";
@@ -97,7 +97,9 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   });
   const transport = options.transport ?? localTransport;
   const manifest = await readInstallManifest(options.targetRoot, options.adapter.name, transport);
-  const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport);
+  const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport, {
+    workspaceOwner: workspaceOwnerId(workspaceRoot),
+  });
   return { plan, bundle, resolvedSource, registryEntryName: resolvedInput.registryEntry?.name };
 }
 
@@ -169,6 +171,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const plan = await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
     baseRevision: manifest?.revision ?? null,
     graphLockDigest,
+    workspaceOwner: workspaceOwnerId(workspaceRoot),
   });
   return {
     plan,
@@ -238,6 +241,10 @@ function sanitizePathSegment(value: string): string {
 
 function digestGraphLock(lock: ResolvedGraphBundle["graphLock"]): string {
   return createHash("sha256").update(canonicalGraphLockJson(lock)).digest("hex");
+}
+
+function workspaceOwnerId(workspaceRoot: string): string {
+  return `workspace-root:${resolve(workspaceRoot)}`;
 }
 
 function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedGraph, frozen: boolean, label: string): void {

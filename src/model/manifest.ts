@@ -3,6 +3,7 @@ import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./a
 
 export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
 export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
+export const legacyUnownedWorkspaceOwner = "legacy:unowned";
 
 export const manifestEntryV1Schema = z.object({
   path: z.string().min(1),
@@ -27,6 +28,7 @@ export const manifestEntrySchema = manifestEntryV1Schema.extend({
   dependencyRole: dependencyRoleSchema.default("root"),
   owners: z.array(z.string().min(1)).min(1),
   refCount: z.number().int().positive(),
+  workspaceOwner: z.string().min(1).default(legacyUnownedWorkspaceOwner),
   graphLockDigest: z.string().min(1).optional(),
 }).transform((entry) => {
   const owners = [...new Set(entry.owners)].sort();

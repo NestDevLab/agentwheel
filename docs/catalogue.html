@@ -292,6 +292,13 @@
       font-weight: 700;
     }
 
+    .subtitle {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .badge {
       flex: 0 0 auto;
       padding: 5px 8px;
@@ -380,6 +387,15 @@
       font-weight: 800;
     }
 
+    .featured-chip {
+      padding: 2px 7px;
+      border: 1px solid rgba(124, 58, 237, 0.3);
+      border-radius: 999px;
+      color: #ddd6fe;
+      background: rgba(124, 58, 237, 0.12);
+      font-weight: 800;
+    }
+
     .install {
       display: flex;
       align-items: center;
@@ -435,6 +451,30 @@
 
     .links a {
       color: #cbd5e1;
+    }
+
+    .show-more-row {
+      display: flex;
+      grid-column: 1 / -1;
+      justify-content: center;
+      padding: 10px 0 0;
+    }
+
+    .show-more {
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+      color: #e5e7eb;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .show-more:hover {
+      border-color: rgba(203, 213, 225, 0.46);
     }
 
     .state-panel {
@@ -673,6 +713,7 @@
 
   <script>
     const DEFAULT_DATA_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-data.json";
+    const PAGE_SIZE = 60;
     const params = new URLSearchParams(location.search);
 
     function dataUrlFromParam(value) {
@@ -689,9 +730,12 @@
     }
 
     const DATA_URL = dataUrlFromParam(params.get("data"));
+    const VERCEL_INDEX_URL = siblingUrl(DATA_URL, "catalogue-vercel-index.json");
 
     const state = {
       entries: [],
+      filteredEntries: [],
+      renderedCount: 0,
       query: "",
       ecosystem: "all",
       type: "all",
@@ -702,6 +746,15 @@
     const count = document.querySelector("#count");
     const queryInput = document.querySelector("#q");
     const sortSelect = document.querySelector("#sort");
+    let searchTimer = 0;
+
+    function siblingUrl(url, filename) {
+      const u = new URL(url, location.href);
+      u.pathname = u.pathname.replace(/[^/]*$/, filename);
+      u.search = "";
+      u.hash = "";
+      return u.href;
+    }
 
     function text(value) {
       return value == null ? "" : String(value);
@@ -745,6 +798,46 @@
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return null;
       return date.toISOString().slice(0, 10);
+    }
+
+    function prepareEntry(entry) {
+      const lastPushTime = entry.lastPush ? Date.parse(entry.lastPush) : -Infinity;
+      return {
+        ...entry,
+        searchText: [
+          entry.name,
+          entry.description,
+          entry.subtitle,
+          ...(Array.isArray(entry.tags) ? entry.tags : []),
+        ].join(" ").toLowerCase(),
+        lastPushTime: Number.isNaN(lastPushTime) ? -Infinity : lastPushTime,
+      };
+    }
+
+    function vercelIndexEntry(record) {
+      const owner = text(record.o);
+      const repo = text(record.r);
+      const skill = text(record.s);
+      return prepareEntry({
+        id: `vercel:${owner}/${repo}/${skill}`,
+        name: skill,
+        ecosystem: "vercel",
+        type: "skill",
+        description: "",
+        tags: [],
+        source: `vercel:skills.sh/${owner}/${repo}/${skill}`,
+        installCommand: `npx agentwheel install "vercel:skills.sh/${owner}/${repo}/${skill}"`,
+        repoUrl: `https://github.com/${owner}/${repo}`,
+        homepageUrl: `https://skills.sh/${owner}/${repo}/${skill}`,
+        stars: null,
+        lastPush: null,
+        archived: false,
+        provides: null,
+        version: null,
+        featured: false,
+        subtitle: `${owner}/${repo}`,
+        skillsLinkLabel: "Verify on skills.sh",
+      });
     }
 
     function setPressed(group, value) {
@@ -882,6 +975,12 @@
         title.appendChild(version);
       }
       titleWrap.appendChild(title);
+      if (entry.subtitle) {
+        const subtitle = document.createElement("p");
+        subtitle.className = "subtitle";
+        subtitle.textContent = text(entry.subtitle);
+        titleWrap.appendChild(subtitle);
+      }
       top.appendChild(titleWrap);
 
       const badge = document.createElement("span");
@@ -890,10 +989,12 @@
       top.appendChild(badge);
       card.appendChild(top);
 
-      const description = document.createElement("p");
-      description.className = "description";
-      description.textContent = text(entry.description);
-      card.appendChild(description);
+      if (entry.description) {
+        const description = document.createElement("p");
+        description.className = "description";
+        description.textContent = text(entry.description);
+        card.appendChild(description);
+      }
 
       if (Array.isArray(entry.tags) && entry.tags.length) {
         card.appendChild(pillList(entry.tags, "tags"));
@@ -907,6 +1008,12 @@
       meta.className = "meta";
       const stars = formatStars(entry.stars);
       const updated = formatDate(entry.lastPush);
+      if (entry.featured) {
+        const featured = document.createElement("span");
+        featured.className = "featured-chip";
+        featured.textContent = "featured";
+        meta.appendChild(featured);
+      }
       if (stars) {
         const star = document.createElement("span");
         star.className = "star";
@@ -937,7 +1044,7 @@
         copy.className = "copy";
         copy.type = "button";
         copy.textContent = "Copy";
-        copy.addEventListener("click", () => copyText(entry.installCommand, copy));
+        copy.dataset.copy = entry.installCommand;
         install.appendChild(code);
         install.appendChild(copy);
         card.appendChild(install);
@@ -958,7 +1065,7 @@
         const link = document.createElement("a");
         link.className = "resource-link";
         link.href = homepage;
-        link.textContent = "skills.sh";
+        link.textContent = entry.skillsLinkLabel || "skills.sh";
         links.appendChild(link);
       }
       card.appendChild(links);
@@ -972,12 +1079,7 @@
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
         if (state.type !== "all" && entry.type !== state.type) return false;
         if (!query) return true;
-        const haystack = [
-          entry.name,
-          entry.description,
-          ...(Array.isArray(entry.tags) ? entry.tags : []),
-        ].join(" ").toLowerCase();
-        return haystack.includes(query);
+        return entry.searchText.includes(query);
       });
 
       filtered.sort((a, b) => {
@@ -985,32 +1087,60 @@
           return text(a.name) < text(b.name) ? -1 : text(a.name) > text(b.name) ? 1 : 0;
         }
         if (state.sort === "recent") {
-          const aTime = a.lastPush ? new Date(a.lastPush).getTime() : -Infinity;
-          const bTime = b.lastPush ? new Date(b.lastPush).getTime() : -Infinity;
-          return bTime - aTime;
+          const timeDiff = b.lastPushTime - a.lastPushTime;
+          if (timeDiff !== 0) return timeDiff;
+          return text(a.name) < text(b.name) ? -1 : text(a.name) > text(b.name) ? 1 : 0;
         }
-        const aStars = typeof a.stars === "number" ? a.stars : -Infinity;
-        const bStars = typeof b.stars === "number" ? b.stars : -Infinity;
-        return bStars - aStars;
+        const aHasStars = typeof a.stars === "number";
+        const bHasStars = typeof b.stars === "number";
+        if (aHasStars && bHasStars && b.stars !== a.stars) return b.stars - a.stars;
+        if (aHasStars && !bHasStars) return -1;
+        if (!aHasStars && bHasStars) return 1;
+        return text(a.name) < text(b.name) ? -1 : text(a.name) > text(b.name) ? 1 : 0;
       });
 
       return filtered;
     }
 
-    function render() {
+    function appendBatch() {
+      const fragment = document.createDocumentFragment();
+      const nextEntries = state.filteredEntries.slice(state.renderedCount, state.renderedCount + PAGE_SIZE);
+      nextEntries.forEach((entry) => fragment.appendChild(resourceCard(entry)));
+      state.renderedCount += nextEntries.length;
+
+      const remaining = state.filteredEntries.length - state.renderedCount;
+      if (remaining > 0) {
+        const row = document.createElement("div");
+        row.className = "show-more-row";
+        const button = document.createElement("button");
+        button.className = "show-more";
+        button.type = "button";
+        button.dataset.showMore = "true";
+        button.textContent = `Show more (${remaining} remaining)`;
+        row.appendChild(button);
+        fragment.appendChild(row);
+      }
+
+      grid.appendChild(fragment);
+    }
+
+    function render(reset = true) {
       const entries = filteredEntries();
+      state.filteredEntries = entries;
       clearGrid();
       count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {
         showState("empty", "No resources match", "Try a different search, ecosystem, type, or sort combination.");
         return;
       }
-      entries.forEach((entry) => grid.appendChild(resourceCard(entry)));
+      state.renderedCount = 0;
+      appendBatch();
     }
 
     queryInput.addEventListener("input", (event) => {
       state.query = event.target.value;
-      render();
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => render(), 150);
     });
 
     sortSelect.addEventListener("change", (event) => {
@@ -1026,14 +1156,56 @@
       });
     });
 
+    grid.addEventListener("click", (event) => {
+      const copyButton = event.target.closest("[data-copy]");
+      if (copyButton && grid.contains(copyButton)) {
+        copyText(copyButton.dataset.copy, copyButton);
+        return;
+      }
+
+      const showMoreButton = event.target.closest("[data-show-more]");
+      if (showMoreButton && grid.contains(showMoreButton)) {
+        showMoreButton.closest(".show-more-row")?.remove();
+        appendBatch();
+      }
+    });
+
+    async function loadVercelIndex() {
+      try {
+        const response = await fetch(VERCEL_INDEX_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const existingIds = new Set(state.entries.map((entry) => entry.id));
+        const additions = [];
+
+        for (const record of Array.isArray(data.entries) ? data.entries : []) {
+          if (!record || typeof record.o !== "string" || typeof record.r !== "string" || typeof record.s !== "string") continue;
+          if (!record.o.trim() || !record.r.trim() || !record.s.trim()) continue;
+          const id = `vercel:${record.o}/${record.r}/${record.s}`;
+          if (existingIds.has(id)) continue;
+          const entry = vercelIndexEntry(record);
+          existingIds.add(entry.id);
+          additions.push(entry);
+        }
+
+        if (additions.length) {
+          state.entries = state.entries.concat(additions);
+          render();
+        }
+      } catch (error) {
+        console.warn(`Vercel index unavailable: ${error.message}`);
+      }
+    }
+
     async function load() {
       showSkeletons();
       try {
         const response = await fetch(DATA_URL);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        state.entries = Array.isArray(data.entries) ? data.entries : [];
+        state.entries = Array.isArray(data.entries) ? data.entries.map(prepareEntry) : [];
         render();
+        loadVercelIndex();
       } catch {
         showState("error", "Catalogue data is temporarily unavailable", "The registry data could not be loaded right now.");
       }

@@ -7,7 +7,7 @@ import { applyInstallPlan } from "../src/install/index.js";
 import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
 import { readMergedWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
-import { resolveAllRuntimeTargets, resolveRuntimeTarget } from "../src/runtime/target.js";
+import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget } from "../src/runtime/target.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
@@ -156,6 +156,18 @@ describe("runtime target resolution", () => {
     expect(fallback.source).toBe("cwd");
     expect(fallback.targetRoot).toBe(cwd);
     expect(fallback.adapter).toBe("codex");
+  });
+
+  it("resolves all detected runtime directories without configured agents", async () => {
+    const root = await tempRoot("agentwheel-detected-");
+    await mkdir(join(root, ".claude"), { recursive: true });
+    await mkdir(join(root, ".codex"), { recursive: true });
+
+    const targets = await resolveAllDetectedRuntimeTargets({ cwd: root });
+    expect(targets.map((target) => `${target.adapter}:${target.targetRoot}`).sort()).toEqual([
+      `claude:${root}`,
+      `codex:${root}`,
+    ]);
   });
 
   it("profiles can reference named agents", async () => {

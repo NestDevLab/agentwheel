@@ -16,7 +16,7 @@ import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
-import { resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
+import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import type { InstallOperation, InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
 import type { GraphRootRequest } from "../resolve/graph.js";
@@ -148,6 +148,7 @@ program
   .option("--target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--all-detected", "run for every runtime directory detected in the target root", false)
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -174,6 +175,7 @@ program
   .option("--target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--all-detected", "run for every runtime directory detected in the target root", false)
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -202,6 +204,7 @@ program
   .option("--target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--all-detected", "run for every runtime directory detected in the target root", false)
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -487,6 +490,7 @@ async function runInstallCommand(
     targetRoot?: string;
     agent?: string;
     all?: boolean;
+    allDetected?: boolean;
     adapter?: string;
   },
   behavior: { apply: boolean },
@@ -532,7 +536,7 @@ async function runInstallCommand(
 
     if (nameOrSource && !configured) {
       try {
-        const entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, options);
+        const entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, { ...options, adapter: options.adapter ?? target.adapter });
         scope = entry.name;
         if (behavior.apply) {
           await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), entry));
@@ -642,9 +646,15 @@ function nextInstallNudge(): string {
   return "Preview: agentwheel plan - Apply: agentwheel install";
 }
 
-async function resolveCliTargets(options: { targetRoot?: string; adapter?: string; agent?: string; all?: boolean }): Promise<RuntimeTarget[]> {
+async function resolveCliTargets(options: { targetRoot?: string; adapter?: string; agent?: string; all?: boolean; allDetected?: boolean }): Promise<RuntimeTarget[]> {
+  if (options.all && options.allDetected) {
+    throw new Error("Choose either --all for configured agents or --all-detected for detected runtime directories.");
+  }
   if (options.all) {
     return resolveAllRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent, all: options.all });
+  }
+  if (options.allDetected) {
+    return resolveAllDetectedRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent, allDetected: options.allDetected });
   }
   return [await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent })];
 }

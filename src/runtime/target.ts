@@ -19,6 +19,7 @@ export interface RuntimeTargetRequest {
   adapter?: string;
   agent?: string;
   all?: boolean;
+  allDetected?: boolean;
   globalRoot?: string;
 }
 
@@ -84,7 +85,32 @@ export async function resolveAllRuntimeTargets(request: RuntimeTargetRequest = {
   return targets;
 }
 
+export async function resolveAllDetectedRuntimeTargets(request: RuntimeTargetRequest = {}): Promise<RuntimeTarget[]> {
+  if (request.agent) return [await resolveRuntimeTarget(request)];
+
+  const scanRoot = runtimeScanRoot(request);
+  const matches = await detectRuntimeTargets(scanRoot, request.adapter);
+  if (matches.length === 0) {
+    throw new Error(`No runtime directories detected at ${scanRoot}. Pass --target-root or --agent.`);
+  }
+
+  return Promise.all(matches.map(async (match) => ({
+    ...match,
+    workspaceRoot: await findWorkspaceRoot(match.targetRoot),
+    transport: "local" as const,
+    source: "auto-detect" as const,
+  })));
+}
+
 export async function detectRuntimeTarget(cwd = process.cwd(), adapterFilter?: string): Promise<{ adapter: string; targetRoot: string } | undefined> {
+  const unique = await detectRuntimeTargets(cwd, adapterFilter);
+  if (unique.length > 1) {
+    throw new Error(`Multiple runtime directories detected: ${unique.map((item) => `${item.adapter} at ${item.targetRoot}`).join(", ")}. Pass --adapter, --agent, or --all-detected.`);
+  }
+  return unique[0];
+}
+
+export async function detectRuntimeTargets(cwd = process.cwd(), adapterFilter?: string): Promise<Array<{ adapter: string; targetRoot: string }>> {
   const root = resolve(cwd);
   const matches: Array<{ adapter: string; targetRoot: string }> = [];
 
@@ -99,11 +125,7 @@ export async function detectRuntimeTarget(cwd = process.cwd(), adapterFilter?: s
     }
   }
 
-  const unique = dedupeTargets(matches);
-  if (unique.length > 1) {
-    throw new Error(`Multiple runtime directories detected: ${unique.map((item) => `${item.adapter} at ${item.targetRoot}`).join(", ")}. Pass --adapter or --agent.`);
-  }
-  return unique[0];
+  return dedupeTargets(matches);
 }
 
 function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: string): RuntimeTarget {
@@ -135,4 +157,10 @@ function dedupeTargets(matches: Array<{ adapter: string; targetRoot: string }>) 
     byKey.set(`${match.adapter}:${match.targetRoot}`, match);
   }
   return [...byKey.values()];
+}
+
+function runtimeScanRoot(request: RuntimeTargetRequest): string {
+  const root = resolve(request.targetRoot ?? request.cwd ?? process.cwd());
+  if (request.targetRoot) return root;
+  return runtimeMarkers.some((marker) => marker.dirs.includes(basename(root))) ? dirname(root) : root;
 }

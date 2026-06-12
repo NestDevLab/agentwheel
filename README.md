@@ -7,7 +7,7 @@
 <p align="center"><strong>One source. Every agent.</strong></p>
 
 <p align="center">
-  Weave your skills, rules, and instructions across every AI agent you use,
+  Weave skills, rules, instructions, commands, subagents, MCP, hooks, settings, and plugins across every AI agent you use,
   from any source, reconciled into each runtime with your private tweaks intact.
 </p>
 
@@ -15,8 +15,9 @@
 
 ## Why agentwheel?
 
-Your AI agents are multiplying. Claude here, Codex there, custom runtimes elsewhere, and each one
-wants skills, rules, instructions, commands, MCP, hooks, and settings in its own native shape.
+Your AI agents are multiplying. OpenClaw, Claude Code, Codex CLI, Copilot, Hermes — and the next
+harness your team adopts. Each one wants its own skills, rules, instructions, commands, subagents,
+MCP servers, hooks, and settings, in its own layout.
 
 **agentwheel makes that one declared state.** Add packages to `.agentwheel/config.json`, preview the
 runtime changes, then install the declared state into each target. Updates move tracking sources
@@ -36,6 +37,20 @@ live in your workspace, and runtimes stay generated output.
 > **Status: early (v0.9).** v0.9 switches the public CLI vocabulary to package-manager verbs:
 > `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for one release only
 > so old bootstrapped skills can self-update; use `install` in all new docs and scripts.
+
+## Supported runtimes & resources
+
+agentwheel installs OpenPack resources into five built-in runtimes and into custom harnesses:
+
+- **OpenClaw** — `.openclaw/`
+- **Claude Code** — `.claude/`
+- **Codex CLI** — `.codex/`
+- **GitHub Copilot** — `.github/`
+- **Hermes** — `.hermes/`
+- **Bring your own** — JSONC config adapters with `--adapter-config`, or programmatic adapters with `--adapter-module`
+
+Supported resource types include instructions, rules, skills, commands, subagents, MCP, hooks,
+settings, plugins, and fragments; see the full per-runtime target table below.
 
 ## Core Commands
 
@@ -288,6 +303,12 @@ published:
 
 ```bash
 agentwheel install ./my-pack --adapter-config ./myco-internal.jsonc
+```
+
+For adapter behavior that needs code, load a programmatic adapter module:
+
+```bash
+agentwheel install ./my-pack --adapter-module ./myco-adapter.js
 ```
 
 Built-in runtime targets:

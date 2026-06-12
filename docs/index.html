@@ -176,6 +176,139 @@
       color: #e5e7eb;
     }
 
+    .hero-flow {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      gap: 20px;
+      width: min(980px, 100%);
+      margin: 34px auto 0;
+      text-align: left;
+    }
+
+    .flow-source,
+    .flow-runtimes {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .flow-source {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .source-chip {
+      width: min(260px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, 0.7);
+      overflow: hidden;
+    }
+
+    .source-chip .codebar {
+      border-bottom: 0;
+    }
+
+    .flow-types {
+      display: flex;
+      max-width: 260px;
+      margin-top: 12px;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .flow-types .pill {
+      padding: 4px 7px;
+      font-size: 11px;
+    }
+
+    .flow-rays {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 120px;
+      opacity: 0.92;
+    }
+
+    .flow-rays svg {
+      width: 120px;
+      height: 100%;
+      min-height: 190px;
+    }
+
+    .flow-runtimes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .runtime-tile {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: center;
+      min-height: 68px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(15, 23, 42, 0.66));
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .runtime-tile:hover {
+      border-color: rgba(6, 182, 212, 0.46);
+      box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+      transform: translateY(-2px);
+    }
+
+    .runtime-tile.byo {
+      border-style: dashed;
+    }
+
+    .runtime-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .mark-indigo {
+      background: rgba(79, 70, 229, 0.18);
+      color: #a5b4fc;
+    }
+
+    .mark-violet {
+      background: rgba(124, 58, 237, 0.18);
+      color: #c4b5fd;
+    }
+
+    .mark-cyan {
+      background: rgba(6, 182, 212, 0.18);
+      color: #67e8f9;
+    }
+
+    .runtime-name {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .runtime-path {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
     .code {
       margin: 0 0 74px;
       border: 1px solid var(--line);
@@ -320,6 +453,83 @@
       font-size: clamp(17px, 2vw, 20px);
     }
 
+    .adapters-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card.dashed {
+      border-style: dashed;
+    }
+
+    .adapter-note {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .matrix-wrap {
+      margin-top: 24px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+    }
+
+    .matrix {
+      width: 100%;
+      min-width: 840px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .matrix th,
+    .matrix td {
+      padding: 10px 9px;
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .matrix thead th {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .matrix tbody th {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: rgba(17, 24, 39, 0.96);
+      color: #e5e7eb;
+      text-align: left;
+    }
+
+    .matrix tr:last-child th,
+    .matrix tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .matrix-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--cyan);
+      box-shadow: 0 0 18px rgba(6, 182, 212, 0.58);
+    }
+
+    .matrix-dash {
+      color: rgba(156, 163, 175, 0.46);
+    }
+
+    .matrix-caption {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     #get-started .code {
       margin-bottom: 26px;
     }
@@ -411,13 +621,22 @@
         grid-template-columns: 1fr;
       }
 
+      .hero-flow {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .flow-rays {
+        transform: rotate(90deg);
+      }
+
       .arrow {
         transform: rotate(90deg);
         justify-self: center;
       }
     }
 
-    @media (max-width: 560px) {
+    @media (max-width: 640px) {
       .wrap {
         width: min(100% - 28px, 1120px);
       }
@@ -434,6 +653,31 @@
 
       .grid {
         grid-template-columns: 1fr;
+      }
+
+      .hero-flow {
+        gap: 16px;
+      }
+
+      .flow-rays {
+        display: none;
+      }
+
+      .flow-runtimes {
+        width: 100%;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .runtime-tile {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        align-items: start;
+        min-height: 92px;
+      }
+
+      .runtime-mark {
+        width: 32px;
+        height: 32px;
       }
 
       h1 {
@@ -472,11 +716,66 @@
         <div>
           <span class="eyebrow"><span class="dot"></span> v0.9 — install/update CLI &amp; OpenPack locks</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
-          <p class="subhead">Compose your skills, rules, instructions, commands, MCP servers, hooks, and plugins — packaged with real dependencies, resolved, locked, and installed into every agent runtime your team uses.</p>
+          <p class="subhead">One package format with real dependencies — resolved, locked, and installed natively into every agent harness your team uses.</p>
           <div class="actions">
             <a class="button primary" href="catalogue.html">Browse catalogue</a>
             <a class="button secondary" href="#get-started">Get started</a>
             <a class="button secondary" href="https://github.com/NestDevLab/agentwheel">GitHub repo</a>
+          </div>
+          <div class="hero-flow" aria-label="One OpenPack source installs into every agent runtime">
+            <div class="flow-source">
+              <div class="source-chip">
+                <div class="codebar">
+                  <span class="light"></span><span class="light"></span><span class="light"></span>
+                  <span>openpack.json</span>
+                </div>
+              </div>
+              <div class="flow-types" aria-label="Artifact types">
+                <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">settings</span><span class="pill">plugins</span><span class="pill">fragments</span>
+              </div>
+            </div>
+            <div class="flow-rays" aria-hidden="true">
+              <svg viewBox="0 0 120 220" role="img">
+                <defs>
+                  <linearGradient id="flowGradient" x1="0" y1="0" x2="120" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#4f46e5"></stop>
+                    <stop offset="1" stop-color="#06b6d4"></stop>
+                  </linearGradient>
+                </defs>
+                <path d="M8 110 C42 36 74 24 116 18" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path d="M8 110 C44 66 78 58 116 54" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path d="M8 110 C48 92 78 92 116 92" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path d="M8 110 C48 128 78 128 116 128" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path d="M8 110 C44 154 78 162 116 166" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path d="M8 110 C42 184 74 196 116 202" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+              </svg>
+            </div>
+            <div class="flow-runtimes">
+              <div class="runtime-tile">
+                <span class="runtime-mark mark-indigo">OC</span>
+                <span><span class="runtime-name">OpenClaw</span><span class="runtime-path">.openclaw/</span></span>
+              </div>
+              <div class="runtime-tile">
+                <span class="runtime-mark mark-violet">CL</span>
+                <span><span class="runtime-name">Claude Code</span><span class="runtime-path">.claude/</span></span>
+              </div>
+              <div class="runtime-tile">
+                <span class="runtime-mark mark-cyan">CX</span>
+                <span><span class="runtime-name">Codex CLI</span><span class="runtime-path">.codex/</span></span>
+              </div>
+              <div class="runtime-tile">
+                <span class="runtime-mark mark-indigo">CP</span>
+                <span><span class="runtime-name">GitHub Copilot</span><span class="runtime-path">.github/</span></span>
+              </div>
+              <div class="runtime-tile">
+                <span class="runtime-mark mark-violet">HE</span>
+                <span><span class="runtime-name">Hermes</span><span class="runtime-path">.hermes/</span></span>
+              </div>
+              <a class="runtime-tile byo" href="#adapters">
+                <span class="runtime-mark mark-cyan">+</span>
+                <span><span class="runtime-name">Your harness</span><span class="runtime-path">JSONC / JS adapter</span></span>
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -533,7 +832,7 @@
             <h3>Full artifact model</h3>
             <p>Install every common agent asset type without collapsing them into one generic file.</p>
             <div class="pill-list">
-              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">fragments</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span>
+              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">fragments</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">settings</span><span class="pill">plugins</span>
             </div>
           </article>
           <article class="card">
@@ -628,8 +927,13 @@
 
       <section id="adapters">
         <h2 class="section-title">Built-in adapters</h2>
-        <p class="intro-text">Claude Code and Codex CLI now get real file-drop targets, not stubs. Skills, instructions, commands, agents, rules, MCP, hooks, and settings land in each runtime's native shape.</p>
-        <div class="grid">
+        <p class="intro-text">Five complete built-in adapters, two ways to bring your own. Every adapter maps the full artifact model into the runtime's native layout — no generic dumps.</p>
+        <div class="grid adapters-grid">
+          <article class="card">
+            <div class="icon">O</div>
+            <h3>OpenClaw</h3>
+            <p><code>.openclaw/AGENTS.md</code>, <code>.openclaw/skills</code>, <code>.openclaw/rules</code>, <code>.openclaw/commands</code>, MCP/hooks/settings, and semantic plugin planning.</p>
+          </article>
           <article class="card">
             <div class="icon">C</div>
             <h3>Claude Code</h3>
@@ -641,11 +945,109 @@
             <p><code>.codex/AGENTS.md</code>, <code>.codex/skills</code>, <code>.codex/commands</code>, <code>.codex/agents</code>, <code>.codex/rules</code>, <code>.codex/config.toml</code>, and <code>.codex/hooks.json</code>.</p>
           </article>
           <article class="card">
-            <div class="icon">M</div>
-            <h3>Safe MCP merge</h3>
-            <p>Claude MCP merges JSON. Codex MCP updates only <code>[mcp_servers]</code> in <code>config.toml</code>, preserving unrelated user config.</p>
+            <div class="icon">H</div>
+            <h3>Hermes</h3>
+            <p><code>.hermes/AGENTS.md</code>, <code>.hermes/skills</code>, <code>.hermes/rules</code>, <code>.hermes/commands</code>, MCP/hooks/settings.</p>
+          </article>
+          <article class="card">
+            <div class="icon">P</div>
+            <h3>GitHub Copilot</h3>
+            <p><code>.github/copilot-instructions.md</code>, <code>.github/instructions</code>, and <code>.github/prompts</code>.</p>
+          </article>
+          <article class="card dashed">
+            <div class="icon">+</div>
+            <h3>Bring your own</h3>
+            <p>Use a JSONC config adapter with <code>--adapter-config</code>, or load a programmatic adapter with <code>--adapter-module</code>.</p>
           </article>
         </div>
+        <p class="adapter-note">Claude MCP merges JSON. Codex MCP updates only <code>[mcp_servers]</code> in <code>config.toml</code>, preserving unrelated user config.</p>
+        <div class="matrix-wrap" aria-label="Built-in adapter support matrix">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th>Adapter</th>
+                <th>Instructions</th>
+                <th>Rules</th>
+                <th>Skills</th>
+                <th>Commands</th>
+                <th>Subagents</th>
+                <th>MCP</th>
+                <th>Hooks</th>
+                <th>Settings</th>
+                <th>Plugins</th>
+                <th>Fragments</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>OpenClaw</th>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+              </tr>
+              <tr>
+                <th>Claude Code</th>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+              </tr>
+              <tr>
+                <th>Codex CLI</th>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+              </tr>
+              <tr>
+                <th>Hermes</th>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+              </tr>
+              <tr>
+                <th>GitHub Copilot</th>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="matrix-caption">Generated from the built-in adapter definitions.</p>
       </section>
 
       <section id="packages">

@@ -327,14 +327,13 @@ describe("dependency graph resolver", () => {
 
     const first = await resolveDependencyGraph([{ rootId: "root", source: oldRoot }], { workspaceRoot: workspace });
     const lock = createGraphLock(first);
-    await rm(oldRoot, { recursive: true, force: true });
 
     await expect(resolveDependencyGraph([{ rootId: "root", source: newRoot }], {
       workspaceRoot: workspace,
       previousLock: lock,
       lockedResolution: true,
       frozenLock: true,
-    })).rejects.toThrow(/Frozen lock cache missing or stale/);
+    })).rejects.toThrow(/Frozen lock root 'root' source differs from declared source/);
   });
 
   it("dedupes the same dependency required by two roots", async () => {

@@ -237,14 +237,22 @@ async function processRequirement(
           ref: requirement.ref,
           registryClient: options.registryClient,
         });
-    if (lockedByReference && shouldCheckSoftLockedRootSource(requirement, options)) {
+    if (lockedByReference && shouldCheckLockedRootSource(requirement)) {
       const declared = await normalizeDependencySource(requirement.source, {
         declaringPackageRoot: requirement.declaringPackageRoot,
         workspaceRoot: options.workspaceRoot,
         ref: requirement.ref,
         registryClient: options.registryClient,
       });
-      if (softLockedRootSourceDrifted(declared, lockedByReference.node)) {
+      if (lockedRootSourceDrifted(declared, lockedByReference.node)) {
+        if (options.frozenLock || options.offline) {
+          throw new Error(
+            `${lockLabel} root '${requirement.rootId}' source differs from declared source:\n`
+            + `- declared: ${declared.normalizedSource}\n`
+            + `- locked: ${lockedByReference.node.normalizedSource}\n`
+            + `Run without ${lockLabel === "Offline" ? "--offline" : "--frozen-lock"} first.`,
+          );
+        }
         lockedByReference = undefined;
         normalized = declared;
       }
@@ -783,8 +791,7 @@ function lockedNodeForRequirementReference(
   };
 }
 
-function shouldCheckSoftLockedRootSource(requirement: Requirement, options: ResolveGraphOptions): boolean {
-  if (options.frozenLock || options.offline) return false;
+function shouldCheckLockedRootSource(requirement: Requirement): boolean {
   if (!requirement.useLock) return false;
   if (requirement.depth !== 0 || !requirement.rootId) return false;
   return isExplicitNonRegistrySource(requirement.source);
@@ -804,7 +811,7 @@ function isExplicitNonRegistrySource(source: string): boolean {
     || trimmed.startsWith("vercel:");
 }
 
-function softLockedRootSourceDrifted(declared: NormalizedDependencySource, locked: GraphLockNode): boolean {
+function lockedRootSourceDrifted(declared: NormalizedDependencySource, locked: GraphLockNode): boolean {
   return declared.normalizedSource !== locked.normalizedSource
     || declared.requestedRef !== locked.requestedRef;
 }

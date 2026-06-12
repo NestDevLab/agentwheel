@@ -61,6 +61,24 @@ L4 resolve the dependency graph recursively, apply parseable semver ranges, and 
 source identities. Tools below L4 may still validate and record these fields without resolving
 them.
 
+### Meta-packages
+
+An OpenPack v2 manifest MAY omit `provides` or declare it empty when it declares at least one
+`requires` dependency. Such a package installs nothing of its own and exists to aggregate or select
+resources from other packages. Uninstalling it removes the dependencies it pulled in unless those
+dependencies are still owned by other packages.
+
+```json
+{
+  "schemaVersion": 2,
+  "name": "test/meta-pack",
+  "version": "0.1.0",
+  "requires": {
+    "dep": { "source": "../dep-a", "select": ["rules/a.md"] }
+  }
+}
+```
+
 ## Layout And Types
 
 Canonical package directories are:

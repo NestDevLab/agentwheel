@@ -68,7 +68,17 @@ export const packageManifestV2Schema = z.object({
   runtimes: runtimeListSchema.optional(),
   requires: z.record(z.string().min(1), packageDependencySchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
-  provides: z.array(packageProvideSchema).min(1),
+  provides: z.array(packageProvideSchema).default([]),
+}).superRefine((manifest, ctx) => {
+  const hasProvides = manifest.provides.length > 0;
+  const hasRequires = Object.keys(manifest.requires ?? {}).length > 0;
+  if (!hasProvides && !hasRequires) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["provides"],
+      message: "OpenPack v2 manifest must declare at least one provides entry or one requires dependency",
+    });
+  }
 });
 
 export const packageManifestSchema = z.union([packageManifestV1Schema, packageManifestV2Schema]);

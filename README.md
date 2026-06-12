@@ -236,6 +236,24 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
 - **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why
   <selector>` explains why an artifact is installed.
 
+### Meta-packages (packs)
+
+OpenPack v2 packages can omit `provides` when they declare at least one dependency. These
+meta-packages install nothing of their own; they aggregate curated selections from other packages.
+Uninstalling a meta-package removes the dependencies it pulled in unless those dependencies are
+still owned by another configured package.
+
+```json
+{
+  "schemaVersion": 2,
+  "name": "test/meta-pack",
+  "version": "0.1.0",
+  "requires": {
+    "dep": { "source": "../dep-a", "select": ["rules/a.md"] }
+  }
+}
+```
+
 Migrating an existing legacy package takes one command:
 
 ```bash

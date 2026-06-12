@@ -228,8 +228,8 @@ async function processRequirement(
 ): Promise<Requirement[]> {
   try {
     const lockLabel = options.offline ? "Offline" : options.frozenLock ? "Frozen lock" : "Locked install";
-    const lockedByReference = lockedNodeForRequirementReference(requirement, options, lockLabel);
-    const normalized = lockedByReference
+    let lockedByReference = lockedNodeForRequirementReference(requirement, options, lockLabel);
+    let normalized = lockedByReference
       ? normalizedSourceFromLockedNode(lockedByReference.node)
       : await normalizeDependencySource(requirement.source, {
           declaringPackageRoot: requirement.declaringPackageRoot,
@@ -237,6 +237,26 @@ async function processRequirement(
           ref: requirement.ref,
           registryClient: options.registryClient,
         });
+    if (lockedByReference && shouldCheckLockedRootSource(requirement)) {
+      const declared = await normalizeDependencySource(requirement.source, {
+        declaringPackageRoot: requirement.declaringPackageRoot,
+        workspaceRoot: options.workspaceRoot,
+        ref: requirement.ref,
+        registryClient: options.registryClient,
+      });
+      if (lockedRootSourceDrifted(declared, lockedByReference.node)) {
+        if (options.frozenLock || options.offline) {
+          throw new Error(
+            `${lockLabel} root '${requirement.rootId}' source differs from declared source:\n`
+            + `- declared: ${declared.normalizedSource}\n`
+            + `- locked: ${lockedByReference.node.normalizedSource}\n`
+            + `Run without ${lockLabel === "Offline" ? "--offline" : "--frozen-lock"} first.`,
+          );
+        }
+        lockedByReference = undefined;
+        normalized = declared;
+      }
+    }
     const frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
     let fetched: FetchedPackage;
     try {
@@ -769,6 +789,31 @@ function lockedNodeForRequirementReference(
     node,
     requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
   };
+}
+
+function shouldCheckLockedRootSource(requirement: Requirement): boolean {
+  if (!requirement.useLock) return false;
+  if (requirement.depth !== 0 || !requirement.rootId) return false;
+  return isExplicitNonRegistrySource(requirement.source);
+}
+
+function isExplicitNonRegistrySource(source: string): boolean {
+  const trimmed = source.trim();
+  return trimmed === "~"
+    || trimmed.startsWith("~/")
+    || trimmed.startsWith("./")
+    || trimmed.startsWith("../")
+    || trimmed.startsWith("/")
+    || trimmed.startsWith("local:")
+    || trimmed.startsWith("github:")
+    || trimmed.startsWith("git:")
+    || trimmed.startsWith("skillkit:")
+    || trimmed.startsWith("vercel:");
+}
+
+function lockedRootSourceDrifted(declared: NormalizedDependencySource, locked: GraphLockNode): boolean {
+  return declared.normalizedSource !== locked.normalizedSource
+    || declared.requestedRef !== locked.requestedRef;
 }
 
 function normalizedSourceFromLockedNode(node: GraphLockNode): NormalizedDependencySource {

@@ -784,58 +784,21 @@
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Start with one package, or keep explicit control over add, plan, and install. In normal use you do not need <code>--target-root</code>.</p>
+        <p class="intro-text">agentwheel installs from npm. Use it directly with npx, or install it globally.</p>
 
-        <div class="code" aria-label="Full control">
+        <div class="code" aria-label="Install">
           <div class="codebar">
             <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>Full control</span>
+            <span>Install</span>
           </div>
-          <pre><code><span class="prompt">$</span> npx agentwheel init
-<span class="prompt">$</span> npx agentwheel add github:your-org/agent-pack --adapter openclaw
-<span class="prompt">$</span> npx agentwheel plan
-<span class="prompt">$</span> npx agentwheel install</code></pre>
+          <pre><code><span class="muted"># one-off, nothing to install</span>
+<span class="prompt">$</span> npx agentwheel install nestdev-must-have
+
+<span class="muted"># or install globally</span>
+<span class="prompt">$</span> npm i -g agentwheel
+<span class="prompt">$</span> agentwheel install nestdev-must-have</code></pre>
         </div>
 
-        <div class="code" aria-label="Dependencies, trust, and offline">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>dependencies &amp; trust</span>
-          </div>
-          <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
-<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
-<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
-<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
-        </div>
-
-        <div class="code" aria-label="Fleet targeting">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>fleet mode</span>
-          </div>
-          <pre><code>{
-  "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home", "transport": "local" },
-    "remote-codex": {
-      "adapter": "codex",
-      "root": "/home/agent/project",
-      "transport": "ssh",
-      "host": "agent-host.example",
-      "user": "agent"
-    }
-  }
-}
-
-<span class="prompt">$</span> agentwheel install --agent lab-openclaw
-<span class="prompt">$</span> agentwheel install --all
-<span class="prompt">$</span> agentwheel install --profile daily --dry-run
-<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
-        </div>
-
-        <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:
-        <code>agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
-        <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
-        <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
       </section>
 
       <section id="adapters">
@@ -1110,6 +1073,57 @@
           <pre><code><span class="prompt">$</span> agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux
 <span class="prompt">$</span> agentwheel install --select rules/core-safety.md
 <span class="muted"># provides[].required artifacts are always installed</span></code></pre>
+        </div>
+      </section>
+
+      <section id="advanced">
+        <h2 class="section-title">Advanced usage</h2>
+        <p class="intro-text">Day-2 workflows: explicit plan/apply, dependency introspection, trust policy, and multi-agent fleets.</p>
+
+        <div class="code" aria-label="Full control">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>Full control</span>
+          </div>
+          <pre><code><span class="prompt">$</span> npx agentwheel init
+<span class="prompt">$</span> npx agentwheel add github:your-org/agent-pack --adapter openclaw
+<span class="prompt">$</span> npx agentwheel plan
+<span class="prompt">$</span> npx agentwheel install</code></pre>
+        </div>
+
+        <div class="code" aria-label="Dependencies, trust, and offline">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>dependencies &amp; trust</span>
+          </div>
+          <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
+<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
+<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
+<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
+        </div>
+
+        <div class="code" aria-label="Fleet targeting">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>fleet mode</span>
+          </div>
+          <pre><code>{
+  "agents": {
+    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home", "transport": "local" },
+    "remote-codex": {
+      "adapter": "codex",
+      "root": "/home/agent/project",
+      "transport": "ssh",
+      "host": "agent-host.example",
+      "user": "agent"
+    }
+  }
+}
+
+<span class="prompt">$</span> agentwheel install --agent lab-openclaw
+<span class="prompt">$</span> agentwheel install --all
+<span class="prompt">$</span> agentwheel install --profile daily --dry-run
+<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
         </div>
       </section>
 

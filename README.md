@@ -133,6 +133,7 @@ For a control-plane setup, define named agents in config. Global config lives at
 agentwheel install --agent lab-openclaw
 agentwheel install --all
 agentwheel install --profile daily
+agentwheel install --all-detected
 ```
 
 SSH targets use the same manifest and drift model as local targets. Planning reads the remote
@@ -146,7 +147,9 @@ agentwheel init --fleet-example
 ```
 
 Target resolution order is exact: `--target-root` wins, then `--agent`, then auto-detect from the
-current directory, then fallback to the current directory.
+current directory, then fallback to the current directory. `--all-detected` is an explicit escape hatch
+for applying to every runtime marker found in the current directory or `--target-root`; `--all` remains
+reserved for configured agents.
 
 ## Core Ideas
 

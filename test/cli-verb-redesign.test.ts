@@ -42,6 +42,20 @@ describe("CLI verb redesign", () => {
     expect(help.stdout).not.toContain(" sync ");
   });
 
+  it("installs a new source into every detected runtime with --all-detected", async () => {
+    const root = await tempRoot();
+    const source = await packageFixture("detected");
+    await mkdir(join(root, ".claude"), { recursive: true });
+    await mkdir(join(root, ".codex"), { recursive: true });
+
+    const { stdout } = await runCli(["install", source, "--target-root", root, "--all-detected"]);
+
+    expect(stdout).toContain("Applied claude");
+    expect(stdout).toContain("Applied codex");
+    await expect(readFile(join(root, ".claude", "CLAUDE.md"), "utf8")).resolves.toContain("detected");
+    await expect(readFile(join(root, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("detected");
+  });
+
   it("forwards the hidden sync shim with a deprecation warning", async () => {
     const root = await tempRoot();
     const source = await packageFixture("shim");

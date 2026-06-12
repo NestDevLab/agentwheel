@@ -959,6 +959,7 @@ function keepManifestEntryOperation(
     graphNodeId: fresh?.graphNodeId ?? ("graphNodeId" in entry ? entry.graphNodeId : undefined),
     dependencyRole: fresh?.dependencyRole ?? ("dependencyRole" in entry ? entry.dependencyRole : "root"),
     owners: fresh?.owners ?? owners,
+    workspaceOwner: fresh?.workspaceOwner ?? ("workspaceOwner" in entry ? entry.workspaceOwner : "legacy:unowned"),
     graphLockDigest: fresh ? undefined : "graphLockDigest" in entry ? entry.graphLockDigest : undefined,
   };
 }

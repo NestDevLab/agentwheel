@@ -113,6 +113,17 @@ async function writeV1Manifest(targetRoot: string, entries: InstallManifestV1Ent
   });
 }
 
+async function writeRawV2Manifest(targetRoot: string, entries: unknown[]): Promise<void> {
+  await localTransport.writeJsonAtomic(installManifestPath(targetRoot, adapter.name), {
+    version: 2,
+    adapter: adapter.name,
+    targetRoot,
+    generatedAt: new Date().toISOString(),
+    revision: "legacy-revision-1",
+    entries,
+  });
+}
+
 describe("install manifest v2", () => {
   it("roundtrips v2 manifests with sorted owners and reads v1 manifests as legacy", async () => {
     const target = await tempRoot();
@@ -135,6 +146,7 @@ describe("install manifest v2", () => {
         dependencyRole: "direct",
         owners: ["z-owner", "a-owner", "z-owner"],
         refCount: 99,
+        workspaceOwner: "workspace:test",
         kind: "file",
         hash: artifact.hash,
         sourceHash: artifact.hash,
@@ -167,6 +179,147 @@ describe("install manifest v2", () => {
     expect(v1?.version).toBe(1);
     expect(v1?.legacy).toBe(true);
     expect(v1?.revision).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+describe("workspace-scoped reconcile", () => {
+  it("keeps artifacts owned by another workspace sharing the same target root", async () => {
+    const sourceA = await tempRoot();
+    const sourceB = await tempRoot();
+    const target = await tempRoot();
+    const a = await writeArtifact(sourceA, "rules/a.md", "A\n");
+    const b = await writeArtifact(sourceB, "rules/b.md", "B\n");
+
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([a], adapter, target, undefined, localTransport, {
+      workspaceOwner: "workspace:A",
+    }));
+
+    const planB = await createCombinedInstallPlan([b], adapter, target, await readInstallManifest(target, adapter.name), localTransport, {
+      workspaceOwner: "workspace:B",
+    });
+
+    expect(planB.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/a.md")?.action).toBe("keep");
+    expect(planB.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/a.md")?.reason).toContain("foreign artifact owned by workspace:A");
+    expect(planB.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/b.md")?.action).toBe("create");
+    expect(planB.operations.filter((operation) => operation.action === "remove")).toHaveLength(0);
+
+    await applyCombinedInstallPlan(planB);
+    await expect(stat(join(target, ".runtime", "rules", "a.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".runtime", "rules", "b.md"))).resolves.toBeTruthy();
+    const manifest = await readInstallManifest(target, adapter.name);
+    if (manifest?.version !== 2) throw new Error("expected v2 manifest");
+    expect(manifest.entries.map((entry) => ({ path: entry.path, workspaceOwner: entry.workspaceOwner }))).toEqual([
+      { path: ".runtime/rules/a.md", workspaceOwner: "workspace:A" },
+      { path: ".runtime/rules/b.md", workspaceOwner: "workspace:B" },
+    ]);
+  });
+
+  it("adopts matching legacy-unowned entries and keeps unmatched legacy-unowned entries", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const a = await writeArtifact(source, "rules/a.md", "A\n");
+    const orphanPath = join(target, ".runtime", "rules", "orphan.md");
+    await mkdir(dirname(orphanPath), { recursive: true });
+    await writeFile(join(target, ".runtime", "rules", "a.md"), "A\n", "utf8");
+    await writeFile(orphanPath, "orphan\n", "utf8");
+    const orphanHash = await hashPath(orphanPath);
+
+    await writeRawV2Manifest(target, [
+      {
+        path: ".runtime/rules/a.md",
+        artifactType: "rules",
+        artifactName: "a.md",
+        installName: "a.md",
+        logicalSelector: "rules/a.md",
+        dependencyRole: "root",
+        owners: ["root"],
+        refCount: 1,
+        kind: "file",
+        hash: a.hash,
+        sourceHash: a.hash,
+        updatedAt: new Date().toISOString(),
+        channel: "managed",
+      },
+      {
+        path: ".runtime/rules/orphan.md",
+        artifactType: "rules",
+        artifactName: "orphan.md",
+        installName: "orphan.md",
+        logicalSelector: "rules/orphan.md",
+        dependencyRole: "root",
+        owners: ["old-root"],
+        refCount: 1,
+        kind: "file",
+        hash: orphanHash,
+        sourceHash: orphanHash,
+        updatedAt: new Date().toISOString(),
+        channel: "managed",
+      },
+    ]);
+
+    const plan = await createCombinedInstallPlan([a], adapter, target, await readInstallManifest(target, adapter.name), localTransport, {
+      workspaceOwner: "workspace:new",
+    });
+
+    expect(plan.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/a.md")?.action).toBe("skip");
+    const orphan = plan.operations.find((operation) => operation.relativeDestPath === ".runtime/rules/orphan.md");
+    expect(orphan?.action).toBe("keep");
+    expect(orphan?.reason).toContain("foreign artifact owned by legacy:unowned");
+    expect(plan.operations.filter((operation) => operation.action === "remove")).toHaveLength(0);
+
+    await applyCombinedInstallPlan(plan);
+    const manifest = await readInstallManifest(target, adapter.name);
+    if (manifest?.version !== 2) throw new Error("expected v2 manifest");
+    expect(manifest.entries.map((entry) => ({ path: entry.path, workspaceOwner: entry.workspaceOwner }))).toEqual([
+      { path: ".runtime/rules/a.md", workspaceOwner: "workspace:new" },
+      { path: ".runtime/rules/orphan.md", workspaceOwner: "legacy:unowned" },
+    ]);
+  });
+
+  it("adopts legacy-unowned entries when path and content match despite source identity drift", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const artifact = await writeArtifact(source, "rules/agent-tmux.md", "agent tmux\n");
+    await mkdir(join(target, ".runtime", "rules"), { recursive: true });
+    await writeFile(join(target, ".runtime", "rules", "agent-tmux.md"), "agent tmux\n", "utf8");
+
+    await writeRawV2Manifest(target, [{
+      path: ".runtime/rules/agent-tmux.md",
+      artifactType: "rules",
+      artifactName: "agent-tmux.md",
+      installName: "agent-tmux.md",
+      logicalSelector: "nestdev-mesh@0.9.0+old:rules/agent-tmux.md",
+      graphNodeId: "nestdev-mesh@0.9.0+old",
+      dependencyRole: "root",
+      owners: ["workspace:agent-mesh"],
+      refCount: 1,
+      kind: "file",
+      hash: artifact.hash,
+      sourceHash: artifact.hash,
+      updatedAt: new Date().toISOString(),
+      channel: "managed",
+      packageName: "nestdev-mesh",
+    }]);
+
+    const desired = {
+      ...artifact,
+      packageName: "agent-mesh",
+      meta: {
+        ...artifact.meta,
+        graphNodeId: "agent-mesh@0.9.0+new",
+        logicalSelector: "agent-mesh@0.9.0+new:rules/agent-tmux.md",
+        owners: ["workspace:agent-mesh"],
+      },
+    };
+    const plan = await createCombinedInstallPlan([desired], adapter, target, await readInstallManifest(target, adapter.name), localTransport, {
+      workspaceOwner: "workspace:new",
+    });
+
+    const operation = plan.operations.find((item) => item.relativeDestPath === ".runtime/rules/agent-tmux.md");
+    expect(operation?.action).toBe("skip");
+    expect(operation?.reason).toBe("already up to date");
+    expect(operation?.workspaceOwner).toBe("workspace:new");
+    expect(plan.operations.filter((item) => item.action === "keep")).toHaveLength(0);
   });
 });
 

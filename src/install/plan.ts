@@ -1,7 +1,7 @@
 import { join, relative } from "node:path";
 import type { AdapterConfig, ProgrammaticAdapterApply, ProgrammaticAdapterOperation, ProgrammaticAdapterUninstall } from "../model/adapter.js";
 import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
-import type { DependencyRole, InstallManifest, InstallManifestEntry, InstallManifestV1Entry } from "../model/manifest.js";
+import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest, type InstallManifestEntry, type InstallManifestV1Entry } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { localTransport } from "../transport/index.js";
@@ -38,6 +38,7 @@ export interface InstallOperation {
   graphNodeId?: string;
   dependencyRole?: DependencyRole;
   owners?: string[];
+  workspaceOwner?: string;
   graphLockDigest?: string;
   preserveInManifest?: boolean;
   blockedDesiredHash?: string;
@@ -69,6 +70,7 @@ export interface InstallPlan {
 export interface CombinedInstallPlanOptions {
   baseRevision?: string | null;
   graphLockDigest?: string;
+  workspaceOwner?: string;
 }
 
 export async function createInstallPlan(
@@ -77,6 +79,7 @@ export async function createInstallPlan(
   targetRoot: string,
   manifest?: InstallManifest,
   transport: TargetTransport = localTransport,
+  options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   const desired: InstallOperation[] = [];
 
@@ -94,7 +97,7 @@ export async function createInstallPlan(
 
   await addProgrammaticOperations(desired, adapter, targetRoot);
 
-  return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, {});
+  return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, options);
 }
 
 export async function createCombinedInstallPlan(
@@ -131,6 +134,10 @@ async function createPlanFromOperations(
   transport: TargetTransport,
   options: CombinedInstallPlanOptions,
 ): Promise<InstallPlan> {
+  const workspaceOwner = options.workspaceOwner;
+  if (workspaceOwner) {
+    for (const op of desiredOps) op.workspaceOwner = workspaceOwner;
+  }
   for (const op of desiredOps) assertOperationContained(op, targetRoot);
   const migration = await migrateManifestForPlan(manifest, desiredOps, targetRoot, transport);
   const effectiveEntries = migration.entries;
@@ -177,6 +184,12 @@ async function createPlanFromOperations(
     }
 
     const existing = manifestByPath.get(op.relativeDestPath);
+    if (existing && workspaceOwner && !entryOwnedByWorkspace(existing, workspaceOwner)) {
+      if (!(await canAdoptLegacyUnownedEntry(existing, op, transport))) {
+        operations.push(keepForeignManifestEntryOperation(existing, targetRoot, workspaceOwner, op));
+        continue;
+      }
+    }
     const exists = await transport.pathExists(op.destPath);
     if (!exists) {
       operations.push({ ...op, action: "create", reason: "destination missing" });
@@ -222,6 +235,10 @@ async function createPlanFromOperations(
     const destPath = join(targetRoot, entry.path);
     if (!(await transport.pathExists(destPath))) continue;
     const currentHash = await transport.hashPath(destPath);
+    if (workspaceOwner && !entryOwnedByWorkspace(entry, workspaceOwner)) {
+      operations.push(keepForeignManifestEntryOperation(entry, targetRoot, workspaceOwner, undefined, currentHash));
+      continue;
+    }
     if (currentHash !== entry.hash) {
       operations.push({
         action: "drift",
@@ -418,6 +435,22 @@ function operationMatchesManifestEntry(op: InstallOperation, entry: PlanningMani
   return op.packageName !== undefined && entry.packageName === op.packageName;
 }
 
+function entryOwnedByWorkspace(entry: PlanningManifestEntry, workspaceOwner: string): boolean {
+  return "workspaceOwner" in entry && entry.workspaceOwner === workspaceOwner;
+}
+
+async function canAdoptLegacyUnownedEntry(
+  entry: PlanningManifestEntry,
+  op: InstallOperation,
+  transport: TargetTransport,
+): Promise<boolean> {
+  if (!("workspaceOwner" in entry) || entry.workspaceOwner !== legacyUnownedWorkspaceOwner) return false;
+  if (entry.artifactType !== op.artifactType || entry.kind !== op.kind) return false;
+  if (!op.desiredHash || entry.sourceHash !== op.desiredHash) return false;
+  if (!(await transport.pathExists(op.destPath))) return false;
+  return (await transport.hashPath(op.destPath)) === entry.hash;
+}
+
 function collisionOperation(op: InstallOperation, group: InstallOperation[], incumbent?: InstallOperation): InstallOperation {
   const owners = group.map(describeOperationOwner).sort();
   const incumbentText = incumbent ? `; incumbent ${describeOperationOwner(incumbent)} keeps the plain name` : "";
@@ -443,6 +476,7 @@ function adoptLegacyEntry(entry: InstallManifestV1Entry, op: InstallOperation): 
     dependencyRole: op.dependencyRole ?? "root",
     owners,
     refCount: owners.length,
+    workspaceOwner: op.workspaceOwner ?? legacyUnownedWorkspaceOwner,
     graphLockDigest: op.graphLockDigest,
     composedFrom: op.composedFrom ?? entry.composedFrom,
   };
@@ -464,7 +498,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
 
 function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "graphLockDigest"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest"
 > {
   if ("owners" in entry) {
     return {
@@ -473,6 +507,7 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
       graphNodeId: entry.graphNodeId,
       dependencyRole: entry.dependencyRole,
       owners: entry.owners,
+      workspaceOwner: entry.workspaceOwner,
       graphLockDigest: entry.graphLockDigest,
     };
   }
@@ -481,6 +516,37 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
     logicalSelector: `${entry.artifactType}/${entry.artifactName}`,
     dependencyRole: "root",
     owners: [entry.packageName ?? "legacy"],
+    workspaceOwner: legacyUnownedWorkspaceOwner,
+  };
+}
+
+function keepForeignManifestEntryOperation(
+  entry: PlanningManifestEntry,
+  targetRoot: string,
+  workspaceOwner: string,
+  operation?: InstallOperation,
+  currentHash?: string,
+): InstallOperation {
+  const owner = "workspaceOwner" in entry ? entry.workspaceOwner : legacyUnownedWorkspaceOwner;
+  return {
+    action: "keep",
+    artifactType: entry.artifactType,
+    artifactName: entry.artifactName,
+    kind: entry.kind,
+    destPath: operation?.destPath ?? join(targetRoot, entry.path),
+    relativeDestPath: entry.path,
+    desiredHash: entry.sourceHash,
+    currentHash: currentHash ?? operation?.currentHash ?? entry.hash,
+    manifestHash: entry.hash,
+    reason: `foreign artifact owned by ${owner}; kept outside workspace ${workspaceOwner}`,
+    channel: entry.channel,
+    packageName: entry.packageName,
+    semanticCommand: entry.semanticCommand,
+    execute: entry.executed,
+    mergeStrategy: entry.mergeStrategy,
+    composedFrom: entry.composedFrom,
+    preserveInManifest: true,
+    ...operationMetadataFromEntry(entry),
   };
 }
 

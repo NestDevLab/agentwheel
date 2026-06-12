@@ -56,6 +56,11 @@ the "two competing installers" conflict; only agentwheel writes into runtime dir
 - Lifecycle/storage/distribution model: see `LIFECYCLE.md`.
 - Two lock files: **source-lock** (what was resolved/fetched + upstream hash + driver/version) and
   **install-manifest** (what was written into runtimes + expected hash).
+- Install-manifest entries include a `workspaceOwner` identifier derived from the workspace config root.
+  Reconcile only removes or updates entries owned by the current workspace. Entries owned by another
+  workspace are reported as `KEEP` and preserved in the manifest. Older v2 entries without
+  `workspaceOwner` are read as `legacy:unowned`; unmatched entries stay foreign/kept, while exact
+  same-path, same-source clean matches are adopted by the current workspace on apply.
 
 ## OpenClaw boundary (hard rules)
 - Plugin installs use ONLY public API/CLI: dry-run prints the command; apply calls

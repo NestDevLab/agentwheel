@@ -802,8 +802,13 @@
 
     function prepareEntry(entry) {
       const lastPushTime = entry.lastPush ? Date.parse(entry.lastPush) : -Infinity;
+      const nameLower = text(entry.name).toLowerCase();
+      const subtitleLower = text(entry.subtitle).toLowerCase();
       return {
         ...entry,
+        nameLower,
+        subtitleLower,
+        exactMatchPriority: entry.ecosystem === "official" ? 0 : entry.featured ? 1 : 2,
         searchText: [
           entry.name,
           entry.description,
@@ -823,7 +828,7 @@
         name: skill,
         ecosystem: "vercel",
         type: "skill",
-        description: "",
+        description: typeof record.d === "string" ? record.d : "",
         tags: [],
         source: `vercel:skills.sh/${owner}/${repo}/${skill}`,
         installCommand: `npx agentwheel install "vercel:skills.sh/${owner}/${repo}/${skill}"`,
@@ -838,6 +843,14 @@
         subtitle: `${owner}/${repo}`,
         skillsLinkLabel: "Verify on skills.sh",
       });
+    }
+
+    function matchTier(entry, query) {
+      if (entry.nameLower === query) return 0;
+      if (entry.nameLower.startsWith(query)) return 1;
+      if (entry.nameLower.includes(query)) return 2;
+      if (entry.subtitleLower.includes(query)) return 3;
+      return 4;
     }
 
     function setPressed(group, value) {
@@ -1079,10 +1092,20 @@
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
         if (state.type !== "all" && entry.type !== state.type) return false;
         if (!query) return true;
-        return entry.searchText.includes(query);
+        if (!entry.searchText.includes(query)) return false;
+        entry.matchTier = matchTier(entry, query);
+        return true;
       });
 
       filtered.sort((a, b) => {
+        if (query) {
+          const tierDiff = a.matchTier - b.matchTier;
+          if (tierDiff !== 0) return tierDiff;
+          if (a.matchTier === 0) {
+            const exactPriorityDiff = a.exactMatchPriority - b.exactMatchPriority;
+            if (exactPriorityDiff !== 0) return exactPriorityDiff;
+          }
+        }
         if (state.sort === "name") {
           return text(a.name) < text(b.name) ? -1 : text(a.name) > text(b.name) ? 1 : 0;
         }

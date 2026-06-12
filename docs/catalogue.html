@@ -103,6 +103,17 @@
       padding: 30px 0 22px;
     }
 
+    .catalogue-hero-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .catalogue-hero-copy {
+      min-width: 0;
+    }
+
     h1 {
       max-width: 760px;
       margin: 0 0 12px;
@@ -127,6 +138,30 @@
       margin: 0;
       color: var(--muted);
       font-size: clamp(17px, 2vw, 20px);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .button.secondary {
+      border-color: rgba(124, 58, 237, 0.46);
+      background: rgba(17, 24, 39, 0.72);
+      color: #e5e7eb;
+    }
+
+    .button.secondary:hover {
+      border-color: rgba(196, 181, 253, 0.72);
+      background: rgba(124, 58, 237, 0.16);
     }
 
     .controls-sticky {
@@ -612,6 +647,11 @@
         padding-top: 24px;
       }
 
+      .catalogue-hero-row {
+        flex-direction: column;
+        gap: 16px;
+      }
+
       h1 {
         font-size: clamp(34px, 10.5vw, 48px);
       }
@@ -660,8 +700,13 @@
 
     <main>
       <section class="catalogue-hero" aria-labelledby="catalogue-title">
-        <h1 id="catalogue-title"><span class="gradient-title">Catalogue</span></h1>
-        <p class="subhead">Browsable index of agentwheel-installable resources: official registry packages plus curated skills from the Vercel skills.sh and SkillKit ecosystems, with one install command for all of them.</p>
+        <div class="catalogue-hero-row">
+          <div class="catalogue-hero-copy">
+            <h1 id="catalogue-title"><span class="gradient-title">Catalogue</span></h1>
+            <p class="subhead">Browsable index of agentwheel-installable resources: official registry packages plus curated skills from the Vercel skills.sh and SkillKit ecosystems, with one install command for all of them.</p>
+          </div>
+          <a class="button secondary" href="https://github.com/NestDevLab/agentwheel-registry#contributing" target="_blank" rel="noopener" title="Add your package or skill to the catalogue">+ Add yours</a>
+        </div>
       </section>
 
       <div class="controls-sticky" aria-label="Catalogue filters">

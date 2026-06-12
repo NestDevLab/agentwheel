@@ -453,13 +453,6 @@
       font-size: clamp(17px, 2vw, 20px);
     }
 
-    .adapters-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .card.dashed {
-      border-style: dashed;
-    }
 
     .adapter-note {
       margin: 16px 0 0;
@@ -698,14 +691,14 @@
         <span>agentwheel</span>
       </a>
       <nav class="nav" aria-label="Primary">
-        <a href="#openpack">OpenPack</a>
-        <a href="#features">Features</a>
+        <a href="#get-started">Get started</a>
+        <a href="#adapters">Adapters</a>
         <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#openpack">OpenPack</a>
         <a href="#packages">Packages</a>
         <a href="catalogue.html">Catalogue</a>
-        <a href="#adapters">Adapters</a>
         <a href="#docs">Docs</a>
-        <a href="#get-started">Get started</a>
         <a href="https://github.com/NestDevLab/agentwheel">GitHub</a>
       </nav>
     </header>
@@ -789,173 +782,74 @@
 <span class="muted"># resolved, locked &amp; installed into your runtime — pick it with --adapter claude|codex|copilot|hermes|openclaw</span></code></pre>
       </div>
 
-      <section id="openpack">
-        <h2 class="section-title">Built on OpenPack — packages that depend on packages.</h2>
-        <p class="intro-text">OpenPack is the vendor-neutral package format behind agentwheel: one manifest for skills, rules, instructions, and shared fragments — with dependencies, composition, and runtime targeting. Any tool can implement the <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">spec</a>; agentwheel is the reference implementation.</p>
-        <div class="grid">
-          <article class="card">
-            <div class="icon">G</div>
-            <h3>Dependency graph, locked</h3>
-            <p>Packages require other packages. agentwheel resolves the full graph recursively, dedupes npm-style where versions are satisfiable, and writes a deterministic graph lock — every machine installs the same thing.</p>
-            <div class="pill-list">
-              <span class="pill">requires</span><span class="pill">semver</span><span class="pill">graph lock</span><span class="pill">deps tree · why</span>
-            </div>
-          </article>
-          <article class="card">
-            <div class="icon">∞</div>
-            <h3>Fragment composition</h3>
-            <p>Keep one canonical copy of shared guidance and transclude it at sync time with <code>&lt;!-- openpack:include --&gt;</code> markers — within a package or across dependencies, with provenance and drift detection on the result.</p>
-            <div class="pill-list">
-              <span class="pill">fragments</span><span class="pill">include markers</span><span class="pill">asset-includes</span>
-            </div>
-          </article>
-          <article class="card">
-            <div class="icon">⛨</div>
-            <h3>Trust &amp; offline</h3>
-            <p>New transitive sources never install silently — approve them once, pin a workspace trust policy, or deny artifact types outright. <code>--frozen-lock</code> and <code>--offline</code> give reproducible, zero-network installs.</p>
-            <div class="pill-list">
-              <span class="pill">trust policy</span><span class="pill">--offline</span><span class="pill">--frozen-lock</span>
-            </div>
-          </article>
-        </div>
-      </section>
+      <section id="get-started">
+        <h2 class="section-title">Get started</h2>
+        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Start with one package, or keep explicit control over add, plan, and install. In normal use you do not need <code>--target-root</code>.</p>
 
-      <section id="features">
-        <h2 class="section-title">Everything your agent stack needs to stay aligned.</h2>
-        <div class="grid">
-          <article class="card">
-            <div class="icon">F</div>
-            <h3>Full artifact model</h3>
-            <p>Install every common agent asset type without collapsing them into one generic file.</p>
-            <div class="pill-list">
-              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">fragments</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">settings</span><span class="pill">plugins</span>
-            </div>
-          </article>
-          <article class="card">
-            <div class="icon">S</div>
-            <h3>Drift-aware, transactional install</h3>
-            <p>Plan first, then apply atomically. Hash manifests track managed output, detect drift, journal every apply for recovery, and keep updates idempotent.</p>
-          </article>
-          <article class="card">
-            <div class="icon">A</div>
-            <h3>Pluggable adapters</h3>
-            <p>Use complete built-ins for OpenClaw, Claude Code, Codex CLI, Hermes, and Copilot, private JSONC adapters, or explicit local adapter code.</p>
-            <div class="pill-list">
-              <span class="pill">Claude skills</span><span class="pill">Codex MCP</span><span class="pill">commands</span><span class="pill">agents</span>
-            </div>
-          </article>
-          <article class="card">
-            <div class="icon">D</div>
-            <h3>Source drivers</h3>
-            <p>Consume local paths, git packages, SkillKit sources, and Vercel-style skills without making the registry mandatory.</p>
-          </article>
-          <article class="card">
-            <div class="icon">T</div>
-            <h3>Selective installs</h3>
-            <p>Install the exact artifacts you want with <code>--select</code> or <code>--skill</code>, while package-declared required artifacts stay protected.</p>
-          </article>
-          <article class="card">
-            <div class="icon">P</div>
-            <h3>Runtime targeting &amp; fleet</h3>
-            <p>Run inside a runtime folder with no target flag, or install into a named fleet — local and SSH — with <code>--agent</code>, <code>--all</code>, and profiles.</p>
-          </article>
+        <div class="code" aria-label="Install a package with npx">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>Primary path</span>
+          </div>
+          <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have
+<span class="muted"># resolved, locked &amp; installed into your runtime — pick it with --adapter claude|codex|copilot|hermes|openclaw</span></code></pre>
         </div>
-      </section>
 
-      <section id="how">
-        <h2 class="section-title">How it works</h2>
-        <div class="flow">
-          <div class="step">
-            <strong>Author package</strong>
-            <span>Skills, rules, instructions, and fragments live upstream — with declared dependencies on other packages.</span>
+        <div class="code" aria-label="Full control">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>Full control</span>
           </div>
-          <div class="arrow">→</div>
-          <div class="step">
-            <strong>Workspace control plane</strong>
-            <span>.agentwheel stores graph locks, overlays, overrides, trust decisions, and local intent.</span>
-          </div>
-          <div class="arrow">→</div>
-          <div class="step">
-            <strong>Runtime output</strong>
-            <span>Install writes generated files into the runtimes you use — OpenClaw, Claude, Codex, Copilot, Hermes, and any custom runtime you add via your own adapter.</span>
-          </div>
+          <pre><code><span class="prompt">$</span> npx agentwheel init
+<span class="prompt">$</span> npx agentwheel add github:your-org/agent-pack --adapter openclaw
+<span class="prompt">$</span> npx agentwheel plan
+<span class="prompt">$</span> npx agentwheel install</code></pre>
         </div>
-      </section>
 
-      <section id="docs">
-        <h2 class="section-title">Docs</h2>
-        <p class="intro-text">The full documentation lives in the GitHub repo for now. Start with the README, then use the design and lifecycle docs for package formats, update behavior, overlays, registry, and adapter details.</p>
-        <div class="docs-grid">
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
-            <strong>README</strong>
-            <span>Quick start, concepts, roadmap, and supported commands.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">
-            <strong>OpenPack spec</strong>
-            <span>The vendor-neutral package format: manifest, selectors, composition, conformance levels.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/dependency-composition.md">
-            <strong>Dependency design</strong>
-            <span>Graph resolution, locks, conflict satisfaction, trust, and transactional apply.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/DESIGN.md">
-            <strong>DESIGN.md</strong>
-            <span>Architecture, module layout, adapters, staging, install, and source drivers.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/LIFECYCLE.md">
-            <strong>LIFECYCLE.md</strong>
-            <span>Publish, install, update, overlays, overrides, eject, and registry model.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/fleet-config.md">
-            <strong>Fleet config</strong>
-            <span>Named local and SSH agents, profiles, and remote drift checks.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel">
-            <strong>GitHub repo</strong>
-            <span>Source, issues, releases, npm package metadata, and examples.</span>
-          </a>
-          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel-registry">
-            <strong>Package registry</strong>
-            <span>Short-name index for public agentwheel packages.</span>
-          </a>
+        <div class="code" aria-label="Dependencies, trust, and offline">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>dependencies &amp; trust</span>
+          </div>
+          <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
+<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
+<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
+<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
         </div>
+
+        <div class="code" aria-label="Fleet targeting">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span>fleet mode</span>
+          </div>
+          <pre><code>{
+  "agents": {
+    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home", "transport": "local" },
+    "remote-codex": {
+      "adapter": "codex",
+      "root": "/home/agent/project",
+      "transport": "ssh",
+      "host": "agent-host.example",
+      "user": "agent"
+    }
+  }
+}
+
+<span class="prompt">$</span> agentwheel install --agent lab-openclaw
+<span class="prompt">$</span> agentwheel install --all
+<span class="prompt">$</span> agentwheel install --profile daily --dry-run
+<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
+        </div>
+
+        <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:
+        <code>agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
+        <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
+        <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
       </section>
 
       <section id="adapters">
-        <h2 class="section-title">Built-in adapters</h2>
-        <p class="intro-text">Five complete built-in adapters, two ways to bring your own. Every adapter maps the full artifact model into the runtime's native layout — no generic dumps.</p>
-        <div class="grid adapters-grid">
-          <article class="card">
-            <div class="icon">O</div>
-            <h3>OpenClaw</h3>
-            <p><code>.openclaw/AGENTS.md</code>, <code>.openclaw/skills</code>, <code>.openclaw/rules</code>, <code>.openclaw/commands</code>, <code>.openclaw/agents</code>, MCP/hooks/settings, and semantic plugin planning.</p>
-          </article>
-          <article class="card">
-            <div class="icon">C</div>
-            <h3>Claude Code</h3>
-            <p><code>.claude/CLAUDE.md</code>, <code>.claude/skills</code>, <code>.claude/commands</code>, <code>.claude/agents</code>, <code>.claude/rules</code>, <code>.claude/.mcp.json</code>, and <code>.claude/settings.json</code>.</p>
-          </article>
-          <article class="card">
-            <div class="icon">X</div>
-            <h3>Codex CLI</h3>
-            <p><code>.codex/AGENTS.md</code>, <code>.codex/skills</code>, <code>.codex/commands</code>, <code>.codex/agents</code>, <code>.codex/rules</code>, <code>.codex/config.toml</code>, and <code>.codex/hooks.json</code>.</p>
-          </article>
-          <article class="card">
-            <div class="icon">H</div>
-            <h3>Hermes</h3>
-            <p><code>.hermes/AGENTS.md</code>, <code>.hermes/skills</code>, <code>.hermes/rules</code>, <code>.hermes/commands</code>, <code>.hermes/agents</code>, and MCP/hooks/settings.</p>
-          </article>
-          <article class="card">
-            <div class="icon">P</div>
-            <h3>GitHub Copilot</h3>
-            <p><code>.github/copilot-instructions.md</code>, <code>.github/instructions</code>, <code>.github/prompts</code>, <code>.github/skills</code>, <code>.github/agents</code>, and <code>.vscode/mcp.json</code>.</p>
-          </article>
-          <article class="card dashed">
-            <div class="icon">+</div>
-            <h3>Bring your own</h3>
-            <p>Use a JSONC config adapter with <code>--adapter-config</code>, or load a programmatic adapter with <code>--adapter-module</code>.</p>
-          </article>
-        </div>
+        <h2 class="section-title">Works with every runtime</h2>
+        <p class="intro-text">Five complete built-in adapters, two ways to bring your own. Every adapter maps the full artifact model into the runtime's native layout — no generic dumps. Need another harness? Bring your own adapter via a JSONC config (--adapter-config) or a programmatic module (--adapter-module).</p>
         <p class="adapter-note">Claude and Copilot MCP merge JSON. Codex MCP updates only <code>[mcp_servers]</code> in <code>config.toml</code>, preserving unrelated user config.</p>
         <div class="matrix-wrap" aria-label="Built-in adapter support matrix">
           <table class="matrix">
@@ -1044,6 +938,99 @@
           </table>
         </div>
         <p class="matrix-caption">Generated from the built-in adapter definitions. Fragments are resolved at compose time and inlined into the artifacts above — they apply to every runtime.</p>
+      </section>
+
+      <section id="how">
+        <h2 class="section-title">How it works</h2>
+        <div class="flow">
+          <div class="step">
+            <strong>Author package</strong>
+            <span>Skills, rules, instructions, and fragments live upstream — with declared dependencies on other packages.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>Workspace control plane</strong>
+            <span>.agentwheel stores graph locks, overlays, overrides, trust decisions, and local intent.</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <strong>Runtime output</strong>
+            <span>Install writes generated files into the runtimes you use — OpenClaw, Claude, Codex, Copilot, Hermes, and any custom runtime you add via your own adapter.</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <h2 class="section-title">Everything your agent stack needs to stay aligned.</h2>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">F</div>
+            <h3>Full artifact model</h3>
+            <p>Install every common agent asset type without collapsing them into one generic file.</p>
+            <div class="pill-list">
+              <span class="pill">skills</span><span class="pill">rules</span><span class="pill">instructions</span><span class="pill">fragments</span><span class="pill">commands</span><span class="pill">subagents</span><span class="pill">MCP</span><span class="pill">hooks</span><span class="pill">settings</span><span class="pill">plugins</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">S</div>
+            <h3>Drift-aware, transactional install</h3>
+            <p>Plan first, then apply atomically. Hash manifests track managed output, detect drift, journal every apply for recovery, and keep updates idempotent.</p>
+          </article>
+          <article class="card">
+            <div class="icon">A</div>
+            <h3>Pluggable adapters</h3>
+            <p>Use complete built-ins for OpenClaw, Claude Code, Codex CLI, Hermes, and Copilot, private JSONC adapters, or explicit local adapter code.</p>
+            <div class="pill-list">
+              <span class="pill">Claude skills</span><span class="pill">Codex MCP</span><span class="pill">commands</span><span class="pill">agents</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">D</div>
+            <h3>Source drivers</h3>
+            <p>Consume local paths, git packages, SkillKit sources, and Vercel-style skills without making the registry mandatory.</p>
+          </article>
+          <article class="card">
+            <div class="icon">T</div>
+            <h3>Selective installs</h3>
+            <p>Install the exact artifacts you want with <code>--select</code> or <code>--skill</code>, while package-declared required artifacts stay protected.</p>
+          </article>
+          <article class="card">
+            <div class="icon">P</div>
+            <h3>Runtime targeting &amp; fleet</h3>
+            <p>Run inside a runtime folder with no target flag, or install into a named fleet — local and SSH — with <code>--agent</code>, <code>--all</code>, and profiles.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="openpack">
+        <h2 class="section-title">Built on OpenPack — packages that depend on packages.</h2>
+        <p class="intro-text">OpenPack is the vendor-neutral package format behind agentwheel: one manifest for skills, rules, instructions, and shared fragments — with dependencies, composition, and runtime targeting. Any tool can implement the <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">spec</a>; agentwheel is the reference implementation.</p>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">G</div>
+            <h3>Dependency graph, locked</h3>
+            <p>Packages require other packages. agentwheel resolves the full graph recursively, dedupes npm-style where versions are satisfiable, and writes a deterministic graph lock — every machine installs the same thing.</p>
+            <div class="pill-list">
+              <span class="pill">requires</span><span class="pill">semver</span><span class="pill">graph lock</span><span class="pill">deps tree · why</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">∞</div>
+            <h3>Fragment composition</h3>
+            <p>Keep one canonical copy of shared guidance and transclude it at sync time with <code>&lt;!-- openpack:include --&gt;</code> markers — within a package or across dependencies, with provenance and drift detection on the result.</p>
+            <div class="pill-list">
+              <span class="pill">fragments</span><span class="pill">include markers</span><span class="pill">asset-includes</span>
+            </div>
+          </article>
+          <article class="card">
+            <div class="icon">⛨</div>
+            <h3>Trust &amp; offline</h3>
+            <p>New transitive sources never install silently — approve them once, pin a workspace trust policy, or deny artifact types outright. <code>--frozen-lock</code> and <code>--offline</code> give reproducible, zero-network installs.</p>
+            <div class="pill-list">
+              <span class="pill">trust policy</span><span class="pill">--offline</span><span class="pill">--frozen-lock</span>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section id="packages">
@@ -1135,70 +1122,50 @@
         </div>
       </section>
 
-      <section id="get-started">
-        <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Start with one package, or keep explicit control over add, plan, and install. In normal use you do not need <code>--target-root</code>.</p>
-
-        <div class="code" aria-label="Install a package with npx">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>Primary path</span>
-          </div>
-          <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have
-<span class="muted"># resolved, locked &amp; installed into your runtime — pick it with --adapter claude|codex|copilot|hermes|openclaw</span></code></pre>
+      <section id="docs">
+        <h2 class="section-title">Docs</h2>
+        <p class="intro-text">The full documentation lives in the GitHub repo for now. Start with the README, then use the design and lifecycle docs for package formats, update behavior, overlays, registry, and adapter details.</p>
+        <div class="docs-grid">
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
+            <strong>README</strong>
+            <span>Quick start, concepts, roadmap, and supported commands.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">
+            <strong>OpenPack spec</strong>
+            <span>The vendor-neutral package format: manifest, selectors, composition, conformance levels.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/dependency-composition.md">
+            <strong>Dependency design</strong>
+            <span>Graph resolution, locks, conflict satisfaction, trust, and transactional apply.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/DESIGN.md">
+            <strong>DESIGN.md</strong>
+            <span>Architecture, module layout, adapters, staging, install, and source drivers.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/LIFECYCLE.md">
+            <strong>LIFECYCLE.md</strong>
+            <span>Publish, install, update, overlays, overrides, eject, and registry model.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/fleet-config.md">
+            <strong>Fleet config</strong>
+            <span>Named local and SSH agents, profiles, and remote drift checks.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel">
+            <strong>GitHub repo</strong>
+            <span>Source, issues, releases, npm package metadata, and examples.</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel-registry">
+            <strong>Package registry</strong>
+            <span>Short-name index for public agentwheel packages.</span>
+          </a>
         </div>
-
-        <div class="code" aria-label="Full control">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>Full control</span>
-          </div>
-          <pre><code><span class="prompt">$</span> npx agentwheel init
-<span class="prompt">$</span> npx agentwheel add github:your-org/agent-pack --adapter openclaw
-<span class="prompt">$</span> npx agentwheel plan
-<span class="prompt">$</span> npx agentwheel install</code></pre>
-        </div>
-
-        <div class="code" aria-label="Dependencies, trust, and offline">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>dependencies &amp; trust</span>
-          </div>
-          <pre><code><span class="prompt">$</span> agentwheel install --trust "github:your-org/*"  <span class="muted"># pre-approve transitive sources</span>
-<span class="prompt">$</span> agentwheel deps tree                          <span class="muted"># inspect the resolved graph</span>
-<span class="prompt">$</span> agentwheel deps why skills/triage             <span class="muted"># why is this installed, and from where?</span>
-<span class="prompt">$</span> agentwheel install --offline                  <span class="muted"># zero network, straight from the lock</span></code></pre>
-        </div>
-
-        <div class="code" aria-label="Fleet targeting">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>fleet mode</span>
-          </div>
-          <pre><code>{
-  "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "/path/to/openclaw-home", "transport": "local" },
-    "remote-codex": {
-      "adapter": "codex",
-      "root": "/home/agent/project",
-      "transport": "ssh",
-      "host": "agent-host.example",
-      "user": "agent"
-    }
-  }
-}
-
-<span class="prompt">$</span> agentwheel install --agent lab-openclaw
-<span class="prompt">$</span> agentwheel install --all
-<span class="prompt">$</span> agentwheel install --profile daily --dry-run
-<span class="muted"># target order: --target-root &gt; --agent &gt; auto-detect cwd &gt; cwd</span></code></pre>
-        </div>
-
-        <p class="inline-note">Global fleet config lives at <code>~/.agentwheel/config.json</code>; project config lives at <code>.agentwheel/config.json</code> and overrides it. Custom or private runtime? Skip the registry entirely and point at a local adapter:
-        <code>agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc</code>. Contributor install from source:
-        <code>git clone ... &amp;&amp; pnpm install &amp;&amp; pnpm build</code>. Full docs live in the
-        <a href="https://github.com/NestDevLab/agentwheel#readme">README</a>.</p>
       </section>
+
+
+
+
+
+
     </main>
 
     <footer>

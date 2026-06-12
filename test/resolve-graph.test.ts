@@ -277,6 +277,66 @@ describe("dependency graph resolver", () => {
     expect(fresh.nodes[0]?.sourceHash).not.toBe(lockedNode.sourceHash);
   });
 
+  it("falls back to fresh resolve when a soft locked root source changes", async () => {
+    const workspace = await tempRoot();
+    const oldRoot = join(workspace, "old-root");
+    const newRoot = join(workspace, "new-root");
+    await writeText(join(oldRoot, "rules", "root.md"), "# Old Root\n");
+    await writeOpenPack(oldRoot, {
+      name: "acme/root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeText(join(newRoot, "rules", "root.md"), "# New Root\n");
+    await writeOpenPack(newRoot, {
+      name: "acme/root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: oldRoot }], { workspaceRoot: workspace });
+    const lock = createGraphLock(first);
+    const oldNode = lock.canonical.nodes[0]!;
+    await rm(oldRoot, { recursive: true, force: true });
+
+    const fresh = await resolveDependencyGraph([{ rootId: "root", source: newRoot }], {
+      workspaceRoot: workspace,
+      previousLock: lock,
+      lockedResolution: true,
+    });
+    const rewrittenLock = createGraphLock(fresh);
+
+    expect(fresh.nodes).toHaveLength(1);
+    expect(fresh.nodes[0]?.normalizedSource).toBe(`local:${newRoot}`);
+    expect(fresh.nodes[0]?.sourceHash).not.toBe(oldNode.sourceHash);
+    expect(rewrittenLock.canonical.nodes.some((node) => node.normalizedSource === oldNode.normalizedSource)).toBe(false);
+  });
+
+  it("keeps frozen lock behavior when a locked root source changes", async () => {
+    const workspace = await tempRoot();
+    const oldRoot = join(workspace, "old-root");
+    const newRoot = join(workspace, "new-root");
+    await writeText(join(oldRoot, "rules", "root.md"), "# Old Root\n");
+    await writeOpenPack(oldRoot, {
+      name: "acme/root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeText(join(newRoot, "rules", "root.md"), "# New Root\n");
+    await writeOpenPack(newRoot, {
+      name: "acme/root",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: oldRoot }], { workspaceRoot: workspace });
+    const lock = createGraphLock(first);
+    await rm(oldRoot, { recursive: true, force: true });
+
+    await expect(resolveDependencyGraph([{ rootId: "root", source: newRoot }], {
+      workspaceRoot: workspace,
+      previousLock: lock,
+      lockedResolution: true,
+      frozenLock: true,
+    })).rejects.toThrow(/Frozen lock cache missing or stale/);
+  });
+
   it("dedupes the same dependency required by two roots", async () => {
     const workspace = await tempRoot();
     const shared = join(workspace, "shared");

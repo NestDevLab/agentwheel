@@ -29,6 +29,7 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo-skill"), { recursive: true });
   await mkdir(join(root, "commands"), { recursive: true });
+  await mkdir(join(root, "subagents", "reviewer"), { recursive: true });
   await mkdir(join(root, "mcp"), { recursive: true });
   await mkdir(join(root, "hooks"), { recursive: true });
   await mkdir(join(root, "plugins", "demo-plugin"), { recursive: true });
@@ -41,6 +42,7 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
       { type: "rules", path: "rules" },
       { type: "skills", path: "skills" },
       { type: "commands", path: "commands" },
+      { type: "subagents", path: "subagents" },
       { type: "mcp", path: "mcp" },
       { type: "hooks", path: "hooks" },
       { type: "plugins", path: "plugins" },
@@ -50,13 +52,14 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   await writeFile(join(root, "rules", "core.md"), options.rule ?? "# Wave 2 rule\n");
   await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n");
   await writeFile(join(root, "commands", "review.md"), "# Review command\n");
+  await writeFile(join(root, "subagents", "reviewer", "AGENTS.md"), "# Reviewer\n");
   await writeFile(join(root, "mcp", "server.json"), JSON.stringify({ mcpServers: { demo: { command: "demo" } } }, null, 2));
   await writeFile(join(root, "hooks", "pre-sync.json"), JSON.stringify({ event: "pre-sync", command: "echo ok" }, null, 2));
   await writeFile(join(root, "plugins", "demo-plugin", "plugin.json"), JSON.stringify({ name: "demo-plugin" }, null, 2));
 }
 
 describe("v0.2 wave 2", () => {
-  it("installs Hermes file-drop artifacts including commands, mcp, and hooks", async () => {
+  it("installs Hermes file-drop artifacts including subagents while leaving plugins unsupported", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
@@ -68,12 +71,14 @@ describe("v0.2 wave 2", () => {
     await expect(stat(join(target, ".hermes", "AGENTS.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".hermes", "skills", "demo-skill"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".hermes", "commands", "review.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".hermes", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".hermes", "mcp", "server.json"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".hermes", "hooks", "pre-sync.json"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".hermes", "plugins", "demo-plugin"))).rejects.toThrow();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("installs Copilot instructions, rules, and prompts while leaving raw skills disabled", async () => {
+  it("installs Copilot instructions, rules, prompts, and skills", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
@@ -86,15 +91,16 @@ describe("v0.2 wave 2", () => {
       "commands:review.md",
       "instructions:AGENTS.md",
       "rules:core.md",
+      "skills:demo-skill",
     ]);
     await expect(stat(join(target, ".github", "copilot-instructions.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "instructions", "core.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "prompts", "review.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".github", "skills", "demo-skill"))).rejects.toThrow();
+    await expect(stat(join(target, ".github", "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("plans OpenClaw plugin installs without executing them by default", async () => {
+  it("installs OpenClaw subagents and plans plugin installs without executing them by default", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
@@ -110,6 +116,7 @@ describe("v0.2 wave 2", () => {
     const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");
     expect(entry?.semanticCommand?.slice(0, 4)).toEqual(["openclaw", "plugins", "install", "--link"]);
     expect(entry?.executed).toBe(false);
+    await expect(stat(join(target, ".openclaw", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".openclaw", "plugins", "demo-plugin"))).rejects.toThrow();
     await rm(bundle.root, { recursive: true, force: true });
   });

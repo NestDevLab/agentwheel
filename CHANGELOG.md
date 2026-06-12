@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Adapter parity: subagents for OpenClaw and Hermes, skills for GitHub Copilot (.github/skills).
+
 ## 0.9.0
 
 - Breaking: public reconcile command is now `agentwheel install`.

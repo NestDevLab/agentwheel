@@ -785,12 +785,8 @@
           <span class="light"></span><span class="light"></span><span class="light"></span>
           <span>agentwheel install</span>
         </div>
-        <pre><code><span class="prompt">$</span> npm i -g agentwheel
-<span class="prompt">$</span> agentwheel add github:NestDevLab/core-agent-pack --adapter openclaw
-<span class="prompt">$</span> cd ~/.openclaw
-<span class="prompt">$</span> agentwheel plan
-<span class="prompt">$</span> agentwheel install
-<span class="muted"># dependencies resolved &amp; locked · managed files stay managed · overlays stay yours</span></code></pre>
+        <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have
+<span class="muted"># resolved, locked &amp; installed into your runtime — pick it with --adapter claude|codex|copilot|hermes|openclaw</span></code></pre>
       </div>
 
       <section id="openpack">
@@ -932,7 +928,7 @@
           <article class="card">
             <div class="icon">O</div>
             <h3>OpenClaw</h3>
-            <p><code>.openclaw/AGENTS.md</code>, <code>.openclaw/skills</code>, <code>.openclaw/rules</code>, <code>.openclaw/commands</code>, MCP/hooks/settings, and semantic plugin planning.</p>
+            <p><code>.openclaw/AGENTS.md</code>, <code>.openclaw/skills</code>, <code>.openclaw/rules</code>, <code>.openclaw/commands</code>, <code>.openclaw/agents</code>, MCP/hooks/settings, and semantic plugin planning.</p>
           </article>
           <article class="card">
             <div class="icon">C</div>
@@ -947,12 +943,12 @@
           <article class="card">
             <div class="icon">H</div>
             <h3>Hermes</h3>
-            <p><code>.hermes/AGENTS.md</code>, <code>.hermes/skills</code>, <code>.hermes/rules</code>, <code>.hermes/commands</code>, MCP/hooks/settings.</p>
+            <p><code>.hermes/AGENTS.md</code>, <code>.hermes/skills</code>, <code>.hermes/rules</code>, <code>.hermes/commands</code>, <code>.hermes/agents</code>, and MCP/hooks/settings.</p>
           </article>
           <article class="card">
             <div class="icon">P</div>
             <h3>GitHub Copilot</h3>
-            <p><code>.github/copilot-instructions.md</code>, <code>.github/instructions</code>, and <code>.github/prompts</code>.</p>
+            <p><code>.github/copilot-instructions.md</code>, <code>.github/instructions</code>, <code>.github/prompts</code>, and <code>.github/skills</code>.</p>
           </article>
           <article class="card dashed">
             <div class="icon">+</div>
@@ -985,12 +981,12 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>Claude Code</th>
@@ -1003,7 +999,7 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>Codex CLI</th>
@@ -1016,7 +1012,7 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>Hermes</th>
@@ -1024,30 +1020,30 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>GitHub Copilot</th>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dot"></span></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p class="matrix-caption">Generated from the built-in adapter definitions.</p>
+        <p class="matrix-caption">Generated from the built-in adapter definitions. Fragments are resolved at compose time and inlined into the artifacts above — they apply to every runtime.</p>
       </section>
 
       <section id="packages">
@@ -1141,37 +1137,26 @@
 
       <section id="get-started">
         <h2 class="section-title">Get started</h2>
-        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Three steps: get it, point it at a package, preview the plan, then install. In normal use you do not need <code>--target-root</code>.</p>
+        <p class="intro-text">agentwheel is early (v0.9) and installs from npm. Start with one package, or keep explicit control over add, plan, and install. In normal use you do not need <code>--target-root</code>.</p>
 
-        <div class="code" aria-label="Install agentwheel">
+        <div class="code" aria-label="Install a package with npx">
           <div class="codebar">
             <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>1 · install</span>
+            <span>Primary path</span>
           </div>
-          <pre><code><span class="prompt">$</span> npm i -g agentwheel
-<span class="prompt">$</span> agentwheel --help
-<span class="muted"># pnpm user? `pnpm add -g agentwheel` works too</span>
-<span class="muted"># update checks are cached daily; disable with --no-update-check</span></code></pre>
+          <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have
+<span class="muted"># resolved, locked &amp; installed into your runtime — pick it with --adapter claude|codex|copilot|hermes|openclaw</span></code></pre>
         </div>
 
-        <div class="code" aria-label="Initialize and add a package">
+        <div class="code" aria-label="Full control">
           <div class="codebar">
             <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>2 · add a source</span>
+            <span>Full control</span>
           </div>
-          <pre><code><span class="prompt">$</span> agentwheel init                              <span class="muted"># create the .agentwheel workspace</span>
-<span class="prompt">$</span> agentwheel add github:your-org/agent-pack --adapter openclaw
-<span class="prompt">$</span> agentwheel add ./my-pack --adapter hermes       <span class="muted"># local source works too</span></code></pre>
-        </div>
-
-        <div class="code" aria-label="Preview then apply">
-          <div class="codebar">
-            <span class="light"></span><span class="light"></span><span class="light"></span>
-            <span>3 · preview, then install</span>
-          </div>
-          <pre><code><span class="prompt">$</span> cd ~/.openclaw
-<span class="prompt">$</span> agentwheel plan              <span class="muted"># auto-detects the runtime target</span>
-<span class="prompt">$</span> agentwheel install           <span class="muted"># writes into ~/.openclaw without nesting</span></code></pre>
+          <pre><code><span class="prompt">$</span> npx agentwheel init
+<span class="prompt">$</span> npx agentwheel add github:your-org/agent-pack --adapter openclaw
+<span class="prompt">$</span> npx agentwheel plan
+<span class="prompt">$</span> npx agentwheel install</code></pre>
         </div>
 
         <div class="code" aria-label="Dependencies, trust, and offline">

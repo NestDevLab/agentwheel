@@ -8,6 +8,7 @@ export const openClawAdapter: AdapterConfig = {
     rules: { enabled: true, dest: ".openclaw/rules" },
     skills: { enabled: true, dest: ".openclaw/skills" },
     commands: { enabled: true, dest: ".openclaw/commands" },
+    subagents: { enabled: true, dest: ".openclaw/agents" },
     mcp: { enabled: true, dest: ".openclaw/mcp", merge: "json-deep" },
     hooks: { enabled: true, dest: ".openclaw/hooks", merge: "json-deep" },
     settings: { enabled: true, dest: ".openclaw/settings.json", merge: "json-deep" },

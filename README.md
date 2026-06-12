@@ -315,11 +315,11 @@ Built-in runtime targets:
 
 | Runtime | Main targets |
 |---|---|
-| **OpenClaw** | `.openclaw/AGENTS.md`, `.openclaw/skills`, `.openclaw/rules`, `.openclaw/commands`, MCP/hooks/settings, semantic plugin planning |
+| **OpenClaw** | `.openclaw/AGENTS.md`, `.openclaw/skills`, `.openclaw/rules`, `.openclaw/commands`, `.openclaw/agents`, MCP/hooks/settings, semantic plugin planning |
 | **Claude Code** | `.claude/CLAUDE.md`, `.claude/skills`, `.claude/commands`, `.claude/agents`, `.claude/rules`, `.claude/.mcp.json`, `.claude/settings.json` |
 | **Codex CLI** | `.codex/AGENTS.md`, `.codex/skills`, `.codex/commands`, `.codex/agents`, `.codex/rules`, `.codex/config.toml`, `.codex/hooks.json` |
-| **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, MCP/hooks/settings |
-| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts` |
+| **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, `.hermes/agents`, MCP/hooks/settings |
+| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts`, `.github/skills` |
 
 ## Docs
 

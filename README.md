@@ -319,7 +319,7 @@ Built-in runtime targets:
 | **Claude Code** | `.claude/CLAUDE.md`, `.claude/skills`, `.claude/commands`, `.claude/agents`, `.claude/rules`, `.claude/.mcp.json`, `.claude/settings.json` |
 | **Codex CLI** | `.codex/AGENTS.md`, `.codex/skills`, `.codex/commands`, `.codex/agents`, `.codex/rules`, `.codex/config.toml`, `.codex/hooks.json` |
 | **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, `.hermes/agents`, MCP/hooks/settings |
-| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts`, `.github/skills` |
+| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts`, `.github/skills`, `.github/agents`, `.vscode/mcp.json` |
 
 ## Docs
 

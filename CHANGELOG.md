@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Adapter parity: subagents for OpenClaw and Hermes, skills for GitHub Copilot (.github/skills).
+- GitHub Copilot adapter supports custom agents in `.github/agents` and workspace MCP config in `.vscode/mcp.json`.
 
 ## 0.9.0
 

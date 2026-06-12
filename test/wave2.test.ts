@@ -52,6 +52,7 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   await writeFile(join(root, "rules", "core.md"), options.rule ?? "# Wave 2 rule\n");
   await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n");
   await writeFile(join(root, "commands", "review.md"), "# Review command\n");
+  await writeFile(join(root, "subagents", "code-reviewer.md"), "# Code reviewer\n");
   await writeFile(join(root, "subagents", "reviewer", "AGENTS.md"), "# Reviewer\n");
   await writeFile(join(root, "mcp", "server.json"), JSON.stringify({ mcpServers: { demo: { command: "demo" } } }, null, 2));
   await writeFile(join(root, "hooks", "pre-sync.json"), JSON.stringify({ event: "pre-sync", command: "echo ok" }, null, 2));
@@ -78,25 +79,45 @@ describe("v0.2 wave 2", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("installs Copilot instructions, rules, prompts, and skills", async () => {
+  it("installs Copilot instructions, rules, prompts, skills, agents, and merges workspace MCP", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
+    await mkdir(join(target, ".vscode"), { recursive: true });
+    await writeFile(join(target, ".vscode", "mcp.json"), JSON.stringify({
+      mcpServers: { user: { command: "user" } },
+      keep: true,
+    }, null, 2));
 
     const bundle = await stageSource(new LocalSourceDriver(), source);
     const plan = await createInstallPlan(bundle, copilotAdapter, target);
     await applyInstallPlan(plan, bundle.sourceLock);
 
-    expect(plan.operations.map((operation) => `${operation.artifactType}:${operation.artifactName}`).sort()).toEqual([
+    const planned = plan.operations.map((operation) => `${operation.artifactType}:${operation.artifactName}`).sort();
+    expect(planned).toEqual(expect.arrayContaining([
       "commands:review.md",
       "instructions:AGENTS.md",
+      "mcp:server.json",
       "rules:core.md",
       "skills:demo-skill",
-    ]);
+      "subagents:code-reviewer.md",
+      "subagents:reviewer",
+    ]));
+    expect(planned.some((operation) => operation.startsWith("hooks:"))).toBe(false);
+    expect(planned.some((operation) => operation.startsWith("settings:"))).toBe(false);
+    expect(planned.some((operation) => operation.startsWith("plugins:"))).toBe(false);
     await expect(stat(join(target, ".github", "copilot-instructions.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "instructions", "core.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "prompts", "review.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "agents", "code-reviewer.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
+    const mcp = JSON.parse(await readFile(join(target, ".vscode", "mcp.json"), "utf8"));
+    expect(mcp.keep).toBe(true);
+    expect(mcp.mcpServers.user.command).toBe("user");
+    expect(mcp.mcpServers.demo.command).toBe("demo");
+    await expect(stat(join(target, ".github", "hooks", "pre-sync.json"))).rejects.toThrow();
+    await expect(stat(join(target, ".github", "plugins", "demo-plugin"))).rejects.toThrow();
     await rm(bundle.root, { recursive: true, force: true });
   });
 

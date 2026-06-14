@@ -1290,7 +1290,7 @@ function withFleetExample(config: Awaited<ReturnType<typeof readWorkspaceConfig>
       },
       "remote-codex": config.agents["remote-codex"] ?? {
         adapter: "codex",
-        root: "/home/administrator/agent-runtime",
+        root: "/workspace/agent-runtime",
         transport: "ssh" as const,
         host: "remote-host.example",
         user: "administrator",

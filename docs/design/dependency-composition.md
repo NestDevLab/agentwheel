@@ -398,11 +398,11 @@ The same multi-agent setup that produced this plan delivers the implementation. 
 
 | Role | Who | Responsibilities |
 |---|---|---|
-| Product owner | **Joseph** | Scope and naming decisions, approves pushes/PRs/merges/releases. Decisions requested as small option sets, never mid-task blocking. |
+| Product owner | **Maintainer** | Scope and naming decisions, approves pushes/PRs/merges/releases. Decisions requested as small option sets, never mid-task blocking. |
 | Orchestrator / design authority | **Claude** (interactive session) | Owns this plan; decomposes phases into briefs; verifies every agent claim against `src/`; merges design amendments; reviews PRs. **Never commits** — prepares staged files/briefs only. |
 | Architect-reviewer | **Codex @ xhigh** (dedicated tmux session) | Adversarial design passes (CONFIRM/AMEND/REJECT) before each phase starts and at the Phase B gate. |
 | Implementer(s) | **Codex @ xhigh** (one tmux session per workstream) | Writes the code in an observable/resumable mesh session; owns branch, commits, and PR for its workstream. |
-| Recon & review subagents | **Claude subagents** (Explore / code-review / verify) | Codebase recon for briefs; post-implementation review (`/code-review`, high effort; `ultra` available for the Phase B gate at Joseph's trigger); test-run verification. |
+| Recon & review subagents | **Review subagents** (Explore / code-review / verify) | Codebase recon for briefs; post-implementation review (`/code-review`, high effort; `ultra` available for explicit review gates); test-run verification. |
 
 Working protocol (lessons already learned, kept as rules):
 
@@ -410,7 +410,7 @@ Working protocol (lessons already learned, kept as rules):
   **verify submission** (status flips to `working`; nudge `C-m` if the composer still holds the
   paste). Codex sessions run on the mesh tmux socket and are resumable.
 - One workstream = one git worktree + branch `feat/openpack-<phase>-<topic>`. Codex commits with
-  no attribution footers; PRs reviewed by Claude, merged only on Joseph's approval.
+  no attribution footers; PRs are reviewed by a separate reviewer and merged only after maintainer approval.
 - Cross-vendor review is deliberate: Codex implements → Claude (+subagents) reviews, and design
   reviews run in the opposite direction.
 
@@ -471,13 +471,13 @@ the missing orchestration layer plus a transactional installer — not a rewrite
   per-subentry merge ownership, two-result drift/update diagnostics, lock canonicalization +
   target-fingerprint keying, Phase B enlarged (perf + minimal trust/frozen-lock pulled in).
   Heaviest claims spot-verified against `src/` before merging.
-- 2026-06-10 — owner-directed amendments (Joseph): per-runtime targeting added (`runtimes` field,
+- 2026-06-10 — owner-directed amendments: per-runtime targeting added (`runtimes` field,
   author-side compatibility, decision 14); **one-shot v1→v2 migration replaces the legacy-adoption
   state machine** (no `legacyOwner`, no `prune-legacy` — unmatched entries dropped from management,
   left on disk, reported once; deliberate divergence from xhigh finding 5's mechanism while keeping
   its safety goal of never silently deleting); composition scope clarified — only
   fragments/includes inline, required skills always install as separate artifacts.
-- 2026-06-10 — owner decision (Joseph): the package-facing standard goes **vendor-neutral as
+- 2026-06-10 — owner decision: the package-facing standard goes **vendor-neutral as
   "OpenPack"** — manifest `openpack.json(c)`, markers `openpack:include`, spec doc with
   conformance levels; `agentwheel.json(c)` becomes a deprecated discovery alias with
   `package migrate` for in-place upgrades. Properties audited: already neutral, no renames.

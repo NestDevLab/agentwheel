@@ -97,8 +97,8 @@ once the resolver stabilizes.
       "mode": "tracking",
       "select": ["rules/safe-actions.md", "rules/no-secret-leakage.md"]
     },
-    "francesco/toolkit": {
-      "source": "github:FrancescoBorzi/agent-toolkit#main",
+    "example/toolkit": {
+      "source": "github:example-org/agent-toolkit#main",
       "version": ">=0.1.0 <1.0.0",
       "select": ["skills/run-nx-checks"]
     }
@@ -839,7 +839,7 @@ Recommended defaults:
 ```jsonc
 {
   "trust": {
-    "allow": ["github:NestDevLab/*", "github:FrancescoBorzi/agent-toolkit"],
+    "allow": ["github:NestDevLab/*", "github:example-org/agent-toolkit"],
     "denyArtifactTypes": ["hooks", "mcp"],
     "requireReviewForTransitive": true
   }

@@ -1,6 +1,6 @@
 # CLI Verb Redesign — Spec for v0.9.0
 
-**Status:** approved by Joseph (2026-06-11). This document is the single source of truth for the redesign; it supersedes the conversational decisions made in earlier sessions. The decisions below were validated against the actual code at HEAD (file/line references included).
+**Status:** approved by the maintainer on 2026-06-11. This document is the single source of truth for the redesign; it supersedes the conversational decisions made in earlier sessions. The decisions below were validated against the actual code at HEAD (file/line references included).
 
 ## Goal
 
@@ -31,7 +31,7 @@ Today the graph lock is an *output* of apply and is only read as a resolution in
 - `update [name]`: bypasses the lock for tracking sources, re-resolves, applies, writes the new lock.
 - `--frozen-lock` keeps its CI meaning: hard-fail if resolution would differ from the lock (instead of silently resolving fresh for missing entries).
 
-**If this resolver change turns out to be substantially more invasive than expected, STOP and report back before compromising the semantics** — do not ship an `install` that silently chases latest, and do not ship a lock-bumping `update` that the next install re-resolves away. Renaming without the semantic split is not an acceptable fallback unless Joseph explicitly approves it.
+**If this resolver change turns out to be substantially more invasive than expected, STOP and report back before compromising the semantics** — do not ship an `install` that silently chases latest, and do not ship a lock-bumping `update` that the next install re-resolves away. Renaming without the semantic split is not an acceptable fallback unless the maintainer explicitly approves it.
 
 Related cleanup: `update` is currently byte-identical to bare `sync` — `buildGraphPlansForTarget` ignores its behavior argument (param named `_behavior`, `src/cli/index.ts:607-608`), and the pinned-skip logic (`shouldUpdatePackage`) lives only in `runConfiguredPackages`, which has **zero callers**. Delete the dead path; implement pinned-skip in the live graph path.
 
@@ -95,5 +95,5 @@ The release is **not done** until no stale invocation of the deprecated sync com
 ## 10. Process constraints
 
 - Work on a feature branch following the repo's conventions.
-- **Do not commit, push, publish, or open a PR until Joseph explicitly approves.** Implement in the working tree, then report: summary of changes, test results, and the grep proof from §7 that no stale invocation of the deprecated sync command remains.
+- Do not commit, push, publish, or open a PR until the current task owner explicitly approves. Implement in the working tree, then report: summary of changes, test results, and the grep proof from §7 that no stale invocation of the deprecated command remains.
 - If §2's resolver change explodes in scope, stop and report options instead of shipping degraded semantics.

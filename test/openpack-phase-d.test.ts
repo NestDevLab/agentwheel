@@ -146,8 +146,8 @@ describe("OpenPack phase D", () => {
     await writeText(join(meta, "rules", "meta.md"), "# Meta\n");
     await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "upstream\n");
     await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "fork\n");
-    await writeOpenPack(upstream, { name: "FrancescoBorzi/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
-    await writeOpenPack(fork, { name: "FrancescoBorzi/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(upstream, { name: "example-upstream/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(fork, { name: "example-upstream/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
     await writeOpenPack(meta, {
       name: "nestdevlab/must-have-core",
       requires: {

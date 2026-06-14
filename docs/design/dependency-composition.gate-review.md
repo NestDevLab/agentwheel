@@ -101,7 +101,7 @@ BLOCK. Phase 0 and much of Phase A are present, and the main non-profile `instal
 9. Add package uninstall tests that run a subsequent sync and verify the removed root is not reinstalled.
 10. Add an interprocess git-cache race test or at least a filesystem-lock assertion around git cache mutation.
 
-Verification note: I ran `pnpm test`. The suite reported 100 passing tests and 2 failing registry tests because this sandbox cannot write `/home/administrator/.agentwheel/registry-cache.json`; the failures were `EROFS` from `src/utils/fs.ts:78` during registry cache writes.
+Verification note: I ran `pnpm test`. The suite reported 100 passing tests and 2 failing registry tests because this sandbox cannot write the user-level AgentWheel registry cache; the failures were `EROFS` from `src/utils/fs.ts:78` during registry cache writes.
 
 ## Re-review
 
@@ -157,7 +157,7 @@ Updated test gap coverage:
 | 9. package uninstall followed by sync does not reinstall | Not covered. |
 | 10. interprocess git-cache race / filesystem lock | Not covered. |
 
-Verification: `pnpm typecheck` passed. Targeted re-review tests passed: `pnpm exec vitest run test/install-v2-b2.test.ts test/openpack-b3-e2e.test.ts test/wave3.test.ts test/runtime-target.test.ts` (32 tests). Full `pnpm test` still fails only the two registry-cache tests with `EROFS` writing `/home/administrator/.agentwheel/registry-cache.json`; all other 107 tests passed in this sandbox.
+Verification: `pnpm typecheck` passed. Targeted re-review tests passed: `pnpm exec vitest run test/install-v2-b2.test.ts test/openpack-b3-e2e.test.ts test/wave3.test.ts test/runtime-target.test.ts` (32 tests). Full `pnpm test` still fails only the two registry-cache tests with `EROFS` writing the user-level AgentWheel registry cache; all other 107 tests passed in this sandbox.
 
 ## C-E focused pass
 

@@ -15,7 +15,7 @@ Local agents write to a local runtime root:
   "agents": {
     "local-codex": {
       "adapter": "codex",
-      "root": "/home/administrator/project",
+      "root": "/workspace/project",
       "transport": "local"
     }
   }
@@ -27,12 +27,12 @@ SSH agents write to a runtime root on a remote host:
 ```jsonc
 {
   "agents": {
-    "ct110-codex": {
+    "remote-codex": {
       "adapter": "codex",
-      "root": "/home/administrator/project",
+      "root": "/workspace/project",
       "transport": "ssh",
-      "host": "ct110.example",
-      "user": "administrator",
+      "host": "agent-host.example",
+      "user": "agent",
       "port": 22,
       "identityFile": "~/.ssh/id_ed25519"
     }
@@ -59,7 +59,7 @@ Profiles group runtimes:
     "daily": {
       "runtimes": [
         { "agent": "local-codex" },
-        { "agent": "ct110-codex" }
+        { "agent": "remote-codex" }
       ]
     }
   }
@@ -69,8 +69,8 @@ Profiles group runtimes:
 Run a single agent:
 
 ```bash
-agentwheel install --agent ct110-codex --dry-run
-agentwheel install --agent ct110-codex
+agentwheel install --agent remote-codex --dry-run
+agentwheel install --agent remote-codex
 ```
 
 Run all configured agents:
@@ -103,7 +103,7 @@ upstream artifacts it may replace under `overrides`.
     },
     {
       "name": "agent-toolkit-nestdev",
-      "source": "github:Yehonal/agent-toolkit#main",
+      "source": "github:example-org/agent-toolkit#main",
       "driver": "git",
       "adapter": "codex",
       "mode": "tracking",
@@ -112,8 +112,8 @@ upstream artifacts it may replace under `overrides`.
         "skills/self-improve"
       ],
       "overrides": [
-        "github:FrancescoBorzi/agent-toolkit::rules/self-improve-on-correction.md",
-        "github:FrancescoBorzi/agent-toolkit::skills/self-improve"
+        "github:example-upstream/agent-toolkit::rules/self-improve-on-correction.md",
+        "github:example-upstream/agent-toolkit::skills/self-improve"
       ]
     }
   ]

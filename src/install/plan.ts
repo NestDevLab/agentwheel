@@ -203,6 +203,16 @@ async function createPlanFromOperations(
     }
 
     if (currentHash !== existing.hash) {
+      if (currentHash === op.desiredHash) {
+        operations.push({
+          ...op,
+          action: "skip",
+          currentHash,
+          manifestHash: existing.hash,
+          reason: "runtime already matches updated source; adopting manifest hash",
+        });
+        continue;
+      }
       const composedFromDiff = changedComposedSelectors(op.composedFrom, existing.composedFrom);
       operations.push({
         ...op,

@@ -321,6 +321,28 @@ describe("workspace-scoped reconcile", () => {
     expect(operation?.workspaceOwner).toBe("workspace:new");
     expect(plan.operations.filter((item) => item.action === "keep")).toHaveLength(0);
   });
+
+  it("adopts managed files that already match the updated source hash", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const original = await writeArtifact(source, "rules/agent-tmux.md", "old\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([original], adapter, target));
+
+    const updated = await writeArtifact(source, "rules/agent-tmux.md", "new\n");
+    await writeFile(join(target, ".runtime", "rules", "agent-tmux.md"), "new\n", "utf8");
+
+    const plan = await createCombinedInstallPlan([updated], adapter, target, await readInstallManifest(target, adapter.name));
+    const operation = plan.operations.find((item) => item.relativeDestPath === ".runtime/rules/agent-tmux.md");
+    expect(operation?.action).toBe("skip");
+    expect(operation?.reason).toContain("adopting manifest hash");
+    expect(plan.hasBlockingChanges).toBe(false);
+
+    await applyCombinedInstallPlan(plan);
+    const manifest = await readInstallManifest(target, adapter.name);
+    const entry = manifest?.entries.find((item) => item.path === ".runtime/rules/agent-tmux.md");
+    expect(entry?.hash).toBe(updated.hash);
+    expect(entry?.sourceHash).toBe(updated.hash);
+  });
 });
 
 describe("one-shot v1 to v2 migration", () => {

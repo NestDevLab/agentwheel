@@ -230,6 +230,7 @@ program
   .option("--target-root <path>", "workspace root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plans without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
@@ -241,6 +242,36 @@ program
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
+    if (options.profile) {
+      if (name) {
+        throw new Error("update --profile updates the configured profile as a whole; scoped profile updates are not supported yet.");
+      }
+      const target = await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, agent: options.agent });
+      const results = await syncProfile({
+        workspaceRoot: target.workspaceRoot,
+        profile: options.profile,
+        select: selectedArtifactsFromOptions(options),
+        dryRun: options.dryRun,
+        executePlugins: options.executePlugins,
+        allowAdapterCode: options.allowAdapterCode,
+        noDeps: noDepsFromOptions(options),
+        lockedResolution: false,
+        frozenLock: options.frozenLock,
+        offline: options.offline,
+        yes: options.yes,
+        trustPatterns: options.trust ?? [],
+        readOnly: options.dryRun === true,
+        isTTY: process.stdin.isTTY === true,
+        warn: (message) => console.warn(message),
+      });
+      for (const result of results) {
+        console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        console.log(formatPlan(result.plan));
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
+      }
+      if (!options.dryRun) console.log("Updated.");
+      return;
+    }
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
       await runConfiguredGraphPackages(target, { ...options, scope: name }, { mode: "update" });

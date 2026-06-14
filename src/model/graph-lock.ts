@@ -28,6 +28,7 @@ export const graphLockRootSchema = z.object({
   mode: z.enum(["pinned", "tracking"]),
   selected: z.array(z.string().min(1)),
   aliases: z.record(z.string(), z.string().min(1)).optional(),
+  overrides: z.array(z.string().min(1)).optional(),
 });
 
 export const graphLockEdgeSchema = z.object({
@@ -82,6 +83,16 @@ export const graphLockNamespacingSchema = z.object({
   reason: z.enum(["alias", "transitive-collision"]),
 });
 
+export const graphLockOverrideSchema = z.object({
+  rootId: z.string().min(1),
+  selector: z.string().min(1),
+  graphNodeId: z.string().min(1),
+  overriddenGraphNodeId: z.string().min(1),
+  type: artifactTypeSchema,
+  name: z.string().min(1),
+  installName: z.string().min(1),
+});
+
 export const graphLockCanonicalSchema = z.object({
   targetFingerprint: z.string().min(1).optional(),
   roots: z.array(graphLockRootSchema),
@@ -90,6 +101,7 @@ export const graphLockCanonicalSchema = z.object({
   includeEdges: z.array(graphLockIncludeEdgeSchema).default([]),
   artifacts: z.array(graphLockArtifactSchema).default([]),
   namespacing: z.array(graphLockNamespacingSchema).default([]),
+  overrides: z.array(graphLockOverrideSchema).default([]),
   plainNameIncumbents: z.array(graphLockPlainNameIncumbentSchema).default([]),
 });
 
@@ -106,6 +118,7 @@ export type GraphLockIncludeEdge = z.infer<typeof graphLockIncludeEdgeSchema>;
 export type GraphLockArtifact = z.infer<typeof graphLockArtifactSchema>;
 export type GraphLockPlainNameIncumbent = z.infer<typeof graphLockPlainNameIncumbentSchema>;
 export type GraphLockNamespacing = z.infer<typeof graphLockNamespacingSchema>;
+export type GraphLockOverride = z.infer<typeof graphLockOverrideSchema>;
 export type GraphLockCanonical = z.infer<typeof graphLockCanonicalSchema>;
 export type GraphLock = z.infer<typeof graphLockSchema>;
 
@@ -135,7 +148,11 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
     canonical: {
       targetFingerprint: parsed.canonical.targetFingerprint,
       roots: [...parsed.canonical.roots]
-        .map((root) => ({ ...root, selected: sortedUnique(root.selected) }))
+        .map((root) => ({
+          ...root,
+          selected: sortedUnique(root.selected),
+          overrides: root.overrides ? sortedUnique(root.overrides) : undefined,
+        }))
         .sort((a, b) => `${a.rootId}:${a.graphNodeId}`.localeCompare(`${b.rootId}:${b.graphNodeId}`)),
       nodes: [...parsed.canonical.nodes]
         .map((node) => ({
@@ -155,6 +172,8 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
         .sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector)),
       namespacing: [...parsed.canonical.namespacing]
         .sort((a, b) => `${a.type}:${a.installName}:${a.graphNodeId}:${a.name}`.localeCompare(`${b.type}:${b.installName}:${b.graphNodeId}:${b.name}`)),
+      overrides: [...parsed.canonical.overrides]
+        .sort((a, b) => `${a.type}:${a.installName}:${a.graphNodeId}:${a.overriddenGraphNodeId}`.localeCompare(`${b.type}:${b.installName}:${b.graphNodeId}:${b.overriddenGraphNodeId}`)),
       plainNameIncumbents: [...parsed.canonical.plainNameIncumbents]
         .sort((a, b) => `${a.adapter}:${a.targetFingerprint}:${a.type}:${a.name}`.localeCompare(`${b.adapter}:${b.targetFingerprint}:${b.type}:${b.name}`)),
     },

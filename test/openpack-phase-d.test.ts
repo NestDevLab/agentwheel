@@ -136,6 +136,105 @@ describe("OpenPack phase D", () => {
       .rejects.toThrow(/Direct dependency artifact collision/);
   });
 
+  it("lets a workspace root override a colliding upstream artifact by source", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-d-source-override-target-");
+    const meta = join(workspace, "meta");
+    const upstream = join(workspace, "upstream");
+    const fork = join(workspace, "fork");
+
+    await writeText(join(meta, "rules", "meta.md"), "# Meta\n");
+    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "upstream\n");
+    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "fork\n");
+    await writeOpenPack(upstream, { name: "FrancescoBorzi/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(fork, { name: "FrancescoBorzi/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(meta, {
+      name: "nestdevlab/must-have-core",
+      requires: {
+        toolkit: { source: "../upstream", select: ["skills/self-improve"] },
+      },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [
+        { rootId: "meta", source: meta },
+        { rootId: "fork", source: fork, select: ["skills/self-improve"] },
+      ],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-d-source-override-missing",
+      yes: true,
+    })).rejects.toThrow(/Install name collision/);
+
+    const result = await createGraphSourcePlan({
+      roots: [
+        { rootId: "meta", source: meta },
+        {
+          rootId: "fork",
+          source: fork,
+          select: ["skills/self-improve"],
+          overrides: [`${upstream}::skills/self-improve`],
+        },
+      ],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-d-source-override",
+      yes: true,
+    });
+
+    const skills = result.bundle.artifacts.filter((artifact) => artifact.type === "skills" && artifact.name === "self-improve");
+    expect(skills).toHaveLength(1);
+    expect(await readFile(join(skills[0]!.stagedPath ?? "", "SKILL.md"), "utf8")).toBe("fork\n");
+    expect(result.bundle.graphLock.canonical.overrides).toMatchObject([{
+      rootId: "fork",
+      selector: `${upstream}::skills/self-improve`,
+      type: "skills",
+      name: "self-improve",
+    }]);
+    expect(result.bundle.graphLock.canonical.overrides[0]!.graphNodeId).toBe(skills[0]!.graphNodeId);
+  });
+
+  it("fails source overrides that do not identify exactly one losing artifact", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-d-bad-source-override-target-");
+    const meta = join(workspace, "meta");
+    const upstream = join(workspace, "upstream");
+    const fork = join(workspace, "fork");
+
+    await writeText(join(meta, "rules", "meta.md"), "# Meta\n");
+    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "upstream\n");
+    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "fork\n");
+    await writeOpenPack(upstream, { name: "phase-d/upstream", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(fork, { name: "phase-d/fork", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(meta, {
+      name: "phase-d/meta",
+      requires: {
+        toolkit: { source: "../upstream", select: ["skills/self-improve"] },
+      },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [
+        { rootId: "meta", source: meta },
+        {
+          rootId: "fork",
+          source: fork,
+          select: ["skills/self-improve"],
+          overrides: [`${join(workspace, "missing")}::skills/self-improve`],
+        },
+      ],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-d-bad-source-override",
+      yes: true,
+    })).rejects.toThrow(/did not match any rendered artifact/);
+  });
+
   it("lets workspace aliases override namespacing and fails alias collisions", async () => {
     const workspace = await tempRoot();
     const root = await transitiveDuplicateFixture(workspace);

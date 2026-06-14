@@ -34,9 +34,9 @@ agentwheel install
 No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
 live in your workspace, and runtimes stay generated output.
 
-> **Status: early (v0.9).** v0.9 switches the public CLI vocabulary to package-manager verbs:
-> `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for one release only
-> so old bootstrapped skills can self-update; use `install` in all new docs and scripts.
+> **Status: early (v0.11).** The public CLI vocabulary is package-manager style:
+> `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for old bootstrapped
+> skills; use `install` in all new docs and scripts.
 
 ## Supported runtimes & resources
 
@@ -272,6 +272,58 @@ still owned by another configured package.
 }
 ```
 
+### Source Overrides
+
+Use package-level `overrides` when a workspace intentionally wants one selected source to replace
+an artifact that arrives from another package, such as a forked skill replacing the same skill
+pulled in by a meta-package. Overrides are explicit; package array order never decides precedence.
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "name": "nestdev-must-have-core",
+      "source": "github:NestDevLab/agent-must-have#core",
+      "driver": "git",
+      "adapter": "codex",
+      "mode": "tracking"
+    },
+    {
+      "name": "agent-toolkit-nestdev",
+      "source": "github:Yehonal/agent-toolkit#main",
+      "driver": "git",
+      "adapter": "codex",
+      "mode": "tracking",
+      "select": [
+        "rules/self-improve-on-correction.md",
+        "skills/self-improve"
+      ],
+      "overrides": [
+        "github:FrancescoBorzi/agent-toolkit::rules/self-improve-on-correction.md",
+        "github:FrancescoBorzi/agent-toolkit::skills/self-improve"
+      ]
+    }
+  ]
+}
+```
+
+The `source::type/name` selector identifies the artifact to replace. `github:owner/repo` matches
+that repository at any ref; add `#main` or another ref to narrow it. The replacing package must
+select exactly one artifact with the same `type/name`, and the override must match exactly one
+losing artifact. Otherwise planning fails instead of hiding a collision.
+
+The same declaration can be created from the CLI:
+
+```bash
+agentwheel add github:Yehonal/agent-toolkit#main \
+  --skill self-improve \
+  --override 'github:FrancescoBorzi/agent-toolkit::skills/self-improve'
+```
+
+`agentwheel plan`, `agentwheel deps tree`, and `agentwheel deps why` print `OVERRIDE` lines for
+these decisions, and graph locks store them for review.
+
 Migrating an existing legacy package takes one command:
 
 ```bash
@@ -285,7 +337,9 @@ Drift detection blocks accidental edits to generated runtime files. Intentional 
 
 - **Layer** local instructions with `agentwheel remember`.
 - **Add** separate local artifacts under `.agentwheel/additions`.
-- **Override** an upstream item under `.agentwheel/overrides`.
+- **Override content** for an upstream item under `.agentwheel/overrides`.
+- **Override source precedence** with package `overrides` when a forked source should replace a
+  colliding artifact from another package.
 - **Eject** an item into `.agentwheel/ejected` when you want local ownership.
 
 ## Custom And Private Runtimes

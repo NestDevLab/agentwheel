@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
-import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing } from "../model/graph-lock.js";
+import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockOverride } from "../model/graph-lock.js";
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
@@ -129,13 +129,13 @@ export async function renderGraphForTarget(
     } satisfies ResolvedArtifact)));
   }
 
-  const { artifacts: namedArtifacts, namespacing } = assignInstallNames(graph, artifacts);
+  const { artifacts: namedArtifacts, namespacing, overrides } = assignInstallNames(graph, artifacts);
   const sortedArtifacts = namedArtifacts.sort((a, b) => a.logicalSelector.localeCompare(b.logicalSelector));
   return {
     root,
     nodes: graph.nodes,
     artifacts: sortedArtifacts,
-    graphLock: createGraphLock(graph, sortedArtifacts.map(lockArtifactFor), targetContext.targetFingerprint, [...includeEdges.values()], namespacing),
+    graphLock: createGraphLock(graph, sortedArtifacts.map(lockArtifactFor), targetContext.targetFingerprint, [...includeEdges.values()], namespacing, overrides),
   };
 }
 
@@ -191,7 +191,13 @@ interface WorkspaceAlias {
   reachable: Set<string>;
 }
 
-function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[] } {
+interface WorkspaceOverride {
+  rootId: string;
+  selector: string;
+  reachable: Set<string>;
+}
+
+function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[]; overrides: GraphLockOverride[] } {
   const aliases = workspaceAliases(graph);
   validateAliasScopes(graph, artifacts, aliases);
   const decisions = new Map<string, GraphLockNamespacing>();
@@ -202,8 +208,9 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     decisions.set(decisionKey(updated), namespaceDecision(updated, "alias"));
     return updated;
   });
+  const { artifacts: withOverrides, overrides } = applyWorkspaceOverrides(graph, withAliases);
 
-  const collisionGroups = [...groupBy(withAliases, (artifact) => `${artifact.type}\0${artifact.installName}`).values()]
+  const collisionGroups = [...groupBy(withOverrides, (artifact) => `${artifact.type}\0${artifact.installName}`).values()]
     .filter((group) => group.length > 1);
   const toRename = new Set<ResolvedArtifact>();
   for (const group of collisionGroups) {
@@ -216,12 +223,12 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
   }
 
   const used = new Map<string, ResolvedArtifact>();
-  for (const artifact of withAliases) {
+  for (const artifact of withOverrides) {
     if (toRename.has(artifact)) continue;
     used.set(`${artifact.type}\0${artifact.installName}`, artifact);
   }
 
-  const out = withAliases.filter((artifact) => !toRename.has(artifact));
+  const out = withOverrides.filter((artifact) => !toRename.has(artifact));
   for (const group of groupBy([...toRename], (artifact) => `${artifact.type}\0${artifact.name}`).values()) {
     const renamed = namespaceTransitiveGroup(group, used);
     for (const artifact of renamed) {
@@ -231,7 +238,62 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     }
   }
 
-  return { artifacts: out, namespacing: [...decisions.values()] };
+  const finalInstallNames = new Map(out.map((artifact) => [decisionKey(artifact), artifact.installName]));
+  const finalOverrides = overrides.map((override) => ({
+    ...override,
+    installName: finalInstallNames.get(`${override.graphNodeId}\0${override.type}\0${override.name}`) ?? override.installName,
+  }));
+  return { artifacts: out, namespacing: [...decisions.values()], overrides: finalOverrides };
+}
+
+function applyWorkspaceOverrides(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; overrides: GraphLockOverride[] } {
+  const directives = workspaceOverrides(graph);
+  if (directives.length === 0) return { artifacts, overrides: [] };
+
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  let remaining = [...artifacts];
+  const decisions: GraphLockOverride[] = [];
+
+  for (const directive of directives) {
+    const matched = remaining.filter((artifact) => overrideMatchesArtifact(directive.selector, artifact, nodeById.get(artifact.graphNodeId)));
+    const losers = matched.filter((artifact) => !directive.reachable.has(artifact.graphNodeId));
+    if (matched.length === 0) {
+      throw new Error(`Workspace override ${directive.selector} from ${directive.rootId} did not match any rendered artifact.`);
+    }
+    if (losers.length === 0) {
+      throw new Error(`Workspace override ${directive.selector} from ${directive.rootId} matched only artifacts inside the replacing root.`);
+    }
+    if (losers.length > 1) {
+      throw new Error(`Workspace override ${directive.selector} from ${directive.rootId} matched multiple artifacts: ${losers.map((artifact) => artifact.logicalSelector).sort().join(", ")}`);
+    }
+
+    const loser = losers[0]!;
+    const winners = remaining.filter((artifact) =>
+      artifact !== loser
+      && directive.reachable.has(artifact.graphNodeId)
+      && artifact.type === loser.type
+      && artifact.name === loser.name);
+    if (winners.length === 0) {
+      throw new Error(`Workspace override ${directive.selector} from ${directive.rootId} has no selected replacement for ${loser.type}/${loser.name}.`);
+    }
+    if (winners.length > 1) {
+      throw new Error(`Workspace override ${directive.selector} from ${directive.rootId} has multiple selected replacements for ${loser.type}/${loser.name}: ${winners.map((artifact) => artifact.logicalSelector).sort().join(", ")}`);
+    }
+
+    const winner = winners[0]!;
+    remaining = remaining.filter((artifact) => artifact !== loser);
+    decisions.push({
+      rootId: directive.rootId,
+      selector: directive.selector,
+      graphNodeId: winner.graphNodeId,
+      overriddenGraphNodeId: loser.graphNodeId,
+      type: winner.type,
+      name: winner.name,
+      installName: winner.installName,
+    });
+  }
+
+  return { artifacts: remaining, overrides: decisions };
 }
 
 function namespaceTransitiveGroup(group: ResolvedArtifact[], used: Map<string, ResolvedArtifact>): ResolvedArtifact[] {
@@ -274,6 +336,17 @@ function workspaceAliases(graph: ResolvedGraph): WorkspaceAlias[] {
   return aliases;
 }
 
+function workspaceOverrides(graph: ResolvedGraph): WorkspaceOverride[] {
+  const overrides: WorkspaceOverride[] = [];
+  for (const root of graph.roots) {
+    const reachable = reachableNodeIds(graph, root.graphNodeId);
+    for (const selector of root.overrides ?? []) {
+      overrides.push({ rootId: root.rootId, selector, reachable });
+    }
+  }
+  return overrides;
+}
+
 function validateAliasScopes(graph: ResolvedGraph, artifacts: ResolvedArtifact[], aliases: WorkspaceAlias[]): void {
   for (const alias of aliases) {
     const matching = artifacts.filter((artifact) => {
@@ -293,6 +366,41 @@ function aliasMatchesArtifact(selector: string, artifact: ResolvedArtifact, node
   return selector === `${artifact.graphNodeId}:${artifactSelector}`
     || (node !== undefined && selector === `${node.name}@${node.version}:${artifactSelector}`)
     || (node !== undefined && selector === `${node.name}:${artifactSelector}`);
+}
+
+function overrideMatchesArtifact(selector: string, artifact: ResolvedArtifact, node: ResolvedGraph["nodes"][number] | undefined): boolean {
+  const sourceSeparator = selector.lastIndexOf("::");
+  if (sourceSeparator >= 0) {
+    const sourceSelector = selector.slice(0, sourceSeparator).trim();
+    const artifactSelector = selector.slice(sourceSeparator + 2).trim();
+    return artifactSelector === `${artifact.type}/${artifact.name}` && sourceMatchesArtifact(sourceSelector, node);
+  }
+  return aliasMatchesArtifact(selector, artifact, node);
+}
+
+function sourceMatchesArtifact(selector: string, node: ResolvedGraph["nodes"][number] | undefined): boolean {
+  if (!node || selector.length === 0) return false;
+  if (selector === node.source || selector === node.normalizedSource || selector === node.name || selector === node.id) return true;
+
+  const normalized = node.normalizedSource.toLowerCase();
+  const source = node.source.toLowerCase();
+  const value = selector.toLowerCase();
+  if (value === source || value === normalized || value === node.name.toLowerCase() || value === node.id.toLowerCase()) return true;
+
+  const github = /^github:([^#]+?)(?:#(.+))?$/.exec(value);
+  if (github) {
+    const repo = github[1]!.replace(/\.git$/i, "");
+    const ref = github[2];
+    const prefix = `git:https://github.com/${repo}.git#`;
+    return ref ? normalized.includes(`${prefix}${ref}`) : normalized.includes(prefix);
+  }
+
+  if (!value.includes(":") && value.includes("/")) {
+    const repo = value.replace(/\.git$/i, "");
+    return normalized.includes(`github.com/${repo}.git#`) || source.includes(`github.com/${repo}.git`);
+  }
+
+  return false;
 }
 
 function reachableNodeIds(graph: ResolvedGraph, rootNodeId: string): Set<string> {

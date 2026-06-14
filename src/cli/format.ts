@@ -75,6 +75,9 @@ export function formatGraphPlan(result: GraphSourcePlanResult): string {
   for (const decision of result.bundle.graphLock.canonical.namespacing) {
     lines.push(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
   }
+  for (const decision of result.bundle.graphLock.canonical.overrides) {
+    lines.push(`OVERRIDE ${decision.graphNodeId}:${decision.type}/${decision.name} replaces ${decision.overriddenGraphNodeId}:${decision.type}/${decision.name} via ${decision.rootId} (${decision.selector})`);
+  }
   if (result.graphDiff.length > 0) {
     lines.push("Graph diff:");
     lines.push(...result.graphDiff);
@@ -114,6 +117,9 @@ export function formatLockDependencyTree(lock: GraphLock): string {
   for (const decision of lock.canonical.namespacing) {
     lines.push(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
   }
+  for (const decision of lock.canonical.overrides) {
+    lines.push(`OVERRIDE ${decision.graphNodeId}:${decision.type}/${decision.name} replaces ${decision.overriddenGraphNodeId}:${decision.type}/${decision.name} via ${decision.rootId} (${decision.selector})`);
+  }
   return lines.join("\n");
 }
 
@@ -141,6 +147,10 @@ export function formatDepsWhy(lock: GraphLock, manifest: InstallManifest | undef
   lines.push(namespace
     ? `NAME    ${namespace.reason}: ${namespace.type}/${namespace.name} -> ${namespace.type}/${namespace.installName}`
     : `NAME    plain: ${match.type}/${match.name}`);
+  for (const override of lock.canonical.overrides.filter((decision) =>
+    decision.graphNodeId === match.graphNodeId && decision.type === match.type && decision.name === match.name)) {
+    lines.push(`OVERRIDE replaces ${override.overriddenGraphNodeId}:${override.type}/${override.name} via ${override.rootId}`);
+  }
   return lines.join("\n");
 }
 

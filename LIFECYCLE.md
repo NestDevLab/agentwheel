@@ -68,13 +68,16 @@ customization has four official channels, all stored in **(W) `.agentwheel/`** �
 dir, never in the author's repo:
 ```
 .agentwheel/
-  config.json                               # installed packages, sources, modes
+  config.json                               # installed packages, sources, modes, source overrides
   overlays/<runtime>/instructions.local.md  # (1) LAYERING — editable AGENTS.md region
   additions/rules/*.md                      # (2) ADDITIVE — extra rules, composed with upstream
-  overrides/<package>/<type>/<name>         # (3) OVERRIDE — replaces the upstream item, shown in plan
+  overrides/<package>/<type>/<name>         # (3) CONTENT OVERRIDE — local content replaces upstream item
   ejected/<package>/...                     # (4) EJECT — item taken into local ownership; update won't touch
   *.source-lock.json   *.install-manifest.json
 ```
+- Package entries may also declare `overrides: ["source::type/name"]` in `config.json` to let one
+  selected source replace a colliding artifact from another source. This is source precedence, not
+  local content customization; plans and graph locks show it as `OVERRIDE`.
 - **(1) Layering** is the default for instructions/AGENTS.md. The generated runtime file is a composition:
   ```
   <!-- BEGIN agentwheel managed: upstream -->  ...updatable...  <!-- END ... -->

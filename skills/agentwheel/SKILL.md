@@ -141,6 +141,34 @@ agentwheel add github:owner/repo --select skills/code-review --select rules/core
 agentwheel add github:owner/repo --select skills/code-review,rules/core.md
 ```
 
+Use a source override when a selected package should replace the same artifact coming from another
+source, such as a forked skill overriding a meta-pack dependency. The declaration is explicit and
+planning fails if it does not match exactly one losing artifact and one selected replacement:
+
+```bash
+agentwheel add github:Yehonal/agent-toolkit#main \
+  --skill self-improve \
+  --override 'github:FrancescoBorzi/agent-toolkit::skills/self-improve'
+```
+
+Equivalent config:
+
+```json
+{
+  "name": "agent-toolkit-nestdev",
+  "source": "github:Yehonal/agent-toolkit#main",
+  "driver": "git",
+  "adapter": "codex",
+  "mode": "tracking",
+  "select": ["skills/self-improve"],
+  "overrides": ["github:FrancescoBorzi/agent-toolkit::skills/self-improve"]
+}
+```
+
+`source::type/name` identifies the artifact being replaced. `github:owner/repo` matches any ref
+for that repo; include `#main` or another ref to narrow it. Review `OVERRIDE` lines in
+`agentwheel plan`, `agentwheel deps tree`, or `agentwheel deps why` before applying fleet-wide.
+
 Use `--name` for a stable local alias:
 
 ```bash
@@ -289,7 +317,9 @@ Drift means a managed runtime output changed outside agentwheel. Fix drift by ch
 
 - Layer local instructions with `agentwheel remember`.
 - Add separate local artifacts under `.agentwheel/additions`.
-- Override an upstream item under `.agentwheel/overrides`.
+- Override upstream content under `.agentwheel/overrides`.
+- Override source precedence with package `overrides` when a forked source should replace a
+  colliding upstream artifact.
 - Eject an item into `.agentwheel/ejected` when the user wants local ownership.
 
 Append durable local instruction text:

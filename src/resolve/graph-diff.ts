@@ -1,4 +1,4 @@
-import type { GraphLock, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockOverride } from "../model/graph-lock.js";
 
 export function diffGraphLocks(previous: GraphLock | undefined, next: GraphLock): string[] {
   if (!previous) return [];
@@ -6,6 +6,7 @@ export function diffGraphLocks(previous: GraphLock | undefined, next: GraphLock)
     ...diffNodes(previous.canonical.nodes, next.canonical.nodes),
     ...diffIncludeEdges(previous.canonical.includeEdges, next.canonical.includeEdges),
     ...diffNamespacing(previous.canonical.namespacing, next.canonical.namespacing),
+    ...diffOverrides(previous.canonical.overrides, next.canonical.overrides),
   ];
 }
 
@@ -78,6 +79,24 @@ function diffNamespacing(previous: GraphLockNamespacing[], next: GraphLockNamesp
   return lines.sort((a, b) => a.localeCompare(b));
 }
 
+function diffOverrides(previous: GraphLockOverride[], next: GraphLockOverride[]): string[] {
+  const previousByKey = new Map(previous.map((decision) => [overrideKey(decision), decision]));
+  const nextByKey = new Map(next.map((decision) => [overrideKey(decision), decision]));
+  const lines: string[] = [];
+  for (const [key, decision] of nextByKey) {
+    const old = previousByKey.get(key);
+    if (!old) {
+      lines.push(`ADDED override ${formatOverride(decision)}`);
+    } else if (old.graphNodeId !== decision.graphNodeId || old.installName !== decision.installName) {
+      lines.push(`CHANGED override ${decision.selector} ${old.graphNodeId}:${old.type}/${old.name} -> ${decision.graphNodeId}:${decision.type}/${decision.name}`);
+    }
+  }
+  for (const [key, decision] of previousByKey) {
+    if (!nextByKey.has(key)) lines.push(`REMOVED override ${formatOverride(decision)}`);
+  }
+  return lines.sort((a, b) => a.localeCompare(b));
+}
+
 function stableNodeKey(node: GraphLockNode): string {
   return `${node.normalizedSource}\0${node.name}`;
 }
@@ -102,8 +121,16 @@ function namespaceKey(decision: GraphLockNamespacing): string {
   return `${decision.graphNodeId}\0${decision.type}\0${decision.name}`;
 }
 
+function overrideKey(decision: GraphLockOverride): string {
+  return `${decision.rootId}\0${decision.selector}\0${decision.overriddenGraphNodeId}\0${decision.type}\0${decision.name}`;
+}
+
 function formatNamespace(decision: GraphLockNamespacing): string {
   return `${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`;
+}
+
+function formatOverride(decision: GraphLockOverride): string {
+  return `${decision.graphNodeId}:${decision.type}/${decision.name} replaces ${decision.overriddenGraphNodeId}:${decision.type}/${decision.name} via ${decision.rootId} (${decision.selector})`;
 }
 
 function short(hash: string): string {

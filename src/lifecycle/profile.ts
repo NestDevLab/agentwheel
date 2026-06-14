@@ -74,6 +74,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         ref: pkg.requestedRef,
         select: selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
         aliases: pkg.aliases,
+        overrides: pkg.overrides,
       })),
       targetRoot: target.targetRoot,
       workspaceRoot: options.workspaceRoot,

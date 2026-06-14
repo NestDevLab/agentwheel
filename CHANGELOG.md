@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.11.0
+
+- Added explicit workspace source overrides so a selected package can replace a colliding artifact from another source without relying on package order.
+- `agentwheel add`, `plan <source>`, and `install <source>` accept repeatable `--override <source-or-package::type/name>` declarations for source override setup.
+- Graph locks, `plan`, `deps tree`, and `deps why` now report artifact override decisions.
+- Documented fleet fork override workflows for cases such as using a local forked skill over an upstream meta-pack dependency.
+
 ## 0.10.0
 
 - Added `install --all-detected` to reconcile every detected runtime under a target root.

@@ -6,7 +6,7 @@ import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from ".
 import type { Artifact, PackageItemRequire } from "../model/artifact.js";
 import { artifactTypeSchema } from "../model/artifact.js";
 import type { GraphNodeId, ResolvedNode } from "../model/graph.js";
-import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockRoot } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockOverride, GraphLockRoot } from "../model/graph-lock.js";
 import type { PackageManifest } from "../model/package.js";
 import { readPackageManifest } from "../model/package.js";
 import type { RegistryClient } from "../registry/client.js";
@@ -24,6 +24,7 @@ export interface GraphRootRequest {
   mode?: "pinned" | "tracking";
   ref?: string;
   aliases?: Record<string, string>;
+  overrides?: string[];
   useLock?: boolean;
 }
 
@@ -50,6 +51,7 @@ export interface ResolvedGraphRoot {
   mode: "pinned" | "tracking";
   selected: string[];
   aliases?: Record<string, string>;
+  overrides?: string[];
 }
 
 export interface ResolvedGraphRawNode {
@@ -78,6 +80,7 @@ interface Requirement {
   requiredBy: string;
   rootId?: string;
   aliases?: Record<string, string>;
+  overrides?: string[];
   alias?: string;
   parentId?: GraphNodeId;
   depth: number;
@@ -147,6 +150,7 @@ export async function resolveDependencyGraph(
       requiredBy: `workspace:${rootId}`,
       rootId,
       aliases: root.aliases,
+      overrides: root.overrides,
       useLock: root.useLock ?? options.lockedResolution,
       depth: 0,
       optional: false,
@@ -192,6 +196,7 @@ export function createGraphLock(
   targetFingerprint?: string,
   includeEdges: GraphLockIncludeEdge[] = [],
   namespacing: GraphLockNamespacing[] = [],
+  overrides: GraphLockOverride[] = [],
 ): GraphLock {
   const roots: GraphLockRoot[] = graph.roots.map((root) => ({
     rootId: root.rootId,
@@ -201,6 +206,7 @@ export function createGraphLock(
     mode: root.mode,
     selected: root.selected,
     aliases: root.aliases,
+    overrides: root.overrides,
   }));
 
   return {
@@ -213,6 +219,7 @@ export function createGraphLock(
       includeEdges,
       artifacts,
       namespacing,
+      overrides,
       plainNameIncumbents: [],
     },
   };
@@ -322,6 +329,7 @@ async function processRequirement(
         mode: state.node.mode,
         selected: state.node.selected,
         aliases: requirement.aliases,
+        overrides: requirement.overrides,
       });
     }
 

@@ -85,6 +85,45 @@ Run a profile:
 agentwheel install --profile daily --dry-run
 ```
 
+## Source overrides for fleets
+
+Fleet configs can intentionally put a forked source ahead of an artifact that is pulled in by a
+meta-package. Declare the fork as its own package, select the replacement artifacts, and list the
+upstream artifacts it may replace under `overrides`.
+
+```jsonc
+{
+  "packages": [
+    {
+      "name": "nestdev-must-have-core",
+      "source": "github:NestDevLab/agent-must-have#core",
+      "driver": "git",
+      "adapter": "codex",
+      "mode": "tracking"
+    },
+    {
+      "name": "agent-toolkit-nestdev",
+      "source": "github:Yehonal/agent-toolkit#main",
+      "driver": "git",
+      "adapter": "codex",
+      "mode": "tracking",
+      "select": [
+        "rules/self-improve-on-correction.md",
+        "skills/self-improve"
+      ],
+      "overrides": [
+        "github:FrancescoBorzi/agent-toolkit::rules/self-improve-on-correction.md",
+        "github:FrancescoBorzi/agent-toolkit::skills/self-improve"
+      ]
+    }
+  ]
+}
+```
+
+`source::type/name` identifies the losing artifact. The replacing package must select one artifact
+with the same `type/name`; if there is no exact loser or no exact replacement, planning fails.
+Dry-runs print `OVERRIDE` lines, so review those before applying a fleet-wide install.
+
 `plan`, `install --dry-run`, `install`, `update`, and `uninstall` all use the target transport. For SSH
 targets, agentwheel reads the remote install manifest and hashes remote files before planning, so
 drift and conflict detection have the same semantics as local targets.

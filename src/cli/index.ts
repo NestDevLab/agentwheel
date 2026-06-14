@@ -87,6 +87,7 @@ program
   .option("--name <name>", "package alias")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--override <source-or-package::type/name>", "allow this package to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const entry = await packageEntryFromSource(source, targetRoot, options);
@@ -152,6 +153,7 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
@@ -179,6 +181,7 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -208,6 +211,7 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -277,6 +281,9 @@ program
               console.log(formatDependencyTree(result.graph).join("\n"));
               for (const decision of result.bundle.graphLock.canonical.namespacing) {
                 console.log(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
+              }
+              for (const decision of result.bundle.graphLock.canonical.overrides) {
+                console.log(`OVERRIDE ${decision.graphNodeId}:${decision.type}/${decision.name} replaces ${decision.overriddenGraphNodeId}:${decision.type}/${decision.name} via ${decision.rootId} (${decision.selector})`);
               }
               await rm(result.bundle.root, { recursive: true, force: true });
             }
@@ -580,6 +587,8 @@ async function packageEntryFromSource(
     select?: string[];
     skill?: string[];
     skills?: string[];
+    override?: string[];
+    overrides?: string[];
     frozenLock?: boolean;
     offline?: boolean;
   },
@@ -618,6 +627,7 @@ async function packageEntryFromSource(
       mode: options.mode ?? "pinned",
       requestedRef: bundle.source.requestedRef,
       select: selectedArtifacts,
+      overrides: overrideArtifactsFromOptions(options),
     };
   } finally {
     await rm(bundle.root, { recursive: true, force: true });
@@ -682,6 +692,8 @@ interface GraphCliOptions {
   select?: string[];
   skill?: string[];
   skills?: string[];
+  override?: string[];
+  overrides?: string[];
   noDeps?: boolean;
   deps?: boolean;
   onlySource?: boolean;
@@ -797,6 +809,7 @@ async function buildGraphPlansForTarget(
           ref: pkg.requestedRef,
           select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
           aliases: pkg.aliases,
+          overrides: pkg.overrides,
           useLock: behavior.mode === "install" ? true : !updateThisPackage,
         };
       }),
@@ -1007,6 +1020,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
           ref: pkg.requestedRef,
           select: normalizeArtifactSelectors(pkg.select, pkg.skills),
           aliases: pkg.aliases,
+          overrides: pkg.overrides,
         })),
         targetRoot: remainingGroup.target.targetRoot,
         workspaceRoot: remainingGroup.target.workspaceRoot,
@@ -1194,8 +1208,17 @@ function collectTrustOption(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function collectOverrideOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
 function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {
   return normalizeArtifactSelectors(options.select, options.skills ?? options.skill);
+}
+
+function overrideArtifactsFromOptions(options: { override?: string[]; overrides?: string[] }): string[] | undefined {
+  const values = options.overrides ?? options.override;
+  return values && values.length > 0 ? values : undefined;
 }
 
 function filterUninstallPlanBySelection(plan: InstallPlan, selected?: string[]): InstallPlan {
@@ -1325,7 +1348,9 @@ async function main(): Promise<void> {
   await program.parseAsync();
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error: unknown) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
-});
+}

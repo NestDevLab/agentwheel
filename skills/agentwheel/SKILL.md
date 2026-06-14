@@ -146,9 +146,9 @@ source, such as a forked skill overriding a meta-pack dependency. The declaratio
 planning fails if it does not match exactly one losing artifact and one selected replacement:
 
 ```bash
-agentwheel add github:Yehonal/agent-toolkit#main \
+agentwheel add github:example-org/agent-toolkit#main \
   --skill self-improve \
-  --override 'github:FrancescoBorzi/agent-toolkit::skills/self-improve'
+  --override 'github:example-upstream/agent-toolkit::skills/self-improve'
 ```
 
 Equivalent config:
@@ -156,12 +156,12 @@ Equivalent config:
 ```json
 {
   "name": "agent-toolkit-nestdev",
-  "source": "github:Yehonal/agent-toolkit#main",
+  "source": "github:example-org/agent-toolkit#main",
   "driver": "git",
   "adapter": "codex",
   "mode": "tracking",
   "select": ["skills/self-improve"],
-  "overrides": ["github:FrancescoBorzi/agent-toolkit::skills/self-improve"]
+  "overrides": ["github:example-upstream/agent-toolkit::skills/self-improve"]
 }
 ```
 
@@ -233,8 +233,8 @@ Current config shape:
   "packages": [],
   "registry": {},
   "agents": {
-    "lab-codex": { "adapter": "codex", "root": "/Users/me/project" },
-    "lab-claude": { "adapter": "claude", "root": "/Users/me/project" }
+    "lab-codex": { "adapter": "codex", "root": "$HOME/project" },
+    "lab-claude": { "adapter": "claude", "root": "$HOME/project" }
   },
   "profiles": {
     "daily": {

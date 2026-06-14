@@ -122,10 +122,10 @@ For a control-plane setup, define named agents in config. Global config lives at
 ```jsonc
 {
   "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "/Users/me/.openclaw-home", "transport": "local" },
+    "lab-openclaw": { "adapter": "openclaw", "root": "$HOME/.openclaw-home", "transport": "local" },
     "remote-codex": {
       "adapter": "codex",
-      "root": "/home/agent/project",
+      "root": "/workspace/project",
       "transport": "ssh",
       "host": "agent-host.example",
       "user": "agent",
@@ -291,7 +291,7 @@ pulled in by a meta-package. Overrides are explicit; package array order never d
     },
     {
       "name": "agent-toolkit-nestdev",
-      "source": "github:Yehonal/agent-toolkit#main",
+      "source": "github:example-org/agent-toolkit#main",
       "driver": "git",
       "adapter": "codex",
       "mode": "tracking",
@@ -300,8 +300,8 @@ pulled in by a meta-package. Overrides are explicit; package array order never d
         "skills/self-improve"
       ],
       "overrides": [
-        "github:FrancescoBorzi/agent-toolkit::rules/self-improve-on-correction.md",
-        "github:FrancescoBorzi/agent-toolkit::skills/self-improve"
+        "github:example-upstream/agent-toolkit::rules/self-improve-on-correction.md",
+        "github:example-upstream/agent-toolkit::skills/self-improve"
       ]
     }
   ]
@@ -316,9 +316,9 @@ losing artifact. Otherwise planning fails instead of hiding a collision.
 The same declaration can be created from the CLI:
 
 ```bash
-agentwheel add github:Yehonal/agent-toolkit#main \
+agentwheel add github:example-org/agent-toolkit#main \
   --skill self-improve \
-  --override 'github:FrancescoBorzi/agent-toolkit::skills/self-improve'
+  --override 'github:example-upstream/agent-toolkit::skills/self-improve'
 ```
 
 `agentwheel plan`, `agentwheel deps tree`, and `agentwheel deps why` print `OVERRIDE` lines for

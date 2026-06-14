@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { attachOpenClawProgrammatic } from "../src/adapters/openclaw.js";
 import { loadProgrammaticAdapter } from "../src/adapters/programmatic.js";
 import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
@@ -148,6 +149,53 @@ describe("v0.3 wave 3", () => {
     expect(merged.order).toEqual(["user", "managed"]);
     const manifest = await readInstallManifest(target, "openclaw");
     expect(manifest?.entries.find((entry) => entry.path === ".openclaw/mcp/server.json")?.mergeStrategy).toBe("json-deep");
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("updates explicit OpenClaw per-agent skill allowlists when enabled by adapter config", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writePackage(source);
+    await mkdir(join(target, ".openclaw"), { recursive: true });
+    await writeFile(join(target, ".openclaw", "openclaw.json"), JSON.stringify({
+      agents: {
+        list: [
+          { id: "main", name: "Main" },
+          { id: "guardian", name: "Guardian", skills: [] },
+          { id: "reviewer", name: "Reviewer", skills: ["existing"] },
+          { id: "light-test", name: "Light Test", skills: [] },
+        ],
+      },
+    }, null, 2), "utf8");
+
+    const adapter = attachOpenClawProgrammatic({
+      ...openClawAdapter,
+      openclaw: {
+        agentSkills: {
+          enabled: true,
+          configPath: ".openclaw/openclaw.json",
+          mode: "append-managed",
+          agents: { include: ["guardian", "reviewer"], exclude: ["light-test"] },
+          includeAgentsWithoutExplicitSkills: false,
+        },
+      },
+    });
+    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const plan = await createInstallPlan(bundle, adapter, target);
+
+    const program = plan.operations.find((operation) => operation.relativeDestPath === "programmatic/openclaw-agent-skills");
+    expect(program?.action).toBe("program");
+    expect(program?.reason).toContain("guardian");
+    expect(program?.reason).toContain("reviewer");
+    expect(program?.reason).not.toContain("light-test");
+
+    const manifest = await applyInstallPlan(plan, bundle.sourceLock);
+    const config = JSON.parse(await readFile(join(target, ".openclaw", "openclaw.json"), "utf8"));
+    expect(config.agents.list.find((agent: { id: string }) => agent.id === "main").skills).toBeUndefined();
+    expect(config.agents.list.find((agent: { id: string }) => agent.id === "guardian").skills).toEqual(["demo"]);
+    expect(config.agents.list.find((agent: { id: string }) => agent.id === "reviewer").skills).toEqual(["existing", "demo"]);
+    expect(config.agents.list.find((agent: { id: string }) => agent.id === "light-test").skills).toEqual([]);
+    expect(manifest.entries.find((entry) => entry.path === "programmatic/openclaw-agent-skills")?.sourceHash).toBe(program?.desiredHash);
     await rm(bundle.root, { recursive: true, force: true });
   });
 

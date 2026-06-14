@@ -293,6 +293,28 @@ published:
 agentwheel install ./my-pack --adapter-config ./myco-internal.jsonc
 ```
 
+OpenClaw can also opt in to per-agent skill allowlist maintenance. This is useful when
+`agents.list[].skills` is present: OpenClaw treats that array as a full allowlist, so a globally
+installed skill may still be hidden from that agent. Agentwheel only appends managed skills to
+agents with explicit allowlists; agents without `skills` remain unrestricted.
+
+```jsonc
+{
+  "name": "openclaw-native-clean",
+  "targets": {
+    "rules": { "dest": ".openclaw-native-clean/rules" },
+    "skills": { "dest": ".openclaw-native-clean/skills" }
+  },
+  "openclaw": {
+    "agentSkills": {
+      "enabled": true,
+      "configPath": ".openclaw-native-clean/openclaw.json",
+      "agents": { "include": ["native-clean"] }
+    }
+  }
+}
+```
+
 Built-in runtime targets:
 
 | Runtime | Main targets |

@@ -19,5 +19,11 @@ describe("adapter config loader", () => {
     expect(adapter.targets.instructions?.dest).toBe(".commented/AGENTS.md");
     expect(adapter.targets.skills?.dest).toBe(".commented/skills");
   });
-});
 
+  it("loads OpenClaw per-agent skill allowlist settings", async () => {
+    const adapter = await loadAdapterConfig(join(testDir, "fixtures", "adapters", "openclaw-agent-skills.jsonc"));
+    expect(adapter.openclaw?.agentSkills?.enabled).toBe(true);
+    expect(adapter.openclaw?.agentSkills?.configPath).toBe(".openclaw-native-clean/openclaw.json");
+    expect(adapter.openclaw?.agentSkills?.agents?.include).toEqual(["native-clean"]);
+  });
+});

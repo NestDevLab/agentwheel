@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-native-clean",
+  "displayName": "OpenClaw native-clean",
+  "targets": {
+    "rules": { "enabled": true, "dest": ".openclaw-native-clean/rules" },
+    "skills": { "enabled": true, "dest": ".openclaw-native-clean/skills" }
+  },
+  "openclaw": {
+    "agentSkills": {
+      "enabled": true,
+      "configPath": ".openclaw-native-clean/openclaw.json",
+      "agents": { "include": ["native-clean"] }
+    }
+  }
+}

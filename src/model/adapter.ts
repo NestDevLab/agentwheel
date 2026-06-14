@@ -2,12 +2,25 @@ import { readFile } from "node:fs/promises";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
 import { artifactTypeSchema } from "./artifact.js";
+import type { ArtifactType, FileKind } from "./artifact.js";
+import type { TargetTransport } from "../transport/types.js";
 
 export const targetMappingSchema = z.object({
   dest: z.string().min(1),
   enabled: z.boolean().default(true),
   semantic: z.enum(["openclaw-plugin"]).optional(),
   merge: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
+});
+
+const openClawAgentSkillsSchema = z.object({
+  enabled: z.boolean().default(false),
+  configPath: z.string().min(1).default(".openclaw/openclaw.json"),
+  mode: z.enum(["append-managed"]).default("append-managed"),
+  agents: z.object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  }).optional(),
+  includeAgentsWithoutExplicitSkills: z.boolean().default(false),
 });
 
 export const adapterSchema = z.object({
@@ -19,6 +32,9 @@ export const adapterSchema = z.object({
       targetMappingSchema,
     )
     .default({}),
+  openclaw: z.object({
+    agentSkills: openClawAgentSkillsSchema.optional(),
+  }).optional(),
 });
 
 export type TargetMapping = z.infer<typeof targetMappingSchema>;
@@ -29,11 +45,22 @@ export type AdapterConfig = z.infer<typeof adapterSchema> & {
 export interface ProgrammaticAdapterOperation {
   name: string;
   reason?: string;
+  hash?: string;
+  data?: unknown;
+}
+
+export interface ProgrammaticAdapterArtifact {
+  type: ArtifactType;
+  name: string;
+  installName?: string;
+  kind: FileKind;
 }
 
 export interface ProgrammaticAdapterContext {
   targetRoot: string;
   adapterName: string;
+  transport?: TargetTransport;
+  artifacts?: ProgrammaticAdapterArtifact[];
 }
 
 export interface ProgrammaticAdapterRuntime {

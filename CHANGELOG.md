@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added opt-in OpenClaw per-agent skill allowlist maintenance via adapter configs.
+- Built-in programmatic adapter operations can now use target transports, enabling remote fleet reconciliation for supported operations.
+
 ## 0.9.0
 
 - Breaking: public reconcile command is now `agentwheel install`.

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import { loadAdapterConfig } from "../model/adapter.js";
 import { getAdapter } from "./index.js";
+import { attachOpenClawProgrammatic } from "./openclaw.js";
 import { loadProgrammaticAdapter } from "./programmatic.js";
 
 export interface ResolveAdapterOptions {
@@ -21,7 +22,7 @@ export async function resolveAdapter(options: ResolveAdapterOptions): Promise<Ad
     return adapter;
   }
   if (options.adapterConfig) {
-    return loadAdapterConfig(resolve(options.baseDir ?? process.cwd(), options.adapterConfig));
+    return attachOpenClawProgrammatic(await loadAdapterConfig(resolve(options.baseDir ?? process.cwd(), options.adapterConfig)));
   }
   return getAdapter(options.adapter ?? "openclaw");
 }

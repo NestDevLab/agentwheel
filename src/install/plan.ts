@@ -95,7 +95,7 @@ export async function createInstallPlan(
     }
   }
 
-  await addProgrammaticOperations(desired, adapter, targetRoot);
+  await addProgrammaticOperations(desired, adapter, targetRoot, transport);
 
   return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, options);
 }
@@ -122,7 +122,7 @@ export async function createCombinedInstallPlan(
     }
   }
 
-  await addProgrammaticOperations(desired, adapter, targetRoot);
+  await addProgrammaticOperations(desired, adapter, targetRoot, transport);
   return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, options);
 }
 
@@ -306,9 +306,17 @@ async function addProgrammaticOperations(
   desired: InstallOperation[],
   adapter: AdapterConfig,
   targetRoot: string,
+  transport: TargetTransport,
 ): Promise<void> {
   if (!adapter.programmatic?.plan) return;
-  for (const op of await adapter.programmatic.plan({ targetRoot, adapterName: adapter.name })) {
+  const artifacts = desired.map((operation) => ({
+    type: operation.artifactType,
+    name: operation.artifactName,
+    installName: operation.installName,
+    kind: operation.kind,
+  }));
+  for (const op of await adapter.programmatic.plan({ targetRoot, adapterName: adapter.name, transport, artifacts })) {
+    const desiredHash = op.hash ?? adapter.programmatic.hash;
     desired.push({
       action: "program",
       artifactType: "settings",
@@ -316,7 +324,7 @@ async function addProgrammaticOperations(
       kind: "file",
       destPath: targetRoot,
       relativeDestPath: `programmatic/${op.name}`,
-      desiredHash: adapter.programmatic.hash,
+      desiredHash,
       reason: op.reason ?? "programmatic adapter operation planned",
       channel: "managed",
       programmaticOperation: op,

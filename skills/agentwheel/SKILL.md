@@ -279,6 +279,31 @@ agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc --dry-run
 agentwheel install ./my-pack --adapter-config ./my-runtime.jsonc
 ```
 
+For OpenClaw profiles, remember that `agents.list[].skills` is a full
+per-agent allowlist. If a target agent has an explicit `skills` array, globally
+installed skills can stay hidden unless the adapter config opts in to per-agent
+maintenance:
+
+```jsonc
+{
+  "name": "openclaw-profile",
+  "targets": {
+    "rules": { "dest": ".openclaw-profile/rules" },
+    "skills": { "dest": ".openclaw-profile/skills" }
+  },
+  "openclaw": {
+    "agentSkills": {
+      "enabled": true,
+      "configPath": ".openclaw-profile/openclaw.json",
+      "agents": { "include": ["agent-id"] }
+    }
+  }
+}
+```
+
+Use this instead of hand-editing OpenClaw runtime configs when AgentWheel is
+responsible for skill visibility.
+
 Use a local programmatic adapter only after approval:
 
 ```bash

@@ -89,5 +89,34 @@ agentwheel install --profile daily --dry-run
 targets, agentwheel reads the remote install manifest and hashes remote files before planning, so
 drift and conflict detection have the same semantics as local targets.
 
-Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
-those on an SSH target, run the command on the remote host after reviewing the dry-run output.
+Semantic plugin execution is local-only. Built-in programmatic adapter operations may use the
+target transport; local adapter modules still require explicit `--allow-adapter-code` review.
+
+## OpenClaw Per-Agent Skill Allowlists
+
+OpenClaw installs skills globally under the runtime root, but `agents.list[].skills` is a full
+per-agent allowlist. If an agent has `skills: []`, globally installed skills remain hidden from
+that agent.
+
+Adapter configs can opt in to appending Agentwheel-managed skills to explicit OpenClaw
+allowlists:
+
+```jsonc
+{
+  "name": "openclaw-native-clean",
+  "targets": {
+    "rules": { "dest": ".openclaw-native-clean/rules" },
+    "skills": { "dest": ".openclaw-native-clean/skills" }
+  },
+  "openclaw": {
+    "agentSkills": {
+      "enabled": true,
+      "configPath": ".openclaw-native-clean/openclaw.json",
+      "agents": { "include": ["native-clean"] }
+    }
+  }
+}
+```
+
+Agents without an explicit `skills` array are left unchanged because OpenClaw treats them as
+unrestricted unless `agents.defaults.skills` is configured.

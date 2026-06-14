@@ -358,12 +358,10 @@ async function applyOperation(
       throw new Error(`Invalid programmatic operation: ${operation.relativeDestPath}`);
     }
     if (operation.programmaticApply) {
-      if (transport.kind !== "local") {
-        throw new Error(`Cannot execute programmatic adapter operation over ${transport.description}.`);
-      }
       await operation.programmaticApply(operation.programmaticOperation, {
         targetRoot: context.plan.targetRoot,
         adapterName: context.plan.adapter,
+        transport,
       });
     }
     return manifestEntryForOperation(operation, {

@@ -22,9 +22,41 @@ Mental model:
 - Prefer `agentwheel plan ...` or `agentwheel install --dry-run` before applying changes.
 - Do not hand-edit generated runtime files such as `.openclaw/skills`, `.claude/skills`, `.codex/skills`, `.hermes/skills`, or generated instructions.
 - If a plan reports `drift` or `conflict`, stop and explain it. Do not use `--force` unless the user explicitly approves that scope.
-- Gmail, Drive, registry publishing, git commits, pushes, and runtime restarts are separate external side effects. Get explicit approval for them.
+- Gmail, Drive, registry publishing, broad git pushes, and runtime restarts are
+  separate external side effects. Get explicit approval when they are not the
+  direct requested delivery. For a scoped repository implementation request, the
+  matching commit and push are part of completion unless the user explicitly
+  says not to.
 - Programmatic adapters execute local code. Use `--adapter-module` only with `--allow-adapter-code` after the user approves that local code execution.
 - OpenClaw plugin artifacts are only planned by default. Use `--execute-plugins` only after explicit approval.
+
+## Source-First Delivery Contract
+
+Runtime outputs are generated files. A hand edit inside `.codex/`, `.claude/`,
+`.openclaw/`, `.hermes/`, or another harness is drift, not delivery.
+
+After updating a repository that is an AgentWheel package, contains
+`openpack.json`, or is used as a configured AgentWheel source, proactively check
+whether local runtimes need reconciliation:
+
+```bash
+agentwheel status
+agentwheel install --dry-run
+```
+
+If the current request is to implement, install, or roll out the change, apply
+through AgentWheel after the dry-run is understood, then verify the installed
+runtime files. Do not edit runtime harnesses directly as the final state.
+
+Close the delivery loop:
+
+- commit and push the source package change
+- commit and push the relevant AgentWheel workspace config and lock changes
+- report any blocked commit, push, drift, or conflict with exact paths
+
+If a runtime hotfix already exists, back-port it to the source package, use an
+AgentWheel override/eject path, or remove it before claiming the work is
+complete.
 
 ## Core Flow
 

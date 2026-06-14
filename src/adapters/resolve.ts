@@ -19,7 +19,7 @@ export async function resolveAdapter(options: ResolveAdapterOptions): Promise<Ad
     const modulePath = resolve(options.baseDir ?? process.cwd(), options.adapterModule);
     const adapter = await loadProgrammaticAdapter(modulePath, { allowCode: options.allowAdapterCode === true });
     options.warn?.(`WARNING: loaded local adapter code ${adapter.programmatic?.modulePath} (${adapter.programmatic?.hash})`);
-    return adapter;
+    return attachOpenClawProgrammatic(adapter);
   }
   if (options.adapterConfig) {
     return attachOpenClawProgrammatic(await loadAdapterConfig(resolve(options.baseDir ?? process.cwd(), options.adapterConfig)));

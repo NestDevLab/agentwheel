@@ -3,12 +3,24 @@ import { resolveAdapter } from "../adapters/resolve.js";
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan } from "./source-plan.js";
-import { readMergedWorkspaceConfig, resolveConfigPath, type WorkspacePackage, type WorkspaceProfileRuntime } from "../model/workspace.js";
+import { readMergedWorkspaceConfig, resolveConfigPath, type WorkspacePackage, type WorkspaceProfileRuntime, type WorkspaceRestart } from "../model/workspace.js";
 import { resolvePackageSource } from "../registry/client.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { localTransport, transportForTarget } from "../transport/index.js";
 import type { SshTransportConfig, TargetTransport, TransportKind } from "../transport/index.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
+import { restartAdviceForPlan, type RuntimeRestartAdvice } from "../runtime/restart.js";
+import type { RuntimeTarget } from "../runtime/target.js";
+
+interface ResolvedProfileRuntime {
+  adapter: string;
+  targetRoot: string;
+  workspaceRoot: string;
+  agentName?: string;
+  transport: TargetTransport;
+  ssh?: SshTransportConfig;
+  restart?: WorkspaceRestart;
+}
 
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -38,6 +50,8 @@ export interface ProfileSyncResult {
   transport: TransportKind;
   packageName: string;
   plan: InstallPlan;
+  restartAdvice?: RuntimeRestartAdvice;
+  restartTarget: Pick<RuntimeTarget, "transport" | "ssh">;
 }
 
 export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileSyncResult[]> {
@@ -105,6 +119,15 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         transport: target.transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
+        restartAdvice: restartAdviceForPlan(graphPlan.plan, {
+          adapter: target.adapter,
+          agentName: target.agentName,
+          targetRoot: target.targetRoot,
+          transport: target.transport.kind,
+          ssh: target.ssh,
+          restart: target.restart,
+        }),
+        restartTarget: { transport: target.transport.kind, ssh: target.ssh },
       });
       if (!options.dryRun) {
         await applyCombinedInstallPlan(graphPlan.plan, {
@@ -125,7 +148,7 @@ function resolveProfileRuntime(
   runtime: WorkspaceProfileRuntime,
   config: Awaited<ReturnType<typeof readMergedWorkspaceConfig>>,
   workspaceRoot: string,
-): { adapter: string; targetRoot: string; transport: TargetTransport } {
+): ResolvedProfileRuntime {
   if (runtime.agent) {
     const agent = config.agents[runtime.agent];
     if (!agent) throw new Error(`Unknown agent in profile: ${runtime.agent}`);
@@ -143,13 +166,17 @@ function resolveProfileRuntime(
             identityFile: agent.identityFile ? resolveConfigPath(agent.identityFile, workspaceRoot) : undefined,
           } satisfies SshTransportConfig
         : undefined,
+      restart: runtime.restart ?? agent.restart,
       source: "agent" as const,
     };
-    return { adapter: target.adapter, targetRoot: target.targetRoot, transport: transportForTarget(target) };
+    return { ...target, transport: transportForTarget(target) };
   }
+  const targetRoot = runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot;
   return {
     adapter: runtime.adapter,
-    targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
+    targetRoot,
+    workspaceRoot,
+    restart: runtime.restart,
     transport: localTransport,
   };
 }

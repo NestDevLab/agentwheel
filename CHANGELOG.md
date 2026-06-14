@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Added opt-in OpenClaw per-agent skill allowlist maintenance via adapter configs.
+- Added runtime restart/session advice after changed applies, plus explicit `--restart`/`-R` execution for configured restart commands.
+- Added short CLI aliases for common long options across install, plan, update, fleet, dependency, and maintenance commands.
 - Built-in programmatic adapter operations can now use target transports, enabling remote fleet reconciliation for supported operations.
 
 ## 0.9.0

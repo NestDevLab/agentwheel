@@ -1,5 +1,5 @@
 import { basename, dirname, join, resolve } from "node:path";
-import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig } from "../model/workspace.js";
+import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig, type WorkspaceRestart } from "../model/workspace.js";
 import type { SshTransportConfig, TransportKind } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
 
@@ -10,6 +10,7 @@ export interface RuntimeTarget {
   agentName?: string;
   transport: TransportKind;
   ssh?: SshTransportConfig;
+  restart?: WorkspaceRestart;
   source: "target-root" | "agent" | "auto-detect" | "cwd";
 }
 
@@ -147,6 +148,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
           identityFile: agent.identityFile ? resolveConfigPath(agent.identityFile, workspaceRoot) : undefined,
         }
       : undefined,
+    restart: agent.restart,
     source: "agent",
   };
 }

@@ -199,6 +199,50 @@ describe("v0.3 wave 3", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
+  it("combines OpenClaw agent skill maintenance with custom programmatic adapters", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writePackage(source);
+    await mkdir(join(target, ".openclaw"), { recursive: true });
+    await writeFile(join(target, ".openclaw", "openclaw.json"), JSON.stringify({
+      agents: { list: [{ id: "custom", skills: [] }] },
+    }, null, 2), "utf8");
+
+    const adapter = attachOpenClawProgrammatic({
+      ...openClawAdapter,
+      name: "openclaw-custom",
+      programmatic: {
+        modulePath: "custom-adapter",
+        hash: "custom-hash",
+        capabilities: ["custom"],
+        plan: () => [{ name: "custom-marker", hash: "custom-marker-hash", reason: "custom marker" }],
+        apply: async (operation, context) => {
+          await writeFile(join(context.targetRoot, `${operation.name}.txt`), "ok", "utf8");
+        },
+      },
+      openclaw: {
+        agentSkills: {
+          enabled: true,
+          configPath: ".openclaw/openclaw.json",
+          mode: "append-managed",
+          agents: { include: ["custom"] },
+          includeAgentsWithoutExplicitSkills: false,
+        },
+      },
+    });
+
+    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const plan = await createInstallPlan(bundle, adapter, target);
+    expect(plan.operations.some((operation) => operation.relativeDestPath === "programmatic/custom-marker")).toBe(true);
+    expect(plan.operations.some((operation) => operation.relativeDestPath === "programmatic/openclaw-agent-skills")).toBe(true);
+
+    await applyInstallPlan(plan, bundle.sourceLock);
+    expect(await readFile(join(target, "custom-marker.txt"), "utf8")).toBe("ok");
+    const config = JSON.parse(await readFile(join(target, ".openclaw", "openclaw.json"), "utf8"));
+    expect(config.agents.list.find((agent: { id: string }) => agent.id === "custom").skills).toEqual(["demo"]);
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
   it("syncs a profile across multiple runtimes", async () => {
     const source = await tempRoot();
     const workspace = await tempRoot();

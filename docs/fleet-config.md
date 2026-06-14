@@ -92,6 +92,58 @@ drift and conflict detection have the same semantics as local targets.
 Semantic plugin execution is local-only. Built-in programmatic adapter operations may use the
 target transport; local adapter modules still require explicit `--allow-adapter-code` review.
 
+## Restart Advice
+
+After an apply changes runtime files, agentwheel recommends the reload action
+that usually matches the target:
+
+- OpenClaw and Hermes gateway targets: restart the gateway process.
+- Codex and Claude targets: refresh or reopen the agent session.
+
+Recommendations are printed automatically. Agentwheel executes a restart only
+when the target declares a restart command and the CLI receives `--restart` or
+`-R`.
+
+```jsonc
+{
+  "agents": {
+    "native-clean": {
+      "adapter": "openclaw",
+      "root": "/home/administrator/env/workspace/native-clean",
+      "transport": "local",
+      "restart": {
+        "service": "openclaw-native-clean.service",
+        "sudo": true,
+        "reason": "OpenClaw loads generated config and skills at process start."
+      }
+    }
+  }
+}
+```
+
+Profile runtimes may override the named agent restart policy:
+
+```jsonc
+{
+  "profiles": {
+    "gateways": {
+      "runtimes": [
+        {
+          "agent": "native-clean",
+          "restart": {
+            "command": ["pm2", "restart", "openclaw-native-clean"]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Use the same `restart` object with custom adapters. A `service` maps to
+`systemctl restart <service>` and adds `sudo` when requested; `command` runs the
+exact argv array. Without `--restart`, both forms are advice only.
+
 ## OpenClaw Per-Agent Skill Allowlists
 
 OpenClaw installs skills globally under the runtime root, but `agents.list[].skills` is a full

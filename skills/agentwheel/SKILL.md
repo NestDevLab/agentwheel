@@ -52,6 +52,8 @@ Close the delivery loop:
 
 - commit and push the source package change
 - commit and push the relevant AgentWheel workspace config and lock changes
+- after runtime changes, report AgentWheel restart/session advice; use
+  `--restart`/`-R` only when the user asked to execute the configured restart
 - report any blocked commit, push, drift, or conflict with exact paths
 
 If a runtime hotfix already exists, back-port it to the source package, use an
@@ -78,6 +80,15 @@ To add and install in one step:
 
 ```bash
 agentwheel install github:owner/repo --adapter codex
+```
+
+Useful short aliases:
+
+```bash
+agentwheel install -A lab-openclaw -n
+agentwheel install -p daily -R
+agentwheel update -g -n
+agentwheel uninstall team-pack -K
 ```
 
 ## Workspace Setup
@@ -303,6 +314,32 @@ maintenance:
 
 Use this instead of hand-editing OpenClaw runtime configs when AgentWheel is
 responsible for skill visibility.
+
+Long-running gateways may need a process restart after AgentWheel changes
+generated skills, rules, plugins, settings, or per-agent allowlists. Configure
+`restart` on named agents or profile runtimes, then pass `--restart`/`-R` only
+when the user wants AgentWheel to execute it:
+
+```jsonc
+{
+  "agents": {
+    "openclaw-profile": {
+      "adapter": "openclaw",
+      "root": "/srv/openclaw-profile",
+      "transport": "local",
+      "restart": {
+        "service": "openclaw-profile.service",
+        "sudo": true
+      }
+    }
+  }
+}
+```
+
+Without `--restart`, AgentWheel prints the recommendation and command but does
+not restart anything. Codex and Claude generally need a new or refreshed session
+instead of a service restart. Custom adapters can use the same `restart` object;
+`command` runs an explicit argv array when `service` is not enough.
 
 Use a local programmatic adapter only after approval:
 

@@ -20,6 +20,21 @@ export const workspacePackageSchema = z.object({
   aliases: z.record(z.string(), z.string().min(1)).optional(),
 });
 
+export const workspaceRestartSchema = z.object({
+  service: z.string().min(1).optional(),
+  command: z.array(z.string().min(1)).min(1).optional(),
+  sudo: z.boolean().default(false),
+  reason: z.string().min(1).optional(),
+}).superRefine((restart, ctx) => {
+  if (restart.service && restart.command) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["command"],
+      message: "restart config accepts either service or command, not both",
+    });
+  }
+});
+
 export const workspaceProfileRuntimeSchema = z.object({
   agent: z.string().min(1).optional(),
   adapter: z.string().min(1).default("openclaw"),
@@ -27,6 +42,7 @@ export const workspaceProfileRuntimeSchema = z.object({
   adapterModule: z.string().min(1).optional(),
   targetRoot: z.string().min(1).optional(),
   executePlugins: z.boolean().optional(),
+  restart: workspaceRestartSchema.optional(),
 });
 
 export const workspaceProfileSchema = z.object({
@@ -53,6 +69,7 @@ export const workspaceAgentSchema = z.object({
   user: z.string().min(1).optional(),
   port: z.number().int().positive().optional(),
   identityFile: z.string().min(1).optional(),
+  restart: workspaceRestartSchema.optional(),
 }).superRefine((agent, ctx) => {
   if (agent.transport !== "ssh") return;
   if (!agent.host) {
@@ -79,6 +96,7 @@ export type WorkspaceTrust = z.infer<typeof workspaceTrustSchema>;
 export type WorkspaceConfigInput = z.input<typeof workspaceConfigSchema>;
 export type WorkspaceProfileRuntime = z.infer<typeof workspaceProfileRuntimeSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
+export type WorkspaceRestart = z.infer<typeof workspaceRestartSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
 export function workspaceConfigPath(workspaceRoot: string): string {

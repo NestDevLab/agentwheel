@@ -55,6 +55,11 @@ then make them true.**
 Scoped installs do not remove files owned only by other configured packages; run a full `agentwheel install`
 to reconcile those removals.
 
+Common short flags are available for the long options used most often:
+`-r/--target-root`, `-a/--adapter`, `-A/--agent`, `-p/--profile`, `-g/--all`,
+`-G/--all-detected`, `-S/--select`, `-k/--skill`, `-n/--dry-run`, and
+`-R/--restart`.
+
 ## Quick Start
 
 ```bash
@@ -135,6 +140,37 @@ agentwheel install --all
 agentwheel install --profile daily
 agentwheel install --all-detected
 ```
+
+When an apply changes a long-running gateway runtime such as OpenClaw or Hermes,
+agentwheel prints a restart recommendation. Codex and Claude targets get a
+session-refresh recommendation instead. To let agentwheel execute a configured
+restart command after a successful apply, add `restart` to the named agent or
+profile runtime and pass `--restart` or `-R`:
+
+```jsonc
+{
+  "agents": {
+    "lab-openclaw": {
+      "adapter": "openclaw",
+      "root": "/Users/me/.openclaw-home",
+      "transport": "local",
+      "restart": {
+        "service": "openclaw.service",
+        "sudo": true,
+        "reason": "OpenClaw reloads skills and per-agent allowlists at process start."
+      }
+    }
+  }
+}
+```
+
+```bash
+agentwheel install -A lab-openclaw -R
+agentwheel update -p daily -R
+```
+
+`restart.command` is also supported for custom adapters. Agentwheel never runs a
+restart implicitly; without `--restart`, it only prints the recommendation.
 
 SSH targets use the same manifest and drift model as local targets. Planning reads the remote
 install manifest and hashes remote files before deciding whether a file is up to date, drifted, or

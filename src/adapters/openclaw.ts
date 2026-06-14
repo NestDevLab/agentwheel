@@ -24,16 +24,32 @@ type OpenClawAgentSkillsOptions = NonNullable<NonNullable<AdapterConfig["opencla
 export function attachOpenClawProgrammatic(adapter: AdapterConfig): AdapterConfig {
   const agentSkills = adapter.openclaw?.agentSkills;
   if (!agentSkills?.enabled) return adapter;
+  const existing = adapter.programmatic;
   return {
     ...adapter,
     programmatic: {
-      modulePath: "builtin:openclaw",
-      hash: builtinHash,
-      capabilities: ["openclaw-agent-skills"],
-      plan: (context) => planOpenClawAgentSkills(agentSkills, context),
-      apply: applyOpenClawAgentSkills,
+      modulePath: existing ? `${existing.modulePath}+builtin:openclaw` : "builtin:openclaw",
+      hash: existing ? stableHash({ existing: existing.hash, builtin: builtinHash }) : builtinHash,
+      capabilities: [...new Set([...(existing?.capabilities ?? []), "openclaw-agent-skills"])],
+      plan: async (context) => [
+        ...await resolveProgrammaticPlan(existing, context),
+        ...await planOpenClawAgentSkills(agentSkills, context),
+      ],
+      apply: async (operation, context) => {
+        if (operation.name === "openclaw-agent-skills") {
+          await applyOpenClawAgentSkills(operation, context);
+          return;
+        }
+        if (!existing?.apply) throw new Error(`No programmatic apply handler for ${operation.name}`);
+        await existing.apply(operation, context);
+      },
+      uninstall: existing?.uninstall,
     },
   };
+}
+
+async function resolveProgrammaticPlan(existing: AdapterConfig["programmatic"], context: ProgrammaticAdapterContext): Promise<ProgrammaticAdapterOperation[]> {
+  return existing?.plan ? await existing.plan(context) : [];
 }
 
 interface AgentSkillsOperationData {

@@ -16,6 +16,7 @@ import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
+import { executeRestartAdvice, formatRestartAdvice, restartAdviceForPlan } from "../runtime/restart.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import type { InstallOperation, InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
@@ -52,8 +53,8 @@ program
   .command("init")
   .description("initialize an agentwheel workspace or package")
   .argument("[kind]", "workspace or package", "workspace")
-  .option("--target-root <path>", "workspace root", process.cwd())
-  .option("--fleet-example", "scaffold example agents and profiles in workspace config", false)
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
+  .option("-E, --fleet-example", "scaffold example agents and profiles in workspace config", false)
   .action(async (kind, options) => {
     const root = normalizeTargetRoot(options.targetRoot);
     if (kind === "package") {
@@ -77,16 +78,16 @@ program
   .command("add")
   .description("add a package to .agentwheel/config.json without touching runtimes")
   .argument("<source>", "package source")
-  .option("--driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
-  .option("--adapter <adapter>", "built-in adapter", "openclaw")
-  .option("--adapter-config <path>", "adapter JSON/JSONC file")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "workspace root", process.cwd())
-  .option("--mode <mode>", "pinned or tracking", "pinned")
-  .option("--name <name>", "package alias")
-  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-d, --driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
+  .option("-a, --adapter <adapter>", "built-in adapter", "openclaw")
+  .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
+  .option("-M, --mode <mode>", "pinned or tracking", "pinned")
+  .option("-N, --name <name>", "package alias")
+  .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const entry = await packageEntryFromSource(source, targetRoot, options);
@@ -98,10 +99,10 @@ program
   .command("list")
   .description("list artifacts exposed by a package source")
   .argument("<source>", "package source")
-  .option("--driver <driver>", "source driver")
-  .option("--target-root <path>", "workspace root", process.cwd())
-  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-d, --driver <driver>", "source driver")
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
+  .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const selectedArtifacts = selectedArtifactsFromOptions(options);
@@ -118,8 +119,8 @@ program
   .command("scan")
   .description("scan a package source for validation findings")
   .argument("<source>", "package source")
-  .option("--driver <driver>", "source driver")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-d, --driver <driver>", "source driver")
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
@@ -140,25 +141,25 @@ program
   .command("plan")
   .description("preview what install would reconcile without writing")
   .argument("[name-or-source]", "configured package name/source or package source to preview")
-  .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
-  .option("--adapter-config <path>", "adapter JSON/JSONC file")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
-  .option("--all-detected", "run for every runtime directory detected in the target root", false)
-  .option("--mode <mode>", "pinned or tracking")
-  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .option("--dry-run", "accepted for symmetry; plan never writes", false)
-  .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
-  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
-  .option("--offline", "resolve strictly from graph locks and local caches", false)
-  .option("--yes", "trust all new transitive sources", false)
-  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("-d, --driver <driver>", "source driver")
+  .option("-a, --adapter <adapter>", "built-in adapter")
+  .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "runtime/project root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
+  .option("-G, --all-detected", "run for every runtime directory detected in the target root", false)
+  .option("-M, --mode <mode>", "pinned or tracking")
+  .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-n, --dry-run", "accepted for symmetry; plan never writes", false)
+  .option("-D, --no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("-O, --only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("-F, --frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("-o, --offline", "resolve strictly from graph locks and local caches", false)
+  .option("-y, --yes", "trust all new transitive sources", false)
+  .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
     await runInstallCommand(source, { ...options, dryRun: true }, { apply: false });
   });
@@ -167,27 +168,28 @@ program
   .command("install")
   .description("install configured packages into runtime targets")
   .argument("[name-or-source]", "configured package name/source or package source to add and install")
-  .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
-  .option("--adapter-config <path>", "adapter JSON/JSONC file")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
-  .option("--all-detected", "run for every runtime directory detected in the target root", false)
-  .option("--mode <mode>", "pinned or tracking")
-  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .option("--profile <name>", "workspace runtime profile")
-  .option("--dry-run", "show plan without writing", false)
-  .option("--execute-plugins", "execute semantic plugin installs", false)
-  .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
-  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
-  .option("--offline", "resolve strictly from graph locks and local caches", false)
-  .option("--yes", "trust all new transitive sources", false)
-  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("-d, --driver <driver>", "source driver")
+  .option("-a, --adapter <adapter>", "built-in adapter")
+  .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "runtime/project root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
+  .option("-G, --all-detected", "run for every runtime directory detected in the target root", false)
+  .option("-M, --mode <mode>", "pinned or tracking")
+  .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-p, --profile <name>", "workspace runtime profile")
+  .option("-n, --dry-run", "show plan without writing", false)
+  .option("-x, --execute-plugins", "execute semantic plugin installs", false)
+  .option("-R, --restart", "run configured restart command after a successful apply", false)
+  .option("-D, --no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("-O, --only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("-F, --frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("-o, --offline", "resolve strictly from graph locks and local caches", false)
+  .option("-y, --yes", "trust all new transitive sources", false)
+  .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
   .action(async (source, options) => {
     await runInstallCommand(source, options, { apply: !options.dryRun });
@@ -196,27 +198,28 @@ program
 program
   .command("sync", { hidden: true })
   .argument("[name-or-source]", "configured package name/source or package source")
-  .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
-  .option("--adapter-config <path>", "adapter JSON/JSONC file")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
-  .option("--all-detected", "run for every runtime directory detected in the target root", false)
-  .option("--mode <mode>", "pinned or tracking")
-  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .option("--profile <name>", "workspace runtime profile")
-  .option("--dry-run", "show plan without writing", false)
-  .option("--execute-plugins", "execute semantic plugin installs", false)
-  .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
-  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
-  .option("--offline", "resolve strictly from graph locks and local caches", false)
-  .option("--yes", "trust all new transitive sources", false)
-  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("-d, --driver <driver>", "source driver")
+  .option("-a, --adapter <adapter>", "built-in adapter")
+  .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "runtime/project root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
+  .option("-G, --all-detected", "run for every runtime directory detected in the target root", false)
+  .option("-M, --mode <mode>", "pinned or tracking")
+  .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-p, --profile <name>", "workspace runtime profile")
+  .option("-n, --dry-run", "show plan without writing", false)
+  .option("-x, --execute-plugins", "execute semantic plugin installs", false)
+  .option("-R, --restart", "run configured restart command after a successful apply", false)
+  .option("-D, --no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("-O, --only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("-F, --frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("-o, --offline", "resolve strictly from graph locks and local caches", false)
+  .option("-y, --yes", "trust all new transitive sources", false)
+  .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
     console.error("warning: 'agentwheel sync' is deprecated and will be removed in 0.10. Use 'agentwheel install'.");
     await runInstallCommand(source, options, { apply: !options.dryRun });
@@ -226,21 +229,22 @@ program
   .command("update")
   .description("re-resolve tracking packages, then apply the result")
   .argument("[name]", "configured package name or source to update")
-  .option("--adapter <adapter>", "built-in adapter")
-  .option("--target-root <path>", "workspace root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
-  .option("--profile <name>", "workspace runtime profile")
-  .option("--dry-run", "show plans without writing", false)
-  .option("--execute-plugins", "execute semantic plugin installs", false)
-  .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
-  .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
-  .option("--offline", "resolve strictly from graph locks and local caches", false)
-  .option("--yes", "trust all new transitive sources", false)
-  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("-a, --adapter <adapter>", "built-in adapter")
+  .option("-r, --target-root <path>", "workspace root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
+  .option("-p, --profile <name>", "workspace runtime profile")
+  .option("-n, --dry-run", "show plans without writing", false)
+  .option("-x, --execute-plugins", "execute semantic plugin installs", false)
+  .option("-R, --restart", "run configured restart command after a successful apply", false)
+  .option("-L, --allow-adapter-code", "allow loading local adapter code from configured packages", false)
+  .option("-S, --select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-D, --no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("-F, --frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("-o, --offline", "resolve strictly from graph locks and local caches", false)
+  .option("-y, --yes", "trust all new transitive sources", false)
+  .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
     if (options.profile) {
       if (name) {
@@ -267,6 +271,10 @@ program
       for (const result of results) {
         console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
         console.log(formatPlan(result.plan));
+        await maybeHandleRestartAdvice(result.restartAdvice, result.restartTarget, {
+          execute: options.restart === true && options.dryRun !== true,
+          dryRun: options.dryRun === true,
+        });
         if (result.plan.hasBlockingChanges) process.exitCode = 1;
       }
       if (!options.dryRun) console.log("Updated.");
@@ -285,21 +293,21 @@ program
     new Command("tree")
       .description("print the OpenPack dependency graph")
       .argument("[source]", "optional package source to resolve")
-      .option("--adapter <adapter>", "built-in adapter")
-      .option("--adapter-config <path>", "adapter JSON/JSONC file")
-      .option("--adapter-module <path>", "local programmatic adapter module")
-      .option("--allow-adapter-code", "allow loading local adapter code", false)
-      .option("--target-root <path>", "runtime/project root")
-      .option("--agent <name>", "named agent from merged config")
-      .option("--all", "run for every configured agent", false)
-      .option("--mode <mode>", "pinned or tracking")
-      .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-      .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-      .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-      .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
-      .option("--offline", "resolve strictly from graph locks and local caches", false)
-      .option("--yes", "trust all new transitive sources", false)
-      .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+      .option("-a, --adapter <adapter>", "built-in adapter")
+      .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+      .option("-m, --adapter-module <path>", "local programmatic adapter module")
+      .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+      .option("-r, --target-root <path>", "runtime/project root")
+      .option("-A, --agent <name>", "named agent from merged config")
+      .option("-g, --all", "run for every configured agent", false)
+      .option("-M, --mode <mode>", "pinned or tracking")
+      .option("-S, --select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+      .option("-k, --skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+      .option("-D, --no-deps", "resolve only root sources and ignore requires with a warning")
+      .option("-F, --frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+      .option("-o, --offline", "resolve strictly from graph locks and local caches", false)
+      .option("-y, --yes", "trust all new transitive sources", false)
+      .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
       .action(async (source, options) => {
         const targets = await resolveCliTargets(options);
         for (const target of targets) {
@@ -322,13 +330,13 @@ program
     new Command("why")
       .description("explain why an artifact is installed")
       .argument("<selector>", "installed path, type/installName, or graphNodeId:type/name")
-      .option("--adapter <adapter>", "built-in adapter")
-      .option("--adapter-config <path>", "adapter JSON/JSONC file")
-      .option("--adapter-module <path>", "local programmatic adapter module")
-      .option("--allow-adapter-code", "allow loading local adapter code", false)
-      .option("--target-root <path>", "runtime/project root")
-      .option("--agent <name>", "named agent from merged config")
-      .option("--all", "run for every configured agent", false)
+      .option("-a, --adapter <adapter>", "built-in adapter")
+      .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+      .option("-m, --adapter-module <path>", "local programmatic adapter module")
+      .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+      .option("-r, --target-root <path>", "runtime/project root")
+      .option("-A, --agent <name>", "named agent from merged config")
+      .option("-g, --all", "run for every configured agent", false)
       .action(async (selector, options) => {
         const targets = await resolveCliTargets(options);
         for (const target of targets) {
@@ -345,7 +353,7 @@ program
   .addCommand(
     new Command("update")
       .description("refresh the local registry cache")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-r, --target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         const index = await client.getIndex({ refresh: true });
@@ -355,7 +363,7 @@ program
   .addCommand(
     new Command("list")
       .description("list available registry entries")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-r, --target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries((await client.getIndex()).entries);
@@ -365,7 +373,7 @@ program
     new Command("search")
       .description("search registry entries")
       .argument("<query>", "search query")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-r, --target-root <path>", "workspace root", process.cwd())
       .action(async (query, options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries(await client.search(query));
@@ -379,7 +387,7 @@ program
     new Command("forget")
       .description("forget a persisted trusted source pattern")
       .argument("<pattern>", "trusted source glob to revoke")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-r, --target-root <path>", "workspace root", process.cwd())
       .action(async (pattern, options) => {
         const removed = await forgetTrustedSources(normalizeTargetRoot(options.targetRoot), pattern);
         if (removed.length === 0) {
@@ -422,8 +430,8 @@ program
 program
   .command("remember")
   .description("append text to the local instructions overlay")
-  .requiredOption("--runtime <runtime>", "runtime/adapter name")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .requiredOption("-u, --runtime <runtime>", "runtime/adapter name")
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
   .argument("<text>", "text to append to the local instructions overlay")
   .action(async (text, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
@@ -436,7 +444,7 @@ program
   .command("eject")
   .description("copy a managed artifact into local ownership")
   .argument("<item>", "package/type/name")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-r, --target-root <path>", "workspace root", process.cwd())
   .action(async (item, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const result = await ejectArtifact(targetRoot, item);
@@ -448,21 +456,21 @@ program
   .command("uninstall")
   .description("remove configured packages or managed runtime files")
   .argument("[package]", "configured package name or source to remove from the ownership graph")
-  .option("--adapter <adapter>", "adapter")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
-  .option("--dry-run", "show removals without writing", false)
-  .option("--force", "remove drifted managed files too", false)
-  .option("--keep-files", "remove from config and manifest but leave runtime files unmanaged", false)
-  .option("--select <type/name>", "uninstall only selected artifact type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
-  .option("--skill <name>", "uninstall only selected skill name (repeatable or comma-separated)", collectSkillOption, [] as string[])
-  .option("--frozen-lock", "resolve remaining packages strictly from the existing graph lock and cached sources", false)
-  .option("--offline", "resolve remaining packages strictly from graph locks and local caches", false)
-  .option("--yes", "trust all new transitive sources while resolving remaining packages", false)
-  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("-a, --adapter <adapter>", "adapter")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "runtime/project root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
+  .option("-n, --dry-run", "show removals without writing", false)
+  .option("-f, --force", "remove drifted managed files too", false)
+  .option("-K, --keep-files", "remove from config and manifest but leave runtime files unmanaged", false)
+  .option("-S, --select <type/name>", "uninstall only selected artifact type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("-k, --skill <name>", "uninstall only selected skill name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("-F, --frozen-lock", "resolve remaining packages strictly from the existing graph lock and cached sources", false)
+  .option("-o, --offline", "resolve remaining packages strictly from graph locks and local caches", false)
+  .option("-y, --yes", "trust all new transitive sources while resolving remaining packages", false)
+  .option("-t, --trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (packageName, options) => {
     if (options.keepFiles && options.force) {
       throw new Error("--keep-files cannot be combined with --force.");
@@ -500,13 +508,13 @@ program
 program
   .command("status")
   .description("show configured packages and runtime install state")
-  .option("--adapter <adapter>", "built-in adapter")
-  .option("--adapter-config <path>", "adapter JSON/JSONC file")
-  .option("--adapter-module <path>", "local programmatic adapter module")
-  .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
-  .option("--agent <name>", "named agent from merged config")
-  .option("--all", "run for every configured agent", false)
+  .option("-a, --adapter <adapter>", "built-in adapter")
+  .option("-c, --adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-m, --adapter-module <path>", "local programmatic adapter module")
+  .option("-L, --allow-adapter-code", "allow loading local adapter code", false)
+  .option("-r, --target-root <path>", "runtime/project root")
+  .option("-A, --agent <name>", "named agent from merged config")
+  .option("-g, --all", "run for every configured agent", false)
   .action(async (options) => {
     const targets = await resolveCliTargets(options);
     for (const target of targets) {
@@ -551,6 +559,10 @@ async function runInstallCommand(
     for (const result of results) {
       console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
       console.log(formatPlan(result.plan));
+      await maybeHandleRestartAdvice(result.restartAdvice, result.restartTarget, {
+        execute: options.restart === true && behavior.apply,
+        dryRun: !behavior.apply,
+      });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
     if (behavior.apply) console.log("Applied.");
@@ -582,6 +594,7 @@ async function runInstallCommand(
 
     for (const result of await buildGraphPlansForTarget(target, source, { ...options, scope, extraPackage }, { mode: "install" })) {
       console.log(formatGraphPlan(result));
+      const restartAdvice = restartAdviceForPlan(result.plan, target);
       if (behavior.apply) {
         await applyCombinedInstallPlan(result.plan, {
           executePlugins: options.executePlugins,
@@ -591,6 +604,10 @@ async function runInstallCommand(
         });
         console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
       }
+      await maybeHandleRestartAdvice(restartAdvice, target, {
+        execute: options.restart === true && behavior.apply,
+        dryRun: !behavior.apply,
+      });
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
@@ -663,6 +680,17 @@ function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boole
   return options.noDeps === true || options.deps === false;
 }
 
+async function maybeHandleRestartAdvice(
+  advice: ReturnType<typeof restartAdviceForPlan> | undefined,
+  target: Pick<RuntimeTarget, "transport" | "ssh">,
+  options: { execute: boolean; dryRun: boolean },
+): Promise<void> {
+  if (!advice) return;
+  console.log(formatRestartAdvice(advice, options));
+  if (!options.execute || !advice.command) return;
+  await executeRestartAdvice(advice, target);
+}
+
 function teachingInstallError(input: string, cause: unknown): Error {
   const message = cause instanceof Error ? cause.message : String(cause);
   return new Error(
@@ -704,6 +732,7 @@ async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapter
 interface GraphCliOptions {
   dryRun?: boolean;
   executePlugins?: boolean;
+  restart?: boolean;
   allowAdapterCode?: boolean;
   adapterConfig?: string;
   adapterModule?: string;
@@ -746,6 +775,7 @@ async function runConfiguredGraphPackages(
   for (const result of results) {
     console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
     console.log(formatGraphPlan(result));
+    const restartAdvice = restartAdviceForPlan(result.plan, target);
     if (!options.dryRun) {
       await applyCombinedInstallPlan(result.plan, {
         executePlugins: options.executePlugins,
@@ -755,6 +785,10 @@ async function runConfiguredGraphPackages(
       });
       console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
     }
+    await maybeHandleRestartAdvice(restartAdvice, target, {
+      execute: options.restart === true && options.dryRun !== true,
+      dryRun: options.dryRun === true,
+    });
     await rm(result.bundle.root, { recursive: true, force: true });
     if (result.plan.hasBlockingChanges) process.exitCode = 1;
   }

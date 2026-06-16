@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
 import { shouldUpdatePackage } from "../src/lifecycle/update.js";
 import { GitSourceDriver } from "../src/source/git.js";
@@ -148,20 +148,20 @@ describe("lifecycle core", () => {
     const source = await tempRoot();
     await writePackage(source);
     const workspace = await tempRoot();
-    await mkdir(join(workspace, ".agentwheel", "overlays", "openclaw"), { recursive: true });
+    await mkdir(join(workspace, ".agentwheel", "overlays", "claude"), { recursive: true });
     await mkdir(join(workspace, ".agentwheel", "additions", "rules"), { recursive: true });
     await mkdir(join(workspace, ".agentwheel", "overrides", "acme", "core", "rules"), { recursive: true });
     await mkdir(join(workspace, ".agentwheel", "ejected", "acme", "core", "rules"), { recursive: true });
-    await writeFile(join(workspace, ".agentwheel", "overlays", "openclaw", "instructions.local.md"), "Local memory survives.\n");
+    await writeFile(join(workspace, ".agentwheel", "overlays", "claude", "instructions.local.md"), "Local memory survives.\n");
     await writeFile(join(workspace, ".agentwheel", "additions", "rules", "local.md"), "# Local additive rule\n");
     await writeFile(join(workspace, ".agentwheel", "overrides", "acme", "core", "rules", "core.md"), "# Overridden core\n");
     await writeFile(join(workspace, ".agentwheel", "ejected", "acme", "core", "rules", "ejected.md"), "# Local ejected\n");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
     });
-    const plan = await createInstallPlan(bundle, openClawAdapter, workspace);
+    const plan = await createInstallPlan(bundle, claudeAdapter, workspace);
 
     expect(plan.operations.map((operation) => `${operation.channel}:${operation.artifactType}:${operation.artifactName}`).sort()).toEqual([
       "addition:rules:local.md",
@@ -172,18 +172,18 @@ describe("lifecycle core", () => {
     ]);
 
     await applyInstallPlan(plan, bundle.sourceLock);
-    const instructions = await readFile(join(workspace, ".openclaw", "AGENTS.md"), "utf8");
+    const instructions = await readFile(join(workspace, "CLAUDE.md"), "utf8");
     expect(instructions).toContain("BEGIN agentwheel managed: upstream");
     expect(instructions).toContain("Local memory survives.");
-    expect(await readFile(join(workspace, ".openclaw", "rules", "core.md"), "utf8")).toBe("# Overridden core\n");
-    expect(await readFile(join(workspace, ".openclaw", "rules", "local.md"), "utf8")).toBe("# Local additive rule\n");
+    expect(await readFile(join(workspace, ".claude", "rules", "core.md"), "utf8")).toBe("# Overridden core\n");
+    expect(await readFile(join(workspace, ".claude", "rules", "local.md"), "utf8")).toBe("# Local additive rule\n");
 
     await writePackage(source, { ejectedRule: "# Upstream changed ejected\n" });
     const updated = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
     });
-    const updatePlan = await createInstallPlan(updated, openClawAdapter, workspace, await readInstallManifest(workspace, "openclaw"));
+    const updatePlan = await createInstallPlan(updated, claudeAdapter, workspace, await readInstallManifest(workspace, "claude"));
     const ejected = updatePlan.operations.find((operation) => operation.artifactName === "ejected.md");
     expect(ejected?.channel).toBe("ejected");
     expect(ejected?.action).toBe("skip");

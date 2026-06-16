@@ -4,13 +4,25 @@ export const codexAdapter: AdapterConfig = {
   name: "codex",
   displayName: "Codex CLI",
   targets: {
-    instructions: { enabled: true, dest: ".codex/AGENTS.md" },
-    rules: { enabled: true, dest: ".codex/rules" },
-    skills: { enabled: true, dest: ".codex/skills" },
-    commands: { enabled: true, dest: ".codex/commands" },
-    subagents: { enabled: true, dest: ".codex/agents" },
-    mcp: { enabled: true, dest: ".codex/config.toml", merge: "codex-toml-mcp" },
-    hooks: { enabled: true, dest: ".codex/hooks.json", merge: "json-deep" },
-    settings: { enabled: true, dest: ".codex/settings.json", merge: "json-deep" },
+    instructions: {
+      local: { enabled: true, dest: "AGENTS.md" },
+      user: { enabled: true, root: "home", dest: ".codex/AGENTS.md" },
+    },
+    rules: {
+      local: { enabled: true, dest: ".codex/rules" },
+      user: { enabled: true, root: "home", dest: ".codex/rules" },
+    },
+    skills: {
+      local: { enabled: true, dest: ".agents/skills" },
+      user: { enabled: true, root: "home", dest: ".agents/skills" },
+    },
+    mcp: {
+      local: { enabled: true, dest: ".codex/config.toml", merge: "codex-toml-mcp" },
+      user: { enabled: true, root: "home", dest: ".codex/config.toml", merge: "codex-toml-mcp" },
+    },
+    hooks: {
+      local: { enabled: true, dest: ".codex/hooks.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".codex/hooks.json", merge: "json-deep" },
+    },
   },
 };

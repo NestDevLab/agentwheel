@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
+import { defaultInstallationType, installationTypeSchema } from "./adapter.js";
 
 export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
 export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
@@ -57,6 +58,8 @@ export const installManifestV1Schema = z.object({
 export const installManifestV2Schema = z.object({
   version: z.literal(2),
   adapter: z.string().min(1),
+  installationType: installationTypeSchema.default(defaultInstallationType),
+  stateKey: z.string().min(1).optional(),
   targetRoot: z.string().min(1),
   generatedAt: z.string().datetime(),
   revision: z.string().min(16),

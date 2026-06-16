@@ -24,20 +24,15 @@ async function tempRoot(prefix = "agentwheel-target-"): Promise<string> {
 }
 
 async function writePackage(root: string): Promise<void> {
-  await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo"), { recursive: true });
   await writeFile(join(root, "openpack.json"), JSON.stringify({
     schemaVersion: 2,
     name: "fixture/runtime-target",
     version: "0.1.0",
     provides: [
-      { type: "instructions", path: "AGENTS.md" },
-      { type: "rules", path: "rules" },
       { type: "skills", path: "skills" },
     ],
   }, null, 2), "utf8");
-  await writeFile(join(root, "AGENTS.md"), "# Runtime target fixture\n", "utf8");
-  await writeFile(join(root, "rules", "core.md"), "# Runtime target rule\n", "utf8");
   await writeFile(join(root, "skills", "demo", "SKILL.md"), "# Runtime target skill\n", "utf8");
 }
 
@@ -53,8 +48,8 @@ describe("runtime target resolution", () => {
     expect(target.targetRoot).toBe(root);
 
     const result = await createSourcePlan({ source, targetRoot: target.targetRoot, workspaceRoot: target.workspaceRoot, adapter: openClawAdapter });
-    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toContain(".openclaw/skills/demo");
-    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).not.toContain(".openclaw/.openclaw/skills/demo");
+    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toContain("skills/demo");
+    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).not.toContain(".openclaw/skills/demo");
     await rm(result.bundle.root, { recursive: true, force: true });
   });
 
@@ -125,8 +120,8 @@ describe("runtime target resolution", () => {
       await applyInstallPlan(result.plan, result.bundle.sourceLock);
       await rm(result.bundle.root, { recursive: true, force: true });
     }
-    await expect(stat(join(alpha, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
-    await expect(stat(join(beta, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
+    await expect(stat(join(alpha, ".agentwheel", "openclaw.local.install-manifest.json"))).resolves.toBeTruthy();
+    await expect(stat(join(beta, ".agentwheel", "openclaw.local.install-manifest.json"))).resolves.toBeTruthy();
   });
 
   it("respects target resolution order", async () => {
@@ -196,7 +191,7 @@ describe("runtime target resolution", () => {
       dryRun: false,
     });
     expect(results[0]?.targetRoot).toBe(alpha);
-    await expect(stat(join(alpha, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(alpha, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
   });
 
   it("resolves ssh agents without local path expansion", async () => {
@@ -253,7 +248,7 @@ describe("runtime target resolution", () => {
     await applyInstallPlan(result.plan, result.bundle.sourceLock, { transport });
     await rm(result.bundle.root, { recursive: true, force: true });
 
-    await expect(stat(join(remoteRoot, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(remoteRoot, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
+    await expect(stat(join(remoteRoot, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(remoteRoot, ".agentwheel", "openclaw.local.install-manifest.json"))).resolves.toBeTruthy();
   });
 });

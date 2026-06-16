@@ -200,7 +200,7 @@ describe("OpenPack phase C", () => {
       roots: [{ rootId: "root", source: root, select: ["skills/app"] }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-c-local-req",
       yes: true,
     });
@@ -242,7 +242,7 @@ describe("OpenPack phase C", () => {
       roots: [{ rootId: "root", source: root, select: ["skills/other"] }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-c-alias-req-other",
       yes: true,
     });
@@ -252,7 +252,7 @@ describe("OpenPack phase C", () => {
       roots: [{ rootId: "root", source: root, select: ["skills/app"] }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-c-alias-req-app",
       yes: true,
     });

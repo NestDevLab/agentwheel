@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { createSourcePlan } from "../src/lifecycle/source-plan.js";
@@ -128,7 +129,7 @@ describe("registry client", () => {
     const plan = await createInstallPlan(bundle, openClawAdapter, target);
     await applyInstallPlan(plan, bundle.sourceLock);
 
-    await expect(stat(join(target, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -150,15 +151,15 @@ describe("registry client", () => {
     const result = await createSourcePlan({
       source: "short-package",
       targetRoot: target,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
     });
 
     expect(result.resolvedSource).toBe(source);
     expect(result.registryEntryName).toBe("short-package");
     expect(result.plan.operations.map((operation) => `${operation.action}:${operation.relativeDestPath}`)).toEqual([
-      "create:.openclaw/AGENTS.md",
-      "create:.openclaw/rules/core.md",
-      "create:.openclaw/skills/demo-skill",
+      "create:.claude/rules/core.md",
+      "create:.claude/skills/demo-skill",
+      "create:CLAUDE.md",
     ]);
     await rm(result.bundle.root, { recursive: true, force: true });
   });

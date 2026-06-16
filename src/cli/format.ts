@@ -26,7 +26,7 @@ const channelLabels = {
 };
 
 export function formatPlan(plan: InstallPlan): string {
-  const lines = [`Plan for ${plan.adapter} at ${plan.targetRoot}`];
+  const lines = [`Plan for ${plan.adapter}/${plan.installationType} at ${plan.targetRoot}`];
   if (plan.migrationReport) {
     const dropped = plan.migrationReport.dropped.length > 0 ? `; dropped unmanaged ${plan.migrationReport.dropped.join(", ")}` : "";
     lines.push(`MIGRATE  adopted ${plan.migrationReport.adopted} legacy entries${dropped}`);

@@ -20,7 +20,7 @@ Mental model:
 ## Safety Rules
 
 - Prefer `agentwheel plan ...` or `agentwheel install --dry-run` before applying changes.
-- Do not hand-edit generated runtime files such as `.openclaw/skills`, `.claude/skills`, `.codex/skills`, `.hermes/skills`, or generated instructions.
+- Do not hand-edit generated runtime files such as `skills/`, `.agents/skills`, `.claude/skills`, `.github/skills`, `~/.hermes/skills`, or generated instructions.
 - If a plan reports `drift` or `conflict`, stop and explain it. Do not use `--force` unless the user explicitly approves that scope.
 - Gmail, Drive, registry publishing, git commits, pushes, and runtime restarts are separate external side effects. Get explicit approval for them.
 - Programmatic adapters execute local code. Use `--adapter-module` only with `--allow-adapter-code` after the user approves that local code execution.
@@ -30,7 +30,7 @@ Mental model:
 
 ```bash
 agentwheel registry search tmux
-agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex --mode tracking
+agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex --installation-type local --mode tracking
 agentwheel plan
 agentwheel install
 ```
@@ -45,7 +45,7 @@ agentwheel install
 To add and install in one step:
 
 ```bash
-agentwheel install github:owner/repo --adapter codex
+agentwheel install github:owner/repo --adapter codex --installation-type local
 ```
 
 ## Workspace Setup
@@ -126,11 +126,11 @@ agentwheel add <source> --driver vercel-skills
 `add` saves a package entry in `.agentwheel/config.json`; it does not install runtime files by itself.
 
 ```bash
-agentwheel add github:owner/repo --adapter openclaw
-agentwheel add github:owner/repo --adapter claude
-agentwheel add github:owner/repo --adapter codex
-agentwheel add github:owner/repo --adapter hermes
-agentwheel add github:owner/repo --adapter copilot
+agentwheel add github:owner/repo --adapter openclaw --installation-type local
+agentwheel add github:owner/repo --adapter claude --installation-type local
+agentwheel add github:owner/repo --adapter codex --installation-type local
+agentwheel add github:owner/repo --adapter hermes --installation-type user
+agentwheel add github:owner/repo --adapter copilot --installation-type local
 ```
 
 Select only part of a package:
@@ -159,6 +159,7 @@ Equivalent config:
   "source": "github:example-org/agent-toolkit#main",
   "driver": "git",
   "adapter": "codex",
+  "installationType": "local",
   "mode": "tracking",
   "select": ["skills/self-improve"],
   "overrides": ["github:example-upstream/agent-toolkit::skills/self-improve"]
@@ -206,8 +207,12 @@ agentwheel install team-agent-pack
 Add and install a source in one step:
 
 ```bash
-agentwheel install github:owner/repo --adapter codex
+agentwheel install github:owner/repo --adapter codex --installation-type local
 ```
+
+Pass `--installation-type local` for project/workspace installs and `--installation-type user` for
+documented user-level installs. If a package can be installed in more than one type, agentwheel
+fails instead of guessing.
 
 Target selection order is `--target-root`, then `--agent`, then runtime auto-detection from the current directory, then the current directory.
 
@@ -233,8 +238,8 @@ Current config shape:
   "packages": [],
   "registry": {},
   "agents": {
-    "lab-codex": { "adapter": "codex", "root": "$HOME/project" },
-    "lab-claude": { "adapter": "claude", "root": "$HOME/project" }
+    "lab-codex": { "adapter": "codex", "installationType": "local", "root": "$HOME/project" },
+    "lab-claude": { "adapter": "claude", "installationType": "local", "root": "$HOME/project" }
   },
   "profiles": {
     "daily": {
@@ -418,7 +423,7 @@ agentwheel install
 If the current directory has multiple runtime markers:
 
 ```bash
-agentwheel install --adapter codex --dry-run
+agentwheel install --adapter codex --installation-type local --dry-run
 ```
 
 If a selected artifact is missing:

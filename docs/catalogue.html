@@ -798,7 +798,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.9.</span>
+      <span>agentwheel is early / v0.12.0.</span>
       <a class="logo-link" href="https://www.nestdev.it/" aria-label="NestDevLab">
         <img src="https://www.nestdev.it/assets/logo-nestdev.png" width="22" height="22" alt="">
       </a>
@@ -935,7 +935,7 @@
         description: typeof record.d === "string" ? record.d : "",
         tags: [],
         source: `vercel:skills.sh/${owner}/${repo}/${skill}`,
-        installCommand: `npx agentwheel install "vercel:skills.sh/${owner}/${repo}/${skill}"`,
+        installCommand: `npx agentwheel install "vercel:skills.sh/${owner}/${repo}/${skill}" --installation-type local`,
         repoUrl: `https://github.com/${owner}/${repo}`,
         homepageUrl: `https://skills.sh/${owner}/${repo}/${skill}`,
         stars: null,

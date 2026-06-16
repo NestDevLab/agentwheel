@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.12.0
+
+- Added explicit `installationType` support across CLI commands, workspace config, runtime targets, install plans, manifests, locks, and graph state.
+- Rebuilt built-in harness artifact mappings around documented native locations, including Codex `.agents/skills`, Claude `.mcp.json`, Copilot `.github/*`, OpenClaw native `skills/`, and Hermes user skills.
+- Added artifact/harness compatibility documentation with supported, alternative, unsupported, and requires-config statuses plus rule-semantics notes.
+- Partitioned install state by adapter, installation type, and target fingerprint so user/local and fleet targets do not collide.
+- Added compatibility smoke fixtures, negative mapping tests, and a manual Codex local skill discovery smoke script.
+- Added a site version sync script so GitHub Pages static HTML no longer drifts from `package.json`.
+
 ## 0.11.0
 
 - Added explicit workspace source overrides so a selected package can replace a colliding artifact from another source without relying on package order.

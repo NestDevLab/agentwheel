@@ -84,7 +84,7 @@ describe("asset includes", () => {
     await applyInstallPlan(firstPlan, first.sourceLock);
     await rm(first.root, { recursive: true, force: true });
 
-    const installedScript = join(target, ".openclaw", "skills", "alpha", "bin", "agent-send.sh");
+    const installedScript = join(target, "skills", "alpha", "bin", "agent-send.sh");
     expect((await stat(installedScript)).mode & 0o111).toBeTruthy();
 
     const second = await stageSource(driver, source);
@@ -101,7 +101,7 @@ describe("asset includes", () => {
     await applyInstallPlan(await createInstallPlan(first, openClawAdapter, target), first.sourceLock);
     await rm(first.root, { recursive: true, force: true });
 
-    await writeFile(join(target, ".openclaw", "skills", "alpha", "bin", "agent-send.sh"), "#!/bin/bash\necho changed\n", "utf8");
+    await writeFile(join(target, "skills", "alpha", "bin", "agent-send.sh"), "#!/bin/bash\necho changed\n", "utf8");
     const second = await stageSource(driver, source);
     const secondPlan = await createInstallPlan(second, openClawAdapter, target, await readInstallManifest(target, openClawAdapter.name));
     expect(secondPlan.operations.find((operation) => operation.artifactName === "alpha")?.action).toBe("drift");

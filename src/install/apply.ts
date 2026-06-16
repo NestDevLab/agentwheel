@@ -75,10 +75,11 @@ export async function recoverPendingApply(
   targetRoot: string,
   adapter: string,
   transport: TargetTransport = localTransport,
+  scope: { installationType?: string; stateKey?: string } = {},
 ): Promise<InstallManifest | undefined> {
-  const lock = await acquireApplyLock(targetRoot, adapter, transport);
+  const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
-    const journal = await readApplyJournal(targetRoot, adapter, transport);
+    const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
 
     if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program")) {
@@ -101,11 +102,11 @@ export async function recoverPendingApply(
 
       if (operationNeedsSource(operation) && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
         await rollbackStartedOperations(journal, transport);
-        await removeApplyJournal(targetRoot, adapter, transport);
+        await removeApplyJournal(targetRoot, adapter, transport, scope);
         return undefined;
       }
 
-      const backup = started ?? await recordBackup(operation, index, targetRoot, adapter, transport);
+      const backup = started ?? await recordBackup(operation, index, targetRoot, adapter, transport, scope);
       if (!started && isJournaledMutation(operation)) {
         journal.completed.push(backup);
         startedByIndex.set(index, backup);
@@ -130,12 +131,13 @@ async function applyPlanTransactionally(
   options: ApplyOptions & { sourceLock?: SourceLock } = {},
 ): Promise<InstallManifest> {
   const transport = options.transport ?? localTransport;
+  const scope = { installationType: plan.installationType, stateKey: plan.stateKey };
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
 
-  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock);
+  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock, scope);
   try {
     await assertBaseRevision(plan, transport);
     const now = new Date().toISOString();
@@ -143,6 +145,8 @@ async function applyPlanTransactionally(
     const journal: ApplyJournal = {
       version: 1,
       adapter: plan.adapter,
+      installationType: plan.installationType,
+      stateKey: plan.stateKey,
       targetRoot: plan.targetRoot,
       baseRevision: plan.baseRevision,
       graphLockDigest,
@@ -153,6 +157,8 @@ async function applyPlanTransactionally(
       manifest: {
         version: 2,
         adapter: plan.adapter,
+        installationType: plan.installationType,
+        stateKey: plan.stateKey,
         targetRoot: plan.targetRoot,
         generatedAt: now,
         revision: "pending-apply-0000",
@@ -170,7 +176,7 @@ async function applyPlanTransactionally(
     for (const [index, operation] of plan.operations.entries()) {
       assertOperationContained(operation, plan.targetRoot);
       const backup = isJournaledMutation(operation)
-        ? await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport)
+        ? await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport, scope)
         : undefined;
       if (backup) {
         journal.completed.push(backup);
@@ -199,6 +205,7 @@ async function applyPlanTransactionally(
 export async function uninstall(plan: InstallPlan, options: UninstallOptions | boolean = {}): Promise<UninstallResult> {
   const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
   const transport = resolvedOptions.transport ?? localTransport;
+  const scope = { installationType: plan.installationType, stateKey: plan.stateKey };
   if (resolvedOptions.keepFiles && resolvedOptions.force) {
     throw new Error("--keep-files cannot be combined with --force.");
   }
@@ -225,6 +232,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const finalManifest = withManifestRevision({
     version: 2,
     adapter: plan.adapter,
+    installationType: plan.installationType,
+    stateKey: plan.stateKey,
     targetRoot: plan.targetRoot,
     generatedAt: now,
     revision: "pending-uninstall-0",
@@ -243,13 +252,15 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     }).sort((a, b) => a.path.localeCompare(b.path)),
   });
 
-  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, resolvedOptions.lock);
+  const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, resolvedOptions.lock, scope);
   try {
     await assertBaseRevision(plan, transport);
     const journal: ApplyJournal = {
       version: 1,
       mode: "uninstall",
       adapter: plan.adapter,
+      installationType: plan.installationType,
+      stateKey: plan.stateKey,
       targetRoot: plan.targetRoot,
       baseRevision: plan.baseRevision,
       graphLockDigest: plan.graphLockDigest,
@@ -267,7 +278,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     await writeApplyJournal(journal, transport);
 
     for (const [index, operation] of (resolvedOptions.keepFiles ? [] : removable).entries()) {
-      const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport);
+      const backup = await recordBackup(operation, index, plan.targetRoot, plan.adapter, transport, scope);
       journal.completed.push(backup);
       await writeApplyJournal(journal, transport);
       await applyOperation(operation, { transport, now, graphLockDigest: plan.graphLockDigest });
@@ -303,15 +314,24 @@ async function commitJournalState(
   });
 
   if (journal.mode === "uninstall" && manifest.entries.length === 0) {
-    await removeStateFiles(journal.targetRoot, journal.adapter, transport);
+    await removeStateFiles(journal.targetRoot, journal.adapter, transport, {
+      installationType: journal.installationType,
+      stateKey: journal.stateKey,
+    });
   } else {
-    if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport);
+    if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport, {
+      installationType: journal.installationType,
+      stateKey: journal.stateKey,
+    });
     await writeInstallManifest(manifest, transport);
   }
   if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
   if (journal.graphLockRemovePath) await rm(journal.graphLockRemovePath, { force: true });
   if (journal.workspaceConfigPath && journal.workspaceConfig) await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
-  await removeApplyJournal(journal.targetRoot, journal.adapter, transport);
+  await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
+    installationType: journal.installationType,
+    stateKey: journal.stateKey,
+  });
   return manifest;
 }
 
@@ -492,7 +512,10 @@ function manifestEntryForOperation(
 }
 
 async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
-  const current = await readInstallManifest(plan.targetRoot, plan.adapter, transport);
+  const current = await readInstallManifest(plan.targetRoot, plan.adapter, transport, {
+    installationType: plan.installationType,
+    stateKey: plan.stateKey,
+  });
   const currentRevision = current?.revision ?? null;
   if (currentRevision !== plan.baseRevision) {
     throw new Error(`Install manifest changed since planning for ${plan.adapter}; replan needed`);

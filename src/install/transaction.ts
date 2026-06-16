@@ -5,7 +5,7 @@ import type { GraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { InstallOperation } from "./plan.js";
-import { metadataDir } from "./paths.js";
+import { metadataDir, stateKeyFor, type InstallStateScope } from "./paths.js";
 
 export interface ApplyLockOptions {
   staleAfterMs?: number;
@@ -29,6 +29,8 @@ export interface ApplyJournal {
   version: 1;
   mode?: "apply" | "uninstall";
   adapter: string;
+  installationType?: string;
+  stateKey?: string;
   targetRoot: string;
   baseRevision: string | null;
   graphLockDigest?: string;
@@ -45,16 +47,16 @@ export interface ApplyJournal {
   workspaceConfig?: unknown;
 }
 
-export function applyLockPath(targetRoot: string, adapter: string): string {
-  return join(metadataDir(targetRoot), `${adapter}.apply-lock`);
+export function applyLockPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
+  return join(metadataDir(targetRoot), `${stateKeyFor(adapter, scope)}.apply-lock`);
 }
 
-export function applyJournalPath(targetRoot: string, adapter: string): string {
-  return join(metadataDir(targetRoot), `${adapter}.apply-journal.json`);
+export function applyJournalPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
+  return join(metadataDir(targetRoot), `${stateKeyFor(adapter, scope)}.apply-journal.json`);
 }
 
-export function applyBackupDir(targetRoot: string, adapter: string): string {
-  return join(metadataDir(targetRoot), `${adapter}.apply-backups`);
+export function applyBackupDir(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
+  return join(metadataDir(targetRoot), `${stateKeyFor(adapter, scope)}.apply-backups`);
 }
 
 export async function acquireApplyLock(
@@ -62,12 +64,15 @@ export async function acquireApplyLock(
   adapter: string,
   transport: TargetTransport = localTransport,
   options: ApplyLockOptions = {},
+  scope: InstallStateScope = {},
 ): Promise<ApplyLock> {
-  const lockPath = applyLockPath(targetRoot, adapter);
+  const lockPath = applyLockPath(targetRoot, adapter, scope);
   const ownerPath = join(lockPath, "owner.json");
   const metadata = {
     pid: process.pid,
     adapter,
+    installationType: scope.installationType,
+    stateKey: scope.stateKey,
     targetRoot,
     transport: transport.description,
     createdAt: new Date().toISOString(),
@@ -89,21 +94,29 @@ export async function acquireApplyLock(
 }
 
 export async function writeApplyJournal(journal: ApplyJournal, transport: TargetTransport = localTransport): Promise<void> {
-  await transport.writeJsonAtomic(applyJournalPath(journal.targetRoot, journal.adapter), {
+  await transport.writeJsonAtomic(applyJournalPath(journal.targetRoot, journal.adapter, {
+    installationType: journal.installationType,
+    stateKey: journal.stateKey,
+  }), {
     ...journal,
     updatedAt: new Date().toISOString(),
   });
 }
 
-export async function readApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport): Promise<ApplyJournal | undefined> {
-  const path = applyJournalPath(targetRoot, adapter);
+export async function readApplyJournal(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<ApplyJournal | undefined> {
+  const path = applyJournalPath(targetRoot, adapter, scope);
   if (!(await transport.pathExists(path))) return undefined;
   return JSON.parse(await transport.readFile(path)) as ApplyJournal;
 }
 
-export async function removeApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport): Promise<void> {
-  await transport.rm(applyJournalPath(targetRoot, adapter));
-  await transport.rm(applyBackupDir(targetRoot, adapter));
+export async function removeApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport, scope: InstallStateScope = {}): Promise<void> {
+  await transport.rm(applyJournalPath(targetRoot, adapter, scope));
+  await transport.rm(applyBackupDir(targetRoot, adapter, scope));
 }
 
 export async function recordBackup(
@@ -112,6 +125,7 @@ export async function recordBackup(
   targetRoot: string,
   adapter: string,
   transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
 ): Promise<ApplyJournalCompletedOperation> {
   const hadExisting = await transport.pathExists(operation.destPath);
   if (!hadExisting || transport.kind !== "local" || (operation.action !== "update" && operation.action !== "remove" && operation.action !== "create")) {
@@ -123,7 +137,7 @@ export async function recordBackup(
     };
   }
 
-  const backupPath = join(applyBackupDir(targetRoot, adapter), String(index));
+  const backupPath = join(applyBackupDir(targetRoot, adapter, scope), String(index));
   await rm(backupPath, { recursive: true, force: true });
   await mkdir(dirname(backupPath), { recursive: true });
   await cp(operation.destPath, backupPath, { recursive: operation.kind === "dir", dereference: true });

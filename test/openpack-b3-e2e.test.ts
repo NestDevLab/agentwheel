@@ -6,7 +6,7 @@ import { claudeAdapter } from "../src/adapters/claude.js";
 import { codexAdapter } from "../src/adapters/codex.js";
 import { applyCombinedInstallPlan, createOwnershipUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
-import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, writeGraphSourceLock } from "../src/lifecycle/source-plan.js";
+import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, writeGraphSourceLock, type GraphSourcePlanResult } from "../src/lifecycle/source-plan.js";
 import { readWorkspaceConfig, workspaceConfigPath, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { pathExists } from "../src/utils/fs.js";
 
@@ -39,6 +39,13 @@ async function writeOpenPack(root: string, manifest: Record<string, unknown>): P
     version: "1.0.0",
     provides: [{ type: "rules", path: "rules" }],
     ...manifest,
+  });
+}
+
+async function readPlanManifest(result: GraphSourcePlanResult) {
+  return readInstallManifest(result.plan.targetRoot, result.plan.adapter, undefined, {
+    installationType: result.plan.installationType,
+    stateKey: result.plan.stateKey,
   });
 }
 
@@ -80,7 +87,7 @@ describe("OpenPack phase B dogfood", () => {
     });
 
     expect(await pathExists(combined.graphLockPath)).toBe(true);
-    const manifest = await readInstallManifest(target, claudeAdapter.name);
+    const manifest = await readPlanManifest(combined);
     if (manifest?.version !== 2) throw new Error("expected v2 manifest");
     expect(manifest.entries.map((entry) => entry.path).sort()).toEqual([
       ".claude/rules/root-a.md",
@@ -107,7 +114,7 @@ describe("OpenPack phase B dogfood", () => {
     await expect(stat(join(target, ".claude", "rules", "root-a.md"))).rejects.toThrow();
     await expect(stat(join(target, ".claude", "rules", "shared.md"))).resolves.toBeTruthy();
     expect(await readFile(join(target, ".claude", "rules", "shared.md"), "utf8")).toBe("# Shared\n");
-    const afterOne = await readInstallManifest(target, claudeAdapter.name);
+    const afterOne = await readPlanManifest(combined);
     if (afterOne?.version !== 2) throw new Error("expected v2 manifest after first uninstall");
     expect(afterOne.entries.find((entry) => entry.artifactName === "shared.md")?.owners).toHaveLength(1);
 
@@ -116,7 +123,7 @@ describe("OpenPack phase B dogfood", () => {
     await uninstall(removeRootB);
 
     await expect(stat(join(target, ".claude", "rules", "shared.md"))).rejects.toThrow();
-    expect(await readInstallManifest(target, claudeAdapter.name)).toBeUndefined();
+    expect(await readPlanManifest(combined)).toBeUndefined();
   });
 
   it("enforces the phase B trust, no-deps, integrity, and frozen-lock minimums", async () => {
@@ -250,7 +257,7 @@ describe("OpenPack phase B dogfood", () => {
       ],
       profiles: {
         dogfood: {
-          runtimes: [{ adapter: "claude", targetRoot: target }],
+          runtimes: [{ adapter: "claude", targetRoot: target, installationType: "local" }],
         },
       },
       agents: {},
@@ -259,7 +266,10 @@ describe("OpenPack phase B dogfood", () => {
     const results = await syncProfile({ workspaceRoot: workspace, profile: "dogfood", yes: true });
 
     expect(results).toHaveLength(1);
-    const manifest = await readInstallManifest(target, "claude");
+    const manifest = await readInstallManifest(results[0]!.targetRoot, "claude", undefined, {
+      installationType: results[0]!.plan.installationType,
+      stateKey: results[0]!.plan.stateKey,
+    });
     if (manifest?.version !== 2) throw new Error("expected v2 manifest");
     expect(manifest.entries.map((entry) => entry.path).sort()).toEqual([
       ".claude/rules/root-a.md",
@@ -314,7 +324,7 @@ describe("OpenPack phase B dogfood", () => {
       graphLockDigest: combined.graphLockDigest,
       graphLock: { path: combined.graphLockPath, lock: combined.bundle.graphLock },
     });
-    const manifest = await readInstallManifest(target, claudeAdapter.name);
+    const manifest = await readPlanManifest(combined);
     if (manifest?.version !== 2) throw new Error("expected v2 manifest");
 
     const remaining = await createGraphSourcePlan({

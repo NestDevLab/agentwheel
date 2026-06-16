@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { formatPlan } from "../src/cli/format.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { LocalSourceDriver } from "../src/source/local.js";
@@ -27,8 +27,8 @@ async function tempRoot(): Promise<string> {
 async function buildPlan(targetRoot: string) {
   const driver = new LocalSourceDriver();
   const bundle = await stageSource(driver, fixtureSource);
-  const manifest = await readInstallManifest(targetRoot, openClawAdapter.name);
-  const plan = await createInstallPlan(bundle, openClawAdapter, targetRoot, manifest);
+  const manifest = await readInstallManifest(targetRoot, claudeAdapter.name);
+  const plan = await createInstallPlan(bundle, claudeAdapter, targetRoot, manifest);
   return { bundle, plan };
 }
 
@@ -48,13 +48,13 @@ async function createSixFileSource(): Promise<string> {
 async function buildPlanFromSource(source: string, targetRoot: string) {
   const driver = new LocalSourceDriver();
   const bundle = await stageSource(driver, source);
-  const manifest = await readInstallManifest(targetRoot, openClawAdapter.name);
-  const plan = await createInstallPlan(bundle, openClawAdapter, targetRoot, manifest);
+  const manifest = await readInstallManifest(targetRoot, claudeAdapter.name);
+  const plan = await createInstallPlan(bundle, claudeAdapter, targetRoot, manifest);
   return { bundle, plan };
 }
 
 describe("install engine", () => {
-  it("plans and applies OpenClaw file-drop artifacts", async () => {
+  it("plans and applies Claude file-drop artifacts", async () => {
     const targetRoot = await tempRoot();
     const { bundle, plan } = await buildPlan(targetRoot);
 
@@ -63,13 +63,13 @@ describe("install engine", () => {
 
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
     expect(manifest.entries.map((entry) => entry.path)).toEqual([
-      ".openclaw/AGENTS.md",
-      ".openclaw/rules/core.md",
-      ".openclaw/skills/demo-skill",
+      ".claude/rules/core.md",
+      ".claude/skills/demo-skill",
+      "CLAUDE.md",
     ]);
 
-    await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).resolves.toBeTruthy();
-    await expect(stat(join(targetRoot, ".agentwheel", "openclaw.install-manifest.json"))).resolves.toBeTruthy();
+    await expect(stat(join(targetRoot, "CLAUDE.md"))).resolves.toBeTruthy();
+    await expect(stat(join(targetRoot, ".agentwheel", "claude.local.install-manifest.json"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -91,10 +91,10 @@ describe("install engine", () => {
     await applyInstallPlan(first.plan, first.bundle.sourceLock);
     await rm(first.bundle.root, { recursive: true, force: true });
 
-    await appendFile(join(targetRoot, ".openclaw", "rules", "core.md"), "\nmanual change\n", "utf8");
+    await appendFile(join(targetRoot, ".claude", "rules", "core.md"), "\nmanual change\n", "utf8");
     const drift = await buildPlan(targetRoot);
     expect(drift.plan.hasBlockingChanges).toBe(true);
-    expect(drift.plan.operations.find((operation) => operation.relativeDestPath === ".openclaw/rules/core.md")?.action).toBe("drift");
+    expect(drift.plan.operations.find((operation) => operation.relativeDestPath === ".claude/rules/core.md")?.action).toBe("drift");
     await expect(applyInstallPlan(drift.plan, drift.bundle.sourceLock)).rejects.toThrow(/Refusing to apply/);
     await rm(drift.bundle.root, { recursive: true, force: true });
   });
@@ -105,14 +105,14 @@ describe("install engine", () => {
     await applyInstallPlan(first.plan, first.bundle.sourceLock);
     await rm(first.bundle.root, { recursive: true, force: true });
 
-    const manifest = await readInstallManifest(targetRoot, openClawAdapter.name);
+    const manifest = await readInstallManifest(targetRoot, claudeAdapter.name);
     expect(manifest).toBeTruthy();
     const plan = await createUninstallPlan(manifest!);
     expect(plan.operations.map((operation) => operation.action)).toEqual(["remove", "remove", "remove"]);
 
     await uninstall(plan, false);
-    await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).rejects.toThrow();
-    expect(await readInstallManifest(targetRoot, openClawAdapter.name)).toBeUndefined();
+    await expect(stat(join(targetRoot, "CLAUDE.md"))).rejects.toThrow();
+    expect(await readInstallManifest(targetRoot, claudeAdapter.name)).toBeUndefined();
   });
 
   it("uninstalls clean managed artifacts and keeps drifted files by default", async () => {
@@ -123,10 +123,10 @@ describe("install engine", () => {
     expect(manifest.entries).toHaveLength(6);
     await rm(first.bundle.root, { recursive: true, force: true });
 
-    const driftedPath = join(targetRoot, ".openclaw", "rules", "safe-actions.md");
+    const driftedPath = join(targetRoot, ".claude", "rules", "safe-actions.md");
     await appendFile(driftedPath, "\nmanual change\n", "utf8");
 
-    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, openClawAdapter.name))!);
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, claudeAdapter.name))!);
     expect(uninstallPlan.hasBlockingChanges).toBe(false);
     expect(uninstallPlan.operations.filter((operation) => operation.action === "remove")).toHaveLength(5);
     expect(uninstallPlan.operations.filter((operation) => operation.action === "keep")).toHaveLength(1);
@@ -136,10 +136,10 @@ describe("install engine", () => {
     const result = await uninstall(uninstallPlan, { dryRun: false });
     expect(result).toEqual({ removed: 5, kept: 1, removedDrifted: 0 });
     await expect(stat(driftedPath)).resolves.toBeTruthy();
-    await expect(stat(join(targetRoot, ".openclaw", "AGENTS.md"))).rejects.toThrow();
+    await expect(stat(join(targetRoot, "CLAUDE.md"))).rejects.toThrow();
 
-    const partialManifest = await readInstallManifest(targetRoot, openClawAdapter.name);
-    expect(partialManifest?.entries.map((entry) => entry.path)).toEqual([".openclaw/rules/safe-actions.md"]);
+    const partialManifest = await readInstallManifest(targetRoot, claudeAdapter.name);
+    expect(partialManifest?.entries.map((entry) => entry.path)).toEqual([".claude/rules/safe-actions.md"]);
     const secondPlan = await createUninstallPlan(partialManifest!);
     expect(secondPlan.operations.map((operation) => operation.action)).toEqual(["keep"]);
   });
@@ -152,13 +152,13 @@ describe("install engine", () => {
     expect(manifest.entries).toHaveLength(6);
     await rm(first.bundle.root, { recursive: true, force: true });
 
-    const driftedPath = join(targetRoot, ".openclaw", "rules", "safe-actions.md");
+    const driftedPath = join(targetRoot, ".claude", "rules", "safe-actions.md");
     await appendFile(driftedPath, "\nmanual change\n", "utf8");
 
-    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, openClawAdapter.name))!);
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(targetRoot, claudeAdapter.name))!);
     const result = await uninstall(uninstallPlan, { force: true });
     expect(result).toEqual({ removed: 6, kept: 0, removedDrifted: 1 });
     await expect(stat(driftedPath)).rejects.toThrow();
-    expect(await readInstallManifest(targetRoot, openClawAdapter.name)).toBeUndefined();
+    expect(await readInstallManifest(targetRoot, claudeAdapter.name)).toBeUndefined();
   });
 });

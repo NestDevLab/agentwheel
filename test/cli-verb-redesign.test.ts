@@ -30,10 +30,10 @@ describe("CLI verb redesign", () => {
   it("ensures a new source with install <source> and hides the sync shim from top-level help", async () => {
     const root = await tempRoot();
     const source = await packageFixture("ensure");
-    const { stdout } = await runCli(["install", source, "--adapter", "codex", "--target-root", root]);
+    const { stdout } = await runCli(["install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root]);
 
     expect(stdout).toContain("Applied codex");
-    expect(await readFile(join(root, ".codex", "AGENTS.md"), "utf8")).toContain("ensure");
+    expect(await readFile(join(root, "AGENTS.md"), "utf8")).toContain("ensure");
     const config = JSON.parse(await readFile(join(root, ".agentwheel", "config.json"), "utf8"));
     expect(config.packages[0].source).toBe(source);
 
@@ -48,22 +48,22 @@ describe("CLI verb redesign", () => {
     await mkdir(join(root, ".claude"), { recursive: true });
     await mkdir(join(root, ".codex"), { recursive: true });
 
-    const { stdout } = await runCli(["install", source, "--target-root", root, "--all-detected"]);
+    const { stdout } = await runCli(["install", source, "--target-root", root, "--installation-type", "local", "--all-detected"]);
 
     expect(stdout).toContain("Applied claude");
     expect(stdout).toContain("Applied codex");
-    await expect(readFile(join(root, ".claude", "CLAUDE.md"), "utf8")).resolves.toContain("detected");
-    await expect(readFile(join(root, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("detected");
+    await expect(readFile(join(root, "CLAUDE.md"), "utf8")).resolves.toContain("detected");
+    await expect(readFile(join(root, "AGENTS.md"), "utf8")).resolves.toContain("detected");
   });
 
   it("forwards the hidden sync shim with a deprecation warning", async () => {
     const root = await tempRoot();
     const source = await packageFixture("shim");
-    const { stderr, stdout } = await runCli(["sync", source, "--adapter", "codex", "--target-root", root]);
+    const { stderr, stdout } = await runCli(["sync", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root]);
 
     expect(stderr).toContain(`warning: 'agentwheel ${"sync"}' is deprecated`);
     expect(stdout).toContain("Applied codex");
-    expect(await readFile(join(root, ".codex", "AGENTS.md"), "utf8")).toContain("shim");
+    expect(await readFile(join(root, "AGENTS.md"), "utf8")).toContain("shim");
   });
 
   it("prints a teaching error for install garbage", async () => {
@@ -82,7 +82,7 @@ describe("CLI verb redesign", () => {
       requires: { dep: { source: dep, select: ["instructions/AGENTS.md"] } },
     });
 
-    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--target-root", root, "--only-source", "--no-deps"]);
+    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root, "--only-source", "--no-deps"]);
     expect(stdout).toContain("WARN    --no-deps ignored dependencies");
     expect(stdout).toContain("RESOLVE root@");
     expect(stdout).not.toContain("RESOLVE dep@");
@@ -91,17 +91,17 @@ describe("CLI verb redesign", () => {
   it("uses the graph lock for install and re-resolves tracking packages on update", async () => {
     const workspace = await tempRoot();
     const repo = await gitPackageFixture("v1");
-    await runCli(["add", `git:${repo}#main`, "--adapter", "codex", "--target-root", workspace, "--mode", "tracking"]);
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", `git:${repo}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await writeFile(join(repo, "instructions", "AGENTS.md"), "# v2\n", "utf8");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "v2"]);
 
-    const install = await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--dry-run"]);
+    const install = await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run"]);
     expect(install.stdout).toContain("SKIP");
     expect(install.stdout).not.toContain("UPDATE");
 
-    const update = await runCli(["update", "--adapter", "codex", "--target-root", workspace, "--dry-run"]);
+    const update = await runCli(["update", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run"]);
     expect(update.stdout).toContain("UPDATE");
   });
 
@@ -112,18 +112,18 @@ describe("CLI verb redesign", () => {
     const alphaDest = join(workspace, ".codex", "rules", "scoped-alpha.md");
     const betaDest = join(workspace, ".codex", "rules", "scoped-beta.md");
 
-    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
-    const alphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--target-root", workspace]);
+    const alphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     expect(alphaInstall.stdout).toContain("CREATE");
     await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
     await expect(readFile(betaDest, "utf8")).rejects.toThrow();
 
-    await runCli(["install", "scoped-beta", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "scoped-beta", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
 
-    const secondAlphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--target-root", workspace]);
+    const secondAlphaInstall = await runCli(["install", "scoped-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     expect(secondAlphaInstall.stdout).toContain("SKIP");
     await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
@@ -140,23 +140,23 @@ describe("CLI verb redesign", () => {
     });
     const sharedDest = join(workspace, ".codex", "rules", "scope-shared.md");
 
-    await runCli(["add", rootA, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["add", rootB, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await runCli(["add", rootA, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", rootB, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
     const before = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
     expect(before.owners.filter((owner: string) => owner.includes("scope-owner-"))).toHaveLength(2);
 
     await writeRuleManifest(rootA, "scope-owner-a");
-    await runCli(["install", "scope-owner-a", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await runCli(["install", "scope-owner-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
 
     await expect(readFile(sharedDest, "utf8")).resolves.toContain("shared-v1");
     const after = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
     expect(after.owners.some((owner: string) => owner.includes("scope-owner-a"))).toBe(false);
     expect(after.owners.some((owner: string) => owner.includes("scope-owner-b"))).toBe(true);
 
-    await runCli(["uninstall", "scope-owner-a", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["uninstall", "scope-owner-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(sharedDest, "utf8")).resolves.toContain("shared-v1");
-    await runCli(["uninstall", "scope-owner-b", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["uninstall", "scope-owner-b", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(sharedDest, "utf8")).rejects.toThrow();
   });
 
@@ -169,12 +169,12 @@ describe("CLI verb redesign", () => {
     const depDest = join(workspace, ".codex", "rules", "dep.md");
     const before = await runtimeFiles(workspace);
 
-    await runCli(["install", meta, "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await runCli(["install", meta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
     await expect(readFile(depDest, "utf8")).resolves.toContain("# dep");
     const manifest = await readCodexManifest(workspace);
     expect(manifest.entries.map((entry) => entry.path)).toEqual([".codex/rules/dep.md"]);
 
-    await runCli(["uninstall", "meta-pack", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["uninstall", "meta-pack", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(depDest, "utf8")).rejects.toThrow();
     expect(await runtimeFiles(workspace)).toEqual(before);
   });
@@ -185,14 +185,14 @@ describe("CLI verb redesign", () => {
     const beta = await mcpPackageFixture("scope-update-b", "scope-update-v1");
     const configPath = join(workspace, ".codex", "config.toml");
 
-    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     const before = manifestEntry(await readCodexManifest(workspace), ".codex/config.toml");
     expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v1"');
 
     await writeMcpPackage(beta, "scope-update-b", "scope-update-v2");
-    await runCli(["install", "scope-update-a", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "scope-update-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
     expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v1"');
     expect(await readFile(configPath, "utf8")).not.toContain("scope-update-v2");
@@ -200,7 +200,7 @@ describe("CLI verb redesign", () => {
     expect(scoped.hash).toBe(before.hash);
     expect(scoped.sourceHash).toBe(before.sourceHash);
 
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     expect(await readFile(configPath, "utf8")).toContain('command = "scope-update-v2"');
     const full = manifestEntry(await readCodexManifest(workspace), ".codex/config.toml");
     expect(full.sourceHash).not.toBe(before.sourceHash);
@@ -212,14 +212,14 @@ describe("CLI verb redesign", () => {
     const beta = await rulePackageFixture("scope-drift-b", "beta");
     const betaDest = join(workspace, ".codex", "rules", "scope-drift-b.md");
 
-    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await writeFile(betaDest, "# local drift\n", "utf8");
 
-    const scoped = await runCli(["install", "scope-drift-a", "--adapter", "codex", "--target-root", workspace]);
+    const scoped = await runCli(["install", "scope-drift-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     expect(scoped.stdout).toContain("Applied codex");
-    await expect(runCli(["plan", "--adapter", "codex", "--target-root", workspace])).rejects.toMatchObject({
+    await expect(runCli(["plan", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace])).rejects.toMatchObject({
       stdout: expect.stringContaining("DRIFT"),
     });
   });
@@ -230,16 +230,16 @@ describe("CLI verb redesign", () => {
     const beta = await rulePackageFixture("scope-remove-b", "beta");
     const betaDest = join(workspace, ".codex", "rules", "scope-remove-b.md");
 
-    await runCli(["add", alpha, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["add", beta, "--adapter", "codex", "--target-root", workspace]);
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await removeConfiguredPackage(workspace, "scope-remove-b");
 
-    await runCli(["install", "scope-remove-a", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "scope-remove-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta");
     expect(manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-remove-b.md")).toBeTruthy();
 
-    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(betaDest, "utf8")).rejects.toThrow();
     expect((await readCodexManifest(workspace)).entries.some((entry: { path: string }) => entry.path === ".codex/rules/scope-remove-b.md")).toBe(false);
   });
@@ -250,11 +250,11 @@ describe("CLI verb redesign", () => {
     const source = await packageFixture("status-root", {
       requires: { dep: { source: dep, select: ["rules/status-dep.md"] } },
     });
-    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["add", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
-    const status = await runCli(["status", "--adapter", "codex", "--target-root", workspace]);
+    const status = await runCli(["status", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
-    expect(status.stdout).toContain("Status for codex");
+    expect(status.stdout).toContain("Status for codex/local");
     expect(status.stdout).toContain("status-root");
     expect(status.stdout).toContain("Install manifest: missing");
     expect(status.stdout).toContain("Pending install work:");
@@ -270,7 +270,7 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const repo = await gitPackageFixture("offline-new");
 
-    await expect(runCli(["install", `git:${repo}#main`, "--adapter", "codex", "--target-root", workspace, "--offline"])).rejects.toMatchObject({
+    await expect(runCli(["install", `git:${repo}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--offline"])).rejects.toMatchObject({
       stderr: expect.stringContaining("requires cached git checkout"),
     });
     await expect(readFile(join(workspace, ".agentwheel", "config.json"), "utf8")).rejects.toThrow();
@@ -279,16 +279,16 @@ describe("CLI verb redesign", () => {
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");
-    await runCli(["install", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
-    await runCli(["uninstall", "keep-files", "--adapter", "codex", "--target-root", workspace, "--keep-files"]);
-    await expect(readFile(join(workspace, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("keep-files");
+    await runCli(["uninstall", "keep-files", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--keep-files"]);
+    await expect(readFile(join(workspace, "AGENTS.md"), "utf8")).resolves.toContain("keep-files");
     const config = JSON.parse(await readFile(join(workspace, ".agentwheel", "config.json"), "utf8"));
     expect(config.packages).toEqual([]);
 
-    const followUp = await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const followUp = await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     expect(followUp.stdout).toContain("No packages configured");
-    await expect(readFile(join(workspace, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("keep-files");
+    await expect(readFile(join(workspace, "AGENTS.md"), "utf8")).resolves.toContain("keep-files");
   });
 });
 
@@ -402,7 +402,12 @@ type TestManifest = {
 };
 
 async function readCodexManifest(workspace: string): Promise<TestManifest> {
-  return JSON.parse(await readFile(join(workspace, ".agentwheel", "codex.install-manifest.json"), "utf8")) as TestManifest;
+  const metadata = join(workspace, ".agentwheel");
+  const file = (await readdir(metadata))
+    .filter((entry) => entry.startsWith("codex.local.") && entry.endsWith(".install-manifest.json"))
+    .sort()[0];
+  if (!file) throw new Error("Codex local install manifest not found");
+  return JSON.parse(await readFile(join(metadata, file), "utf8")) as TestManifest;
 }
 
 function manifestEntry(manifest: TestManifest, path: string): TestManifestEntry {

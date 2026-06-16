@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { loadProgrammaticAdapter } from "../src/adapters/programmatic.js";
 import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
@@ -90,7 +91,7 @@ describe("v0.3 wave 3", () => {
 
     const source = await tempRoot();
     await writePackage(source);
-    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo"] });
     const plan = await createInstallPlan(bundle, adapter, root);
     expect(plan.operations.some((operation) => operation.action === "program")).toBe(true);
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
@@ -127,27 +128,26 @@ describe("v0.3 wave 3", () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writePackage(source);
-    await mkdir(join(target, ".openclaw", "mcp"), { recursive: true });
-    await writeFile(join(target, ".openclaw", "mcp", "server.json"), JSON.stringify({
+    await writeFile(join(target, ".mcp.json"), JSON.stringify({
       mcpServers: { user: { command: "user" } },
       userOnly: true,
       order: ["user", "managed"],
     }, null, 2), "utf8");
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
-    const plan = await createInstallPlan(bundle, openClawAdapter, target);
-    const merge = plan.operations.find((operation) => operation.relativeDestPath === ".openclaw/mcp/server.json");
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["mcp/server.json"] });
+    const plan = await createInstallPlan(bundle, claudeAdapter, target);
+    const merge = plan.operations.find((operation) => operation.relativeDestPath === ".mcp.json");
     expect(merge?.action).toBe("update");
     expect(merge?.mergeStrategy).toBe("json-deep");
     await applyInstallPlan(plan, bundle.sourceLock);
 
-    const merged = JSON.parse(await readFile(join(target, ".openclaw", "mcp", "server.json"), "utf8"));
+    const merged = JSON.parse(await readFile(join(target, ".mcp.json"), "utf8"));
     expect(merged.mcpServers.user.command).toBe("user");
     expect(merged.mcpServers.managed.command).toBe("managed");
     expect(merged.userOnly).toBe(true);
     expect(merged.order).toEqual(["user", "managed"]);
-    const manifest = await readInstallManifest(target, "openclaw");
-    expect(manifest?.entries.find((entry) => entry.path === ".openclaw/mcp/server.json")?.mergeStrategy).toBe("json-deep");
+    const manifest = await readInstallManifest(target, "claude");
+    expect(manifest?.entries.find((entry) => entry.path === ".mcp.json")?.mergeStrategy).toBe("json-deep");
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -164,7 +164,7 @@ describe("v0.3 wave 3", () => {
         lab: {
           runtimes: [
             { adapter: "openclaw" },
-            { adapter: "hermes" },
+            { adapter: "claude" },
           ],
         },
       },
@@ -174,10 +174,11 @@ describe("v0.3 wave 3", () => {
       workspaceRoot: workspace,
       profile: "lab",
       source,
+      select: ["skills/demo"],
     });
 
-    expect(results.map((result) => result.runtime).sort()).toEqual(["hermes", "openclaw"]);
-    await expect(stat(join(workspace, ".openclaw", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(workspace, ".hermes", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    expect(results.map((result) => result.runtime).sort()).toEqual(["claude", "openclaw"]);
+    await expect(stat(join(workspace, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(workspace, ".claude", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
   });
 });

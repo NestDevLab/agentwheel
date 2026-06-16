@@ -1,6 +1,6 @@
 {
   "name": "agentwheel",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Weave skills, rules, and instructions across every AI agent.",
   "type": "module",
   "license": "MIT",
@@ -40,6 +40,7 @@
   "scripts": {
     "build": "tsup && chmod +x dist/index.js",
     "prepack": "pnpm build",
+    "sync-site-version": "node scripts/sync-site-version.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -7,6 +7,7 @@ import { codexAdapter } from "../src/adapters/codex.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
+import { localTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
 
@@ -69,7 +70,7 @@ describe("Claude and Codex adapters", () => {
     const target = await tempRoot();
     await writePackage(source);
     await mkdir(join(target, ".claude"), { recursive: true });
-    await writeFile(join(target, ".claude", ".mcp.json"), JSON.stringify({
+    await writeFile(join(target, ".mcp.json"), JSON.stringify({
       mcpServers: { user: { command: "user" } },
       keep: true,
     }, null, 2), "utf8");
@@ -82,7 +83,7 @@ describe("Claude and Codex adapters", () => {
     const plan = await createInstallPlan(bundle, claudeAdapter, target);
     await applyInstallPlan(plan, bundle.sourceLock);
 
-    await expect(stat(join(target, ".claude", "CLAUDE.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, "CLAUDE.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".claude", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".claude", "skills", "demo", "bin", "tool.sh"))).resolves.toBeTruthy();
     expect((await stat(join(target, ".claude", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
@@ -90,7 +91,7 @@ describe("Claude and Codex adapters", () => {
     await expect(stat(join(target, ".claude", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".claude", "rules", "safe.md"))).resolves.toBeTruthy();
 
-    const mcp = JSON.parse(await readFile(join(target, ".claude", ".mcp.json"), "utf8"));
+    const mcp = JSON.parse(await readFile(join(target, ".mcp.json"), "utf8"));
     expect(mcp.keep).toBe(true);
     expect(mcp.mcpServers.user.command).toBe("user");
     expect(mcp.mcpServers.managed.command).toBe("managed");
@@ -118,16 +119,18 @@ describe("Claude and Codex adapters", () => {
       keep: true,
     }, null, 2), "utf8");
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
-    const plan = await createInstallPlan(bundle, codexAdapter, target);
+    const bundle = await stageSource(new LocalSourceDriver(), source, {
+      select: ["instructions/AGENTS.md", "rules/safe.md", "skills/demo", "mcp/managed.json", "hooks/events.json"],
+    });
+    const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
     await applyInstallPlan(plan, bundle.sourceLock);
 
-    await expect(stat(join(target, ".codex", "AGENTS.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".codex", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".codex", "skills", "demo", "bin", "tool.sh"))).resolves.toBeTruthy();
-    expect((await stat(join(target, ".codex", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
-    await expect(stat(join(target, ".codex", "commands", "review.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".codex", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, "AGENTS.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".agents", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).resolves.toBeTruthy();
+    expect((await stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
+    await expect(stat(join(target, ".codex", "commands", "review.md"))).rejects.toThrow();
+    await expect(stat(join(target, ".codex", "agents", "reviewer", "AGENTS.md"))).rejects.toThrow();
     await expect(stat(join(target, ".codex", "rules", "safe.md"))).resolves.toBeTruthy();
 
     const config = await readFile(join(target, ".codex", "config.toml"), "utf8");
@@ -151,13 +154,13 @@ describe("Claude and Codex adapters", () => {
     await writePackage(source);
 
     const claudeBundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo"] });
-    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, target);
+    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, target, undefined, localTransport, { installationType: "local" });
     expect(claudePlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".claude/skills/demo"]);
     await rm(claudeBundle.root, { recursive: true, force: true });
 
     const codexBundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo"] });
-    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, target);
-    expect(codexPlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".codex/skills/demo"]);
+    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
+    expect(codexPlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".agents/skills/demo"]);
     await rm(codexBundle.root, { recursive: true, force: true });
   });
 });

@@ -28,8 +28,8 @@ const tempRoots: string[] = [];
 const adapter: AdapterConfig = {
   name: "test",
   targets: {
-    rules: { enabled: true, dest: ".runtime/rules" },
-    mcp: { enabled: true, dest: ".runtime/mcp", merge: "json-deep" },
+    rules: { local: { enabled: true, dest: ".runtime/rules" } },
+    mcp: { local: { enabled: true, dest: ".runtime/mcp", merge: "json-deep" } },
   },
 };
 
@@ -134,6 +134,7 @@ describe("install manifest v2", () => {
     await writeInstallManifest({
       version: 2,
       adapter: adapter.name,
+      installationType: "local",
       targetRoot: target,
       generatedAt: new Date().toISOString(),
       revision: "pending-revision",
@@ -715,6 +716,7 @@ describe("ownership uninstall and merge target guard", () => {
     const target = await tempRoot();
     await expect(uninstall({
       adapter: adapter.name,
+      installationType: "local",
       targetRoot: target,
       operations: [],
       hasBlockingChanges: false,
@@ -815,6 +817,7 @@ function emptyManifest(targetRoot: string): InstallManifestV2 {
   return {
     version: 2,
     adapter: adapter.name,
+    installationType: "local",
     targetRoot,
     generatedAt: new Date().toISOString(),
     revision: "pending-empty-000",

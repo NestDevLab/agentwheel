@@ -8,6 +8,7 @@ import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource, type StagedBundle } from "../src/staging/staging.js";
+import { localTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
 
@@ -168,8 +169,8 @@ describe("OpenPack composition", () => {
       "skills:demo",
     ]);
 
-    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, await tempRoot());
-    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, await tempRoot());
+    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, await tempRoot(), undefined, localTransport, { installationType: "local" });
+    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, await tempRoot(), undefined, localTransport, { installationType: "local" });
     expect(claudePlan.operations.map((operation) => operation.artifactType)).toEqual(["skills"]);
     expect(codexPlan.operations.map((operation) => operation.artifactType)).toEqual(["skills"]);
     await rm(claudeBundle.root, { recursive: true, force: true });
@@ -200,7 +201,7 @@ describe("OpenPack composition", () => {
     });
     const target = await tempRoot();
     const first = await stage(source);
-    await applyInstallPlan(await createInstallPlan(first, openClawAdapter, target), first.sourceLock);
+    await applyInstallPlan(await createInstallPlan(first, openClawAdapter, target, undefined, localTransport, { installationType: "local" }), first.sourceLock);
     await rm(first.root, { recursive: true, force: true });
 
     const manifest = await readInstallManifest(target, openClawAdapter.name);
@@ -208,7 +209,7 @@ describe("OpenPack composition", () => {
 
     await writeFile(join(source, "fragments", "shared.md"), "Version B\n", "utf8");
     const second = await stage(source);
-    const plan = await createInstallPlan(second, openClawAdapter, target, manifest);
+    const plan = await createInstallPlan(second, openClawAdapter, target, manifest, localTransport, { installationType: "local" });
     const update = plan.operations.find((operation) => operation.artifactType === "skills");
     expect(update?.action).toBe("update");
     expect(update?.reason).toContain("included fragment changed: fragments/shared.md");
@@ -260,12 +261,12 @@ describe("OpenPack composition", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       const claudeBundle = await stage(source, { adapter: claudeAdapter, select });
-      const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, await tempRoot());
+      const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, await tempRoot(), undefined, localTransport, { installationType: "local" });
       expect(claudePlan.operations.map((operation) => operation.artifactName)).toEqual(["b"]);
       expect(warn).toHaveBeenCalledWith("skip (selected but not targeted: runtimes=[codex]) skills/a");
 
       const codexBundle = await stage(source, { adapter: codexAdapter, select });
-      const codexPlan = await createInstallPlan(codexBundle, codexAdapter, await tempRoot());
+      const codexPlan = await createInstallPlan(codexBundle, codexAdapter, await tempRoot(), undefined, localTransport, { installationType: "local" });
       expect(codexPlan.operations.map((operation) => operation.artifactName)).toEqual(["a", "b"]);
       await rm(claudeBundle.root, { recursive: true, force: true });
       await rm(codexBundle.root, { recursive: true, force: true });

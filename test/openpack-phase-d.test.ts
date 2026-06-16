@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { formatDepsWhy, formatLockDependencyTree } from "../src/cli/format.js";
 import { ejectArtifact } from "../src/lifecycle/customization.js";
 import { createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
@@ -89,7 +89,7 @@ describe("OpenPack phase D", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-d-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-namespace",
       yes: true,
     });
@@ -97,7 +97,7 @@ describe("OpenPack phase D", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: first.plan.targetRoot,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-namespace",
       yes: true,
     });
@@ -108,8 +108,8 @@ describe("OpenPack phase D", () => {
     ]);
     expect(second.bundle.graphLock.canonical.namespacing).toEqual(first.bundle.graphLock.canonical.namespacing);
     expect(first.plan.operations.map((operation) => operation.relativeDestPath).filter((path) => path.includes("safe")).sort()).toEqual([
-      ".openclaw/rules/phase-d-core@1--safe.md",
-      ".openclaw/rules/phase-d-core@2--safe.md",
+      ".claude/rules/phase-d-core@1--safe.md",
+      ".claude/rules/phase-d-core@2--safe.md",
     ]);
   });
 
@@ -163,7 +163,7 @@ describe("OpenPack phase D", () => {
       ],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-source-override-missing",
       yes: true,
     })).rejects.toThrow(/Install name collision/);
@@ -180,7 +180,7 @@ describe("OpenPack phase D", () => {
       ],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-source-override",
       yes: true,
     });
@@ -229,7 +229,7 @@ describe("OpenPack phase D", () => {
       ],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-bad-source-override",
       yes: true,
     })).rejects.toThrow(/did not match any rendered artifact/);
@@ -247,7 +247,7 @@ describe("OpenPack phase D", () => {
       }],
       targetRoot: await tempRoot("agentwheel-phase-d-alias-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-alias",
       yes: true,
     });
@@ -261,7 +261,7 @@ describe("OpenPack phase D", () => {
       }],
       targetRoot: await tempRoot("agentwheel-phase-d-alias-conflict-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-alias-conflict",
       yes: true,
     })).rejects.toThrow(/Install name collision/);
@@ -293,7 +293,7 @@ describe("OpenPack phase D", () => {
       roots: [{ rootId: "root", source: root, select: ["skills/app"] }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-why",
       yes: true,
     });
@@ -317,7 +317,7 @@ describe("OpenPack phase D", () => {
     await writeText(join(workspace, ".agentwheel", "overrides", "phase-d", "override@1.2.3", "rules", "safe.md"), "Version\n");
     await writeText(join(workspace, ".agentwheel", "overrides", ...node.id.split("/"), "rules", "safe.md"), "Exact\n");
 
-    const rendered = await renderGraphForTarget(graph, { workspaceRoot: workspace, adapter: openClawAdapter });
+    const rendered = await renderGraphForTarget(graph, { workspaceRoot: workspace, adapter: claudeAdapter });
     const rule = rendered.artifacts.find((artifact) => artifact.type === "rules" && artifact.name === "safe.md")!;
     expect(await readFile(rule.stagedPath ?? "", "utf8")).toBe("Exact\n");
 
@@ -327,7 +327,7 @@ describe("OpenPack phase D", () => {
       roots: [{ rootId: "root", source: dupRoot }],
       targetRoot: await tempRoot("agentwheel-phase-d-ambiguous-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "phase-d-ambiguous",
       yes: true,
     })).rejects.toThrow(/Ambiguous override shorthand/);

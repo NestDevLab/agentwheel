@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { copilotAdapter } from "../src/adapters/copilot.js";
 import { hermesAdapter } from "../src/adapters/hermes.js";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
@@ -59,23 +60,36 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   await writeFile(join(root, "plugins", "demo-plugin", "plugin.json"), JSON.stringify({ name: "demo-plugin" }, null, 2));
 }
 
+async function withTestHome<T>(home: string, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.AGENTWHEEL_TEST_HOME;
+  process.env.AGENTWHEEL_TEST_HOME = home;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.AGENTWHEEL_TEST_HOME;
+    } else {
+      process.env.AGENTWHEEL_TEST_HOME = previous;
+    }
+  }
+}
+
 describe("v0.2 wave 2", () => {
-  it("installs Hermes file-drop artifacts including subagents while leaving plugins unsupported", async () => {
+  it("installs Hermes user skills and rejects local skills", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
+    const home = await tempRoot("agentwheel-wave2-hermes-home-");
     await writeFullPackage(source);
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
-    const plan = await createInstallPlan(bundle, hermesAdapter, target);
-    await applyInstallPlan(plan, bundle.sourceLock);
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo-skill"] });
+    await expect(createInstallPlan(bundle, hermesAdapter, target)).rejects.toThrow(/does not support skills artifacts for installation type 'local'/);
+    await withTestHome(home, async () => {
+      const plan = await createInstallPlan(bundle, hermesAdapter, target, undefined, undefined, { installationType: "user" });
+      await applyInstallPlan(plan, bundle.sourceLock);
+    });
 
-    await expect(stat(join(target, ".hermes", "AGENTS.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "skills", "demo-skill"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "commands", "review.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "mcp", "server.json"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "hooks", "pre-sync.json"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".hermes", "plugins", "demo-plugin"))).rejects.toThrow();
+    await expect(stat(join(home, ".hermes", "skills", "demo-skill"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".hermes", "skills", "demo-skill"))).rejects.toThrow();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -89,7 +103,17 @@ describe("v0.2 wave 2", () => {
       keep: true,
     }, null, 2));
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const bundle = await stageSource(new LocalSourceDriver(), source, {
+      select: [
+        "instructions/AGENTS.md",
+        "rules/core.md",
+        "commands/review.md",
+        "skills/demo-skill",
+        "subagents/code-reviewer.md",
+        "subagents/reviewer",
+        "mcp/server.json",
+      ],
+    });
     const plan = await createInstallPlan(bundle, copilotAdapter, target);
     await applyInstallPlan(plan, bundle.sourceLock);
 
@@ -121,23 +145,25 @@ describe("v0.2 wave 2", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("installs OpenClaw subagents and plans plugin installs without executing them by default", async () => {
+  it("installs OpenClaw skills and plans plugin installs without executing them by default", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo-skill", "plugins/demo-plugin"] });
     const plan = await createInstallPlan(bundle, openClawAdapter, target);
     const plugin = plan.operations.find((operation) => operation.artifactType === "plugins");
 
     expect(plugin?.action).toBe("plugin");
-    expect(plugin?.semanticCommand?.slice(0, 4)).toEqual(["openclaw", "plugins", "install", "--link"]);
+    expect(plugin?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
+    expect(plugin?.semanticCommand).not.toContain("--link");
 
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
     const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");
-    expect(entry?.semanticCommand?.slice(0, 4)).toEqual(["openclaw", "plugins", "install", "--link"]);
+    expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
+    expect(entry?.semanticCommand).not.toContain("--link");
     expect(entry?.executed).toBe(false);
-    await expect(stat(join(target, ".openclaw", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".openclaw", "plugins", "demo-plugin"))).rejects.toThrow();
     await rm(bundle.root, { recursive: true, force: true });
   });
@@ -150,7 +176,7 @@ describe("v0.2 wave 2", () => {
       name: "acme/wave2",
       source,
       driver: "local",
-      adapter: "openclaw",
+      adapter: "claude",
       mode: "pinned",
     }));
 
@@ -160,9 +186,10 @@ describe("v0.2 wave 2", () => {
     await writeFullPackage(source, { rule: "# Upstream changed\n" });
     const bundle = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
+      select: ["rules/core.md"],
     });
-    const plan = await createInstallPlan(bundle, openClawAdapter, workspace);
+    const plan = await createInstallPlan(bundle, claudeAdapter, workspace);
     const ejected = plan.operations.find((operation) => operation.artifactType === "rules" && operation.artifactName === "core.md");
     expect(ejected?.channel).toBe("ejected");
     expect(ejected?.sourcePath).toContain(join(".agentwheel-composed", "ejected", "rules", "core.md"));
@@ -173,24 +200,26 @@ describe("v0.2 wave 2", () => {
     const source = await tempRoot();
     const workspace = await tempRoot();
     await writeFullPackage(source, { instruction: "# Upstream v1\n" });
-    await remember(workspace, "openclaw", "Remember durable preference.");
+    await remember(workspace, "claude", "Remember durable preference.");
 
     const first = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
+      select: ["instructions/AGENTS.md"],
     });
-    await applyInstallPlan(await createInstallPlan(first, openClawAdapter, workspace), first.sourceLock);
+    await applyInstallPlan(await createInstallPlan(first, claudeAdapter, workspace), first.sourceLock);
     await rm(first.root, { recursive: true, force: true });
 
     await writeFullPackage(source, { instruction: "# Upstream v2\n" });
     const second = await stageSource(new LocalSourceDriver(), source, {
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
+      select: ["instructions/AGENTS.md"],
     });
-    const plan = await createInstallPlan(second, openClawAdapter, workspace, await readInstallManifest(workspace, "openclaw"));
+    const plan = await createInstallPlan(second, claudeAdapter, workspace, await readInstallManifest(workspace, "claude"));
     await applyInstallPlan(plan, second.sourceLock);
 
-    const instructions = await readFile(join(workspace, ".openclaw", "AGENTS.md"), "utf8");
+    const instructions = await readFile(join(workspace, "CLAUDE.md"), "utf8");
     expect(instructions).toContain("# Upstream v2");
     expect(instructions).toContain("Remember durable preference.");
     await rm(second.root, { recursive: true, force: true });

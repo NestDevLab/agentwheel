@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { defaultInstallationType } from "../model/adapter.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV1Entry } from "../model/manifest.js";
 import { localTransport } from "../transport/index.js";
@@ -61,6 +62,8 @@ export async function createUninstallPlan(
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   return {
     adapter: manifest.adapter,
+    installationType: "installationType" in manifest ? manifest.installationType : defaultInstallationType,
+    stateKey: "stateKey" in manifest ? manifest.stateKey : undefined,
     targetRoot: manifest.targetRoot,
     operations,
     hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
@@ -76,7 +79,9 @@ export async function createOwnershipUninstallPlan(
   transport: TargetTransport = localTransport,
   options: { graphLockDigest?: string } = {},
 ): Promise<InstallPlan> {
-  const desiredPlan = await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport);
+  const installationType = "installationType" in manifest ? manifest.installationType : defaultInstallationType;
+  const stateKey = "stateKey" in manifest ? manifest.stateKey : undefined;
+  const desiredPlan = await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport, { installationType, stateKey });
   const ownersByPath = new Map(
     desiredPlan.operations
       .filter((operation) => operation.owners?.length)
@@ -159,6 +164,8 @@ export async function createOwnershipUninstallPlan(
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   return {
     adapter: manifest.adapter,
+    installationType,
+    stateKey,
     targetRoot: manifest.targetRoot,
     operations,
     hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),

@@ -4,6 +4,8 @@ export interface OpenClawPluginInstallRequest {
 }
 
 export function openClawPluginInstallCommand(request: OpenClawPluginInstallRequest): string[] {
-  return ["openclaw", "plugins", "install", "--link", request.path];
+  // OpenClaw copies local plugin paths by default. Avoid --link for fleet-managed
+  // installs so runtime profiles do not depend on source-checkout symlinks.
+  return ["openclaw", "plugins", "install", request.path];
 }
 

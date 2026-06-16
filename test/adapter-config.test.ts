@@ -9,15 +9,14 @@ describe("adapter config loader", () => {
   it("loads strict JSON adapter config", async () => {
     const adapter = await loadAdapterConfig(join(testDir, "fixtures", "adapters", "plain.json"));
     expect(adapter.name).toBe("plain-json");
-    expect(adapter.targets.instructions?.dest).toBe(".plain/AGENTS.md");
-    expect(adapter.targets.rules?.dest).toBe(".plain/rules");
+    expect(adapter.targets.instructions?.local?.dest).toBe(".plain/AGENTS.md");
+    expect(adapter.targets.rules?.local?.dest).toBe(".plain/rules");
   });
 
   it("loads JSONC adapter config with comments and trailing commas", async () => {
     const adapter = await loadAdapterConfig(join(testDir, "fixtures", "adapters", "commented.jsonc"));
     expect(adapter.name).toBe("commented-jsonc");
-    expect(adapter.targets.instructions?.dest).toBe(".commented/AGENTS.md");
-    expect(adapter.targets.skills?.dest).toBe(".commented/skills");
+    expect(adapter.targets.instructions?.local?.dest).toBe(".commented/AGENTS.md");
+    expect(adapter.targets.skills?.local?.dest).toBe(".commented/skills");
   });
 });
-

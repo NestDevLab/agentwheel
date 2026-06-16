@@ -1,5 +1,14 @@
 import { join, relative } from "node:path";
-import type { AdapterConfig, ProgrammaticAdapterApply, ProgrammaticAdapterOperation, ProgrammaticAdapterUninstall } from "../model/adapter.js";
+import {
+  defaultInstallationType,
+  installRootForArtifacts,
+  resolveInstallationTypeForArtifacts,
+  targetMappingForArtifact,
+  type AdapterConfig,
+  type ProgrammaticAdapterApply,
+  type ProgrammaticAdapterOperation,
+  type ProgrammaticAdapterUninstall,
+} from "../model/adapter.js";
 import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
 import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest, type InstallManifestEntry, type InstallManifestV1Entry } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
@@ -53,6 +62,8 @@ export interface MigrationReport {
 
 export interface InstallPlan {
   adapter: string;
+  installationType: string;
+  stateKey?: string;
   targetRoot: string;
   operations: InstallOperation[];
   hasBlockingChanges: boolean;
@@ -71,6 +82,8 @@ export interface CombinedInstallPlanOptions {
   baseRevision?: string | null;
   graphLockDigest?: string;
   workspaceOwner?: string;
+  installationType?: string;
+  stateKey?: string;
 }
 
 export async function createInstallPlan(
@@ -81,10 +94,13 @@ export async function createInstallPlan(
   transport: TargetTransport = localTransport,
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
+  const requestedInstallationType = options.installationType ?? defaultInstallationType;
+  const installationType = resolveInstallationTypeForArtifacts(adapter, bundle.artifacts.map((artifact) => artifact.type), requestedInstallationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, bundle.artifacts.map((artifact) => artifact.type));
   const desired: InstallOperation[] = [];
 
   for (const artifact of bundle.artifacts) {
-    const op = operationForArtifact(artifact, adapter, targetRoot, {
+    const op = operationForArtifact(artifact, adapter, installRoot, installationType, {
       logicalSelector: `${artifact.type}/${artifact.name}`,
       dependencyRole: "root",
       owners: [artifact.packageName ?? bundle.source.packageName ?? bundle.source.source],
@@ -95,9 +111,9 @@ export async function createInstallPlan(
     }
   }
 
-  await addProgrammaticOperations(desired, adapter, targetRoot);
+  await addProgrammaticOperations(desired, adapter, installRoot);
 
-  return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, options);
+  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
 }
 
 export async function createCombinedInstallPlan(
@@ -108,6 +124,9 @@ export async function createCombinedInstallPlan(
   transport: TargetTransport = localTransport,
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
+  const requestedInstallationType = options.installationType ?? defaultInstallationType;
+  const installationType = resolveInstallationTypeForArtifacts(adapter, desiredArtifacts.map((artifact) => artifact.type), requestedInstallationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, desiredArtifacts.map((artifact) => artifact.type));
   for (const artifact of desiredArtifacts) {
     if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {
       throw new Error(`Dependency-provided ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
@@ -116,14 +135,14 @@ export async function createCombinedInstallPlan(
 
   const desired: InstallOperation[] = [];
   for (const artifact of desiredArtifacts) {
-    const op = operationForArtifact(artifact, adapter, targetRoot, artifact.meta);
+    const op = operationForArtifact(artifact, adapter, installRoot, installationType, artifact.meta);
     if (op) {
       desired.push(op);
     }
   }
 
-  await addProgrammaticOperations(desired, adapter, targetRoot);
-  return createPlanFromOperations(desired, adapter, targetRoot, manifest, transport, options);
+  await addProgrammaticOperations(desired, adapter, installRoot);
+  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
 }
 
 async function createPlanFromOperations(
@@ -278,6 +297,8 @@ async function createPlanFromOperations(
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   return {
     adapter: adapter.name,
+    installationType: options.installationType ?? defaultInstallationType,
+    stateKey: options.stateKey,
     targetRoot,
     operations,
     hasBlockingChanges: operations.some((op) => op.action === "drift" || op.action === "conflict"),
@@ -558,9 +579,14 @@ function isGuardedMergeTarget(type: ArtifactType): boolean {
   return type === "mcp" || type === "hooks" || type === "settings" || type === "plugins";
 }
 
-function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, targetRoot: string, meta: DesiredEntryMeta): InstallOperation | undefined {
-  const target = adapter.targets[artifact.type];
-  if (!target?.enabled) return undefined;
+function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, targetRoot: string, installationType: string, meta: DesiredEntryMeta): InstallOperation | undefined {
+  if (artifact.type === "fragments") return undefined;
+  const target = targetMappingForArtifact(adapter, artifact.type, installationType);
+  if (!target?.enabled) {
+    const supported = Object.keys(adapter.targets[artifact.type] ?? {});
+    const suffix = supported.length > 0 ? ` Supported installation types: ${supported.join(", ")}` : "";
+    throw new Error(`Adapter ${adapter.name} does not support ${artifact.type}/${artifact.name} for installation type '${installationType}'.${suffix}`);
+  }
   const metadata = operationMetadataFromDesired(artifact, meta);
   const installName = metadata.installName ?? artifact.name;
   assertSafeInstallName(installName, `${artifact.type}/${artifact.name}`);

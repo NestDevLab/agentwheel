@@ -26,7 +26,7 @@ forward explicitly; installs make the current declaration true.
 ```bash
 npm i -g agentwheel
 agentwheel init
-agentwheel add github:your-org/agent-pack --adapter codex --mode tracking
+agentwheel add github:your-org/agent-pack --adapter codex --installation-type local --mode tracking
 agentwheel plan
 agentwheel install
 ```
@@ -34,23 +34,27 @@ agentwheel install
 No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
 live in your workspace, and runtimes stay generated output.
 
-> **Status: early (v0.11).** The public CLI vocabulary is package-manager style:
+> **Status: early (v0.12).** The public CLI vocabulary is package-manager style:
 > `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for old bootstrapped
 > skills; use `install` in all new docs and scripts.
 
 ## Supported runtimes & resources
 
-agentwheel installs OpenPack resources into five built-in runtimes and into custom harnesses:
+agentwheel installs OpenPack resources into five built-in runtimes and into custom harnesses.
+Every built-in target is scoped by `--installation-type <type>`; built-ins currently use `local`
+for project/workspace installs and `user` for documented user-level installs. If a package can be
+installed in more than one type, agentwheel requires `--installation-type` instead of guessing.
 
-- **OpenClaw** — `.openclaw/`
-- **Claude Code** — `.claude/`
-- **Codex CLI** — `.codex/`
+- **OpenClaw** — workspace `skills/`, user `~/.openclaw/skills`
+- **Claude Code** — `CLAUDE.md`, `.claude/`, and user `~/.claude/`
+- **Codex CLI** — `AGENTS.md`, `.agents/skills`, `.codex/`, and user equivalents
 - **GitHub Copilot** — `.github/`
-- **Hermes** — `.hermes/`
+- **Hermes** — local instructions via `AGENTS.md`; skills are user-only at `~/.hermes/skills`
 - **Bring your own** — JSONC config adapters with `--adapter-config`, or programmatic adapters with `--adapter-module`
 
 Supported resource types include instructions, rules, skills, commands, subagents, MCP, hooks,
-settings, plugins, and fragments; see the full per-runtime target table below.
+settings, plugins, and fragments. Runtime compatibility is per artifact and per installation type;
+see [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md).
 
 ## Core Commands
 
@@ -76,7 +80,7 @@ to reconcile those removals.
 npm i -g agentwheel
 
 agentwheel init
-agentwheel add github:your-org/agent-pack --adapter openclaw --mode tracking
+agentwheel add github:your-org/agent-pack --adapter openclaw --installation-type local --mode tracking
 agentwheel plan
 agentwheel install
 ```
@@ -111,10 +115,9 @@ cd ~/.openclaw
 agentwheel install
 ```
 
-If the current directory is already the runtime directory (`~/.openclaw`), agentwheel uses its
-parent as the root so output lands in `~/.openclaw/skills`, not `~/.openclaw/.openclaw/skills`.
-If the current directory contains a runtime directory (`./.openclaw`), that directory is used as
-the target under the current project.
+Pass `--installation-type local` to install project/workspace-scoped artifacts, or
+`--installation-type user` to install documented user-level artifacts. For example, Codex local
+skills install into `.agents/skills`, while Codex user skills install into `~/.agents/skills`.
 
 For a control-plane setup, define named agents in config. Global config lives at
 `~/.agentwheel/config.json`; project config lives at `.agentwheel/config.json`; project values win.
@@ -122,9 +125,10 @@ For a control-plane setup, define named agents in config. Global config lives at
 ```jsonc
 {
   "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "root": "$HOME/.openclaw-home", "transport": "local" },
+    "lab-openclaw": { "adapter": "openclaw", "installationType": "local", "root": "$HOME/.openclaw-home", "transport": "local" },
     "remote-codex": {
       "adapter": "codex",
+      "installationType": "local",
       "root": "/workspace/project",
       "transport": "ssh",
       "host": "agent-host.example",
@@ -201,7 +205,7 @@ Install only part of a package with `--select <type>/<name>`. `--skill <name>` i
 `update` runs.
 
 ```bash
-agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex
+agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex --installation-type local
 agentwheel plan
 agentwheel install
 ```
@@ -287,6 +291,7 @@ pulled in by a meta-package. Overrides are explicit; package array order never d
       "source": "github:NestDevLab/agent-must-have#core",
       "driver": "git",
       "adapter": "codex",
+      "installationType": "local",
       "mode": "tracking"
     },
     {
@@ -294,6 +299,7 @@ pulled in by a meta-package. Overrides are explicit; package array order never d
       "source": "github:example-org/agent-toolkit#main",
       "driver": "git",
       "adapter": "codex",
+      "installationType": "local",
       "mode": "tracking",
       "select": [
         "rules/self-improve-on-correction.md",
@@ -351,9 +357,16 @@ published:
 {
   "name": "myco-internal",
   "targets": {
-    "instructions": { "dest": ".myco/context/AGENTS.md" },
-    "rules": { "dest": ".myco/policy/rules" },
-    "skills": { "dest": ".myco/lib/skills" }
+    "instructions": {
+      "local": { "dest": ".myco/context/AGENTS.md" }
+    },
+    "rules": {
+      "local": { "dest": ".myco/policy/rules" }
+    },
+    "skills": {
+      "local": { "dest": ".myco/lib/skills" },
+      "user": { "root": "home", "dest": ".myco/skills" }
+    }
   }
 }
 ```
@@ -370,18 +383,19 @@ agentwheel install ./my-pack --adapter-module ./myco-adapter.js
 
 Built-in runtime targets:
 
-| Runtime | Main targets |
+| Runtime | Native supported targets |
 |---|---|
-| **OpenClaw** | `.openclaw/AGENTS.md`, `.openclaw/skills`, `.openclaw/rules`, `.openclaw/commands`, `.openclaw/agents`, MCP/hooks/settings, semantic plugin planning |
-| **Claude Code** | `.claude/CLAUDE.md`, `.claude/skills`, `.claude/commands`, `.claude/agents`, `.claude/rules`, `.claude/.mcp.json`, `.claude/settings.json` |
-| **Codex CLI** | `.codex/AGENTS.md`, `.codex/skills`, `.codex/commands`, `.codex/agents`, `.codex/rules`, `.codex/config.toml`, `.codex/hooks.json` |
-| **Hermes** | `.hermes/AGENTS.md`, `.hermes/skills`, `.hermes/rules`, `.hermes/commands`, `.hermes/agents`, MCP/hooks/settings |
-| **GitHub Copilot** | `.github/copilot-instructions.md`, `.github/instructions`, `.github/prompts`, `.github/skills`, `.github/agents`, `.vscode/mcp.json` |
+| **OpenClaw** | `local: skills/`; `user: ~/.openclaw/skills` |
+| **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP |
+| **Codex CLI** | `local: AGENTS.md, .agents/skills, .codex/rules, .codex/config.toml, .codex/hooks.json`; `user: ~/.agents/skills, ~/.codex/...` |
+| **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/skills` |
+| **GitHub Copilot** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/agents, .vscode/mcp.json`; `user: ~/.copilot/skills, ~/.copilot/copilot-instructions.md` |
 
 ## Docs
 
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
+- [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md) — artifact/harness compatibility matrix and rule semantics.
 - Resource catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html.
 - [`DESIGN.md`](DESIGN.md) — architecture and module layout.
 - [`LIFECYCLE.md`](LIFECYCLE.md) — publish, install, update, and customization model.

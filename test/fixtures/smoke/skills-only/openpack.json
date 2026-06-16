@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "name": "agentwheel/smoke-skills",
+  "version": "1.0.0",
+  "provides": [
+    { "type": "skills", "path": "skills" }
+  ]
+}

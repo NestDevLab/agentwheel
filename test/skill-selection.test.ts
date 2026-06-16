@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest } from "../src/install/index.js";
 import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
@@ -70,12 +70,12 @@ describe("artifact selection", () => {
     const source = await createPackage();
     const target = await tempRoot();
     const bundle = await stageSource(new LocalSourceDriver(), source);
-    await applyInstallPlan(await createInstallPlan(bundle, openClawAdapter, target), bundle.sourceLock);
+    await applyInstallPlan(await createInstallPlan(bundle, claudeAdapter, target), bundle.sourceLock);
 
-    await expect(stat(join(target, ".openclaw", "skills", "alpha", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".openclaw", "skills", "beta", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".openclaw", "rules", "core.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".openclaw", "rules", "optional.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "skills", "alpha", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "skills", "beta", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "rules", "core.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "rules", "optional.md"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -85,12 +85,12 @@ describe("artifact selection", () => {
     const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/beta"] });
     expect(bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["rules/core.md", "skills/beta"]);
 
-    await applyInstallPlan(await createInstallPlan(bundle, openClawAdapter, target), bundle.sourceLock);
-    const tool = join(target, ".openclaw", "skills", "beta", "bin", "tool.sh");
-    await expect(stat(join(target, ".openclaw", "skills", "alpha", "SKILL.md"))).rejects.toThrow();
-    await expect(stat(join(target, ".openclaw", "rules", "optional.md"))).rejects.toThrow();
-    await expect(stat(join(target, ".openclaw", "rules", "core.md"))).resolves.toBeTruthy();
-    expect(await readFile(join(target, ".openclaw", "skills", "beta", "SKILL.md"), "utf8")).toContain("Beta");
+    await applyInstallPlan(await createInstallPlan(bundle, claudeAdapter, target), bundle.sourceLock);
+    const tool = join(target, ".claude", "skills", "beta", "bin", "tool.sh");
+    await expect(stat(join(target, ".claude", "skills", "alpha", "SKILL.md"))).rejects.toThrow();
+    await expect(stat(join(target, ".claude", "rules", "optional.md"))).rejects.toThrow();
+    await expect(stat(join(target, ".claude", "rules", "core.md"))).resolves.toBeTruthy();
+    expect(await readFile(join(target, ".claude", "skills", "beta", "SKILL.md"), "utf8")).toContain("Beta");
     expect((await stat(tool)).mode & 0o111).toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
@@ -134,7 +134,7 @@ describe("artifact selection", () => {
           name: "selection-package",
           source,
           driver: "local",
-          adapter: "openclaw",
+          adapter: "claude",
           mode: "pinned",
           select: ["skills/alpha"],
         },
@@ -147,12 +147,12 @@ describe("artifact selection", () => {
     const result = await createSourcePlan({
       source: pkg.source,
       driver: pkg.driver,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetRoot: workspace,
       workspaceRoot: workspace,
       select: pkg.select,
     });
-    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".openclaw/rules/core.md", ".openclaw/skills/alpha"]);
+    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".claude/rules/core.md", ".claude/skills/alpha"]);
     await rm(result.bundle.root, { recursive: true, force: true });
   });
 
@@ -169,7 +169,7 @@ describe("artifact selection", () => {
           name: "selection-package",
           source,
           driver: "local",
-          adapter: "openclaw",
+          adapter: "claude",
           mode: "pinned",
           skills: ["alpha"],
         },
@@ -181,12 +181,12 @@ describe("artifact selection", () => {
     const result = await createSourcePlan({
       source: pkg.source,
       driver: pkg.driver,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetRoot: workspace,
       workspaceRoot: workspace,
       skills: pkg.skills,
     });
-    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".openclaw/rules/core.md", ".openclaw/skills/alpha"]);
+    expect(result.plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".claude/rules/core.md", ".claude/skills/alpha"]);
     await rm(result.bundle.root, { recursive: true, force: true });
   });
 
@@ -194,12 +194,12 @@ describe("artifact selection", () => {
     const source = await createPackage();
     const target = await tempRoot();
     const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/alpha"] });
-    await applyInstallPlan(await createInstallPlan(bundle, openClawAdapter, target), bundle.sourceLock);
+    await applyInstallPlan(await createInstallPlan(bundle, claudeAdapter, target), bundle.sourceLock);
     await rm(bundle.root, { recursive: true, force: true });
 
-    const manifest = await readInstallManifest(target, openClawAdapter.name);
-    expect(manifest?.entries.map((entry) => entry.path)).toEqual([".openclaw/rules/core.md", ".openclaw/skills/alpha"]);
+    const manifest = await readInstallManifest(target, claudeAdapter.name);
+    expect(manifest?.entries.map((entry) => entry.path)).toEqual([".claude/rules/core.md", ".claude/skills/alpha"]);
     const uninstallPlan = await createUninstallPlan(manifest!);
-    expect(uninstallPlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".openclaw/rules/core.md", ".openclaw/skills/alpha"]);
+    expect(uninstallPlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".claude/rules/core.md", ".claude/skills/alpha"]);
   });
 });

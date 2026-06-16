@@ -4,11 +4,25 @@ export const copilotAdapter: AdapterConfig = {
   name: "copilot",
   displayName: "GitHub Copilot",
   targets: {
-    instructions: { enabled: true, dest: ".github/copilot-instructions.md" },
-    rules: { enabled: true, dest: ".github/instructions" },
-    commands: { enabled: true, dest: ".github/prompts" },
-    skills: { enabled: true, dest: ".github/skills" },
-    subagents: { enabled: true, dest: ".github/agents" },
-    mcp: { enabled: true, dest: ".vscode/mcp.json", merge: "json-deep" },
+    instructions: {
+      local: { enabled: true, dest: ".github/copilot-instructions.md" },
+      user: { enabled: true, root: "home", dest: ".copilot/copilot-instructions.md" },
+    },
+    rules: {
+      local: { enabled: true, dest: ".github/instructions" },
+    },
+    commands: {
+      local: { enabled: true, dest: ".github/prompts" },
+    },
+    skills: {
+      local: { enabled: true, dest: ".github/skills" },
+      user: { enabled: true, root: "home", dest: ".copilot/skills" },
+    },
+    subagents: {
+      local: { enabled: true, dest: ".github/agents" },
+    },
+    mcp: {
+      local: { enabled: true, dest: ".vscode/mcp.json", merge: "json-deep" },
+    },
   },
 };

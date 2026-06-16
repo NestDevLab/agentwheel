@@ -1,13 +1,19 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { defaultInstallationType } from "../model/adapter.js";
 import { installManifestSchema, installManifestV2Schema, type InstallManifest, type InstallManifestV2, type SourceLock } from "../model/manifest.js";
 import { sourceLockSchema } from "../model/manifest.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import { installManifestPath, sourceLockPath } from "./paths.js";
+import { installManifestPath, sourceLockPath, type InstallStateScope } from "./paths.js";
 
-export async function readInstallManifest(targetRoot: string, adapter: string, transport: TargetTransport = localTransport): Promise<InstallManifest | undefined> {
-  const path = installManifestPath(targetRoot, adapter);
+export async function readInstallManifest(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<InstallManifest | undefined> {
+  const path = installManifestPath(targetRoot, adapter, scope);
   if (!(await transport.pathExists(path))) return undefined;
   const raw = JSON.parse(await transport.readFile(path));
   const parsed = installManifestSchema.parse(raw);
@@ -19,22 +25,41 @@ export async function readInstallManifest(targetRoot: string, adapter: string, t
 
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {
   const next = withManifestRevision(manifest);
-  await transport.writeJsonAtomic(installManifestPath(next.targetRoot, next.adapter), stripReadOnlyManifestFields(next));
+  await transport.writeJsonAtomic(installManifestPath(next.targetRoot, next.adapter, {
+    installationType: next.installationType,
+    stateKey: next.stateKey,
+  }), stripReadOnlyManifestFields(next));
 }
 
-export async function writeSourceLock(targetRoot: string, adapter: string, lock: SourceLock, transport: TargetTransport = localTransport): Promise<void> {
-  await transport.writeJsonAtomic(sourceLockPath(targetRoot, adapter), lock);
+export async function writeSourceLock(
+  targetRoot: string,
+  adapter: string,
+  lock: SourceLock,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<void> {
+  await transport.writeJsonAtomic(sourceLockPath(targetRoot, adapter, scope), lock);
 }
 
-export async function readSourceLock(targetRoot: string, adapter: string, transport: TargetTransport = localTransport): Promise<SourceLock | undefined> {
-  const path = sourceLockPath(targetRoot, adapter);
+export async function readSourceLock(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<SourceLock | undefined> {
+  const path = sourceLockPath(targetRoot, adapter, scope);
   if (!(await transport.pathExists(path))) return undefined;
   return sourceLockSchema.parse(JSON.parse(await transport.readFile(path)));
 }
 
-export async function removeStateFiles(targetRoot: string, adapter: string, transport: TargetTransport = localTransport): Promise<void> {
-  await transport.rm(installManifestPath(targetRoot, adapter));
-  await transport.rm(sourceLockPath(targetRoot, adapter));
+export async function removeStateFiles(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<void> {
+  await transport.rm(installManifestPath(targetRoot, adapter, scope));
+  await transport.rm(sourceLockPath(targetRoot, adapter, scope));
 }
 
 export function normalizeTargetRoot(path: string): string {
@@ -45,7 +70,11 @@ export function withManifestRevision(manifest: InstallManifest): InstallManifest
   if (manifest.version !== 2) {
     throw new Error("Install manifest writes must use version 2");
   }
-  const normalized = installManifestV2Schema.parse(stripReadOnlyManifestFields(manifest));
+  const raw = stripReadOnlyManifestFields(manifest) as Record<string, unknown>;
+  const normalized = installManifestV2Schema.parse({
+    installationType: defaultInstallationType,
+    ...raw,
+  });
   const withoutRevision = stripRuntimeManifestFields(normalized);
   return {
     ...normalized,

@@ -15,6 +15,7 @@ Local agents write to a local runtime root:
   "agents": {
     "local-codex": {
       "adapter": "codex",
+      "installationType": "local",
       "root": "/workspace/project",
       "transport": "local"
     }
@@ -29,6 +30,7 @@ SSH agents write to a runtime root on a remote host:
   "agents": {
     "remote-codex": {
       "adapter": "codex",
+      "installationType": "local",
       "root": "/workspace/project",
       "transport": "ssh",
       "host": "agent-host.example",
@@ -66,6 +68,10 @@ Profiles group runtimes:
 }
 ```
 
+`installationType` is optional on agents and profile runtimes. Use `local` for project/workspace
+targets and `user` for documented user-level harness targets. A CLI `--installation-type` overrides
+the configured value for that invocation.
+
 Run a single agent:
 
 ```bash
@@ -99,6 +105,7 @@ upstream artifacts it may replace under `overrides`.
       "source": "github:NestDevLab/agent-must-have#core",
       "driver": "git",
       "adapter": "codex",
+      "installationType": "local",
       "mode": "tracking"
     },
     {
@@ -106,6 +113,7 @@ upstream artifacts it may replace under `overrides`.
       "source": "github:example-org/agent-toolkit#main",
       "driver": "git",
       "adapter": "codex",
+      "installationType": "local",
       "mode": "tracking",
       "select": [
         "rules/self-improve-on-correction.md",

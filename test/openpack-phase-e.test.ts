@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { claudeAdapter } from "../src/adapters/claude.js";
 import { formatGraphPlan } from "../src/cli/format.js";
 import { applyCombinedInstallPlan } from "../src/install/index.js";
 import type { InstallPlan } from "../src/install/plan.js";
@@ -61,7 +61,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-allow",
       promptTrust: async () => {
         throw new Error("prompt should not be called");
@@ -97,7 +97,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-deny-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-deny",
     })).rejects.toThrow(/trust\.denyArtifactTypes.*phase-e\/hooks.*hooks\/guard\.sh/s);
   });
@@ -120,7 +120,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-root-deny-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "root-deny",
     })).rejects.toThrow(/trust\.denyArtifactTypes.*phase-e\/root-denied-hook.*hooks\/guard\.sh/s);
   });
@@ -141,7 +141,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-review-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-review-off",
       promptTrust: async () => {
         throw new Error("prompt should not be called");
@@ -162,7 +162,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-persist-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-persist",
       trustStorePath: trustStore,
       promptTrust: async () => {
@@ -178,7 +178,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-persist-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-persist",
       trustStorePath: trustStore,
       promptTrust: async () => {
@@ -201,7 +201,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-read-only-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "read-only",
       readOnly: true,
       trustStorePath: trustStore,
@@ -214,7 +214,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-read-only-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "read-only",
       readOnly: true,
       yes: true,
@@ -243,7 +243,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: await tempRoot("agentwheel-phase-e-poison-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "trust-poison",
       trustStorePath: trustStore,
       promptTrust: async () => {
@@ -274,7 +274,7 @@ describe("OpenPack phase E", () => {
       targetRoot: await tempRoot("agentwheel-phase-e-global-target-"),
       workspaceRoot: workspace,
       globalRoot,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "global-deny",
       yes: true,
     })).rejects.toThrow(/trust\.denyArtifactTypes.*rules\/root\.md/s);
@@ -289,7 +289,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "offline",
       yes: true,
       trustStorePath: join(workspace, "offline-trust.json"),
@@ -301,7 +301,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "offline",
       offline: true,
       trustStorePath: join(workspace, "offline-trust.json"),
@@ -314,7 +314,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "offline",
       offline: true,
     })).rejects.toThrow(/Offline cache missing or stale.*phase-e\/offline-dep/s);
@@ -326,7 +326,7 @@ describe("OpenPack phase E", () => {
       source: "missing-registry-entry",
       targetRoot: await tempRoot("agentwheel-phase-e-source-offline-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       offline: true,
     })).rejects.toThrow(/Offline cannot refresh registry indexes/);
 
@@ -362,7 +362,7 @@ describe("OpenPack phase E", () => {
       }],
       targetRoot: await tempRoot("agentwheel-phase-e-unsafe-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "unsafe-alias",
       yes: true,
       trustStorePath: join(workspace, "unsafe-trust.json"),
@@ -373,6 +373,7 @@ describe("OpenPack phase E", () => {
     await writeText(sourceFile, "x\n");
     const plan: InstallPlan = {
       adapter: "openclaw",
+      installationType: "local",
       targetRoot: target,
       operations: [{
         action: "create",
@@ -412,7 +413,7 @@ describe("OpenPack phase E", () => {
       ],
       targetRoot: await tempRoot("agentwheel-phase-e-alias-scope-target-"),
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "alias-scope",
       yes: true,
     })).rejects.toThrow(/cannot rename artifacts outside that root/);
@@ -440,7 +441,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "graph-diff",
       yes: true,
       trustStorePath: join(workspace, "diff-trust.json"),
@@ -460,7 +461,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "graph-diff",
       yes: true,
       trustStorePath: join(workspace, "diff-trust.json"),
@@ -481,7 +482,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "stable-lock",
       yes: true,
       trustStorePath: join(workspace, "stable-lock-trust.json"),
@@ -490,7 +491,7 @@ describe("OpenPack phase E", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: openClawAdapter,
+      adapter: claudeAdapter,
       targetKey: "stable-lock",
       yes: true,
       trustStorePath: join(workspace, "stable-lock-trust.json"),

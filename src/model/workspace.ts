@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { artifactTypeSchema } from "./artifact.js";
+import { installationTypeSchema } from "./adapter.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
 export const workspacePackageSchema = z.object({
@@ -13,6 +14,7 @@ export const workspacePackageSchema = z.object({
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
   adapterCodeHash: z.string().min(16).optional(),
+  installationType: installationTypeSchema.optional(),
   mode: z.enum(["pinned", "tracking"]).default("pinned"),
   requestedRef: z.string().min(1).optional(),
   select: z.array(z.string().min(1)).optional(),
@@ -26,6 +28,7 @@ export const workspaceProfileRuntimeSchema = z.object({
   adapter: z.string().min(1).default("openclaw"),
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
+  installationType: installationTypeSchema.optional(),
   targetRoot: z.string().min(1).optional(),
   executePlugins: z.boolean().optional(),
 });
@@ -49,6 +52,7 @@ export const workspaceTrustSchema = z.object({
 export const workspaceAgentSchema = z.object({
   adapter: z.string().min(1),
   root: z.string().min(1),
+  installationType: installationTypeSchema.optional(),
   transport: z.enum(["local", "ssh"]).default("local"),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),

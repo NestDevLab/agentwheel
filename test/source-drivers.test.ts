@@ -82,7 +82,7 @@ describe("v0.3 source drivers", () => {
     expect(calls.translate).toBe(1);
     expect(bundle.source.driver).toBe("skillkit");
     expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}`)).toEqual(["skills:skillkit-demo"]);
-    await expect(stat(join(target, ".openclaw", "skills", "skillkit-demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, "skills", "skillkit-demo", "SKILL.md"))).resolves.toBeTruthy();
     await rm(bundle.root, { recursive: true, force: true });
   });
 
@@ -107,7 +107,7 @@ describe("v0.3 source drivers", () => {
     expect(bundle.source.driver).toBe("vercel-skills");
     expect(bundle.source.resolvedCommit).toBe(commit);
     expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}`)).toEqual(["skills:vercel-demo"]);
-    expect(await readFile(join(target, ".openclaw", "skills", "vercel-demo", "SKILL.md"), "utf8")).toContain("vercel-demo");
+    expect(await readFile(join(target, "skills", "vercel-demo", "SKILL.md"), "utf8")).toContain("vercel-demo");
     await rm(bundle.root, { recursive: true, force: true });
   });
 });

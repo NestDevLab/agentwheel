@@ -5,6 +5,7 @@ import { pathExists } from "../utils/fs.js";
 
 export interface RuntimeTarget {
   adapter: string;
+  installationType?: string;
   targetRoot: string;
   workspaceRoot: string;
   agentName?: string;
@@ -17,6 +18,7 @@ export interface RuntimeTargetRequest {
   cwd?: string;
   targetRoot?: string;
   adapter?: string;
+  installationType?: string;
   agent?: string;
   all?: boolean;
   allDetected?: boolean;
@@ -43,6 +45,7 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
     const targetRoot = resolve(request.targetRoot);
     return {
       adapter: request.adapter ?? "openclaw",
+      installationType: request.installationType,
       targetRoot,
       workspaceRoot: targetRoot,
       transport: "local",
@@ -54,16 +57,17 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
   const config = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: request.globalRoot });
 
   if (request.agent) {
-    return targetFromAgent(request.agent, config, workspaceRoot);
+    return targetFromAgent(request.agent, config, workspaceRoot, request.installationType);
   }
 
   const detected = await detectRuntimeTarget(cwd, request.adapter);
   if (detected) {
-    return { ...detected, workspaceRoot: await findWorkspaceRoot(detected.targetRoot), transport: "local", source: "auto-detect" };
+    return { ...detected, installationType: request.installationType, workspaceRoot: await findWorkspaceRoot(detected.targetRoot), transport: "local", source: "auto-detect" };
   }
 
   return {
     adapter: request.adapter ?? "openclaw",
+    installationType: request.installationType,
     targetRoot: cwd,
     workspaceRoot,
     transport: "local",
@@ -78,7 +82,7 @@ export async function resolveAllRuntimeTargets(request: RuntimeTargetRequest = {
   const cwd = resolve(request.cwd ?? process.cwd());
   const workspaceRoot = await findWorkspaceRoot(cwd);
   const config = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: request.globalRoot });
-  const targets = Object.entries(config.agents).map(([name]) => targetFromAgent(name, config, workspaceRoot));
+  const targets = Object.entries(config.agents).map(([name]) => targetFromAgent(name, config, workspaceRoot, request.installationType));
   if (targets.length === 0) {
     throw new Error("No agents configured. Add agents to .agentwheel/config.json or pass --target-root.");
   }
@@ -96,6 +100,7 @@ export async function resolveAllDetectedRuntimeTargets(request: RuntimeTargetReq
 
   return Promise.all(matches.map(async (match) => ({
     ...match,
+    installationType: request.installationType,
     workspaceRoot: await findWorkspaceRoot(match.targetRoot),
     transport: "local" as const,
     source: "auto-detect" as const,
@@ -128,7 +133,7 @@ export async function detectRuntimeTargets(cwd = process.cwd(), adapterFilter?: 
   return dedupeTargets(matches);
 }
 
-function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: string): RuntimeTarget {
+function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: string, installationType?: string): RuntimeTarget {
   const agent = config.agents[name];
   if (!agent) {
     throw new Error(`Unknown agent: ${name}`);
@@ -136,6 +141,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
   return {
     agentName: name,
     adapter: agent.adapter,
+    installationType: installationType ?? agent.installationType,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
     transport: agent.transport,

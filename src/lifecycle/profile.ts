@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
 import { resolveAdapter } from "../adapters/resolve.js";
+import { defaultInstallationType, installRootForAdapterInstallationType, resolveInstallationTypeForAdapter } from "../model/adapter.js";
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan } from "./source-plan.js";
@@ -18,6 +19,7 @@ export interface ProfileSyncOptions {
   mode?: "pinned" | "tracking";
   select?: string[];
   skills?: string[];
+  installationType?: string;
   dryRun?: boolean;
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
@@ -65,6 +67,8 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       baseDir: options.workspaceRoot,
       warn: options.warn,
     });
+    const installationType = options.installationType ?? runtime.installationType ?? defaultInstallationType;
+    resolveInstallationTypeForAdapter(adapter, installationType);
     const selected = normalizeArtifactSelectors(options.select, options.skills);
     const graphPlan = await createGraphSourcePlan({
       roots: packages.map((pkg) => ({
@@ -83,12 +87,14 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       targetKey: runtime.agent ?? adapter.name,
       targetFingerprintParts: {
         adapter: adapter.name,
+        installationType,
         adapterConfig: runtime.adapterConfig,
         adapterModule: runtime.adapterModule,
         adapterCodeHash: adapter.programmatic?.hash,
         targetRoot: target.targetRoot,
         transport: target.transport.kind,
       },
+      installationType,
       noDeps: options.noDeps,
       lockedResolution: options.lockedResolution,
       frozenLock: options.frozenLock,
@@ -102,7 +108,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     try {
       results.push({
         runtime: adapter.name,
-        targetRoot: target.targetRoot,
+        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType),
         transport: target.transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
@@ -166,6 +172,7 @@ async function packageFromSource(source: string, options: ProfileSyncOptions): P
     source: resolved.source,
     driver: driver as WorkspacePackage["driver"],
     adapter: "openclaw",
+    installationType: options.installationType,
     mode: options.mode ?? "pinned",
     select: options.select,
     skills: options.skills,

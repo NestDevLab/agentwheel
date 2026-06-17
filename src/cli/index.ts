@@ -1,4 +1,5 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -58,7 +59,7 @@ program
   .command("init")
   .description("initialize an agentwheel workspace or package")
   .argument("[kind]", "workspace or package", "workspace")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
   .option("--fleet-example", "scaffold example agents and profiles in workspace config", false)
   .action(async (kind, options) => {
     const root = normalizeTargetRoot(options.targetRoot);
@@ -85,19 +86,22 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root")
   .option("--mode <mode>", "pinned or tracking", "pinned")
   .option("--name <name>", "package alias")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--override <source-or-package::type/name>", "allow this package to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .action(async (source, options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const entry = await packageEntryFromSource(source, targetRoot, options);
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targetRoot = normalizeTargetRoot(normalizedOptions.targetRoot ?? process.cwd());
+    const entry = await packageEntryFromSource(source, targetRoot, normalizedOptions);
     await writeWorkspaceConfig(targetRoot, upsertPackage(await readWorkspaceConfig(targetRoot), entry));
     console.log(`Added ${entry.name}. Preview: agentwheel plan - Apply: agentwheel install`);
   });
@@ -107,7 +111,7 @@ program
   .description("list artifacts exposed by a package source")
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
@@ -127,7 +131,7 @@ program
   .description("scan a package source for validation findings")
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
@@ -150,11 +154,13 @@ program
   .argument("[name-or-source]", "configured package name/source or package source to preview")
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
+  .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
@@ -179,11 +185,13 @@ program
   .argument("[name-or-source]", "configured package name/source or package source to add and install")
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
+  .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
@@ -210,11 +218,13 @@ program
   .argument("[name-or-source]", "configured package name/source or package source")
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
+  .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
@@ -241,8 +251,10 @@ program
   .description("re-resolve tracking packages, then apply the result")
   .argument("[name]", "configured package name or source to update")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
-  .option("--target-root <path>", "workspace root")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("-t, --target-root <path>", "workspace root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show plans without writing", false)
@@ -256,9 +268,10 @@ program
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
-    const targets = await resolveCliTargets(options);
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions);
     for (const target of targets) {
-      await runConfiguredGraphPackages(target, { ...options, scope: name }, { mode: "update" });
+      await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
     }
   });
 
@@ -270,11 +283,13 @@ program
       .description("print the OpenPack dependency graph")
       .argument("[source]", "optional package source to resolve")
       .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-      .option("--installation-type <type>", "installation type (for example local or user)")
+      .option("-i, --installation-type <type>", "installation type (for example local or user)")
+      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+      .option("--local", "shortcut for --installation-type local", false)
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
       .option("--allow-adapter-code", "allow loading local adapter code", false)
-      .option("--target-root <path>", "runtime/project root")
+      .option("-t, --target-root <path>", "runtime/project root")
       .option("--agent <name>", "named agent from merged config")
       .option("--all", "run for every configured agent", false)
       .option("--mode <mode>", "pinned or tracking")
@@ -286,10 +301,11 @@ program
       .option("--yes", "trust all new transitive sources", false)
       .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
       .action(async (source, options) => {
-        const targets = await resolveCliTargets(options);
+        const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(source, options) });
+        const targets = await resolveCliTargets(normalizedOptions);
         for (const target of targets) {
           if (source) {
-            for (const result of await buildGraphPlansForTarget(target, source, options, { mode: "install" })) {
+            for (const result of await buildGraphPlansForTarget(target, source, normalizedOptions, { mode: "install" })) {
               console.log(formatDependencyTree(result.graph).join("\n"));
               for (const decision of result.bundle.graphLock.canonical.namespacing) {
                 console.log(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
@@ -301,7 +317,7 @@ program
             }
             continue;
           }
-          const { lock } = await readTargetGraphLock(target, options);
+          const { lock } = await readTargetGraphLock(target, normalizedOptions);
           console.log(formatLockDependencyTree(lock));
         }
       }),
@@ -311,19 +327,22 @@ program
       .description("explain why an artifact is installed")
       .argument("<selector>", "installed path, type/installName, or graphNodeId:type/name")
       .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-      .option("--installation-type <type>", "installation type (for example local or user)")
+      .option("-i, --installation-type <type>", "installation type (for example local or user)")
+      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+      .option("--local", "shortcut for --installation-type local", false)
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
       .option("--allow-adapter-code", "allow loading local adapter code", false)
-      .option("--target-root <path>", "runtime/project root")
+      .option("-t, --target-root <path>", "runtime/project root")
       .option("--agent <name>", "named agent from merged config")
       .option("--all", "run for every configured agent", false)
       .action(async (selector, options) => {
-        const targets = await resolveCliTargets(options);
+        const normalizedOptions = normalizeRuntimeScopeOptions(options);
+        const targets = await resolveCliTargets(normalizedOptions);
         for (const target of targets) {
-          const { lock, adapter } = await readTargetGraphLock(target, options);
-          const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-          const state = installStateForTarget(target, adapter, options, installationType);
+          const { lock, adapter } = await readTargetGraphLock(target, normalizedOptions);
+          const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+          const state = installStateForTarget(target, adapter, normalizedOptions, installationType);
           const manifest = await readInstallManifest(state.installRoot, adapter.name, transportForTarget(target), state);
           console.log(formatDepsWhy(lock, manifest, selector));
         }
@@ -336,7 +355,7 @@ program
   .addCommand(
     new Command("update")
       .description("refresh the local registry cache")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-t, --target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         const index = await client.getIndex({ refresh: true });
@@ -346,7 +365,7 @@ program
   .addCommand(
     new Command("list")
       .description("list available registry entries")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-t, --target-root <path>", "workspace root", process.cwd())
       .action(async (options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries((await client.getIndex()).entries);
@@ -356,7 +375,7 @@ program
     new Command("search")
       .description("search registry entries")
       .argument("<query>", "search query")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-t, --target-root <path>", "workspace root", process.cwd())
       .action(async (query, options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries(await client.search(query));
@@ -370,7 +389,7 @@ program
     new Command("forget")
       .description("forget a persisted trusted source pattern")
       .argument("<pattern>", "trusted source glob to revoke")
-      .option("--target-root <path>", "workspace root", process.cwd())
+      .option("-t, --target-root <path>", "workspace root", process.cwd())
       .action(async (pattern, options) => {
         const removed = await forgetTrustedSources(normalizeTargetRoot(options.targetRoot), pattern);
         if (removed.length === 0) {
@@ -414,7 +433,7 @@ program
   .command("remember")
   .description("append text to the local instructions overlay")
   .requiredOption("--runtime <runtime>", "runtime/adapter name")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
   .argument("<text>", "text to append to the local instructions overlay")
   .action(async (text, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
@@ -427,7 +446,7 @@ program
   .command("eject")
   .description("copy a managed artifact into local ownership")
   .argument("<item>", "package/type/name")
-  .option("--target-root <path>", "workspace root", process.cwd())
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
   .action(async (item, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
     const result = await ejectArtifact(targetRoot, item);
@@ -440,10 +459,12 @@ program
   .description("remove configured packages or managed runtime files")
   .argument("[package]", "configured package name or source to remove from the ownership graph")
   .option("--adapter <adapter>", "adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
+  .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--dry-run", "show removals without writing", false)
@@ -459,19 +480,20 @@ program
     if (options.keepFiles && options.force) {
       throw new Error("--keep-files cannot be combined with --force.");
     }
-    const targets = await resolveCliTargets(options);
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions);
     for (const target of targets) {
       if (packageName) {
-        await uninstallConfiguredPackage(target, packageName, options);
+        await uninstallConfiguredPackage(target, packageName, normalizedOptions);
         continue;
       }
-      if (options.keepFiles) {
+      if (normalizedOptions.keepFiles) {
         throw new Error("--keep-files requires a configured package name or source.");
       }
-      const adapter = await resolveAdapterForTarget(target, options);
+      const adapter = await resolveAdapterForTarget(target, normalizedOptions);
       const transport = transportForTarget(target);
-      const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-      const state = installStateForTarget(target, adapter, options, installationType);
+      const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+      const state = installStateForTarget(target, adapter, normalizedOptions, installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
       if (!manifest) {
         console.log(`No install manifest for ${adapter.name}/${installationType} at ${state.installRoot}`);
@@ -479,8 +501,8 @@ program
       }
       const plan = filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options));
       console.log(formatPlan(plan));
-      const result = await uninstall(plan, { dryRun: options.dryRun, force: options.force, transport });
-      if (!options.dryRun) {
+      const result = await uninstall(plan, { dryRun: normalizedOptions.dryRun, force: normalizedOptions.force, transport });
+      if (!normalizedOptions.dryRun) {
         if (transport.kind !== "local" && adapter.programmatic?.uninstall) {
           throw new Error(`Cannot execute programmatic adapter uninstall over ${transport.description}.`);
         }
@@ -495,17 +517,20 @@ program
   .command("status")
   .description("show configured packages and runtime install state")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
-  .option("--installation-type <type>", "installation type (for example local or user)")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--target-root <path>", "runtime/project root")
+  .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .action(async (options) => {
-    const targets = await resolveCliTargets(options);
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions);
     for (const target of targets) {
-      await printStatus(target, options);
+      await printStatus(target, normalizedOptions);
     }
   });
 
@@ -523,31 +548,37 @@ async function runInstallCommand(
   },
   behavior: { apply: boolean },
 ): Promise<void> {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
   if (options.profile) {
-    const target = await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent });
+    const target = await resolveRuntimeTarget({
+      targetRoot: normalizedOptions.targetRoot,
+      adapter: normalizedOptions.adapter,
+      installationType: normalizedOptions.installationType,
+      agent: normalizedOptions.agent,
+    });
     const results = await syncProfile({
       workspaceRoot: target.workspaceRoot,
       profile: options.profile,
       source: nameOrSource,
-      driver: options.driver,
-      mode: options.mode,
-      select: selectedArtifactsFromOptions(options),
-      installationType: options.installationType,
+      driver: normalizedOptions.driver,
+      mode: normalizedOptions.mode,
+      select: selectedArtifactsFromOptions(normalizedOptions),
+      installationType: normalizedOptions.installationType,
       dryRun: !behavior.apply,
-      executePlugins: options.executePlugins,
-      allowAdapterCode: options.allowAdapterCode,
-      noDeps: noDepsFromOptions(options),
+      executePlugins: normalizedOptions.executePlugins,
+      allowAdapterCode: normalizedOptions.allowAdapterCode,
+      noDeps: noDepsFromOptions(normalizedOptions),
       lockedResolution: true,
-      frozenLock: options.frozenLock,
-      offline: options.offline,
-      yes: options.yes,
-      trustPatterns: options.trust ?? [],
+      frozenLock: normalizedOptions.frozenLock,
+      offline: normalizedOptions.offline,
+      yes: normalizedOptions.yes,
+      trustPatterns: normalizedOptions.trust ?? [],
       readOnly: !behavior.apply,
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
     for (const result of results) {
-      console.log(`Profile ${options.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+      console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
       console.log(formatPlan(result.plan));
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
@@ -555,9 +586,9 @@ async function runInstallCommand(
     return;
   }
 
-  const targets = await resolveCliTargets(options);
+  const targets = await resolveCliTargets(normalizedOptions);
   for (const target of targets) {
-    const targetOptions = optionsForResolvedTarget(options, target);
+    const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
@@ -701,27 +732,49 @@ function nextInstallNudge(): string {
 }
 
 async function resolveCliTargets(options: { targetRoot?: string; adapter?: string; installationType?: string; agent?: string; all?: boolean; allDetected?: boolean }): Promise<RuntimeTarget[]> {
-  if (options.all && options.allDetected) {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  if (normalizedOptions.all && normalizedOptions.allDetected) {
     throw new Error("Choose either --all for configured agents or --all-detected for detected runtime directories.");
   }
-  const adapters = adapterListFromOption(options.adapter);
+  const adapters = adapterListFromOption(normalizedOptions.adapter);
   if (adapters.length > 1) {
-    if (options.all || options.allDetected || options.agent) {
+    if (normalizedOptions.all || normalizedOptions.allDetected || normalizedOptions.agent) {
       throw new Error("--adapter <a,b> cannot be combined with --all, --all-detected, or --agent. Use a profile for mixed configured targets.");
     }
     const targets = [];
     for (const adapter of adapters) {
-      targets.push(await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter, installationType: options.installationType }));
+      targets.push(await resolveRuntimeTarget({
+        targetRoot: normalizedOptions.targetRoot,
+        adapter,
+        installationType: normalizedOptions.installationType,
+      }));
     }
     return targets;
   }
-  if (options.all) {
-    return resolveAllRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent, all: options.all });
+  if (normalizedOptions.all) {
+    return resolveAllRuntimeTargets({
+      targetRoot: normalizedOptions.targetRoot,
+      adapter: normalizedOptions.adapter,
+      installationType: normalizedOptions.installationType,
+      agent: normalizedOptions.agent,
+      all: normalizedOptions.all,
+    });
   }
-  if (options.allDetected) {
-    return resolveAllDetectedRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent, allDetected: options.allDetected });
+  if (normalizedOptions.allDetected) {
+    return resolveAllDetectedRuntimeTargets({
+      targetRoot: normalizedOptions.targetRoot,
+      adapter: normalizedOptions.adapter,
+      installationType: normalizedOptions.installationType,
+      agent: normalizedOptions.agent,
+      allDetected: normalizedOptions.allDetected,
+    });
   }
-  return [await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent })];
+  return [await resolveRuntimeTarget({
+    targetRoot: normalizedOptions.targetRoot,
+    adapter: normalizedOptions.adapter,
+    installationType: normalizedOptions.installationType,
+    agent: normalizedOptions.agent,
+  })];
 }
 
 function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSource?: boolean }>(options: T, target: RuntimeTarget): T {
@@ -749,6 +802,13 @@ interface GraphCliOptions {
   adapterModule?: string;
   adapter?: string;
   installationType?: string;
+  user?: boolean;
+  local?: boolean;
+  targetRoot?: string;
+  agent?: string;
+  all?: boolean;
+  allDetected?: boolean;
+  profile?: string;
   driver?: string;
   mode?: "pinned" | "tracking";
   select?: string[];
@@ -1315,6 +1375,85 @@ function collectTrustOption(value: string, previous: string[]): string[] {
 
 function collectOverrideOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
+}
+
+interface RuntimeScopeOptions {
+  installationType?: string;
+  targetRoot?: string;
+  user?: boolean;
+  local?: boolean;
+  agent?: string;
+  all?: boolean;
+  allDetected?: boolean;
+  profile?: string;
+}
+
+function normalizeRuntimeScopeOptions<T extends RuntimeScopeOptions>(options: T, behavior: { defaultUser?: boolean } = {}): T {
+  if (options.user && options.local) {
+    throw new Error("Choose either --user or --local.");
+  }
+
+  const shortcutType = options.user ? "user" : options.local ? "local" : undefined;
+  if (shortcutType && options.installationType && options.installationType !== shortcutType) {
+    throw new Error(`--${shortcutType} conflicts with --installation-type ${options.installationType}.`);
+  }
+
+  let targetRoot = options.targetRoot ? normalizeCliPath(options.targetRoot) : undefined;
+  let installationType = options.installationType ?? shortcutType;
+
+  if (!installationType && targetRoot) {
+    installationType = isHomePath(targetRoot) ? "user" : "local";
+  }
+
+  const canDefaultTargetRoot = !options.agent && !options.all && !options.allDetected && !options.profile;
+  if (!targetRoot && canDefaultTargetRoot && (options.user || installationType === "user" || behavior.defaultUser)) {
+    targetRoot = homedir();
+  }
+
+  if (!installationType && behavior.defaultUser) {
+    installationType = "user";
+  }
+
+  return {
+    ...options,
+    installationType,
+    targetRoot,
+  };
+}
+
+function shouldDefaultUserInstall(nameOrSource: string | undefined, options: RuntimeScopeOptions & { adapter?: string }): boolean {
+  return Boolean(
+    nameOrSource
+      && options.adapter
+      && !options.installationType
+      && !options.user
+      && !options.local
+      && !options.targetRoot
+      && !options.agent
+      && !options.all
+      && !options.allDetected
+      && !options.profile
+      && looksLikeSourceSpecifier(nameOrSource),
+  );
+}
+
+function looksLikeSourceSpecifier(value: string): boolean {
+  return value.includes(":")
+    || value.startsWith("/")
+    || value.startsWith("./")
+    || value.startsWith("../")
+    || value === "~"
+    || value.startsWith("~/");
+}
+
+function normalizeCliPath(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return resolve(homedir(), value.slice(2));
+  return resolve(value);
+}
+
+function isHomePath(path: string): boolean {
+  return resolve(path) === resolve(homedir());
 }
 
 function adapterListFromOption(adapter?: string): string[] {

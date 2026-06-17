@@ -1102,12 +1102,12 @@
           <span class="light"></span><span class="light"></span><span class="light"></span>
           <span>agentwheel install</span>
         </div>
-        <pre><code>npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude --installation-type user --target-root ~</code></pre>
+        <pre><code>npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
       </div>
       <div class="install-note" aria-label="Install snippet explanation">
         <div class="note-chip">Two adapters<span><code>codex,claude</code> applies the same OpenPack once per runtime and keeps separate saved entries.</span></div>
         <div class="note-chip">Must-have pack<span><a href="https://github.com/NestDevLab/agent-must-have">agent-must-have</a> standard adds baseline rules plus self-improve, context-checkup, code-review, and planning skills.</span></div>
-        <div class="note-chip">User-level result<span><code>--target-root ~</code> keeps state in <code>~/.agentwheel</code>; artifacts land in <code>~/.agents</code>, <code>~/.codex</code>, and <code>~/.claude</code>.</span></div>
+        <div class="note-chip">Global default<span>Explicit source installs target user artifacts; use <code>--local</code> or <code>-t</code> for project scope.</span></div>
       </div>
 
       <section id="adapters">

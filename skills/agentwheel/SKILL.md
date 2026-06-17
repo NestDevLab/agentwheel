@@ -45,8 +45,12 @@ agentwheel install
 To add and install in one step:
 
 ```bash
-agentwheel install github:owner/repo --adapter codex --installation-type local
+agentwheel install github:owner/repo --adapter codex,claude
 ```
+
+Explicit source installs with explicit adapters default to user-level artifacts. Use `--local` for
+the current directory or `-t/--target-root <project>` for project/workspace installs. Use `--user`, `--local`, or
+`-i/--installation-type <type>` when scope should be explicit.
 
 ## Workspace Setup
 
@@ -207,12 +211,13 @@ agentwheel install team-agent-pack
 Add and install a source in one step:
 
 ```bash
-agentwheel install github:owner/repo --adapter codex --installation-type local
+agentwheel install github:owner/repo --adapter codex,claude
 ```
 
-Pass `--installation-type local` for project/workspace installs and `--installation-type user` for
-documented user-level installs. If a package can be installed in more than one type, agentwheel
-fails instead of guessing.
+Explicit source installs with explicit adapters default to documented user-level installs. Pass
+`--local` for the current directory or `-t/--target-root <project>` for project/workspace installs, and use `--user`, `--local`,
+or `-i/--installation-type <type>` when scope should be explicit. If a package can be installed in
+more than one type and no CLI/context default applies, agentwheel fails instead of guessing.
 
 Target selection order is `--target-root`, then `--agent`, then runtime auto-detection from the current directory, then the current directory.
 

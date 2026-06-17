@@ -20,6 +20,7 @@ beforeAll(async () => {
 afterEach(async () => {
   await Promise.all(tempRoots.map((path) => rm(path, { recursive: true, force: true })));
   tempRoots.length = 0;
+  await cleanCliHomeState();
 });
 
 afterAll(async () => {
@@ -72,6 +73,68 @@ describe("CLI verb redesign", () => {
       ["multi-claude", "claude"],
       ["multi-codex", "codex"],
     ]);
+  });
+
+  it("defaults explicit source installs with explicit adapters to user-scoped targets", async () => {
+    const source = await packageFixture("global-default");
+
+    const { stdout } = await runCli(["install", source, "--adapter", "codex,claude"]);
+
+    expect(stdout).toContain("Applied codex");
+    expect(stdout).toContain("Applied claude");
+    await expect(readFile(join(cliHome, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("global-default");
+    await expect(readFile(join(cliHome, ".claude", "CLAUDE.md"), "utf8")).resolves.toContain("global-default");
+
+    const config = JSON.parse(await readFile(join(cliHome, ".agentwheel", "config.json"), "utf8"));
+    expect(config.packages.map((pkg: { name: string; adapter: string; installationType: string }) => [pkg.name, pkg.adapter, pkg.installationType])).toContainEqual([
+      "global-default-codex",
+      "codex",
+      "user",
+    ]);
+    expect(config.packages.map((pkg: { name: string; adapter: string; installationType: string }) => [pkg.name, pkg.adapter, pkg.installationType])).toContainEqual([
+      "global-default-claude",
+      "claude",
+      "user",
+    ]);
+  });
+
+  it("infers local installation type from a non-home target root", async () => {
+    const root = await tempRoot();
+    const source = await packageFixture("target-local");
+
+    const { stdout } = await runCli(["install", source, "--adapter", "codex,claude", "-t", root]);
+
+    expect(stdout).toContain("Applied codex");
+    expect(stdout).toContain("Applied claude");
+    await expect(readFile(join(root, "AGENTS.md"), "utf8")).resolves.toContain("target-local");
+    await expect(readFile(join(root, "CLAUDE.md"), "utf8")).resolves.toContain("target-local");
+
+    const config = JSON.parse(await readFile(join(root, ".agentwheel", "config.json"), "utf8"));
+    expect(config.packages.map((pkg: { installationType: string }) => pkg.installationType)).toEqual(["local", "local"]);
+  });
+
+  it("supports --user, --local, and -i installation type shortcuts", async () => {
+    const userSource = await packageFixture("shortcut-user");
+    const localRoot = await tempRoot();
+    const localSource = await packageFixture("shortcut-local");
+    const shortSource = await packageFixture("shortcut-short");
+
+    await runCli(["install", userSource, "--adapter", "codex", "--user", "--only-source"]);
+    await expect(readFile(join(cliHome, ".codex", "AGENTS.md"), "utf8")).resolves.toContain("shortcut-user");
+    await cleanCliHomeState();
+
+    await runCli(["install", localSource, "--adapter", "codex", "--local", "-t", localRoot, "--only-source"]);
+    await expect(readFile(join(localRoot, "AGENTS.md"), "utf8")).resolves.toContain("shortcut-local");
+    await cleanCliHomeState();
+
+    await runCli(["install", shortSource, "--adapter", "claude", "-i", "user", "--only-source"]);
+    await expect(readFile(join(cliHome, ".claude", "CLAUDE.md"), "utf8")).resolves.toContain("shortcut-short");
+
+    const help = await runCli(["install", "--help"]);
+    expect(help.stdout).toContain("-i, --installation-type <type>");
+    expect(help.stdout).toContain("-t, --target-root <path>");
+    expect(help.stdout).toContain("--user");
+    expect(help.stdout).toContain("--local");
   });
 
   it("forwards the hidden sync shim with a deprecation warning", async () => {
@@ -326,6 +389,15 @@ async function tempRoot(prefix = "agentwheel-cli-"): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
   tempRoots.push(root);
   return root;
+}
+
+async function cleanCliHomeState(): Promise<void> {
+  await Promise.all([
+    rm(join(cliHome, ".agentwheel"), { recursive: true, force: true }),
+    rm(join(cliHome, ".agents"), { recursive: true, force: true }),
+    rm(join(cliHome, ".codex"), { recursive: true, force: true }),
+    rm(join(cliHome, ".claude"), { recursive: true, force: true }),
+  ]);
 }
 
 async function packageFixture(name: string, options: { requires?: unknown } = {}): Promise<string> {

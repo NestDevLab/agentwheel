@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { promisify } from "node:util";
 import { atomicCopy, hashPath, pathExists, writeJsonAtomic } from "../utils/fs.js";
 import type { TargetTransport } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 export const localTransport: TargetTransport = {
   kind: "local",
@@ -22,4 +26,7 @@ export const localTransport: TargetTransport = {
   writeJsonAtomic,
   atomicCopy,
   rm: (path) => rm(path, { recursive: true, force: true }),
+  async execFile(command, args, options = {}) {
+    await execFileAsync(command, args, { cwd: options.cwd });
+  },
 };

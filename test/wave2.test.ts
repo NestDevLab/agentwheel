@@ -11,6 +11,7 @@ import { ejectArtifact, remember } from "../src/lifecycle/customization.js";
 import { upsertPackage, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
+import { localTransport, type TargetTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
 
@@ -167,6 +168,42 @@ describe("v0.2 wave 2", () => {
     expect(entry?.executed).toBe(false);
     await expect(stat(join(target, "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".openclaw", "plugins", "demo-plugin"))).rejects.toThrow();
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("executes OpenClaw plugin installs over ssh by staging the plugin on the target", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writeFullPackage(source);
+
+    const executed: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+      async execFile(command, args, options = {}) {
+        executed.push({ command, args, cwd: options.cwd });
+        await stat(args.at(-1) ?? "");
+      },
+    };
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["plugins/demo-plugin"] });
+    const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, sshTransport);
+    const manifest = await applyInstallPlan(plan, bundle.sourceLock, {
+      executePlugins: true,
+      transport: sshTransport,
+    });
+
+    expect(executed).toHaveLength(1);
+    expect(executed[0]?.command).toBe("openclaw");
+    expect(executed[0]?.args.slice(0, 2)).toEqual(["plugins", "install"]);
+    expect(executed[0]?.args.at(-1)).toContain(join(target, ".agentwheel", "plugin-staging"));
+    expect(executed[0]?.cwd).toBe(target);
+    await expect(stat(executed[0]?.args.at(-1) ?? "")).rejects.toThrow();
+
+    const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");
+    expect(entry?.executed).toBe(true);
+    expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
     await rm(bundle.root, { recursive: true, force: true });
   });
 

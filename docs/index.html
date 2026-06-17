@@ -720,6 +720,45 @@
       font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
+    .note-chip a {
+      color: #bae6fd;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .rules-explainer {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .rule-card {
+      min-height: 92px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.62);
+    }
+
+    .rule-card strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #e5e7eb;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .rule-card span:last-child {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
     .toggle-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -861,6 +900,10 @@
       }
 
       .install-note {
+        grid-template-columns: 1fr;
+      }
+
+      .rules-explainer {
         grid-template-columns: 1fr;
       }
 
@@ -1059,13 +1102,12 @@
           <span class="light"></span><span class="light"></span><span class="light"></span>
           <span>agentwheel install</span>
         </div>
-        <pre><code>npx agentwheel install nestdev-must-have --adapter codex --installation-type user
-npx agentwheel install nestdev-must-have --adapter claude --installation-type user</code></pre>
+        <pre><code>npx agentwheel install github:NestDevLab/agent-must-have#standard --profile user-agents --installation-type user</code></pre>
       </div>
       <div class="install-note" aria-label="Install snippet explanation">
-        <div class="note-chip">Same OpenPack<span>Installs <code>nestdev-must-have</code> twice, once per harness.</span></div>
-        <div class="note-chip">Codex user target<span>Writes user-level Codex artifacts, including <code>~/.agents/skills</code> and <code>~/.codex/*</code>.</span></div>
-        <div class="note-chip">Claude user target<span>Writes user-level Claude artifacts under <code>~/.claude/*</code>.</span></div>
+        <div class="note-chip">One profile<span><code>user-agents</code> is a workspace profile that targets Codex and Claude in one run.</span></div>
+        <div class="note-chip">Must-have pack<span><a href="https://github.com/NestDevLab/agent-must-have">agent-must-have</a> standard adds baseline rules plus self-improve, context-checkup, code-review, and planning skills.</span></div>
+        <div class="note-chip">User-level result<span><code>--installation-type user</code> writes Codex artifacts to <code>~/.agents</code>/<code>~/.codex</code> and Claude artifacts to <code>~/.claude</code>.</span></div>
       </div>
 
       <section id="adapters">
@@ -1161,23 +1203,26 @@ npx agentwheel install nestdev-must-have --adapter claude --installation-type us
         </div>
         <div class="matrix-legend" aria-label="Runtime matrix legend">
           <span class="legend-item"><span class="matrix-dot"></span> supported file path</span>
-          <span class="legend-item"><strong>Rules differ:</strong> <span class="badge policy">policy</span> Codex permissions</span>
-          <span class="legend-item"><span class="badge behavior">behavior</span> Claude scoped instructions</span>
-          <span class="legend-item"><span class="badge mapped">mapped</span> Copilot instructions</span>
+          <span class="legend-item"><strong>Rules are not portable:</strong> same OpenPack kind, different runtime meaning</span>
           <span class="legend-item"><span class="badge custom">custom</span> adapter needed</span>
           <span class="legend-item"><span class="badge config">config</span> runtime setup</span>
           <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
           <span class="legend-item"><a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a></span>
         </div>
-        <details class="code-toggle" aria-label="Rule semantics">
-          <summary>Rule semantics</summary>
-          <div class="toggle-body">
-            <span class="pill">Codex = command policy</span>
-            <span class="pill">Claude = behavioral rules</span>
-            <span class="pill">Copilot = instructions</span>
-            <span class="pill">OpenClaw/Hermes = custom adapter</span>
+        <div class="rules-explainer" aria-label="Rules semantics by runtime">
+          <div class="rule-card">
+            <strong><span class="badge policy">policy</span> Codex rules</strong>
+            <span>Command permissions: allow, prompt, or forbid shell actions. They are not coding-style instructions.</span>
           </div>
-        </details>
+          <div class="rule-card">
+            <strong><span class="badge behavior">behavior</span> Claude rules</strong>
+            <span>Behavioral instructions, often path-scoped, that shape how Claude should work on files.</span>
+          </div>
+          <div class="rule-card">
+            <strong><span class="badge mapped">mapped</span> Copilot rules</strong>
+            <span>Written as Copilot custom instructions, because Copilot has no native command-policy rules.</span>
+          </div>
+        </div>
       </section>
 
       <section id="how">

@@ -4,11 +4,12 @@ import { defaultInstallationType, installRootForAdapterInstallationType, resolve
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan } from "./source-plan.js";
-import { readMergedWorkspaceConfig, resolveConfigPath, type WorkspacePackage, type WorkspaceProfileRuntime } from "../model/workspace.js";
+import { readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource } from "../registry/client.js";
+import { resolveProfileRuntimeTarget } from "../runtime/target.js";
 import { inferSourceDriverName } from "../source/identify.js";
-import { localTransport, transportForTarget } from "../transport/index.js";
-import type { SshTransportConfig, TargetTransport, TransportKind } from "../transport/index.js";
+import { transportForTarget } from "../transport/index.js";
+import type { TransportKind } from "../transport/index.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface ProfileSyncOptions {
@@ -58,16 +59,17 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
 
   const results: ProfileSyncResult[] = [];
   for (const runtime of profile.runtimes) {
-    const target = resolveProfileRuntime(runtime, config, options.workspaceRoot);
+    const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType);
+    const transport = transportForTarget(target);
     const adapter = await resolveAdapter({
       adapter: target.adapter,
-      adapterConfig: runtime.adapterConfig,
-      adapterModule: runtime.adapterModule,
+      adapterConfig: target.adapterConfig,
+      adapterModule: target.adapterModule,
       allowAdapterCode: options.allowAdapterCode,
       baseDir: options.workspaceRoot,
       warn: options.warn,
     });
-    const installationType = options.installationType ?? runtime.installationType ?? target.installationType ?? defaultInstallationType;
+    const installationType = target.installationType ?? defaultInstallationType;
     resolveInstallationTypeForAdapter(adapter, installationType);
     const selected = normalizeArtifactSelectors(options.select, options.skills);
     const graphPlan = await createGraphSourcePlan({
@@ -83,17 +85,17 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       targetRoot: target.targetRoot,
       workspaceRoot: options.workspaceRoot,
       adapter,
-      transport: target.transport,
-      targetKey: runtime.agent ?? adapter.name,
+      transport,
+      targetKey: target.targetKey ?? target.agentName ?? adapter.name,
       targetFingerprintParts: {
         adapter: adapter.name,
         installationType,
-        adapterConfig: runtime.adapterConfig,
-        adapterModule: runtime.adapterModule,
+        adapterConfig: target.adapterConfig,
+        adapterModule: target.adapterModule,
         adapterCodeHash: adapter.programmatic?.hash,
         agentName: target.agentName,
         targetRoot: target.targetRoot,
-        transport: target.transport.kind,
+        transport: transport.kind,
         ssh: target.ssh,
       },
       installationType,
@@ -111,14 +113,14 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       results.push({
         runtime: adapter.name,
         targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType),
-        transport: target.transport.kind,
+        transport: transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
       });
       if (!options.dryRun) {
         await applyCombinedInstallPlan(graphPlan.plan, {
           executePlugins: runtime.executePlugins ?? options.executePlugins,
-          transport: target.transport,
+          transport,
           graphLockDigest: graphPlan.graphLockDigest,
           graphLock: { path: graphPlan.graphLockPath, lock: graphPlan.bundle.graphLock },
         });
@@ -128,40 +130,6 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     }
   }
   return results;
-}
-
-function resolveProfileRuntime(
-  runtime: WorkspaceProfileRuntime,
-  config: Awaited<ReturnType<typeof readMergedWorkspaceConfig>>,
-  workspaceRoot: string,
-): { adapter: string; targetRoot: string; transport: TargetTransport; installationType?: string; agentName?: string; ssh?: SshTransportConfig } {
-  if (runtime.agent) {
-    const agent = config.agents[runtime.agent];
-    if (!agent) throw new Error(`Unknown agent in profile: ${runtime.agent}`);
-    const target = {
-      agentName: runtime.agent,
-      adapter: agent.adapter,
-      targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
-      workspaceRoot,
-      transport: agent.transport,
-      ssh: agent.transport === "ssh"
-        ? {
-            host: agent.host ?? "",
-            user: agent.user,
-            port: agent.port,
-            identityFile: agent.identityFile ? resolveConfigPath(agent.identityFile, workspaceRoot) : undefined,
-          } satisfies SshTransportConfig
-        : undefined,
-      source: "agent" as const,
-    };
-    return { adapter: target.adapter, targetRoot: target.targetRoot, transport: transportForTarget(target), installationType: agent.installationType, agentName: target.agentName, ssh: target.ssh };
-  }
-  return {
-    adapter: runtime.adapter,
-    targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
-    transport: localTransport,
-    installationType: runtime.installationType,
-  };
 }
 
 async function packageFromSource(source: string, options: ProfileSyncOptions): Promise<WorkspacePackage> {

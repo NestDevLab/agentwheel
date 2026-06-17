@@ -341,6 +341,57 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("reports profile status with profile runtime adapter config and graph lock state", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-profile-status-target-");
+    const source = await rulePackageFixture("profile-status-rule", "profile-status");
+    const adapterConfig = join(workspace, "profile-adapter.json");
+    await writeFile(adapterConfig, `${JSON.stringify({
+      name: "profile-status",
+      displayName: "Profile Status",
+      targets: {
+        rules: {
+          local: { enabled: true, dest: ".profile/rules" },
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [{
+        name: "profile-status-rule",
+        source,
+        driver: "local",
+        adapter: "openclaw",
+        installationType: "local",
+        mode: "pinned",
+      }],
+      registry: {},
+      trust: {},
+      agents: {
+        lab: { adapter: "openclaw", root: target, transport: "local", installationType: "local" },
+      },
+      profiles: {
+        all: {
+          runtimes: [{ agent: "lab", adapterConfig }],
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    await runCli(["install", "--profile", "all", "--target-root", workspace]);
+    const status = await runCli(["status", "--profile", "all", "--target-root", workspace]);
+    const allStatus = await runCli(["status", "--all", "--target-root", workspace]);
+
+    expect(status.stdout).toContain("Status for profile-status/local");
+    expect(status.stdout).toContain("Install manifest: 1 entries");
+    expect(status.stdout).toContain("Graph lock:");
+    expect(status.stdout).toContain("Pending install work: none");
+    expect(status.stdout).not.toContain("unavailable");
+    expect(allStatus.stdout).toContain("Status for profile-status/local");
+    expect(allStatus.stdout).toContain("Pending install work: none");
+    expect(allStatus.stdout).not.toContain("unavailable");
+  });
+
   it("rejects conflicting uninstall --keep-files and --force flags", async () => {
     await expect(runCli(["uninstall", "anything", "--keep-files", "--force", "--target-root", await tempRoot()])).rejects.toMatchObject({
       stderr: expect.stringContaining("--keep-files cannot be combined with --force."),

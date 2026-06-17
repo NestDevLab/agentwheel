@@ -89,6 +89,8 @@ Run a profile:
 
 ```bash
 agentwheel install --profile daily --dry-run
+agentwheel status --profile daily
+agentwheel status --all   # uses profile "all" when configured
 ```
 
 ## Source overrides for fleets

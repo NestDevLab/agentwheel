@@ -23,7 +23,7 @@ import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
-import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
+import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import type { InstallOperation, InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
 import type { GraphRootRequest } from "../resolve/graph.js";
@@ -526,9 +526,10 @@ program
   .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--profile <name>", "workspace runtime profile")
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const targets = await resolveCliTargets(normalizedOptions);
+    const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
@@ -731,15 +732,21 @@ function nextInstallNudge(): string {
   return "Preview: agentwheel plan - Apply: agentwheel install";
 }
 
-async function resolveCliTargets(options: { targetRoot?: string; adapter?: string; installationType?: string; agent?: string; all?: boolean; allDetected?: boolean }): Promise<RuntimeTarget[]> {
+async function resolveCliTargets(
+  options: { targetRoot?: string; adapter?: string; installationType?: string; agent?: string; profile?: string; all?: boolean; allDetected?: boolean },
+  behavior: { preferAllProfile?: boolean } = {},
+): Promise<RuntimeTarget[]> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options);
   if (normalizedOptions.all && normalizedOptions.allDetected) {
     throw new Error("Choose either --all for configured agents or --all-detected for detected runtime directories.");
   }
+  if (normalizedOptions.profile && (normalizedOptions.all || normalizedOptions.allDetected || normalizedOptions.agent)) {
+    throw new Error("--profile cannot be combined with --all, --all-detected, or --agent.");
+  }
   const adapters = adapterListFromOption(normalizedOptions.adapter);
   if (adapters.length > 1) {
-    if (normalizedOptions.all || normalizedOptions.allDetected || normalizedOptions.agent) {
-      throw new Error("--adapter <a,b> cannot be combined with --all, --all-detected, or --agent. Use a profile for mixed configured targets.");
+    if (normalizedOptions.all || normalizedOptions.allDetected || normalizedOptions.agent || normalizedOptions.profile) {
+      throw new Error("--adapter <a,b> cannot be combined with --all, --all-detected, --agent, or --profile. Use a profile for mixed configured targets.");
     }
     const targets = [];
     for (const adapter of adapters) {
@@ -751,7 +758,19 @@ async function resolveCliTargets(options: { targetRoot?: string; adapter?: strin
     }
     return targets;
   }
+  if (normalizedOptions.profile) {
+    return resolveProfileRuntimeTargets({
+      cwd: process.cwd(),
+      targetRoot: normalizedOptions.targetRoot,
+      installationType: normalizedOptions.installationType,
+      profile: normalizedOptions.profile,
+    });
+  }
   if (normalizedOptions.all) {
+    if (behavior.preferAllProfile && !normalizedOptions.agent) {
+      const profileTargets = await tryResolveProfileAllRuntimeTargets(normalizedOptions);
+      if (profileTargets) return profileTargets;
+    }
     return resolveAllRuntimeTargets({
       targetRoot: normalizedOptions.targetRoot,
       adapter: normalizedOptions.adapter,
@@ -777,6 +796,20 @@ async function resolveCliTargets(options: { targetRoot?: string; adapter?: strin
   })];
 }
 
+async function tryResolveProfileAllRuntimeTargets(options: { targetRoot?: string; installationType?: string }): Promise<RuntimeTarget[] | undefined> {
+  try {
+    return await resolveProfileRuntimeTargets({
+      cwd: process.cwd(),
+      targetRoot: options.targetRoot,
+      installationType: options.installationType,
+      profile: "all",
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unknown profile: all") return undefined;
+    throw error;
+  }
+}
+
 function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSource?: boolean }>(options: T, target: RuntimeTarget): T {
   return adapterListFromOption(options.adapter).length > 1
     ? { ...options, adapter: target.adapter, multiAdapterSource: true }
@@ -784,14 +817,30 @@ function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSour
 }
 
 async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }) {
+  const adapterOptions = adapterOptionsForTarget(target, options);
   return resolveAdapter({
     adapter: target.adapter,
-    adapterConfig: options.adapterConfig,
-    adapterModule: options.adapterModule,
-    allowAdapterCode: options.allowAdapterCode,
+    adapterConfig: adapterOptions.adapterConfig,
+    adapterModule: adapterOptions.adapterModule,
+    allowAdapterCode: adapterOptions.allowAdapterCode,
     baseDir: target.workspaceRoot,
     warn: (message) => console.warn(message),
   });
+}
+
+function adapterOptionsForTarget(
+  target: RuntimeTarget,
+  options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
+) {
+  return {
+    adapterConfig: options.adapterConfig ?? target.adapterConfig,
+    adapterModule: options.adapterModule ?? target.adapterModule,
+    allowAdapterCode: options.allowAdapterCode,
+  };
+}
+
+function targetKeyForTarget(target: RuntimeTarget, adapterName?: string): string {
+  return target.targetKey ?? target.agentName ?? adapterName ?? target.source;
 }
 
 interface GraphCliOptions {
@@ -893,20 +942,15 @@ async function buildGraphPlansForTarget(
     }
     const sourceTarget = target;
     const sourceInstallationType = targetOptions.installationType ?? entry.installationType ?? sourceTarget.installationType ?? "local";
+    const sourceAdapterOptions = adapterOptionsForTarget(sourceTarget, targetOptions);
     const key = graphGroupKey(sourceTarget, {
       installationType: sourceInstallationType,
-      adapterConfig: targetOptions.adapterConfig,
-      adapterModule: targetOptions.adapterModule,
-      allowAdapterCode: targetOptions.allowAdapterCode,
+      ...sourceAdapterOptions,
     });
     const group = groups.get(key) ?? {
       target: sourceTarget,
       installationType: sourceInstallationType,
-      adapterOptions: {
-        adapterConfig: targetOptions.adapterConfig,
-        adapterModule: targetOptions.adapterModule,
-        allowAdapterCode: targetOptions.allowAdapterCode,
-      },
+      adapterOptions: sourceAdapterOptions,
       packages: [],
       extraRoots: [],
       extraPackages: [],
@@ -961,7 +1005,7 @@ async function buildGraphPlansForTarget(
       workspaceRoot: group.target.workspaceRoot,
       adapter,
       transport,
-      targetKey: group.target.agentName ?? group.target.source,
+      targetKey: targetKeyForTarget(group.target, adapter.name),
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
       installationType: group.installationType,
       noDeps: noDepsFromOptions(targetOptions),
@@ -1126,8 +1170,8 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
   for (const pkg of removed) {
     const removedTarget = targetForPackage(target, pkg, options);
     const removedAdapterOptions = {
-      adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
-      adapterModule: options.adapterModule ?? pkg.adapterModule,
+      adapterConfig: options.adapterConfig ?? removedTarget.adapterConfig ?? pkg.adapterConfig,
+      adapterModule: options.adapterModule ?? removedTarget.adapterModule ?? pkg.adapterModule,
       allowAdapterCode: options.allowAdapterCode,
     };
     const removedInstallationType = options.installationType ?? pkg.installationType ?? removedTarget.installationType ?? "local";
@@ -1161,7 +1205,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         workspaceRoot: remainingGroup.target.workspaceRoot,
         adapter: remainingAdapter,
         transport,
-        targetKey: remainingGroup.target.agentName ?? remainingGroup.target.source,
+        targetKey: targetKeyForTarget(remainingGroup.target, remainingAdapter.name),
         targetFingerprintParts: targetFingerprintParts(remainingGroup.target, remainingAdapter, remainingGroup.adapterOptions, remainingGroup.installationType),
         installationType: remainingGroup.installationType,
         lockedResolution: true,
@@ -1185,7 +1229,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
       : {
           removeGraphLockPath: graphLockPathForTarget(
             removedTarget.workspaceRoot,
-            removedTarget.agentName ?? removedTarget.source,
+            targetKeyForTarget(removedTarget, adapter.name),
             adapter.name,
             targetFingerprintParts(removedTarget, adapter, removedAdapterOptions, removedInstallationType),
           ),
@@ -1218,8 +1262,8 @@ function graphGroupForPackage(
   const packageTarget = targetForPackage(target, pkg, options);
   const installationType = options.installationType ?? pkg.installationType ?? packageTarget.installationType ?? "local";
   const adapterOptions = {
-    adapterConfig: options.adapterConfig ?? pkg.adapterConfig,
-    adapterModule: options.adapterModule ?? pkg.adapterModule,
+    adapterConfig: options.adapterConfig ?? packageTarget.adapterConfig ?? pkg.adapterConfig,
+    adapterModule: options.adapterModule ?? packageTarget.adapterModule ?? pkg.adapterModule,
     allowAdapterCode: options.allowAdapterCode,
   };
   const key = graphGroupKey(packageTarget, { ...adapterOptions, installationType });
@@ -1293,13 +1337,14 @@ async function readTargetGraphLock(
   target: RuntimeTarget,
   options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
 ) {
-  const adapter = await resolveAdapterForTarget(target, options);
+  const adapterOptions = adapterOptionsForTarget(target, options);
+  const adapter = await resolveAdapterForTarget(target, adapterOptions);
   const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
   const path = graphLockPathForTarget(
     target.workspaceRoot,
-    target.agentName ?? target.source,
+    targetKeyForTarget(target, adapter.name),
     adapter.name,
-    targetFingerprintParts(target, adapter, options, installationType),
+    targetFingerprintParts(target, adapter, adapterOptions, installationType),
   );
   if (!(await pathExists(path))) {
     throw new Error(`No graph lock for ${adapter.name} at ${target.targetRoot}: ${path}`);
@@ -1312,10 +1357,11 @@ async function printStatus(
   options: GraphCliOptions,
 ): Promise<void> {
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-  const adapter = await resolveAdapterForTarget(target, options);
+  const adapterOptions = adapterOptionsForTarget(target, options);
+  const adapter = await resolveAdapterForTarget(target, adapterOptions);
   const transport = transportForTarget(target);
   const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-  const state = installStateForTarget(target, adapter, options, installationType);
+  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
   console.log(`Status for ${adapter.name}/${installationType} at ${state.installRoot}`);
   if (config.packages.length === 0) {
     console.log(`Configured packages: none at ${target.workspaceRoot}`);
@@ -1328,7 +1374,7 @@ async function printStatus(
   const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
   console.log(manifest ? `Install manifest: ${manifest.entries.length} entries, revision ${manifest.revision}` : "Install manifest: missing");
   try {
-    const { path, lock } = await readTargetGraphLock(target, options);
+    const { path, lock } = await readTargetGraphLock(target, adapterOptions);
     console.log(`Graph lock: ${path}`);
     console.log(`Locked graph: ${lock.canonical.roots.length} roots, ${lock.canonical.nodes.length} nodes, ${lock.canonical.artifacts.length} artifacts`);
   } catch {

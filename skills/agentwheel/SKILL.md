@@ -229,7 +229,14 @@ Use status to see configured packages, lock/manifest state, and pending install 
 agentwheel status
 agentwheel status --agent lab-codex
 agentwheel status --all
+agentwheel status --profile daily
 ```
+
+For profile-managed fleets, prefer `agentwheel status --profile <name>` over
+direct agent status; profile status uses the same runtime resolution, adapter
+config, installation type, and graph lock fingerprinting as
+`install --profile <name>`. If a workspace defines a profile named `all`,
+`agentwheel status --all` checks that profile.
 
 ## Named Agents And Profiles
 

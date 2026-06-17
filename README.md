@@ -73,7 +73,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel update [name]` | Re-resolve tracking packages, then apply. Pinned packages stay locked. |
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
-| `agentwheel status` | Show configured packages, manifest/lock presence, and install state. |
+| `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**
@@ -169,6 +169,7 @@ For a control-plane setup, define named agents in config. Global config lives at
 agentwheel install --agent lab-openclaw
 agentwheel install --all
 agentwheel install --profile daily
+agentwheel status --profile daily
 agentwheel install --all-detected
 ```
 

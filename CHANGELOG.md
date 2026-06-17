@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `agentwheel status --profile <name>` so status uses the same profile runtime resolution, adapter config, and graph lock fingerprinting as `install --profile`; `status --all` now uses the `all` profile when one exists.
 - Added `--user`, `--local`, `-i`, and `-t` shortcuts for install scope and target selection.
 - Explicit source installs with explicit adapters now default to user-level targets when no target root is provided.
 - `--target-root ~` infers `user`; other explicit target roots infer `local` unless overridden.

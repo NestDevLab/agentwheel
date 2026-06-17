@@ -1,17 +1,20 @@
 import { basename, dirname, join, resolve } from "node:path";
-import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig } from "../model/workspace.js";
+import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig, type WorkspaceProfileRuntime } from "../model/workspace.js";
 import type { SshTransportConfig, TransportKind } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
 
 export interface RuntimeTarget {
   adapter: string;
+  adapterConfig?: string;
+  adapterModule?: string;
   installationType?: string;
   targetRoot: string;
   workspaceRoot: string;
   agentName?: string;
+  targetKey?: string;
   transport: TransportKind;
   ssh?: SshTransportConfig;
-  source: "target-root" | "agent" | "auto-detect" | "cwd";
+  source: "target-root" | "agent" | "profile" | "auto-detect" | "cwd";
 }
 
 export interface RuntimeTargetRequest {
@@ -20,6 +23,7 @@ export interface RuntimeTargetRequest {
   adapter?: string;
   installationType?: string;
   agent?: string;
+  profile?: string;
   all?: boolean;
   allDetected?: boolean;
   globalRoot?: string;
@@ -89,6 +93,47 @@ export async function resolveAllRuntimeTargets(request: RuntimeTargetRequest = {
   return targets;
 }
 
+export async function resolveProfileRuntimeTargets(request: RuntimeTargetRequest & { profile: string }): Promise<RuntimeTarget[]> {
+  const cwd = resolve(request.cwd ?? process.cwd());
+  const workspaceRoot = request.targetRoot ? resolve(request.targetRoot) : await findWorkspaceRoot(cwd);
+  const config = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: request.globalRoot });
+  const profile = config.profiles[request.profile];
+  if (!profile) {
+    throw new Error(`Unknown profile: ${request.profile}`);
+  }
+
+  return profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, workspaceRoot, request.installationType));
+}
+
+export function resolveProfileRuntimeTarget(
+  runtime: WorkspaceProfileRuntime,
+  config: WorkspaceConfig,
+  workspaceRoot: string,
+  installationType?: string,
+): RuntimeTarget {
+  if (runtime.agent) {
+    const target = targetFromAgent(runtime.agent, config, workspaceRoot, installationType ?? runtime.installationType);
+    return {
+      ...target,
+      adapterConfig: runtime.adapterConfig,
+      adapterModule: runtime.adapterModule,
+      targetKey: runtime.agent,
+      source: "profile",
+    };
+  }
+
+  return {
+    adapter: runtime.adapter,
+    adapterConfig: runtime.adapterConfig,
+    adapterModule: runtime.adapterModule,
+    installationType: installationType ?? runtime.installationType,
+    targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
+    workspaceRoot,
+    transport: "local",
+    source: "profile",
+  };
+}
+
 export async function resolveAllDetectedRuntimeTargets(request: RuntimeTargetRequest = {}): Promise<RuntimeTarget[]> {
   if (request.agent) return [await resolveRuntimeTarget(request)];
 
@@ -140,6 +185,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
   }
   return {
     agentName: name,
+    targetKey: name,
     adapter: agent.adapter,
     installationType: installationType ?? agent.installationType,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),

@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan } from "../src/install/index.js";
+import { stateKeyFor } from "../src/install/paths.js";
 import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
+import { computeTargetFingerprint } from "../src/model/graph-lock.js";
 import { readMergedWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget } from "../src/runtime/target.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
@@ -192,6 +194,61 @@ describe("runtime target resolution", () => {
     });
     expect(results[0]?.targetRoot).toBe(alpha);
     await expect(stat(join(alpha, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    const fingerprint = computeTargetFingerprint({
+      adapter: "openclaw",
+      installationType: "local",
+      adapterConfig: undefined,
+      adapterModule: undefined,
+      adapterCodeHash: undefined,
+      agentName: "alpha",
+      targetRoot: alpha,
+      transport: "local",
+      ssh: undefined,
+    });
+    const stateKey = stateKeyFor("openclaw", { installationType: "local", targetFingerprint: fingerprint });
+    await expect(stat(join(alpha, ".agentwheel", `${stateKey}.install-manifest.json`))).resolves.toBeTruthy();
+  });
+
+  it("profile runtimes inherit installation type from named agents", async () => {
+    const project = await tempRoot("agentwheel-profile-agent-install-type-");
+    const source = await tempRoot("agentwheel-profile-agent-install-source-");
+    const alpha = join(project, "alpha-root");
+    const adapterConfig = join(project, "adapter.json");
+    await writePackage(source);
+    await writeFile(adapterConfig, JSON.stringify({
+      name: "fixture-agent-install-type",
+      displayName: "Fixture agent installation type",
+      targets: {
+        skills: {
+          local: { enabled: true, dest: "local-skills" },
+          user: { enabled: true, dest: "user-skills" },
+        },
+      },
+    }, null, 2), "utf8");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      agents: {
+        alpha: { adapter: "openclaw", root: alpha, transport: "local", installationType: "user" },
+      },
+      profiles: {
+        default: {
+          runtimes: [{ agent: "alpha", adapterConfig }],
+        },
+      },
+    });
+
+    const results = await syncProfile({
+      workspaceRoot: project,
+      profile: "default",
+      source,
+      dryRun: false,
+    });
+
+    expect(results[0]?.runtime).toBe("fixture-agent-install-type");
+    await expect(stat(join(alpha, "user-skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
+    await expect(stat(join(alpha, "local-skills", "demo", "SKILL.md"))).rejects.toThrow();
   });
 
   it("resolves ssh agents without local path expansion", async () => {

@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import type { Artifact, ArtifactType, PackageComposeEntry, PackageItemRequire } from "../model/artifact.js";
-import { readPackageManifest, type PackageManifest, type PackageProvide } from "../model/package.js";
+import { findPackageManifestPath, readPackageManifest, type PackageManifest, type PackageProvide } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver } from "./types.js";
 
@@ -25,7 +26,7 @@ export class LocalSourceDriver implements SourceDriver {
       packageName: manifest?.name,
       packageVersion: manifest?.version,
       mode: "pinned",
-      sourceHash: await hashPath(resolvedPath),
+      sourceHash: await hashLocalSource(resolvedPath, manifest),
     };
   }
 
@@ -153,6 +154,30 @@ export class LocalSourceDriver implements SourceDriver {
   async export(resolved: ResolvedSource): Promise<ResolvedSource> {
     return resolved;
   }
+}
+
+async function hashLocalSource(root: string, manifest: PackageManifest | undefined): Promise<string> {
+  if (!manifest) return hashPath(root);
+
+  const hash = createHash("sha256").update("local-openpack\0");
+  const manifestPath = await findPackageManifestPath(root, { warnLegacy: false });
+  if (manifestPath) {
+    hash.update("manifest\0");
+    hash.update(relative(root, manifestPath).replaceAll("\\", "/")).update("\0");
+    hash.update(await hashPath(manifestPath)).update("\0");
+  }
+
+  const provides = [...manifest.provides].sort((a, b) => `${a.type}\0${a.path}`.localeCompare(`${b.type}\0${b.path}`));
+  for (const provide of provides) {
+    const full = join(root, provide.path);
+    if (!(await pathExists(full))) continue;
+    hash.update("provide\0");
+    hash.update(provide.type).update("\0");
+    hash.update(provide.path.replaceAll("\\", "/")).update("\0");
+    hash.update(await hashPath(full)).update("\0");
+  }
+
+  return hash.digest("hex");
 }
 
 async function firstExisting(paths: string[]): Promise<string | undefined> {

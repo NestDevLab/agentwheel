@@ -56,6 +56,11 @@ Supported resource types include instructions, rules, skills, commands, subagent
 settings, plugins, and fragments. Runtime compatibility is per artifact and per installation type;
 see [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md).
 
+> `rules` is an OpenPack artifact kind, not a portable runtime concept. Codex rules are command
+> execution policy, Claude rules are behavioral/path-scoped instructions, and Copilot rule-like
+> installs map to path-specific custom instructions. Unsupported rule targets require an explicit
+> custom adapter instead of an inferred folder.
+
 ## Core Commands
 
 | Command | Meaning |
@@ -385,11 +390,11 @@ Built-in runtime targets:
 
 | Runtime | Native supported targets |
 |---|---|
-| **OpenClaw** | `local: skills/`; `user: ~/.openclaw/skills` |
-| **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP |
-| **Codex CLI** | `local: AGENTS.md, .agents/skills, .codex/rules, .codex/config.toml, .codex/hooks.json`; `user: ~/.agents/skills, ~/.codex/...` |
-| **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/skills` |
-| **GitHub Copilot** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/agents, .vscode/mcp.json`; `user: ~/.copilot/skills, ~/.copilot/copilot-instructions.md` |
+| **OpenClaw** | `local: skills/`; `user: ~/.openclaw/skills`; plugins require runtime-specific config |
+| **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP; rules are behavioral/path-scoped |
+| **Codex CLI** | `local: AGENTS.md, .agents/skills, .codex/rules, .codex/config.toml, .codex/hooks.json`; `user: ~/.agents/skills, ~/.codex/...`; rules are command execution policy |
+| **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/skills`; rules require explicit adapter config |
+| **GitHub Copilot** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/agents, .vscode/mcp.json`; `user: ~/.copilot/skills, ~/.copilot/copilot-instructions.md`; rule-like artifacts map to instructions |
 
 ## Docs
 

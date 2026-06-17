@@ -506,6 +506,35 @@
       font-size: 14px;
     }
 
+    .rule-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .rule-chip {
+      min-height: 86px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.74);
+    }
+
+    .rule-chip strong {
+      display: block;
+      margin-bottom: 7px;
+      color: #f8fafc;
+      font-size: 13px;
+    }
+
+    .rule-chip span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
     .matrix-wrap {
       margin-top: 24px;
       overflow-x: auto;
@@ -561,6 +590,39 @@
 
     .matrix-dash {
       color: rgba(156, 163, 175, 0.46);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 50px;
+      padding: 3px 6px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 999px;
+      color: #cbd5e1;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .badge.mapped {
+      border-color: rgba(99, 102, 241, 0.44);
+      background: rgba(99, 102, 241, 0.14);
+      color: #c7d2fe;
+    }
+
+    .badge.custom {
+      border-color: rgba(168, 85, 247, 0.38);
+      background: rgba(168, 85, 247, 0.12);
+      color: #ddd6fe;
+    }
+
+    .badge.config {
+      border-color: rgba(245, 158, 11, 0.42);
+      background: rgba(245, 158, 11, 0.12);
+      color: #fde68a;
     }
 
     .matrix-caption {
@@ -656,6 +718,10 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .rule-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .flow {
         grid-template-columns: 1fr;
       }
@@ -724,6 +790,10 @@
       }
 
       .docs-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .rule-strip {
         grid-template-columns: 1fr;
       }
     }
@@ -870,7 +940,15 @@
 
       <section id="adapters">
         <h2 class="section-title">Works with every runtime</h2>
-        <p class="intro-text">Five complete built-in adapters, two ways to bring your own. Every adapter maps the full artifact model into the runtime's native layout — no generic dumps. Need another harness? Bring your own adapter via a JSONC config (--adapter-config) or a programmatic module (--adapter-module).</p>
+        <p class="intro-text">Five built-in adapters, two ways to bring your own. Agentwheel maps artifacts into documented native targets by default, and leaves runtime-specific conventions to explicit adapter config.</p>
+        <p class="adapter-note">Rule-like artifacts are the easy place to get this wrong. Agentwheel keeps the artifact kind stable, but the runtime semantics stay explicit.</p>
+        <div class="rule-strip" aria-label="Rule semantics by runtime">
+          <div class="rule-chip"><strong>Codex</strong><span>Native command execution policy: allow, prompt, or forbid shell commands.</span></div>
+          <div class="rule-chip"><strong>Claude</strong><span>Native behavioral instructions, including path-scoped project rules.</span></div>
+          <div class="rule-chip"><strong>Copilot</strong><span>Mapped to path-specific custom instructions, not command policy.</span></div>
+          <div class="rule-chip"><strong>OpenClaw</strong><span>Custom adapter only until official file-drop rules are documented.</span></div>
+          <div class="rule-chip"><strong>Hermes</strong><span>Custom adapter only until official local rules are documented.</span></div>
+        </div>
         <p class="adapter-note">Claude and Copilot MCP merge JSON. Codex MCP updates only <code>[mcp_servers]</code> in <code>config.toml</code>, preserving unrelated user config.</p>
         <div class="matrix-wrap" aria-label="Built-in adapter support matrix">
           <table class="matrix">
@@ -892,15 +970,15 @@
             <tbody>
               <tr>
                 <th>OpenClaw</th>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="badge custom">custom</span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="badge config">config</span></td>
                 <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
@@ -921,31 +999,31 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>Hermes</th>
                 <td><span class="matrix-dot"></span></td>
+                <td><span class="badge custom">custom</span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
               </tr>
               <tr>
                 <th>GitHub Copilot</th>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge mapped">mapped</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
@@ -958,7 +1036,7 @@
             </tbody>
           </table>
         </div>
-        <p class="matrix-caption">Generated from the built-in adapter definitions. Fragments are resolved at compose time and inlined into the artifacts above — they apply to every runtime.</p>
+        <p class="matrix-caption"><span class="matrix-dot"></span> native built-in target. <span class="badge mapped">mapped</span> means Agentwheel writes a documented equivalent artifact. <span class="badge custom">custom</span> needs an explicit adapter. <span class="badge config">config</span> needs runtime-specific configuration. Fragments compose before install and can feed every runtime.</p>
       </section>
 
       <section id="how">

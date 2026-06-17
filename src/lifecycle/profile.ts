@@ -67,7 +67,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       baseDir: options.workspaceRoot,
       warn: options.warn,
     });
-    const installationType = options.installationType ?? runtime.installationType ?? defaultInstallationType;
+    const installationType = options.installationType ?? runtime.installationType ?? target.installationType ?? defaultInstallationType;
     resolveInstallationTypeForAdapter(adapter, installationType);
     const selected = normalizeArtifactSelectors(options.select, options.skills);
     const graphPlan = await createGraphSourcePlan({
@@ -91,8 +91,10 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         adapterConfig: runtime.adapterConfig,
         adapterModule: runtime.adapterModule,
         adapterCodeHash: adapter.programmatic?.hash,
+        agentName: target.agentName,
         targetRoot: target.targetRoot,
         transport: target.transport.kind,
+        ssh: target.ssh,
       },
       installationType,
       noDeps: options.noDeps,
@@ -132,7 +134,7 @@ function resolveProfileRuntime(
   runtime: WorkspaceProfileRuntime,
   config: Awaited<ReturnType<typeof readMergedWorkspaceConfig>>,
   workspaceRoot: string,
-): { adapter: string; targetRoot: string; transport: TargetTransport } {
+): { adapter: string; targetRoot: string; transport: TargetTransport; installationType?: string; agentName?: string; ssh?: SshTransportConfig } {
   if (runtime.agent) {
     const agent = config.agents[runtime.agent];
     if (!agent) throw new Error(`Unknown agent in profile: ${runtime.agent}`);
@@ -152,12 +154,13 @@ function resolveProfileRuntime(
         : undefined,
       source: "agent" as const,
     };
-    return { adapter: target.adapter, targetRoot: target.targetRoot, transport: transportForTarget(target) };
+    return { adapter: target.adapter, targetRoot: target.targetRoot, transport: transportForTarget(target), installationType: agent.installationType, agentName: target.agentName, ssh: target.ssh };
   }
   return {
     adapter: runtime.adapter,
     targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
     transport: localTransport,
+    installationType: runtime.installationType,
   };
 }
 

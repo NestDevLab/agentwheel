@@ -54,6 +54,30 @@ async function buildPlanFromSource(source: string, targetRoot: string) {
 }
 
 describe("install engine", () => {
+  it("hashes OpenPack local sources from declared provides instead of the entire root", async () => {
+    const source = await tempRoot();
+    const driver = new LocalSourceDriver();
+    await mkdir(join(source, "skills", "demo"), { recursive: true });
+    await mkdir(join(source, "var"), { recursive: true });
+    await writeFile(join(source, "openpack.json"), JSON.stringify({
+      schemaVersion: 2,
+      name: "acme/large-workspace",
+      version: "0.1.0",
+      provides: [{ type: "skills", path: "skills" }],
+    }, null, 2));
+    await writeFile(join(source, "skills", "demo", "SKILL.md"), "# Demo\n");
+    await writeFile(join(source, "var", "noise.log"), "first\n");
+
+    const before = await driver.resolve(source);
+    await writeFile(join(source, "var", "noise.log"), "changed outside openpack provides\n");
+    const outsideChange = await driver.resolve(source);
+    await writeFile(join(source, "skills", "demo", "SKILL.md"), "# Demo changed\n");
+    const providedChange = await driver.resolve(source);
+
+    expect(outsideChange.sourceHash).toBe(before.sourceHash);
+    expect(providedChange.sourceHash).not.toBe(before.sourceHash);
+  });
+
   it("plans and applies Claude file-drop artifacts", async () => {
     const targetRoot = await tempRoot();
     const { bundle, plan } = await buildPlan(targetRoot);

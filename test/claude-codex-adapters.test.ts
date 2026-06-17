@@ -106,6 +106,14 @@ describe("Claude and Codex adapters", () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writePackage(source);
+    await writeFile(join(source, "rules", "safe.rules"), [
+      "prefix_rule(",
+      "    pattern = [\"gh\", \"pr\", \"view\"],",
+      "    decision = \"prompt\",",
+      "    justification = \"Viewing PRs is allowed with approval\",",
+      ")",
+      "",
+    ].join("\n"), "utf8");
     await mkdir(join(target, ".codex"), { recursive: true });
     await writeFile(join(target, ".codex", "config.toml"), [
       "model = \"gpt-5.1-codex\"",
@@ -120,7 +128,7 @@ describe("Claude and Codex adapters", () => {
     }, null, 2), "utf8");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, {
-      select: ["instructions/AGENTS.md", "rules/safe.md", "skills/demo", "mcp/managed.json", "hooks/events.json"],
+      select: ["instructions/AGENTS.md", "rules/safe.rules", "skills/demo", "mcp/managed.json", "hooks/events.json"],
     });
     const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
     await applyInstallPlan(plan, bundle.sourceLock);
@@ -131,7 +139,7 @@ describe("Claude and Codex adapters", () => {
     expect((await stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
     await expect(stat(join(target, ".codex", "commands", "review.md"))).rejects.toThrow();
     await expect(stat(join(target, ".codex", "agents", "reviewer", "AGENTS.md"))).rejects.toThrow();
-    await expect(stat(join(target, ".codex", "rules", "safe.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".codex", "rules", "safe.rules"))).resolves.toBeTruthy();
 
     const config = await readFile(join(target, ".codex", "config.toml"), "utf8");
     expect(config).toContain("model = \"gpt-5.1-codex\"");

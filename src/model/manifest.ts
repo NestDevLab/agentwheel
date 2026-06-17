@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
+import { artifactFormatSchema, artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 import { defaultInstallationType, installationTypeSchema } from "./adapter.js";
 
 export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
@@ -94,6 +94,7 @@ export const sourceLockSchema = z.object({
       relativePath: z.string().min(1),
       kind: fileKindSchema,
       hash: z.string().min(16),
+      format: artifactFormatSchema.optional(),
       composedFrom: z.array(composedFromEntrySchema).optional(),
     }),
   ),

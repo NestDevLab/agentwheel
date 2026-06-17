@@ -9,7 +9,7 @@ export const openClawAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".openclaw/skills" },
     },
     plugins: {
-      local: { enabled: true, dest: ".openclaw/plugins", semantic: "openclaw-plugin" },
+      local: { enabled: true, dest: ".openclaw/plugins", formats: ["openclaw-plugin"], semantic: "openclaw-plugin" },
     },
   },
 };

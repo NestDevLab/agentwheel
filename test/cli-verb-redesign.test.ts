@@ -190,8 +190,8 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const alpha = await rulePackageFixture("scoped-alpha", "alpha-v1");
     const beta = await rulePackageFixture("scoped-beta", "beta-v1");
-    const alphaDest = join(workspace, ".codex", "rules", "scoped-alpha.md");
-    const betaDest = join(workspace, ".codex", "rules", "scoped-beta.md");
+    const alphaDest = join(workspace, ".codex", "rules", "scoped-alpha.rules");
+    const betaDest = join(workspace, ".codex", "rules", "scoped-beta.rules");
 
     await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
@@ -214,24 +214,24 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const shared = await rulePackageFixture("scope-shared", "shared-v1");
     const rootA = await rulePackageFixture("scope-owner-a", "owner-a", {
-      requires: { shared: { source: shared, select: ["rules/scope-shared.md"] } },
+      requires: { shared: { source: shared, select: ["rules/scope-shared.rules"] } },
     });
     const rootB = await rulePackageFixture("scope-owner-b", "owner-b", {
-      requires: { shared: { source: shared, select: ["rules/scope-shared.md"] } },
+      requires: { shared: { source: shared, select: ["rules/scope-shared.rules"] } },
     });
-    const sharedDest = join(workspace, ".codex", "rules", "scope-shared.md");
+    const sharedDest = join(workspace, ".codex", "rules", "scope-shared.rules");
 
     await runCli(["add", rootA, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["add", rootB, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
-    const before = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
+    const before = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.rules");
     expect(before.owners.filter((owner: string) => owner.includes("scope-owner-"))).toHaveLength(2);
 
     await writeRuleManifest(rootA, "scope-owner-a");
     await runCli(["install", "scope-owner-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
 
     await expect(readFile(sharedDest, "utf8")).resolves.toContain("shared-v1");
-    const after = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.md");
+    const after = manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-shared.rules");
     expect(after.owners.some((owner: string) => owner.includes("scope-owner-a"))).toBe(false);
     expect(after.owners.some((owner: string) => owner.includes("scope-owner-b"))).toBe(true);
 
@@ -245,15 +245,15 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const dep = await rulePackageFixture("dep", "dep");
     const meta = await metaPackageFixture("meta-pack", {
-      dep: { source: dep, select: ["rules/dep.md"] },
+      dep: { source: dep, select: ["rules/dep.rules"] },
     });
-    const depDest = join(workspace, ".codex", "rules", "dep.md");
+    const depDest = join(workspace, ".codex", "rules", "dep.rules");
     const before = await runtimeFiles(workspace);
 
     await runCli(["install", meta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
     await expect(readFile(depDest, "utf8")).resolves.toContain("# dep");
     const manifest = await readCodexManifest(workspace);
-    expect(manifest.entries.map((entry) => entry.path)).toEqual([".codex/rules/dep.md"]);
+    expect(manifest.entries.map((entry) => entry.path)).toEqual([".codex/rules/dep.rules"]);
 
     await runCli(["uninstall", "meta-pack", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(depDest, "utf8")).rejects.toThrow();
@@ -291,7 +291,7 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const alpha = await rulePackageFixture("scope-drift-a", "alpha");
     const beta = await rulePackageFixture("scope-drift-b", "beta");
-    const betaDest = join(workspace, ".codex", "rules", "scope-drift-b.md");
+    const betaDest = join(workspace, ".codex", "rules", "scope-drift-b.rules");
 
     await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
@@ -309,7 +309,7 @@ describe("CLI verb redesign", () => {
     const workspace = await tempRoot();
     const alpha = await rulePackageFixture("scope-remove-a", "alpha");
     const beta = await rulePackageFixture("scope-remove-b", "beta");
-    const betaDest = join(workspace, ".codex", "rules", "scope-remove-b.md");
+    const betaDest = join(workspace, ".codex", "rules", "scope-remove-b.rules");
 
     await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
@@ -318,18 +318,18 @@ describe("CLI verb redesign", () => {
 
     await runCli(["install", "scope-remove-a", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta");
-    expect(manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-remove-b.md")).toBeTruthy();
+    expect(manifestEntry(await readCodexManifest(workspace), ".codex/rules/scope-remove-b.rules")).toBeTruthy();
 
     await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(betaDest, "utf8")).rejects.toThrow();
-    expect((await readCodexManifest(workspace)).entries.some((entry: { path: string }) => entry.path === ".codex/rules/scope-remove-b.md")).toBe(false);
+    expect((await readCodexManifest(workspace)).entries.some((entry: { path: string }) => entry.path === ".codex/rules/scope-remove-b.rules")).toBe(false);
   });
 
   it("keeps status read-only even when configured packages have untrusted dependencies", async () => {
     const workspace = await tempRoot();
     const dep = await rulePackageFixture("status-dep", "dep");
     const source = await packageFixture("status-root", {
-      requires: { dep: { source: dep, select: ["rules/status-dep.md"] } },
+      requires: { dep: { source: dep, select: ["rules/status-dep.rules"] } },
     });
     await runCli(["add", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
 
@@ -431,10 +431,10 @@ describe("CLI verb redesign", () => {
     expect(allStatus.stdout).toContain("Pending install work: none");
     expect(allStatus.stdout).not.toContain("unavailable");
 
-    await writeFile(join(source, "rules", "profile-status-rule.md"), "# profile-status-v2\n", "utf8");
+    await writeFile(join(source, "rules", "profile-status-rule.rules"), codexRuleContent("profile-status-rule", "profile-status-v2"), "utf8");
     const update = await runCli(["update", "profile-status-rule", "--all", "--target-root", workspace]);
     expect(update.stdout).toContain("UPDATE");
-    await expect(readFile(join(target, ".profile", "rules", "profile-status-rule.md"), "utf8")).resolves.toContain("profile-status-v2");
+    await expect(readFile(join(target, ".profile", "rules", "profile-status-rule.rules"), "utf8")).resolves.toContain("profile-status-v2");
   });
 
   it("rejects conflicting uninstall --keep-files and --force flags", async () => {
@@ -513,7 +513,7 @@ async function packageFixture(name: string, options: { requires?: unknown } = {}
 async function rulePackageFixture(name: string, content: string, options: { requires?: unknown } = {}): Promise<string> {
   const root = await tempRoot(`agentwheel-${name}-`);
   await mkdir(join(root, "rules"), { recursive: true });
-  await writeFile(join(root, "rules", `${name}.md`), `# ${content}\n`, "utf8");
+  await writeFile(join(root, "rules", `${name}.rules`), codexRuleContent(name, content), "utf8");
   await writeFile(join(root, "openpack.json"), `${JSON.stringify({
     schemaVersion: 2,
     name,
@@ -543,6 +543,18 @@ async function writeRuleManifest(root: string, name: string, options: { requires
     requires: options.requires,
     provides: [{ type: "rules", path: "rules" }],
   }, null, 2)}\n`, "utf8");
+}
+
+function codexRuleContent(name: string, content: string): string {
+  return [
+    `# ${content}`,
+    "prefix_rule(",
+    `    pattern = ["echo", ${JSON.stringify(name)}],`,
+    "    decision = \"prompt\",",
+    `    justification = ${JSON.stringify(content)},`,
+    ")",
+    "",
+  ].join("\n");
 }
 
 async function mcpPackageFixture(name: string, command: string): Promise<string> {

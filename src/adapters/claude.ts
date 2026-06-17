@@ -9,8 +9,8 @@ export const claudeAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".claude/CLAUDE.md" },
     },
     rules: {
-      local: { enabled: true, dest: ".claude/rules" },
-      user: { enabled: true, root: "home", dest: ".claude/rules" },
+      local: { enabled: true, dest: ".claude/rules", formats: ["markdown-rule", "claude-markdown-rule"] },
+      user: { enabled: true, root: "home", dest: ".claude/rules", formats: ["markdown-rule", "claude-markdown-rule"] },
     },
     skills: {
       local: { enabled: true, dest: ".claude/skills" },

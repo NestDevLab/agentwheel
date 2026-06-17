@@ -122,6 +122,7 @@ export async function renderStagedBundle(bundle: RawStagedBundle, options: Stage
         relativePath: artifact.relativePath,
         kind: artifact.kind,
         hash: artifact.hash,
+        format: artifact.format,
         composedFrom: artifact.composedFrom,
       })),
     },

@@ -285,6 +285,12 @@
       min-height: 190px;
     }
 
+    .hero-ray {
+      stroke-dasharray: 5 12;
+      animation: route-flow 7.5s linear infinite;
+      animation-delay: var(--lane-delay, 0s);
+    }
+
     .flow-runtimes {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -430,65 +436,47 @@
       margin: 0;
     }
 
-    .section-icon {
-      flex: 0 0 54px;
-      width: 54px;
-      height: 54px;
+    .section-kicker,
+    .step-mark {
+      display: grid;
+      place-items: center;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 8px;
       background: rgba(17, 24, 39, 0.74);
+      color: #bae6fd;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .section-kicker {
+      flex: 0 0 42px;
+      width: 42px;
+      height: 42px;
+    }
+
+    .step-mark {
+      width: 34px;
+      height: 34px;
+    }
+
+    @keyframes route-flow {
+      to { stroke-dashoffset: -68; }
+    }
+
+    @keyframes route-ready {
+      0%, 100% { opacity: 0.42; }
+      40%, 58% { opacity: 1; }
+    }
+
+    @keyframes cursor-blink {
+      0%, 45% { opacity: 1; }
+      46%, 100% { opacity: 0; }
+    }
+
+    .install-cursor {
       color: var(--cyan);
-      filter: drop-shadow(0 14px 32px rgba(6, 182, 212, 0.1));
-    }
-
-    .section-icon .flow-line,
-    .mini-icon .flow-line {
-      stroke-dasharray: 8 8;
-      animation: icon-flow 2.8s linear infinite;
-    }
-
-    .section-icon .pulse,
-    .mini-icon .pulse {
-      transform-box: fill-box;
-      transform-origin: center;
-      animation: icon-pulse 2.7s ease-in-out infinite;
-    }
-
-    .section-icon .spin,
-    .mini-icon .spin {
-      transform-box: fill-box;
-      transform-origin: center;
-      animation: icon-spin 7s linear infinite;
-    }
-
-    .section-icon .float,
-    .mini-icon .float {
-      animation: icon-float 3.2s ease-in-out infinite;
-    }
-
-    @keyframes icon-flow {
-      to { stroke-dashoffset: -32; }
-    }
-
-    @keyframes icon-pulse {
-      0%, 100% { transform: scale(1); opacity: 0.78; }
-      50% { transform: scale(1.12); opacity: 1; }
-    }
-
-    @keyframes icon-spin {
-      to { transform: rotate(360deg); }
-    }
-
-    @keyframes icon-float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-3px); }
-    }
-
-    .mini-icon {
-      flex: 0 0 30px;
-      width: 30px;
-      height: 30px;
-      color: var(--cyan);
+      animation: cursor-blink 1.2s steps(1, end) infinite;
     }
 
     .pill {
@@ -549,12 +537,6 @@
       color: #dbeafe;
       font-size: 13px;
       font-weight: 800;
-    }
-
-    .feature-pill .mini-icon {
-      width: 20px;
-      height: 20px;
-      flex-basis: 20px;
     }
 
     .feature-pill span,
@@ -653,6 +635,12 @@
       color: #fde68a;
     }
 
+    .badge.internal {
+      border-color: rgba(20, 184, 166, 0.38);
+      background: rgba(20, 184, 166, 0.12);
+      color: #99f6e4;
+    }
+
     .matrix-caption {
       margin: 10px 0 0;
       color: var(--muted);
@@ -729,12 +717,6 @@
       background: rgba(17, 24, 39, 0.72);
     }
 
-    .step .mini-icon {
-      width: 34px;
-      height: 34px;
-      flex-basis: 34px;
-    }
-
     .step strong {
       display: block;
       margin-bottom: 6px;
@@ -753,6 +735,22 @@
       font-weight: 800;
     }
 
+    .workflow-connector {
+      width: 46px;
+      height: 16px;
+      color: var(--cyan);
+    }
+
+    .workflow-connector .route {
+      stroke-dasharray: 5 9;
+      animation: route-flow 4.8s linear infinite;
+    }
+
+    .workflow-connector .route-node {
+      animation: route-ready 4.8s ease-in-out infinite;
+      animation-delay: var(--node-delay, 0s);
+    }
+
     footer {
       display: flex;
       justify-content: space-between;
@@ -769,8 +767,10 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .section-icon *,
-      .mini-icon * {
+      .hero-ray,
+      .workflow-connector .route,
+      .workflow-connector .route-node,
+      .install-cursor {
         animation: none !important;
       }
     }
@@ -813,6 +813,11 @@
       .arrow {
         transform: rotate(90deg);
         justify-self: center;
+      }
+
+      .workflow-connector {
+        justify-self: center;
+        transform: rotate(90deg);
       }
     }
 
@@ -944,12 +949,12 @@
                     <stop offset="1" stop-color="#06b6d4"></stop>
                   </linearGradient>
                 </defs>
-                <path d="M8 110 C42 36 74 24 116 18" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path d="M8 110 C44 66 78 58 116 54" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path d="M8 110 C48 92 78 92 116 92" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path d="M8 110 C48 128 78 128 116 128" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path d="M8 110 C44 154 78 162 116 166" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path d="M8 110 C42 184 74 196 116 202" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:0s" d="M8 110 C42 36 74 24 116 18" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:.35s" d="M8 110 C44 66 78 58 116 54" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:.7s" d="M8 110 C48 92 78 92 116 92" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:1.05s" d="M8 110 C48 128 78 128 116 128" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:1.4s" d="M8 110 C44 154 78 162 116 166" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:1.75s" d="M8 110 C42 184 74 196 116 202" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
               </svg>
             </div>
             <div class="flow-runtimes">
@@ -967,7 +972,7 @@
               </div>
               <div class="runtime-tile">
                 <span class="runtime-mark mark-indigo">CP</span>
-                <span><span class="runtime-name">GitHub Copilot</span><span class="runtime-path">.github/</span></span>
+                <span><span class="runtime-name">GitHub Copilot CLI</span><span class="runtime-path">.github/</span></span>
               </div>
               <div class="runtime-tile">
                 <span class="runtime-mark mark-violet">HE</span>
@@ -989,16 +994,12 @@
         </div>
         <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have \
     --adapter codex \
-    --installation-type local</code></pre>
+    --installation-type local <span class="install-cursor">_</span></code></pre>
       </div>
 
       <section id="adapters">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <rect x="15" y="15" width="34" height="34" rx="8" fill="rgba(6,182,212,.12)" stroke="currentColor" opacity=".82"/>
-            <path class="flow-line" d="M20 27h24M20 37h24M27 20v24M37 20v24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".72"/>
-            <circle class="pulse" cx="32" cy="32" r="5" fill="currentColor"/>
-          </svg>
+          <span class="section-kicker">01</span>
           <h2 class="section-title">Runtime matrix</h2>
         </div>
         <div class="matrix-wrap" aria-label="Built-in adapter support matrix">
@@ -1030,7 +1031,7 @@
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="badge config">config</span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Claude Code</th>
@@ -1043,7 +1044,7 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Codex CLI</th>
@@ -1051,12 +1052,12 @@
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Hermes</th>
@@ -1069,25 +1070,25 @@
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
-                <th>GitHub Copilot</th>
+                <th>GitHub Copilot CLI</th>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="badge mapped">mapped</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
+                <td><span class="badge custom">custom</span></td>
+                <td><span class="matrix-dash">—</span></td>
+                <td><span class="badge internal">compose</span></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p class="matrix-caption"><span class="matrix-dot"></span> native. <span class="badge mapped">mapped</span> documented equivalent. <span class="badge custom">custom</span> adapter. <span class="badge config">config</span> runtime setup. <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a>.</p>
+        <p class="matrix-caption"><span class="matrix-dot"></span> native. <span class="badge mapped">mapped</span> documented equivalent. <span class="badge custom">custom</span> adapter. <span class="badge config">config</span> runtime setup. <span class="badge internal">compose</span> Agentwheel-only. <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a>.</p>
         <details class="code-toggle" aria-label="Rule semantics">
           <summary>Rule semantics</summary>
           <div class="toggle-body">
@@ -1101,39 +1102,28 @@
 
       <section id="how">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <path class="flow-line" d="M18 32h28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-            <circle class="pulse" cx="17" cy="32" r="7" fill="rgba(6,182,212,.2)" stroke="currentColor" stroke-width="2"/>
-            <circle class="pulse" cx="32" cy="32" r="7" fill="rgba(6,182,212,.14)" stroke="currentColor" stroke-width="2" style="animation-delay:.25s"/>
-            <circle class="pulse" cx="47" cy="32" r="7" fill="rgba(6,182,212,.2)" stroke="currentColor" stroke-width="2" style="animation-delay:.5s"/>
-          </svg>
+          <span class="section-kicker">02</span>
           <h2 class="section-title">How it works</h2>
         </div>
         <div class="flow">
           <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <path class="float" d="M12 9h12l5 5v17H12z" fill="rgba(6,182,212,.14)" stroke="currentColor" stroke-width="2"/>
-              <path d="M24 9v6h6M16 21h11M16 26h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
+            <span class="step-mark">1</span>
             <span><strong>Author package</strong><span>OpenPack repo</span></span>
           </div>
-          <div class="arrow">→</div>
+          <svg class="workflow-connector" viewBox="0 0 46 16" aria-hidden="true" focusable="false">
+            <path class="route" d="M3 8h40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle class="route-node" cx="43" cy="8" r="3" fill="currentColor" style="--node-delay:1.2s"/>
+          </svg>
           <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <path class="flow-line" d="M12 27l8-14 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <circle class="pulse" cx="12" cy="27" r="4" fill="currentColor"/>
-              <circle class="pulse" cx="20" cy="13" r="4" fill="currentColor" style="animation-delay:.2s"/>
-              <circle class="pulse" cx="28" cy="27" r="4" fill="currentColor" style="animation-delay:.4s"/>
-            </svg>
+            <span class="step-mark">2</span>
             <span><strong>Resolve graph</strong><span>.agentwheel lock</span></span>
           </div>
-          <div class="arrow">→</div>
+          <svg class="workflow-connector" viewBox="0 0 46 16" aria-hidden="true" focusable="false">
+            <path class="route" d="M3 8h40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle class="route-node" cx="43" cy="8" r="3" fill="currentColor" style="--node-delay:2.8s"/>
+          </svg>
           <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <rect x="8" y="10" width="24" height="20" rx="4" fill="rgba(6,182,212,.14)" stroke="currentColor" stroke-width="2"/>
-              <path class="flow-line" d="M13 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path class="pulse" d="M20 15v10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
+            <span class="step-mark">3</span>
             <span><strong>Install native</strong><span>Harness files</span></span>
           </div>
         </div>
@@ -1141,30 +1131,22 @@
 
       <section id="features">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <circle cx="32" cy="32" r="19" fill="rgba(6,182,212,.1)" stroke="currentColor" stroke-width="2"/>
-            <path class="spin" d="M32 14v8M32 42v8M14 32h8M42 32h8M19 19l6 6M39 39l6 6M45 19l-6 6M25 39l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <circle class="pulse" cx="32" cy="32" r="5" fill="currentColor"/>
-          </svg>
+          <span class="section-kicker">03</span>
           <h2 class="section-title">What stays aligned</h2>
         </div>
         <div class="feature-strip" aria-label="Agentwheel capabilities">
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="pulse" d="M5 6h14v12H5z" fill="rgba(6,182,212,.16)" stroke="currentColor" stroke-width="1.7"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>artifacts <span>&nbsp;skills/rules/MCP</span></span>
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="spin" d="M12 4v3M12 17v3M4 12h3M17 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="5" fill="rgba(6,182,212,.16)" stroke="currentColor" stroke-width="1.7"/></svg>drift-safe <span>&nbsp;plan/apply</span></span>
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="flow-line" d="M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="7" cy="12" r="3" fill="currentColor"/><circle cx="17" cy="12" r="3" fill="currentColor"/></svg>adapters <span>&nbsp;built-in/custom</span></span>
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle class="pulse" cx="8" cy="7" r="2" fill="currentColor"/></svg>sources <span>&nbsp;git/local/registry</span></span>
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M8 12h8M10 18h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="pulse" d="M12 10v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>selective <span>&nbsp;--skill/--select</span></span>
-          <span class="feature-pill"><svg class="mini-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="flow-line" d="M7 17l5-10 5 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="7" cy="17" r="2.5" fill="currentColor"/><circle cx="12" cy="7" r="2.5" fill="currentColor"/><circle cx="17" cy="17" r="2.5" fill="currentColor"/></svg>fleet <span>&nbsp;local/SSH</span></span>
+          <span class="feature-pill">artifacts <span>&nbsp;skills/rules/MCP</span></span>
+          <span class="feature-pill">drift-safe <span>&nbsp;plan/apply</span></span>
+          <span class="feature-pill">adapters <span>&nbsp;built-in/custom</span></span>
+          <span class="feature-pill">sources <span>&nbsp;git/local/registry</span></span>
+          <span class="feature-pill">selective <span>&nbsp;--skill/--select</span></span>
+          <span class="feature-pill">fleet <span>&nbsp;local/SSH</span></span>
         </div>
       </section>
 
       <section id="openpack">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <path class="float" d="M20 14h18l8 8v28H20z" fill="rgba(6,182,212,.12)" stroke="currentColor" stroke-width="2"/>
-            <path d="M38 14v9h9M25 31h17M25 38h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <circle class="pulse" cx="45" cy="45" r="4" fill="currentColor"/>
-          </svg>
+          <span class="section-kicker">04</span>
           <h2 class="section-title">OpenPack manifest</h2>
         </div>
         <div class="code manifest-code" aria-label="OpenPack manifest example">
@@ -1197,39 +1179,8 @@
 
       <section id="packages">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <path class="flow-line" d="M17 32h30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-            <rect class="float" x="12" y="20" width="14" height="14" rx="4" fill="rgba(6,182,212,.16)" stroke="currentColor" stroke-width="2"/>
-            <rect class="float" x="25" y="30" width="14" height="14" rx="4" fill="rgba(6,182,212,.12)" stroke="currentColor" stroke-width="2" style="animation-delay:.25s"/>
-            <rect class="float" x="38" y="20" width="14" height="14" rx="4" fill="rgba(6,182,212,.16)" stroke="currentColor" stroke-width="2" style="animation-delay:.5s"/>
-          </svg>
-          <h2 class="section-title">Package flow</h2>
-        </div>
-
-        <div class="flow">
-          <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <path class="float" d="M11 10h14l5 5v15H11z" fill="rgba(6,182,212,.14)" stroke="currentColor" stroke-width="2"/>
-              <path d="M25 10v6h6" fill="none" stroke="currentColor" stroke-width="2"/>
-            </svg>
-            <span><strong>1. Repo</strong><span>openpack.json</span></span>
-          </div>
-          <div class="arrow">→</div>
-          <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <path d="M10 12h20M10 20h20M10 28h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <circle class="pulse" cx="14" cy="12" r="3" fill="currentColor"/>
-            </svg>
-            <span><strong>2. Registry</strong><span>short name</span></span>
-          </div>
-          <div class="arrow">→</div>
-          <div class="step">
-            <svg class="mini-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
-              <rect x="9" y="12" width="22" height="18" rx="4" fill="rgba(6,182,212,.14)" stroke="currentColor" stroke-width="2"/>
-              <path class="flow-line" d="M14 21h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <span><strong>3. Install</strong><span>native target</span></span>
-          </div>
+          <span class="section-kicker">05</span>
+          <h2 class="section-title">Package details</h2>
         </div>
 
         <div class="toggle-grid">
@@ -1295,11 +1246,7 @@
 
       <section id="advanced">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <rect x="14" y="18" width="36" height="28" rx="7" fill="rgba(6,182,212,.12)" stroke="currentColor" stroke-width="2"/>
-            <path d="M22 28l6 5-6 5M32 38h10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect class="pulse" x="42" y="26" width="4" height="12" rx="2" fill="currentColor"/>
-          </svg>
+          <span class="section-kicker">06</span>
           <h2 class="section-title">Advanced usage</h2>
         </div>
         <div class="toggle-grid">
@@ -1361,11 +1308,7 @@
 
       <section id="docs">
         <div class="section-head">
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <path class="float" d="M18 16h18c5 0 10 5 10 10v22H26c-4 0-8-4-8-8z" fill="rgba(6,182,212,.12)" stroke="currentColor" stroke-width="2"/>
-            <path d="M25 27h14M25 34h12M25 41h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <path class="flow-line" d="M41 23l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <span class="section-kicker">07</span>
           <h2 class="section-title">Docs</h2>
         </div>
         <div class="docs-grid">

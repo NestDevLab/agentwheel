@@ -12,6 +12,8 @@ import {
 import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
 import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest, type InstallManifestEntry, type InstallManifestV1Entry } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
+import { renderCodexSubagents } from "../staging/codex-subagents.js";
+import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
@@ -95,11 +97,12 @@ export async function createInstallPlan(
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installationType = resolveInstallationTypeForArtifacts(adapter, bundle.artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, bundle.artifacts.map((artifact) => artifact.type));
+  const artifacts = await renderPlanArtifacts(bundle, adapter);
+  const installationType = resolveInstallationTypeForArtifacts(adapter, artifacts.map((artifact) => artifact.type), requestedInstallationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, artifacts.map((artifact) => artifact.type));
   const desired: InstallOperation[] = [];
 
-  for (const artifact of bundle.artifacts) {
+  for (const artifact of artifacts) {
     const op = operationForArtifact(artifact, adapter, installRoot, installationType, {
       logicalSelector: `${artifact.type}/${artifact.name}`,
       dependencyRole: "root",
@@ -114,6 +117,11 @@ export async function createInstallPlan(
   await addProgrammaticOperations(desired, adapter, installRoot);
 
   return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
+}
+
+async function renderPlanArtifacts(bundle: StagedBundle, adapter: AdapterConfig): Promise<Artifact[]> {
+  const codexRenderedArtifacts = await renderCodexSubagents(bundle.artifacts, bundle.root, adapter);
+  return renderCopilotArtifacts(codexRenderedArtifacts, bundle.root, adapter);
 }
 
 export async function createCombinedInstallPlan(
@@ -588,7 +596,9 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     throw new Error(`Adapter ${adapter.name} does not support ${artifact.type}/${artifact.name} for installation type '${installationType}'.${suffix}`);
   }
   const metadata = operationMetadataFromDesired(artifact, meta);
-  const installName = metadata.installName ?? artifact.name;
+  const rawInstallName = metadata.installName ?? artifact.name;
+  assertSafeInstallName(rawInstallName, `${artifact.type}/${artifact.name}`);
+  const installName = semanticInstallName(artifact, target.semantic, rawInstallName);
   assertSafeInstallName(installName, `${artifact.type}/${artifact.name}`);
 
   if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
@@ -611,6 +621,26 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     };
   }
 
+  if (artifact.type === "subagents" && target.semantic === "codex-subagent") {
+    const destPath = join(targetRoot, target.dest, `${installName.replace(/\.toml$/i, "")}.toml`);
+    return {
+      action: "create",
+      artifactType: artifact.type,
+      artifactName: artifact.name,
+      kind: "file",
+      sourcePath: artifact.stagedPath ?? artifact.sourcePath,
+      destPath,
+      relativeDestPath: relative(targetRoot, destPath).replaceAll("\\", "/"),
+      desiredHash: artifact.hash,
+      reason: "destination missing",
+      channel: artifact.channel ?? "managed",
+      packageName: artifact.packageName,
+      composedFrom: metadata.composedFrom,
+      ...metadata,
+      installName: installName.replace(/\.toml$/i, ""),
+    };
+  }
+
   const destPath = artifact.type === "instructions" || artifact.type === "settings" || isFileTarget(target.dest)
     ? join(targetRoot, target.dest)
     : join(targetRoot, target.dest, installName);
@@ -630,7 +660,27 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     mergeStrategy: target.merge,
     composedFrom: metadata.composedFrom,
     ...metadata,
+    installName,
   };
+}
+
+function semanticInstallName(artifact: Artifact, semantic: string | undefined, installName: string): string {
+  if (artifact.type === "rules" && semantic === "copilot-instruction") {
+    return withExtension(installName, ".instructions.md", [".instructions.md", ".md"]);
+  }
+  if (artifact.type === "commands" && semantic === "copilot-prompt") {
+    return withExtension(installName, ".prompt.md", [".prompt.md", ".md"]);
+  }
+  if (artifact.type === "subagents" && semantic === "copilot-agent") {
+    return withExtension(installName, ".agent.md", [".agent.md", ".md"]);
+  }
+  return installName;
+}
+
+function withExtension(name: string, targetExtension: string, knownExtensions: string[]): string {
+  const match = knownExtensions.find((extension) => name.toLowerCase().endsWith(extension.toLowerCase()));
+  const base = match ? name.slice(0, -match.length) : name;
+  return `${base}${targetExtension}`;
 }
 
 function isFileTarget(dest: string): boolean {

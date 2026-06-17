@@ -9,6 +9,8 @@ import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, Gra
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
+import { renderCodexSubagents } from "../staging/codex-subagents.js";
+import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
@@ -105,9 +107,11 @@ export async function renderGraphForTarget(
     const runtimeArtifacts = targetContext.adapter
       ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
       : selectedArtifacts;
+    const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
+    const runtimeRenderedArtifacts = await renderCopilotArtifacts(codexRenderedArtifacts, staged.root, targetContext.adapter);
 
     const renderedArtifacts = targetContext.workspaceRoot && targetContext.adapter
-      ? await applyCustomizations(runtimeArtifacts, {
+      ? await applyCustomizations(runtimeRenderedArtifacts, {
         workspaceRoot: targetContext.workspaceRoot,
         adapter: targetContext.adapter,
         stageRoot: staged.root,
@@ -116,7 +120,7 @@ export async function renderGraphForTarget(
         graphNodeId: rawNode.node.id,
         packageNameAmbiguous: ambiguousPackageNames.has(rawNode.node.name),
       })
-      : runtimeArtifacts;
+      : runtimeRenderedArtifacts;
 
     const installableArtifacts = renderedArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
     artifacts.push(...installableArtifacts.map((artifact) => ({

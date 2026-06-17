@@ -1,27 +1,24 @@
-# TODO: Codex Subagents Support
+# Codex Subagents Support
 
-## Goal
+Agentwheel supports Codex `subagents` as native Codex custom agent files.
 
-Add native Agentwheel support for Codex `subagents` using Codex custom agent files.
+Codex and Claude both expose subagent-style workflows, but their file formats differ:
 
-Codex supports subagent workflows and custom agents, but the native format is not the same as
-Claude's Markdown agent files. Agentwheel should map OpenPack `subagents` to the documented Codex
-custom agent layout instead of treating Codex subagents as unsupported.
+- Claude subagents are Markdown definitions under `.claude/agents/`.
+- Codex subagents are standalone TOML custom agent definitions under `.codex/agents/`.
 
-## Required Behavior
+## Installed Targets
 
-- Install Codex subagents to documented custom agent locations:
-  - `local` -> `.codex/agents/`
-  - `user` -> `~/.codex/agents/`
-- Mark Codex `subagents` as `supported-native` in the compatibility matrix.
-- Document the semantic difference:
-  - Claude subagents are Markdown definitions under `.claude/agents/`.
-  - Codex subagents are TOML custom agent definitions under `.codex/agents/`.
-- Do not install Codex subagents as `.codex/agents/<name>/AGENTS.md`.
+| Installation type | Target |
+|---|---|
+| `local` | `.codex/agents/<name>.toml` |
+| `user` | `~/.codex/agents/<name>.toml` |
+
+Agentwheel must not install Codex subagents as `.codex/agents/<name>/AGENTS.md`.
 
 ## Source Formats
 
-Support these OpenPack source forms:
+OpenPack packages may provide Codex-compatible subagents in any of these forms:
 
 ```text
 subagents/reviewer.toml
@@ -29,15 +26,16 @@ subagents/reviewer.md
 subagents/reviewer/AGENTS.md
 ```
 
-### TOML Pass-Through
-
-For `.toml` sources, install the file directly:
+Users select them with the extensionless artifact selector:
 
 ```text
-subagents/reviewer.toml -> .codex/agents/reviewer.toml
+subagents/reviewer
 ```
 
-The file should already contain Codex custom agent fields such as:
+## Rendering Rules
+
+TOML sources are pass-through after basic validation that these required Codex custom agent fields
+are present:
 
 ```toml
 name = "reviewer"
@@ -48,80 +46,35 @@ Prioritize correctness, regressions, and missing tests.
 """
 ```
 
-### Markdown Conversion
-
-For Markdown file sources:
+Markdown sources are rendered to TOML:
 
 ```text
 subagents/reviewer.md -> .codex/agents/reviewer.toml
-```
-
-For directory sources:
-
-```text
 subagents/reviewer/AGENTS.md -> .codex/agents/reviewer.toml
 ```
 
-Generate TOML with:
+Generated fields:
 
-```toml
-name = "reviewer"
-description = "..."
-developer_instructions = """
-...
-"""
-```
+- `name`: file or directory basename without `.md` or `.toml`.
+- `description`: frontmatter `description`, else first meaningful Markdown heading or line, else stable fallback.
+- `developer_instructions`: Markdown body.
 
-Mapping rules:
+Optional Codex custom agent fields can be added later without changing the OpenPack artifact kind:
+`nickname_candidates`, `model`, `model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, and
+`skills.config`.
 
-- `name`: slug from file or directory name.
-- `description`: frontmatter `description`, else first meaningful Markdown heading or line, else a stable fallback.
-- `developer_instructions`: full Markdown body.
-- Escape TOML multiline strings correctly.
-- Preserve future room for optional fields:
-  - `nickname_candidates`
-  - `model`
-  - `model_reasoning_effort`
-  - `sandbox_mode`
-  - `mcp_servers`
-  - `skills.config`
+## Coverage
 
-## Implementation Notes
+Implemented tests cover:
 
-- Add Codex adapter targets:
-  - `subagents.local` -> `.codex/agents`
-  - `subagents.user` -> `~/.codex/agents`
-- Add a Codex-specific render/transform path for `subagents` so Markdown sources become TOML.
-- Keep Claude and Copilot behavior unchanged.
-- Keep artifact selection semantics unchanged: users still select `subagents/<name>`.
-- If a source format cannot be converted safely, fail planning with a clear error instead of writing an invalid agent file.
-
-## Tests
-
-Add path-resolution coverage:
-
-- Codex local subagent -> `.codex/agents/reviewer.toml`
-- Codex user subagent -> `~/.codex/agents/reviewer.toml`
-
-Add install smoke coverage:
-
-- `.toml` pass-through installs unchanged.
-- `subagents/reviewer.md` converts to valid TOML.
-- `subagents/reviewer/AGENTS.md` converts to valid TOML.
-- Existing Claude subagent install still writes `.claude/agents/...`.
-
-Add negative coverage:
-
-- Codex must not write `.codex/agents/reviewer/AGENTS.md`.
-- Missing required generated fields should fail before apply.
-- Invalid TOML pass-through should fail with a clear diagnostic if validation is added.
-
-## Docs To Update
-
-- `docs/design/artifact-harness-compatibility.md`
-- README built-in runtime targets
-- Landing runtime matrix, if it still exposes subagent support
-- Any adapter smoke matrix tests that encode Codex `subagents` as unsupported
+- Codex local and user path resolution to `.codex/agents/<name>.toml`.
+- TOML pass-through install.
+- Markdown file conversion.
+- Directory `AGENTS.md` conversion.
+- Extensionless selection with `subagents/<name>`.
+- Negative check that Codex does not write `.codex/agents/<name>/AGENTS.md`.
+- Required-field validation for TOML pass-through.
+- Existing Claude subagent behavior remains `.claude/agents/...`.
 
 ## References
 

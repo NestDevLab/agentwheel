@@ -109,9 +109,9 @@ Updates:
 - Drift handling remains normal: manual edits in the runtime-installed `SKILL.md` block install/update. Intentional local ownership uses `agentwheel eject agentwheel/skills/agentwheel`.
 - Ejecting copies the current bootstrap skill to `.agentwheel/ejected/agentwheel/skills/agentwheel`; future agentwheel updates leave that ejected copy alone.
 
-Copilot caveat:
+Copilot support:
 
-- The current Copilot adapter has `skills` disabled, so the bootstrap skill will not install into GitHub Copilot until a conversion target exists. It can still install into OpenClaw, Claude, Codex, and Hermes.
+- The Copilot adapter installs skills into documented Copilot CLI skill roots: local `.github/skills` or user `~/.copilot/skills`.
 
 ## Contradictions Or Code Mismatches Found
 
@@ -121,4 +121,3 @@ Copilot caveat:
 - `agentwheel add` saves config but does not install runtime files. Agents must run `agentwheel install --dry-run` and then `agentwheel install`.
 - `agentwheel plan` requires a source argument; only `install` can run configured packages without a source.
 - `uninstall` operates from the install manifest and has no source argument.
-- The current Copilot adapter disables raw `SKILL.md` skills.

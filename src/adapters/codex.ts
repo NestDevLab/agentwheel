@@ -16,6 +16,10 @@ export const codexAdapter: AdapterConfig = {
       local: { enabled: true, dest: ".agents/skills" },
       user: { enabled: true, root: "home", dest: ".agents/skills" },
     },
+    subagents: {
+      local: { enabled: true, dest: ".codex/agents", semantic: "codex-subagent" },
+      user: { enabled: true, root: "home", dest: ".codex/agents", semantic: "codex-subagent" },
+    },
     mcp: {
       local: { enabled: true, dest: ".codex/config.toml", merge: "codex-toml-mcp" },
       user: { enabled: true, root: "home", dest: ".codex/config.toml", merge: "codex-toml-mcp" },

@@ -2,27 +2,34 @@ import type { AdapterConfig } from "../model/adapter.js";
 
 export const copilotAdapter: AdapterConfig = {
   name: "copilot",
-  displayName: "GitHub Copilot",
+  displayName: "GitHub Copilot CLI",
   targets: {
     instructions: {
       local: { enabled: true, dest: ".github/copilot-instructions.md" },
       user: { enabled: true, root: "home", dest: ".copilot/copilot-instructions.md" },
     },
     rules: {
-      local: { enabled: true, dest: ".github/instructions" },
+      local: { enabled: true, dest: ".github/instructions", semantic: "copilot-instruction" },
+      user: { enabled: true, root: "home", dest: ".copilot/instructions", semantic: "copilot-instruction" },
     },
     commands: {
-      local: { enabled: true, dest: ".github/prompts" },
+      local: { enabled: true, dest: ".github/prompts", semantic: "copilot-prompt" },
     },
     skills: {
       local: { enabled: true, dest: ".github/skills" },
       user: { enabled: true, root: "home", dest: ".copilot/skills" },
     },
     subagents: {
-      local: { enabled: true, dest: ".github/agents" },
+      local: { enabled: true, dest: ".github/agents", semantic: "copilot-agent" },
+      user: { enabled: true, root: "home", dest: ".copilot/agents", semantic: "copilot-agent" },
     },
     mcp: {
-      local: { enabled: true, dest: ".vscode/mcp.json", merge: "json-deep" },
+      local: { enabled: true, dest: ".github/mcp.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".copilot/mcp-config.json", merge: "json-deep" },
+    },
+    hooks: {
+      local: { enabled: true, dest: ".github/hooks" },
+      user: { enabled: true, root: "home", dest: ".copilot/hooks" },
     },
   },
 };

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,9 +78,15 @@ const pathCases: Array<{
   { label: "codex local instructions", adapter: codexAdapter, installationType: "local", type: "instructions", name: "AGENTS.md", expectedRoot: "target", expectedPath: "AGENTS.md" },
   { label: "codex local rules", adapter: codexAdapter, installationType: "local", type: "rules", name: "default.rules", expectedRoot: "target", expectedPath: ".codex/rules/default.rules" },
   { label: "codex local skills", adapter: codexAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: ".agents/skills/smoke" },
+  { label: "codex local subagents", adapter: codexAdapter, installationType: "local", type: "subagents", name: "reviewer", expectedRoot: "target", expectedPath: ".codex/agents/reviewer.toml" },
   { label: "codex local mcp", adapter: codexAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".codex/config.toml" },
   { label: "codex local hooks", adapter: codexAdapter, installationType: "local", type: "hooks", name: "hooks.json", expectedRoot: "target", expectedPath: ".codex/hooks.json" },
+  { label: "codex user instructions", adapter: codexAdapter, installationType: "user", type: "instructions", name: "AGENTS.md", expectedRoot: "home", expectedPath: ".codex/AGENTS.md" },
+  { label: "codex user rules", adapter: codexAdapter, installationType: "user", type: "rules", name: "default.rules", expectedRoot: "home", expectedPath: ".codex/rules/default.rules" },
   { label: "codex user skills", adapter: codexAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".agents/skills/smoke" },
+  { label: "codex user subagents", adapter: codexAdapter, installationType: "user", type: "subagents", name: "reviewer", expectedRoot: "home", expectedPath: ".codex/agents/reviewer.toml" },
+  { label: "codex user mcp", adapter: codexAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".codex/config.toml" },
+  { label: "codex user hooks", adapter: codexAdapter, installationType: "user", type: "hooks", name: "hooks.json", expectedRoot: "home", expectedPath: ".codex/hooks.json" },
 
   { label: "claude local instructions", adapter: claudeAdapter, installationType: "local", type: "instructions", name: "CLAUDE.md", expectedRoot: "target", expectedPath: "CLAUDE.md" },
   { label: "claude local rules", adapter: claudeAdapter, installationType: "local", type: "rules", name: "testing.md", expectedRoot: "target", expectedPath: ".claude/rules/testing.md" },
@@ -89,17 +95,35 @@ const pathCases: Array<{
   { label: "claude local subagents", adapter: claudeAdapter, installationType: "local", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "target", expectedPath: ".claude/agents/reviewer" },
   { label: "claude local mcp", adapter: claudeAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".mcp.json" },
   { label: "claude local settings", adapter: claudeAdapter, installationType: "local", type: "settings", name: "settings.json", expectedRoot: "target", expectedPath: ".claude/settings.json" },
+  { label: "claude local hooks", adapter: claudeAdapter, installationType: "local", type: "hooks", name: "hooks.json", expectedRoot: "target", expectedPath: ".claude/settings.json" },
+  { label: "claude user instructions", adapter: claudeAdapter, installationType: "user", type: "instructions", name: "CLAUDE.md", expectedRoot: "home", expectedPath: ".claude/CLAUDE.md" },
+  { label: "claude user rules", adapter: claudeAdapter, installationType: "user", type: "rules", name: "testing.md", expectedRoot: "home", expectedPath: ".claude/rules/testing.md" },
   { label: "claude user skills", adapter: claudeAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".claude/skills/smoke" },
+  { label: "claude user commands", adapter: claudeAdapter, installationType: "user", type: "commands", name: "review.md", expectedRoot: "home", expectedPath: ".claude/commands/review.md" },
+  { label: "claude user subagents", adapter: claudeAdapter, installationType: "user", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "home", expectedPath: ".claude/agents/reviewer" },
+  { label: "claude user settings", adapter: claudeAdapter, installationType: "user", type: "settings", name: "settings.json", expectedRoot: "home", expectedPath: ".claude/settings.json" },
+  { label: "claude user hooks", adapter: claudeAdapter, installationType: "user", type: "hooks", name: "hooks.json", expectedRoot: "home", expectedPath: ".claude/settings.json" },
 
   { label: "copilot local instructions", adapter: copilotAdapter, installationType: "local", type: "instructions", name: "copilot-instructions.md", expectedRoot: "target", expectedPath: ".github/copilot-instructions.md" },
   { label: "copilot local rules", adapter: copilotAdapter, installationType: "local", type: "rules", name: "typescript.instructions.md", expectedRoot: "target", expectedPath: ".github/instructions/typescript.instructions.md" },
+  { label: "copilot local generic rule", adapter: copilotAdapter, installationType: "local", type: "rules", name: "typescript.md", expectedRoot: "target", expectedPath: ".github/instructions/typescript.instructions.md" },
   { label: "copilot local commands", adapter: copilotAdapter, installationType: "local", type: "commands", name: "review.prompt.md", expectedRoot: "target", expectedPath: ".github/prompts/review.prompt.md" },
+  { label: "copilot local generic command", adapter: copilotAdapter, installationType: "local", type: "commands", name: "review.md", expectedRoot: "target", expectedPath: ".github/prompts/review.prompt.md" },
   { label: "copilot local skills", adapter: copilotAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: ".github/skills/smoke" },
   { label: "copilot local subagents", adapter: copilotAdapter, installationType: "local", type: "subagents", name: "reviewer.agent.md", expectedRoot: "target", expectedPath: ".github/agents/reviewer.agent.md" },
+  { label: "copilot local generic subagent", adapter: copilotAdapter, installationType: "local", type: "subagents", name: "reviewer.md", expectedRoot: "target", expectedPath: ".github/agents/reviewer.agent.md" },
+  { label: "copilot local mcp", adapter: copilotAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".github/mcp.json" },
+  { label: "copilot local hooks", adapter: copilotAdapter, installationType: "local", type: "hooks", name: "notify.json", expectedRoot: "target", expectedPath: ".github/hooks/notify.json" },
+  { label: "copilot user instructions", adapter: copilotAdapter, installationType: "user", type: "instructions", name: "copilot-instructions.md", expectedRoot: "home", expectedPath: ".copilot/copilot-instructions.md" },
+  { label: "copilot user rules", adapter: copilotAdapter, installationType: "user", type: "rules", name: "style.instructions.md", expectedRoot: "home", expectedPath: ".copilot/instructions/style.instructions.md" },
   { label: "copilot user skills", adapter: copilotAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".copilot/skills/smoke" },
+  { label: "copilot user subagents", adapter: copilotAdapter, installationType: "user", type: "subagents", name: "reviewer.agent.md", expectedRoot: "home", expectedPath: ".copilot/agents/reviewer.agent.md" },
+  { label: "copilot user mcp", adapter: copilotAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".copilot/mcp-config.json" },
+  { label: "copilot user hooks", adapter: copilotAdapter, installationType: "user", type: "hooks", name: "notify.json", expectedRoot: "home", expectedPath: ".copilot/hooks/notify.json" },
 
   { label: "openclaw local skills", adapter: openClawAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: "skills/smoke" },
   { label: "openclaw user skills", adapter: openClawAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".openclaw/skills/smoke" },
+  { label: "hermes local instructions", adapter: hermesAdapter, installationType: "local", type: "instructions", name: "AGENTS.md", expectedRoot: "target", expectedPath: "AGENTS.md" },
   { label: "hermes user skills", adapter: hermesAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".hermes/skills/smoke" },
 ];
 
@@ -128,6 +152,11 @@ describe("artifact compatibility registry", () => {
     expect(codexSkillPlan.operations[0]?.relativeDestPath).toBe(".agents/skills/smoke");
     expect(codexSkillPlan.operations[0]?.relativeDestPath).not.toBe(".codex/skills/smoke");
 
+    const codexSubagent = await desiredArtifact(source, "subagents", "reviewer", "dir");
+    const codexSubagentPlan = await createCombinedInstallPlan([codexSubagent], codexAdapter, target, undefined, localTransport, { installationType: "local" });
+    expect(codexSubagentPlan.operations[0]?.relativeDestPath).toBe(".codex/agents/reviewer.toml");
+    expect(codexSubagentPlan.operations[0]?.relativeDestPath).not.toBe(".codex/agents/reviewer/AGENTS.md");
+
     const command = await desiredArtifact(source, "commands", "review.md");
     await expect(createCombinedInstallPlan([command], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/does not support commands artifacts/);
@@ -137,9 +166,26 @@ describe("artifact compatibility registry", () => {
     expect(claudeMcpPlan.operations[0]?.relativeDestPath).toBe(".mcp.json");
     expect(claudeMcpPlan.operations[0]?.relativeDestPath).not.toBe(".claude/.mcp.json");
 
+    const copilotMcp = await desiredArtifact(source, "mcp", "server.json");
+    const copilotMcpPlan = await createCombinedInstallPlan([copilotMcp], copilotAdapter, target, undefined, localTransport, { installationType: "local" });
+    expect(copilotMcpPlan.operations[0]?.relativeDestPath).toBe(".github/mcp.json");
+    expect(copilotMcpPlan.operations[0]?.relativeDestPath).not.toBe(".vscode/mcp.json");
+
     const hermesLocalSkill = await desiredArtifact(source, "skills", "local-only", "dir");
     await expect(createCombinedInstallPlan([hermesLocalSkill], hermesAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/does not support skills artifacts for installation type 'local'/);
+
+    const claudeUserMcp = await desiredArtifact(source, "mcp", "server.json");
+    await expect(createCombinedInstallPlan([claudeUserMcp], claudeAdapter, target, undefined, localTransport, { installationType: "user" }))
+      .rejects.toThrow(/does not support mcp artifacts for installation type 'user'/);
+
+    const copilotUserCommand = await desiredArtifact(source, "commands", "review.md");
+    await expect(createCombinedInstallPlan([copilotUserCommand], copilotAdapter, target, undefined, localTransport, { installationType: "user" }))
+      .rejects.toThrow(/does not support commands artifacts for installation type 'user'/);
+
+    const openClawRule = await desiredArtifact(source, "rules", "policy.md");
+    await expect(createCombinedInstallPlan([openClawRule], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/does not support rules artifacts/);
   });
 
   it("installs smoke skills end-to-end into separate local and user state", async () => {
@@ -166,4 +212,90 @@ describe("artifact compatibility registry", () => {
     await rm(localBundle.root, { recursive: true, force: true });
     await rm(userBundle.root, { recursive: true, force: true });
   });
+
+  it("installs Codex subagents from TOML, Markdown, and AGENTS.md directory sources", async () => {
+    const cases = [
+      {
+        name: "toml-reviewer",
+        async write(root: string) {
+          await writeSubagentPackage(root, "toml-reviewer.toml", [
+            'name = "toml-reviewer"',
+            'description = "TOML reviewer."',
+            'developer_instructions = """',
+            "Review from TOML.",
+            '"""',
+            "",
+          ].join("\n"));
+        },
+        expected: ['name = "toml-reviewer"', "Review from TOML."],
+      },
+      {
+        name: "markdown-reviewer",
+        async write(root: string) {
+          await writeSubagentPackage(root, "markdown-reviewer.md", [
+            "---",
+            "description: Markdown reviewer.",
+            "---",
+            "# Markdown reviewer",
+            "",
+            "Review from Markdown.",
+            "",
+          ].join("\n"));
+        },
+        expected: ['name = "markdown-reviewer"', 'description = "Markdown reviewer."', "Review from Markdown."],
+      },
+      {
+        name: "directory-reviewer",
+        async write(root: string) {
+          await writeSubagentPackage(root, join("directory-reviewer", "AGENTS.md"), [
+            "# Directory reviewer",
+            "",
+            "Review from AGENTS.md.",
+            "",
+          ].join("\n"));
+        },
+        expected: ['name = "directory-reviewer"', 'description = "Directory reviewer"', "Review from AGENTS.md."],
+      },
+    ];
+
+    for (const item of cases) {
+      const source = await tempRoot();
+      const target = await tempRoot();
+      await item.write(source);
+      const bundle = await stageSource(new LocalSourceDriver(), source, {
+        adapter: codexAdapter,
+        select: [`subagents/${item.name}`],
+      });
+      const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
+      await applyCombinedInstallPlan(plan);
+
+      const installed = await readFile(join(target, ".codex", "agents", `${item.name}.toml`), "utf8");
+      for (const expected of item.expected) expect(installed).toContain(expected);
+      await expect(stat(join(target, ".codex", "agents", item.name, "AGENTS.md"))).rejects.toThrow();
+      await rm(bundle.root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Codex custom agent TOML missing required fields before apply", async () => {
+    const source = await tempRoot();
+    await writeSubagentPackage(source, "broken.toml", [
+      'name = "broken"',
+      'description = "Missing developer instructions."',
+      "",
+    ].join("\n"));
+
+    await expect(stageSource(new LocalSourceDriver(), source, { adapter: codexAdapter }))
+      .rejects.toThrow(/missing required field 'developer_instructions'/);
+  });
 });
+
+async function writeSubagentPackage(root: string, relativeSubagentPath: string, content: string): Promise<void> {
+  await mkdir(dirname(join(root, "subagents", relativeSubagentPath)), { recursive: true });
+  await writeFile(join(root, "openpack.json"), JSON.stringify({
+    schemaVersion: 2,
+    name: `compat/${relativeSubagentPath.replace(/[^a-z0-9]+/gi, "-")}`,
+    version: "1.0.0",
+    provides: [{ type: "subagents", path: "subagents" }],
+  }, null, 2), "utf8");
+  await writeFile(join(root, "subagents", relativeSubagentPath), content, "utf8");
+}

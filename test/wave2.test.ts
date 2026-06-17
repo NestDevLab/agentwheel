@@ -97,8 +97,8 @@ describe("v0.2 wave 2", () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
-    await mkdir(join(target, ".vscode"), { recursive: true });
-    await writeFile(join(target, ".vscode", "mcp.json"), JSON.stringify({
+    await mkdir(join(target, ".github"), { recursive: true });
+    await writeFile(join(target, ".github", "mcp.json"), JSON.stringify({
       mcpServers: { user: { command: "user" } },
       keep: true,
     }, null, 2));
@@ -124,19 +124,21 @@ describe("v0.2 wave 2", () => {
       "mcp:server.json",
       "rules:core.md",
       "skills:demo-skill",
-      "subagents:code-reviewer.md",
-      "subagents:reviewer",
+      "subagents:code-reviewer.agent.md",
+      "subagents:reviewer.agent.md",
     ]));
     expect(planned.some((operation) => operation.startsWith("hooks:"))).toBe(false);
     expect(planned.some((operation) => operation.startsWith("settings:"))).toBe(false);
     expect(planned.some((operation) => operation.startsWith("plugins:"))).toBe(false);
     await expect(stat(join(target, ".github", "copilot-instructions.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".github", "instructions", "core.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".github", "prompts", "review.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "instructions", "core.instructions.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "prompts", "review.prompt.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".github", "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".github", "agents", "code-reviewer.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".github", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
-    const mcp = JSON.parse(await readFile(join(target, ".vscode", "mcp.json"), "utf8"));
+    await expect(stat(join(target, ".github", "agents", "code-reviewer.agent.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "agents", "reviewer.agent.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".github", "agents", "reviewer", "AGENTS.md"))).rejects.toThrow();
+    expect(await readFile(join(target, ".github", "agents", "reviewer.agent.md"), "utf8")).toContain('description: "Reviewer"');
+    const mcp = JSON.parse(await readFile(join(target, ".github", "mcp.json"), "utf8"));
     expect(mcp.keep).toBe(true);
     expect(mcp.mcpServers.user.command).toBe("user");
     expect(mcp.mcpServers.demo.command).toBe("demo");

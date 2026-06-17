@@ -15,7 +15,7 @@ export const targetMappingSchema = z.object({
   dest: z.string().min(1),
   enabled: z.boolean().default(true),
   root: z.enum(["target", "home"]).optional(),
-  semantic: z.enum(["openclaw-plugin"]).optional(),
+  semantic: z.enum(["openclaw-plugin", "codex-subagent", "copilot-instruction", "copilot-prompt", "copilot-agent"]).optional(),
   merge: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
 });
 

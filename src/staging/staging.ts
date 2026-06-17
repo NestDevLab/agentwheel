@@ -8,6 +8,8 @@ import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../sour
 import { hashPath } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
+import { renderCodexSubagents } from "./codex-subagents.js";
+import { renderCopilotArtifacts } from "./copilot-artifacts.js";
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface StagedBundle {
@@ -85,15 +87,17 @@ export async function renderStagedBundle(bundle: RawStagedBundle, options: Stage
   const runtimeArtifacts = options.adapter
     ? filterArtifactsByRuntime(selectedArtifacts, options.adapter.name, runtimeSelectedSet)
     : selectedArtifacts;
+  const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, root, options.adapter);
+  const renderedArtifacts = await renderCopilotArtifacts(codexRenderedArtifacts, root, options.adapter);
 
   const finalArtifacts = options.workspaceRoot && options.adapter
-    ? await applyCustomizations(runtimeArtifacts, {
+    ? await applyCustomizations(renderedArtifacts, {
       workspaceRoot: options.workspaceRoot,
       adapter: options.adapter,
       stageRoot: root,
       packageName: resolved.packageName,
     })
-    : runtimeArtifacts;
+    : renderedArtifacts;
 
   const generatedAt = new Date().toISOString();
   return {

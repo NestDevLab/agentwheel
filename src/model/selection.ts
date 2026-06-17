@@ -7,6 +7,15 @@ export function artifactSelectorKey(artifact: Pick<Artifact, "type" | "name">): 
   return `${artifact.type}/${artifact.name}` as ArtifactSelector;
 }
 
+export function artifactSelectorAliases(artifact: Pick<Artifact, "type" | "name" | "kind">): ArtifactSelector[] {
+  const primary = artifactSelectorKey(artifact);
+  if (artifact.type !== "subagents") return [primary];
+
+  const baseName = subagentBaseName(artifact.name);
+  if (baseName === artifact.name) return [primary];
+  return [primary, `subagents/${baseName}` as ArtifactSelector];
+}
+
 export function normalizeArtifactSelectors(select?: string[], legacySkills?: string[]): ArtifactSelector[] | undefined {
   const selected = [
     ...(select ?? []),
@@ -26,13 +35,13 @@ export function filterArtifactsBySelection(artifacts: Artifact[], selectors?: st
   if (!selected?.length) return artifacts;
 
   const selectedSet = new Set(selected);
-  const available = new Set(artifacts.map(artifactSelectorKey));
+  const available = new Set(artifacts.flatMap(artifactSelectorAliases));
   const missing = selected.filter((selector) => !available.has(selector));
   if (missing.length > 0) {
     throw new Error(`Selected artifact not found in package: ${missing.join(", ")}`);
   }
 
-  return artifacts.filter((artifact) => artifact.required || selectedSet.has(artifactSelectorKey(artifact)));
+  return artifacts.filter((artifact) => artifact.required || artifactSelectorAliases(artifact).some((selector) => selectedSet.has(selector)));
 }
 
 export function splitSelectorList(value: string): string[] {
@@ -51,4 +60,11 @@ function parseArtifactSelector(value: string): ArtifactSelector {
     throw new Error(`Invalid artifact selector type: ${type}`);
   }
   return `${parsedType.data}/${name}` as ArtifactSelector;
+}
+
+function subagentBaseName(name: string): string {
+  return name
+    .replace(/\.agent\.md$/i, "")
+    .replace(/\.toml$/i, "")
+    .replace(/\.md$/i, "");
 }

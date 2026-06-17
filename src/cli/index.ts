@@ -257,6 +257,7 @@ program
   .option("-t, --target-root <path>", "workspace root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
+  .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plans without writing", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
@@ -269,7 +270,7 @@ program
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const targets = await resolveCliTargets(normalizedOptions);
+    const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
     for (const target of targets) {
       await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
     }

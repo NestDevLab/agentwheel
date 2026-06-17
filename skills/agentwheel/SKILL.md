@@ -317,7 +317,13 @@ Target configured agents:
 ```bash
 agentwheel update --agent lab-codex --dry-run
 agentwheel update --all --dry-run
+agentwheel update --profile daily --dry-run
 ```
+
+For profile-managed fleets, use `agentwheel update --profile <name>` before
+`install --profile <name>` when tracking packages should move forward. If a
+workspace defines a profile named `all`, `agentwheel update --all` checks that
+profile.
 
 Limit an update to one configured package:
 

@@ -88,8 +88,10 @@ agentwheel install --all --dry-run
 Run a profile:
 
 ```bash
+agentwheel update --profile daily --dry-run
 agentwheel install --profile daily --dry-run
 agentwheel status --profile daily
+agentwheel update --all   # uses profile "all" when configured
 agentwheel status --all   # uses profile "all" when configured
 ```
 

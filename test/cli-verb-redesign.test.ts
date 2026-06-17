@@ -364,7 +364,7 @@ describe("CLI verb redesign", () => {
         driver: "local",
         adapter: "openclaw",
         installationType: "local",
-        mode: "pinned",
+        mode: "tracking",
       }],
       registry: {},
       trust: {},
@@ -390,6 +390,11 @@ describe("CLI verb redesign", () => {
     expect(allStatus.stdout).toContain("Status for profile-status/local");
     expect(allStatus.stdout).toContain("Pending install work: none");
     expect(allStatus.stdout).not.toContain("unavailable");
+
+    await writeFile(join(source, "rules", "profile-status-rule.md"), "# profile-status-v2\n", "utf8");
+    const update = await runCli(["update", "profile-status-rule", "--all", "--target-root", workspace]);
+    expect(update.stdout).toContain("UPDATE");
+    await expect(readFile(join(target, ".profile", "rules", "profile-status-rule.md"), "utf8")).resolves.toContain("profile-status-v2");
   });
 
   it("rejects conflicting uninstall --keep-files and --force flags", async () => {

@@ -10,9 +10,41 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "fix-ssh-plugin-install",
+      "artifact-format-validation"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "fix-ssh-plugin-install",
+      "branch": "codex/fix-ssh-plugin-install",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "9239a72dfc5c5a56819dc84a94de1cfb90df4980"
+      ],
+      "meta": {
+        "purpose": "Run semantic plugin installs on SSH targets"
+      }
+    },
+    {
+      "id": "artifact-format-validation",
+      "branch": "branch/artifact-format-validation-gate",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "ed72ae73f1b05fbc3aed805f96e06f5d6bb91d48"
+      ],
+      "meta": {
+        "purpose": "Validate artifact formats before install planning"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

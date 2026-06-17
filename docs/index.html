@@ -276,7 +276,7 @@
       align-items: center;
       justify-content: center;
       flex: 0 0 120px;
-      opacity: 0.92;
+      opacity: 1;
     }
 
     .flow-rays svg {
@@ -286,7 +286,7 @@
     }
 
     .hero-ray {
-      stroke-dasharray: 5 12;
+      stroke-dasharray: 7 11;
       animation: route-flow 7.5s linear infinite;
       animation-delay: var(--lane-delay, 0s);
     }
@@ -371,7 +371,7 @@
     }
 
     .lead-code {
-      margin-bottom: 42px;
+      margin-bottom: 14px;
     }
 
     .manifest-code {
@@ -467,16 +467,6 @@
     @keyframes route-ready {
       0%, 100% { opacity: 0.42; }
       40%, 58% { opacity: 1; }
-    }
-
-    @keyframes cursor-blink {
-      0%, 45% { opacity: 1; }
-      46%, 100% { opacity: 0; }
-    }
-
-    .install-cursor {
-      color: var(--cyan);
-      animation: cursor-blink 1.2s steps(1, end) infinite;
     }
 
     .pill {
@@ -635,6 +625,18 @@
       color: #fde68a;
     }
 
+    .badge.policy {
+      border-color: rgba(244, 114, 182, 0.42);
+      background: rgba(244, 114, 182, 0.12);
+      color: #fbcfe8;
+    }
+
+    .badge.behavior {
+      border-color: rgba(34, 197, 94, 0.38);
+      background: rgba(34, 197, 94, 0.12);
+      color: #bbf7d0;
+    }
+
     .badge.internal {
       border-color: rgba(20, 184, 166, 0.38);
       background: rgba(20, 184, 166, 0.12);
@@ -654,6 +656,68 @@
 
     .matrix-caption + .code-toggle {
       margin-top: 12px;
+    }
+
+    .matrix-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(17, 24, 39, 0.55);
+    }
+
+    .legend-item strong {
+      color: #e5e7eb;
+      font-weight: 850;
+    }
+
+    .legend-item a {
+      color: #bae6fd;
+      font-weight: 850;
+    }
+
+    .install-note {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 42px;
+    }
+
+    .note-chip {
+      min-height: 56px;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.62);
+      color: #dbeafe;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .note-chip span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    .note-chip code {
+      color: #c7d2fe;
+      font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
     .toggle-grid {
@@ -769,8 +833,7 @@
     @media (prefers-reduced-motion: reduce) {
       .hero-ray,
       .workflow-connector .route,
-      .workflow-connector .route-node,
-      .install-cursor {
+      .workflow-connector .route-node {
         animation: none !important;
       }
     }
@@ -794,6 +857,10 @@
       }
 
       .toggle-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .install-note {
         grid-template-columns: 1fr;
       }
 
@@ -949,12 +1016,12 @@
                     <stop offset="1" stop-color="#06b6d4"></stop>
                   </linearGradient>
                 </defs>
-                <path class="hero-ray" style="--lane-delay:0s" d="M8 110 C42 36 74 24 116 18" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path class="hero-ray" style="--lane-delay:.35s" d="M8 110 C44 66 78 58 116 54" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path class="hero-ray" style="--lane-delay:.7s" d="M8 110 C48 92 78 92 116 92" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path class="hero-ray" style="--lane-delay:1.05s" d="M8 110 C48 128 78 128 116 128" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path class="hero-ray" style="--lane-delay:1.4s" d="M8 110 C44 154 78 162 116 166" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
-                <path class="hero-ray" style="--lane-delay:1.75s" d="M8 110 C42 184 74 196 116 202" stroke="url(#flowGradient)" stroke-width="2" fill="none" opacity=".55"></path>
+                <path class="hero-ray" style="--lane-delay:0s" d="M8 110 C42 36 74 24 116 18" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
+                <path class="hero-ray" style="--lane-delay:.35s" d="M8 110 C44 66 78 58 116 54" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
+                <path class="hero-ray" style="--lane-delay:.7s" d="M8 110 C48 92 78 92 116 92" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
+                <path class="hero-ray" style="--lane-delay:1.05s" d="M8 110 C48 128 78 128 116 128" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
+                <path class="hero-ray" style="--lane-delay:1.4s" d="M8 110 C44 154 78 162 116 166" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
+                <path class="hero-ray" style="--lane-delay:1.75s" d="M8 110 C42 184 74 196 116 202" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity=".78"></path>
               </svg>
             </div>
             <div class="flow-runtimes">
@@ -992,9 +1059,13 @@
           <span class="light"></span><span class="light"></span><span class="light"></span>
           <span>agentwheel install</span>
         </div>
-        <pre><code><span class="prompt">$</span> npx agentwheel install nestdev-must-have \
-    --adapter codex \
-    --installation-type local <span class="install-cursor">_</span></code></pre>
+        <pre><code>npx agentwheel install nestdev-must-have --adapter codex --installation-type user
+npx agentwheel install nestdev-must-have --adapter claude --installation-type user</code></pre>
+      </div>
+      <div class="install-note" aria-label="Install snippet explanation">
+        <div class="note-chip">Same OpenPack<span>Installs <code>nestdev-must-have</code> twice, once per harness.</span></div>
+        <div class="note-chip">Codex user target<span>Writes user-level Codex artifacts, including <code>~/.agents/skills</code> and <code>~/.codex/*</code>.</span></div>
+        <div class="note-chip">Claude user target<span>Writes user-level Claude artifacts under <code>~/.claude/*</code>.</span></div>
       </div>
 
       <section id="adapters">
@@ -1036,7 +1107,7 @@
               <tr>
                 <th>Claude Code</th>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge behavior">behavior</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dot"></span></td>
@@ -1049,7 +1120,7 @@
               <tr>
                 <th>Codex CLI</th>
                 <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge policy">policy</span></td>
                 <td><span class="matrix-dot"></span></td>
                 <td><span class="matrix-dash">—</span></td>
                 <td><span class="matrix-dot"></span></td>
@@ -1088,7 +1159,16 @@
             </tbody>
           </table>
         </div>
-        <p class="matrix-caption"><span class="matrix-dot"></span> native. <span class="badge mapped">mapped</span> documented equivalent. <span class="badge custom">custom</span> adapter. <span class="badge config">config</span> runtime setup. <span class="badge internal">compose</span> Agentwheel-only. <a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a>.</p>
+        <div class="matrix-legend" aria-label="Runtime matrix legend">
+          <span class="legend-item"><span class="matrix-dot"></span> supported file path</span>
+          <span class="legend-item"><strong>Rules differ:</strong> <span class="badge policy">policy</span> Codex permissions</span>
+          <span class="legend-item"><span class="badge behavior">behavior</span> Claude scoped instructions</span>
+          <span class="legend-item"><span class="badge mapped">mapped</span> Copilot instructions</span>
+          <span class="legend-item"><span class="badge custom">custom</span> adapter needed</span>
+          <span class="legend-item"><span class="badge config">config</span> runtime setup</span>
+          <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
+          <span class="legend-item"><a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a></span>
+        </div>
         <details class="code-toggle" aria-label="Rule semantics">
           <summary>Rule semantics</summary>
           <div class="toggle-body">

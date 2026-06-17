@@ -60,6 +60,13 @@ export function createSshTransport(config: SshTransportConfig): TargetTransport 
     rm(path) {
       return run(`rm -rf -- ${quoteSh(path)}`).then(() => undefined);
     },
+    execFile(command, commandArgs, options = {}) {
+      const quoted = [command, ...commandArgs].map(quoteSh).join(" ");
+      const remoteCommand = options.cwd
+        ? `cd ${quoteSh(options.cwd)} && ${quoted}`
+        : quoted;
+      return run(remoteCommand).then(() => undefined);
+    },
   };
 }
 

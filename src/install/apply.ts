@@ -351,18 +351,10 @@ async function applyOperation(
       throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
     }
     if (context.executePlugins) {
-      if (transport.kind !== "local") {
-        throw new Error(`Cannot execute semantic plugin install over ${transport.description}. Run plugin installation on the remote host.`);
-      }
       if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
         throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
       }
-      const command = operation.semanticCommand[0];
-      const args = operation.semanticCommand.slice(1);
-      if (!command) {
-        throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
-      }
-      await execFileAsync(command, args);
+      await executePluginInstall(operation, transport);
     }
     return manifestEntryForOperation(operation, {
       now,
@@ -447,6 +439,36 @@ async function applyOperation(
   }
 
   return undefined;
+}
+
+async function executePluginInstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const command = operation.semanticCommand?.[0];
+  const args = operation.semanticCommand?.slice(1) ?? [];
+  if (!command) {
+    throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
+  }
+  if (!operation.sourcePath) {
+    throw new Error(`Invalid plugin operation missing source path: ${operation.relativeDestPath}`);
+  }
+
+  if (transport.kind === "local") {
+    await execFileAsync(command, args);
+    return;
+  }
+
+  if (!transport.execFile) {
+    throw new Error(`Cannot execute semantic plugin install over ${transport.description}: transport does not support remote commands.`);
+  }
+
+  const stagingRoot = join(operation.destPath, ".agentwheel", "plugin-staging", `${process.pid}-${Date.now()}`);
+  const remoteSourcePath = join(stagingRoot, basename(operation.sourcePath));
+  try {
+    await transport.atomicCopy(operation.sourcePath, remoteSourcePath, operation.kind);
+    const remoteArgs = args.map((arg) => arg === operation.sourcePath ? remoteSourcePath : arg);
+    await transport.execFile(command, remoteArgs, { cwd: operation.destPath });
+  } finally {
+    await transport.rm(stagingRoot);
+  }
 }
 
 async function entryForCompletedOperation(

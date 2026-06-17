@@ -11,6 +11,7 @@ export interface TargetTransport {
   writeJsonAtomic(path: string, data: unknown): Promise<void>;
   atomicCopy(source: string, dest: string, kind: "file" | "dir"): Promise<void>;
   rm(path: string): Promise<void>;
+  execFile?(command: string, args: string[], options?: { cwd?: string }): Promise<void>;
 }
 
 export interface SshTransportConfig {

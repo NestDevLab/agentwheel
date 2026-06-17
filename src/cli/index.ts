@@ -149,7 +149,7 @@ program
   .description("preview what install would reconcile without writing")
   .argument("[name-or-source]", "configured package name/source or package source to preview")
   .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
@@ -178,7 +178,7 @@ program
   .description("install configured packages into runtime targets")
   .argument("[name-or-source]", "configured package name/source or package source to add and install")
   .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
@@ -209,7 +209,7 @@ program
   .command("sync", { hidden: true })
   .argument("[name-or-source]", "configured package name/source or package source")
   .option("--driver <driver>", "source driver")
-  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
@@ -240,7 +240,7 @@ program
   .command("update")
   .description("re-resolve tracking packages, then apply the result")
   .argument("[name]", "configured package name or source to update")
-  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--target-root <path>", "workspace root")
   .option("--agent <name>", "named agent from merged config")
@@ -269,7 +269,7 @@ program
     new Command("tree")
       .description("print the OpenPack dependency graph")
       .argument("[source]", "optional package source to resolve")
-      .option("--adapter <adapter>", "built-in adapter")
+      .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
       .option("--installation-type <type>", "installation type (for example local or user)")
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
@@ -310,7 +310,7 @@ program
     new Command("why")
       .description("explain why an artifact is installed")
       .argument("<selector>", "installed path, type/installName, or graphNodeId:type/name")
-      .option("--adapter <adapter>", "built-in adapter")
+      .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
       .option("--installation-type <type>", "installation type (for example local or user)")
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
@@ -439,7 +439,7 @@ program
   .command("uninstall")
   .description("remove configured packages or managed runtime files")
   .argument("[package]", "configured package name or source to remove from the ownership graph")
-  .option("--adapter <adapter>", "adapter")
+  .option("--adapter <adapter>", "adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -494,7 +494,7 @@ program
 program
   .command("status")
   .description("show configured packages and runtime install state")
-  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("--installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
@@ -519,6 +519,7 @@ async function runInstallCommand(
     allDetected?: boolean;
     adapter?: string;
     installationType?: string;
+    multiAdapterSource?: boolean;
   },
   behavior: { apply: boolean },
 ): Promise<void> {
@@ -556,15 +557,19 @@ async function runInstallCommand(
 
   const targets = await resolveCliTargets(options);
   for (const target of targets) {
+    const targetOptions = optionsForResolvedTarget(options, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackage(config.packages, nameOrSource) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
 
     if (nameOrSource && !configured) {
       try {
-        const entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, { ...options, adapter: options.adapter ?? target.adapter });
+        let entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, { ...targetOptions, adapter: targetOptions.adapter ?? target.adapter });
+        if (targetOptions.multiAdapterSource) {
+          entry = packageEntryWithAdapterSuffix(entry);
+        }
         scope = entry.name;
         if (behavior.apply) {
           await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), entry));
@@ -577,11 +582,11 @@ async function runInstallCommand(
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...options, scope, extraPackage }, { mode: "install" })) {
+    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage }, { mode: "install" })) {
       console.log(formatGraphPlan(result));
       if (behavior.apply) {
         await applyCombinedInstallPlan(result.plan, {
-          executePlugins: options.executePlugins,
+          executePlugins: targetOptions.executePlugins,
           transport: transportForTarget(target),
           graphLockDigest: result.graphLockDigest,
           graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
@@ -662,8 +667,23 @@ function findConfiguredPackage(packages: WorkspacePackage[], value: string): Wor
   return packages.find((pkg) => pkg.name === value || pkg.source === value);
 }
 
+function findConfiguredPackageForTarget(
+  packages: WorkspacePackage[],
+  value: string,
+  options: { multiAdapterSource?: boolean },
+  target: RuntimeTarget,
+): WorkspacePackage | undefined {
+  const matches = packages.filter((pkg) => pkg.name === value || pkg.source === value);
+  return options.multiAdapterSource ? matches.find((pkg) => pkg.adapter === target.adapter) : matches[0];
+}
+
 function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boolean {
   return options.noDeps === true || options.deps === false;
+}
+
+function packageEntryWithAdapterSuffix(entry: WorkspacePackage): WorkspacePackage {
+  const suffix = `-${entry.adapter}`;
+  return entry.name.endsWith(suffix) ? entry : { ...entry, name: `${entry.name}${suffix}` };
 }
 
 function teachingInstallError(input: string, cause: unknown): Error {
@@ -684,6 +704,17 @@ async function resolveCliTargets(options: { targetRoot?: string; adapter?: strin
   if (options.all && options.allDetected) {
     throw new Error("Choose either --all for configured agents or --all-detected for detected runtime directories.");
   }
+  const adapters = adapterListFromOption(options.adapter);
+  if (adapters.length > 1) {
+    if (options.all || options.allDetected || options.agent) {
+      throw new Error("--adapter <a,b> cannot be combined with --all, --all-detected, or --agent. Use a profile for mixed configured targets.");
+    }
+    const targets = [];
+    for (const adapter of adapters) {
+      targets.push(await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter, installationType: options.installationType }));
+    }
+    return targets;
+  }
   if (options.all) {
     return resolveAllRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent, all: options.all });
   }
@@ -691,6 +722,12 @@ async function resolveCliTargets(options: { targetRoot?: string; adapter?: strin
     return resolveAllDetectedRuntimeTargets({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent, allDetected: options.allDetected });
   }
   return [await resolveRuntimeTarget({ targetRoot: options.targetRoot, adapter: options.adapter, installationType: options.installationType, agent: options.agent })];
+}
+
+function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSource?: boolean }>(options: T, target: RuntimeTarget): T {
+  return adapterListFromOption(options.adapter).length > 1
+    ? { ...options, adapter: target.adapter, multiAdapterSource: true }
+    : options;
 }
 
 async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }) {
@@ -729,6 +766,7 @@ interface GraphCliOptions {
   scope?: string;
   keepFiles?: boolean;
   extraPackage?: WorkspacePackage;
+  multiAdapterSource?: boolean;
 }
 
 interface PackageGraphGroup {
@@ -773,37 +811,41 @@ async function buildGraphPlansForTarget(
   options: GraphCliOptions,
   behavior: { mode: "install" | "update" },
 ) {
+  const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
   const groups = new Map<string, PackageGraphGroup>();
-  const selectedArtifacts = selectedArtifactsFromOptions(options);
-  const scopedPackage = options.scope ? findConfiguredPackage(config.packages, options.scope) : undefined;
-  const scopedRootId = scopedPackage?.name ?? (source ? options.scope : undefined);
-  if (options.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${options.scope}`);
+  const selectedArtifacts = selectedArtifactsFromOptions(targetOptions);
+  const scopedPackage = targetOptions.scope ? findConfiguredPackage(config.packages, targetOptions.scope) : undefined;
+  const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
+  if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
 
-  if (!source || !options.onlySource) {
+  if (!source || !targetOptions.onlySource) {
     for (const pkg of config.packages) {
-      const group = graphGroupForPackage(groups, target, pkg, options);
+      const group = graphGroupForPackage(groups, target, pkg, targetOptions);
       group.packages.push(pkg);
     }
   }
 
   if (source) {
-    const entry = options.extraPackage ?? await packageEntryFromSource(source, target.workspaceRoot, options);
+    let entry = targetOptions.extraPackage ?? await packageEntryFromSource(source, target.workspaceRoot, targetOptions);
+    if (targetOptions.multiAdapterSource) {
+      entry = packageEntryWithAdapterSuffix(entry);
+    }
     const sourceTarget = target;
-    const sourceInstallationType = options.installationType ?? entry.installationType ?? sourceTarget.installationType ?? "local";
+    const sourceInstallationType = targetOptions.installationType ?? entry.installationType ?? sourceTarget.installationType ?? "local";
     const key = graphGroupKey(sourceTarget, {
       installationType: sourceInstallationType,
-      adapterConfig: options.adapterConfig,
-      adapterModule: options.adapterModule,
-      allowAdapterCode: options.allowAdapterCode,
+      adapterConfig: targetOptions.adapterConfig,
+      adapterModule: targetOptions.adapterModule,
+      allowAdapterCode: targetOptions.allowAdapterCode,
     });
     const group = groups.get(key) ?? {
       target: sourceTarget,
       installationType: sourceInstallationType,
       adapterOptions: {
-        adapterConfig: options.adapterConfig,
-        adapterModule: options.adapterModule,
-        allowAdapterCode: options.allowAdapterCode,
+        adapterConfig: targetOptions.adapterConfig,
+        adapterModule: targetOptions.adapterModule,
+        allowAdapterCode: targetOptions.allowAdapterCode,
       },
       packages: [],
       extraRoots: [],
@@ -823,7 +865,7 @@ async function buildGraphPlansForTarget(
     const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
     const transport = transportForTarget(group.target);
     const allPackages = [...group.packages, ...group.extraPackages];
-    const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === options.scope);
+    const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);
     if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const roots: GraphRootRequest[] = [
@@ -847,7 +889,7 @@ async function buildGraphPlansForTarget(
     if (behavior.mode === "update") {
       const changed = roots.filter((root) => root.useLock === false);
       if (changed.length === 0) {
-        const label = options.scope ? ` ${options.scope}` : "";
+        const label = targetOptions.scope ? ` ${targetOptions.scope}` : "";
         console.log(`No tracking packages to update${label}.`);
         continue;
       }
@@ -862,13 +904,13 @@ async function buildGraphPlansForTarget(
       targetKey: group.target.agentName ?? group.target.source,
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
       installationType: group.installationType,
-      noDeps: noDepsFromOptions(options),
+      noDeps: noDepsFromOptions(targetOptions),
       lockedResolution: behavior.mode === "install",
-      frozenLock: options.frozenLock,
-      offline: options.offline,
-      yes: options.yes,
-      trustPatterns: options.trust ?? [],
-      readOnly: options.dryRun === true,
+      frozenLock: targetOptions.frozenLock,
+      offline: targetOptions.offline,
+      yes: targetOptions.yes,
+      trustPatterns: targetOptions.trust ?? [],
+      readOnly: targetOptions.dryRun === true,
       isTTY: process.stdin.isTTY === true,
     });
     if (behavior.mode === "install" && scopedRootId) {
@@ -1273,6 +1315,16 @@ function collectTrustOption(value: string, previous: string[]): string[] {
 
 function collectOverrideOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
+}
+
+function adapterListFromOption(adapter?: string): string[] {
+  if (!adapter) return [];
+  const adapters = splitSelectorList(adapter);
+  const unique = [...new Set(adapters)];
+  if (unique.length !== adapters.length) {
+    throw new Error(`Duplicate adapter in --adapter: ${adapter}`);
+  }
+  return unique;
 }
 
 function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {

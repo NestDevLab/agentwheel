@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.13.0
+
+- Added comma-separated multi-adapter targeting, for example `--adapter codex,claude`, for install/plan-style runtime commands.
+- When installing a new source into multiple adapters, Agentwheel now saves one package entry per adapter to avoid collapsing runtime state.
+- Updated the landing quickstart to use the real multi-adapter command and explain the must-have OpenPack.
+
 ## 0.12.0
 
 - Added explicit `installationType` support across CLI commands, workspace config, runtime targets, install plans, manifests, locks, and graph state.

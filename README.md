@@ -124,6 +124,15 @@ agentwheel install
 Pass `--installation-type local` to install project/workspace-scoped artifacts, or
 `--installation-type user` to install documented user-level artifacts. For example, Codex local
 skills install into `.agents/skills`, while Codex user skills install into `~/.agents/skills`.
+Use a comma-separated adapter list to install the same source into more than one built-in runtime in
+one invocation:
+
+```bash
+agentwheel install github:your-org/agent-pack --adapter codex,claude --installation-type user --target-root ~
+```
+
+When adding a new source this way, Agentwheel saves one package entry per adapter so later installs
+do not collapse Codex and Claude state into the same config entry.
 
 For a control-plane setup, define named agents in config. Global config lives at
 `~/.agentwheel/config.json`; project config lives at `.agentwheel/config.json`; project values win.

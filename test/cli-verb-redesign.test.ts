@@ -56,6 +56,24 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(root, "AGENTS.md"), "utf8")).resolves.toContain("detected");
   });
 
+  it("installs a new source into comma-separated adapters with distinct saved package entries", async () => {
+    const root = await tempRoot();
+    const source = await packageFixture("multi");
+
+    const { stdout } = await runCli(["install", source, "--adapter", "codex,claude", "--installation-type", "local", "--target-root", root]);
+
+    expect(stdout).toContain("Applied codex");
+    expect(stdout).toContain("Applied claude");
+    await expect(readFile(join(root, "AGENTS.md"), "utf8")).resolves.toContain("multi");
+    await expect(readFile(join(root, "CLAUDE.md"), "utf8")).resolves.toContain("multi");
+
+    const config = JSON.parse(await readFile(join(root, ".agentwheel", "config.json"), "utf8"));
+    expect(config.packages.map((pkg: { name: string; adapter: string }) => [pkg.name, pkg.adapter])).toEqual([
+      ["multi-claude", "claude"],
+      ["multi-codex", "codex"],
+    ]);
+  });
+
   it("forwards the hidden sync shim with a deprecation warning", async () => {
     const root = await tempRoot();
     const source = await packageFixture("shim");

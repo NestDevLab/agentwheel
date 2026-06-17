@@ -24,7 +24,7 @@ import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
-import type { InstallOperation, InstallPlan } from "../install/plan.js";
+import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
 import type { GraphRootRequest } from "../resolve/graph.js";
 import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
@@ -1389,7 +1389,7 @@ async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliO
   try {
     results = await buildGraphPlansForTarget(target, undefined, { ...options, dryRun: true }, { mode: "install" });
     const operations = results.flatMap((result) => result.plan.operations);
-    const pending = operations.filter((operation) => operation.action !== "skip");
+    const pending = operations.filter(isPendingInstallOperation);
     if (pending.length === 0) {
       console.log("Pending install work: none");
       return;

@@ -341,6 +341,46 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("does not report foreign kept artifacts as pending status work", async () => {
+    const ownerWorkspace = await tempRoot("agentwheel-status-owner-");
+    const observerWorkspace = await tempRoot("agentwheel-status-observer-");
+    const target = await tempRoot("agentwheel-status-target-");
+    const source = await rulePackageFixture("status-foreign", "foreign");
+    const config = {
+      schemaVersion: 1,
+      packages: [{
+        name: "status-foreign",
+        source,
+        driver: "local",
+        adapter: "codex",
+        installationType: "local",
+        mode: "tracking",
+      }],
+      registry: {},
+      trust: {},
+      agents: {
+        lab: { adapter: "codex", root: target, transport: "local", installationType: "local" },
+      },
+      profiles: {
+        all: { runtimes: [{ agent: "lab" }] },
+      },
+    };
+    for (const root of [ownerWorkspace, observerWorkspace]) {
+      await mkdir(join(root, ".agentwheel"), { recursive: true });
+      await writeFile(join(root, ".agentwheel", "config.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    }
+
+    await runCli(["install", "--profile", "all", "--target-root", ownerWorkspace]);
+    const dryRun = await runCli(["install", "--profile", "all", "--target-root", observerWorkspace, "--dry-run"]);
+    expect(dryRun.stdout).toContain("KEEP");
+
+    const status = await runCli(["status", "--profile", "all", "--target-root", observerWorkspace]);
+
+    expect(status.stdout).toContain("Install manifest: 1 entries");
+    expect(status.stdout).toContain("Pending install work: none");
+    expect(status.stdout).not.toContain("Pending install work: 1 operations");
+  });
+
   it("reports profile status with profile runtime adapter config and graph lock state", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-profile-status-target-");

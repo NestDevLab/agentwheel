@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added profile-aware `status` and `update` targeting, so `agentwheel status --profile <name>` and `agentwheel update --profile <name>` use the same profile runtime resolution, adapter config, and graph lock fingerprinting as `install --profile`; `status --all` and `update --all` now use the `all` profile when one exists.
+- Fixed `status` pending-work reporting so foreign managed artifacts that are intentionally kept (`KEEP`) are not reported as pending install work.
 - Added `--user`, `--local`, `-i`, and `-t` shortcuts for install scope and target selection.
 - Explicit source installs with explicit adapters now default to user-level targets when no target root is provided.
 - `--target-root ~` infers `user`; other explicit target roots infer `local` unless overridden.

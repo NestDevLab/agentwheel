@@ -724,3 +724,11 @@ export function summarizePlan(plan: InstallPlan): Record<PlanAction, number> {
   }
   return summary;
 }
+
+export function isPendingInstallAction(action: PlanAction): boolean {
+  return action !== "skip" && action !== "keep";
+}
+
+export function isPendingInstallOperation(operation: Pick<InstallOperation, "action">): boolean {
+  return isPendingInstallAction(operation.action);
+}

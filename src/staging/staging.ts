@@ -5,7 +5,7 @@ import type { Artifact, PackageAsset } from "../model/artifact.js";
 import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
-import { hashPath } from "../utils/fs.js";
+import { hashPath, isIgnoredGeneratedEntry } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
 import { renderCodexSubagents } from "./codex-subagents.js";
@@ -53,7 +53,11 @@ export async function stageResolvedArtifactsRaw(resolved: ResolvedSource, artifa
   for (const artifact of artifacts) {
     const stagedPath = join(root, artifact.relativePath);
     await mkdir(dirname(stagedPath), { recursive: true });
-    await cp(artifact.sourcePath, stagedPath, { recursive: artifact.kind === "dir", dereference: true });
+    await cp(artifact.sourcePath, stagedPath, {
+      recursive: artifact.kind === "dir",
+      dereference: true,
+      filter: (path) => !isIgnoredGeneratedEntry(basename(path)),
+    });
     await composeAssets(artifact, resolved.resolvedPath, stagedPath);
     stagedArtifacts.push({
       ...artifact,

@@ -152,15 +152,19 @@ describe("v0.2 wave 2", () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeFullPackage(source);
+    await mkdir(join(source, "plugins", "demo-plugin", "__pycache__"), { recursive: true });
+    await writeFile(join(source, "plugins", "demo-plugin", "__pycache__", "demo.cpython-312.pyc"), "compiled cache");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["skills/demo-skill", "plugins/demo-plugin"] });
     const plan = await createInstallPlan(bundle, openClawAdapter, target);
     const plugin = plan.operations.find((operation) => operation.artifactType === "plugins");
+    const stagedPlugin = bundle.artifacts.find((artifact) => artifact.type === "plugins")?.stagedPath;
 
     expect(plugin?.action).toBe("plugin");
     expect(plugin?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
     expect(plugin?.semanticCommand).toContain("--force");
     expect(plugin?.semanticCommand).not.toContain("--link");
+    await expect(stat(join(stagedPlugin ?? "", "__pycache__", "demo.cpython-312.pyc"))).rejects.toThrow();
 
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
     const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");

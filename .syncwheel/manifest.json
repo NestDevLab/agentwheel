@@ -10,9 +10,24 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "ignore-generated-artifact-files"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "ignore-generated-artifact-files",
+      "branch": "codex/ignore-generated-artifact-files",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "d09d0715073dce1611bb61f5b84471e7eb501324"
+      ],
+      "meta": {}
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

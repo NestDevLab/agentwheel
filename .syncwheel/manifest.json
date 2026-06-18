@@ -22,7 +22,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "e6fb9b686bbecc9a70cb950d7cd2259d0f3e3cee"
+      ],
       "meta": {
         "purpose": "Scope CLI selectors to explicit install source"
       }

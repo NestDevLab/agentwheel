@@ -159,11 +159,13 @@ describe("v0.2 wave 2", () => {
 
     expect(plugin?.action).toBe("plugin");
     expect(plugin?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
+    expect(plugin?.semanticCommand).toContain("--force");
     expect(plugin?.semanticCommand).not.toContain("--link");
 
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
     const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");
     expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
+    expect(entry?.semanticCommand).toContain("--force");
     expect(entry?.semanticCommand).not.toContain("--link");
     expect(entry?.executed).toBe(false);
     await expect(stat(join(target, "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
@@ -197,6 +199,7 @@ describe("v0.2 wave 2", () => {
     expect(executed).toHaveLength(1);
     expect(executed[0]?.command).toBe("openclaw");
     expect(executed[0]?.args.slice(0, 2)).toEqual(["plugins", "install"]);
+    expect(executed[0]?.args).toContain("--force");
     expect(executed[0]?.args.at(-1)).toContain(join(target, ".agentwheel", "plugin-staging"));
     expect(executed[0]?.cwd).toBe(target);
     await expect(stat(executed[0]?.args.at(-1) ?? "")).rejects.toThrow();
@@ -204,6 +207,7 @@ describe("v0.2 wave 2", () => {
     const entry = manifest.entries.find((candidate) => candidate.artifactType === "plugins");
     expect(entry?.executed).toBe(true);
     expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
+    expect(entry?.semanticCommand).toContain("--force");
     await rm(bundle.root, { recursive: true, force: true });
   });
 

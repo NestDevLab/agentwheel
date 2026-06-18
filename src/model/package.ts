@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
-import { artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema } from "./artifact.js";
+import { artifactFormatSchema, artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema } from "./artifact.js";
 import { pathExists } from "../utils/fs.js";
 
 const legacyArtifactTypeSchema = z.enum([
@@ -21,6 +21,7 @@ const runtimeListSchema = z.array(z.string().min(1));
 
 const packageProvideBaseSchema = z.object({
   path: z.string().min(1),
+  format: artifactFormatSchema.optional(),
   assets: z.array(packageAssetSchema).optional(),
   required: z.boolean().optional(),
 });
@@ -28,6 +29,7 @@ const packageProvideBaseSchema = z.object({
 export { packageItemRequireObjectSchema, packageItemRequireSchema } from "./artifact.js";
 
 export const packageItemSchema = z.object({
+  format: artifactFormatSchema.optional(),
   requires: z.array(packageItemRequireSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   runtimes: runtimeListSchema.optional(),
@@ -154,7 +156,7 @@ function v1OpenPackViolations(manifest: Record<string, unknown>): string[] {
   for (const [index, provide] of provides.entries()) {
     if (!isRecord(provide)) continue;
     if (provide.type === "fragments") violations.push(`provides[${index}].type=fragments`);
-    for (const key of ["items", "compose", "runtimes"]) {
+    for (const key of ["format", "items", "compose", "runtimes"]) {
       if (Object.prototype.hasOwnProperty.call(provide, key)) violations.push(`provides[${index}].${key}`);
     }
   }

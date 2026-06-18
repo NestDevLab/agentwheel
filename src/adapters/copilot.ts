@@ -9,8 +9,8 @@ export const copilotAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".copilot/copilot-instructions.md" },
     },
     rules: {
-      local: { enabled: true, dest: ".github/instructions", semantic: "copilot-instruction" },
-      user: { enabled: true, root: "home", dest: ".copilot/instructions", semantic: "copilot-instruction" },
+      local: { enabled: true, dest: ".github/instructions", formats: ["markdown-rule", "copilot-instruction-rule"], semantic: "copilot-instruction" },
+      user: { enabled: true, root: "home", dest: ".copilot/instructions", formats: ["markdown-rule", "copilot-instruction-rule"], semantic: "copilot-instruction" },
     },
     commands: {
       local: { enabled: true, dest: ".github/prompts", semantic: "copilot-prompt" },

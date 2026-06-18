@@ -45,7 +45,7 @@ async function desiredArtifact(root: string, type: ArtifactType, name: string, k
     await writeFile(join(sourcePath, type === "skills" ? "SKILL.md" : "AGENTS.md"), `# ${name}\n`, "utf8");
   } else {
     await mkdir(dirname(sourcePath), { recursive: true });
-    await writeFile(sourcePath, type === "mcp" || type === "hooks" || type === "settings" ? "{}\n" : `# ${name}\n`, "utf8");
+    await writeFile(sourcePath, artifactContent(type, name), "utf8");
   }
   const hash = await hashPath(sourcePath);
   return {
@@ -63,6 +63,22 @@ async function desiredArtifact(root: string, type: ArtifactType, name: string, k
       owners: ["compat-test"],
     },
   };
+}
+
+function artifactContent(type: ArtifactType, name: string): string {
+  if (type === "rules" && name.endsWith(".rules")) {
+    return [
+      "prefix_rule(",
+      "    pattern = [\"gh\", \"pr\", \"view\"],",
+      "    decision = \"prompt\",",
+      "    justification = \"Viewing PRs is allowed with approval\",",
+      ")",
+      "",
+    ].join("\n");
+  }
+  if (type === "mcp") return `${JSON.stringify({ mcpServers: { demo: { command: "demo" } } }, null, 2)}\n`;
+  if (type === "hooks" || type === "settings") return "{}\n";
+  return `# ${name}\n`;
 }
 
 const pathCases: Array<{
@@ -186,6 +202,38 @@ describe("artifact compatibility registry", () => {
     const openClawRule = await desiredArtifact(source, "rules", "policy.md");
     await expect(createCombinedInstallPlan([openClawRule], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/does not support rules artifacts/);
+  });
+
+  it("rejects artifacts whose format or structure does not match the target runtime", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+
+    const markdownRule = await desiredArtifact(source, "rules", "policy.md");
+    await expect(createCombinedInstallPlan([markdownRule], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/format 'markdown-rule' is not compatible.*codex-command-policy/s);
+
+    const codexRule = await desiredArtifact(source, "rules", "policy.rules");
+    await expect(createCombinedInstallPlan([codexRule], claudeAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/format 'codex-command-policy' is not compatible.*markdown-rule/s);
+
+    const invalidCodexRule = await desiredArtifact(source, "rules", "empty.rules");
+    await writeFile(invalidCodexRule.sourcePath, "# Just a comment\n", "utf8");
+    await expect(createCombinedInstallPlan([{ ...invalidCodexRule, hash: await hashPath(invalidCodexRule.sourcePath) }], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/must contain at least one prefix_rule/);
+
+    const pluginDir = await desiredArtifact(source, "plugins", "bad-plugin", "dir");
+    await expect(createCombinedInstallPlan([pluginDir], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/OpenClaw plugins must contain plugin\.json/);
+
+    const invalidMcp = await desiredArtifact(source, "mcp", "empty.json");
+    await writeFile(invalidMcp.sourcePath, "{}\n", "utf8");
+    await expect(createCombinedInstallPlan([{ ...invalidMcp, hash: await hashPath(invalidMcp.sourcePath) }], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/Codex MCP artifact must contain at least one server object/);
+
+    const missingSkill = await desiredArtifact(source, "skills", "missing-skill", "dir");
+    await rm(join(missingSkill.sourcePath, "SKILL.md"));
+    await expect(createCombinedInstallPlan([{ ...missingSkill, hash: await hashPath(missingSkill.sourcePath) }], claudeAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/skill directory must contain SKILL\.md/);
   });
 
   it("installs smoke skills end-to-end into separate local and user state", async () => {

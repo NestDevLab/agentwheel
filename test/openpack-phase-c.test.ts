@@ -301,7 +301,15 @@ describe("OpenPack phase C", () => {
     const root = join(workspace, "root");
 
     await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n");
-    await writeText(join(root, "rules", "codex.md"), "# Codex\n");
+    await writeText(join(root, "rules", "codex.rules"), [
+      "# Codex",
+      "prefix_rule(",
+      "    pattern = [\"gh\", \"pr\", \"view\"],",
+      "    decision = \"prompt\",",
+      "    justification = \"Viewing PRs is allowed with approval\",",
+      ")",
+      "",
+    ].join("\n"));
     await writeOpenPack(root, {
       name: "phase-c/runtime",
       provides: [
@@ -310,7 +318,7 @@ describe("OpenPack phase C", () => {
           type: "skills",
           path: "skills",
           items: {
-            app: { requires: [{ selector: "rules/codex.md", runtimes: ["codex"] }] },
+            app: { requires: [{ selector: "rules/codex.rules", runtimes: ["codex"] }] },
           },
         },
       ],
@@ -335,7 +343,7 @@ describe("OpenPack phase C", () => {
       targetKey: "phase-c-runtime-codex",
       yes: true,
     });
-    expect(codex.graph.roots[0]?.selected).toEqual(["rules/codex.md", "skills/app"]);
+    expect(codex.graph.roots[0]?.selected).toEqual(["rules/codex.rules", "skills/app"]);
   });
 
   it("does not fetch unused aliases", async () => {

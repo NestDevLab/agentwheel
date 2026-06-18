@@ -254,6 +254,7 @@ async function artifactForFile(
     relativePath,
     kind: "file",
     hash: await hashPath(sourcePath),
+    format: item.format ?? provide?.format,
     packageName,
     channel: "managed",
     assets: provide?.assets,
@@ -282,6 +283,7 @@ async function artifactForDir(
     relativePath,
     kind: "dir",
     hash: await hashPath(sourcePath),
+    format: item.format ?? provide?.format,
     packageName,
     channel: "managed",
     assets: provide?.assets,
@@ -292,11 +294,11 @@ async function artifactForDir(
   };
 }
 
-function itemMetadata(provide: PackageProvide | undefined, itemName: string | undefined): { requires?: PackageItemRequire[]; compose?: PackageComposeEntry[]; runtimes?: string[] } {
+function itemMetadata(provide: PackageProvide | undefined, itemName: string | undefined): { format?: string; requires?: PackageItemRequire[]; compose?: PackageComposeEntry[]; runtimes?: string[] } {
   if (!provide || !("items" in provide) || !provide.items || !itemName) return {};
   const item = provide.items[itemName];
   if (!item) return {};
-  return { requires: item.requires, compose: item.compose, runtimes: item.runtimes };
+  return { format: item.format, requires: item.requires, compose: item.compose, runtimes: item.runtimes };
 }
 
 function provideRuntimes(provide: PackageProvide | undefined): string[] | undefined {

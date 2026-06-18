@@ -9,8 +9,8 @@ export const codexAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".codex/AGENTS.md" },
     },
     rules: {
-      local: { enabled: true, dest: ".codex/rules" },
-      user: { enabled: true, root: "home", dest: ".codex/rules" },
+      local: { enabled: true, dest: ".codex/rules", formats: ["codex-command-policy"] },
+      user: { enabled: true, root: "home", dest: ".codex/rules", formats: ["codex-command-policy"] },
     },
     skills: {
       local: { enabled: true, dest: ".agents/skills" },

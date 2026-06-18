@@ -37,6 +37,7 @@ composition metadata, runtime targeting, or fragments.
   },
   "provides": [
     { "type": "fragments", "path": "fragments" },
+    { "type": "rules", "path": "rules/codex.rules", "format": "codex-command-policy", "runtimes": ["codex"] },
     {
       "type": "skills",
       "path": "skills",
@@ -100,6 +101,13 @@ The artifact type vocabulary is `instructions`, `rules`, `skills`, `commands`, `
 `mcp`, `hooks`, `settings`, `plugins`, and `fragments`. Fragments are source artifacts for
 composition and are not installed into runtime directories unless a future runtime explicitly
 defines a fragment target.
+
+`provides[].format` and `provides[].items.<name>.format` optionally describe the concrete artifact
+format inside a broad type. Installers may infer obvious formats from file names and structure, but
+runtime adapters can reject artifacts whose format is unknown or incompatible with the target. Common
+formats include `codex-command-policy` for Codex `.rules` files, `markdown-rule` or
+`claude-markdown-rule` for Markdown behavioral rules, `copilot-instruction-rule` for Copilot rule
+artifacts that render as instructions, and `openclaw-plugin` for OpenClaw plugin directories.
 
 ## Selectors
 

@@ -32,6 +32,12 @@ inferred path.
 | OpenClaw | `rules` | None documented | `custom-adapter-only` | Built-in installs reject rules unless a custom adapter explicitly defines a target. |
 | Hermes | `rules` | None documented | `custom-adapter-only` | Built-in installs reject rules unless a custom adapter explicitly defines a target. |
 
+Built-in adapters also validate concrete artifact formats before install planning. For example,
+Codex `rules` accept `codex-command-policy` `.rules` files, Claude `rules` accept Markdown rule
+formats, Copilot rule artifacts render as instruction Markdown, and OpenClaw plugin targets require
+an `openclaw-plugin` directory with `plugin.json`. Invalid or unknown formats fail the package plan
+before runtime files are written.
+
 ## Built-In Matrix
 
 | Harness | Artifact | `local` | `user` | Notes |

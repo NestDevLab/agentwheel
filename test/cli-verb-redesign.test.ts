@@ -453,6 +453,36 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(workspace, ".agentwheel", "config.json"), "utf8")).rejects.toThrow();
   });
 
+  it("scopes --skill selectors to an only-source install source", async () => {
+    const workspace = await tempRoot();
+    const unrelated = await packageFixture("agent-core-toolkit-private");
+    const source = await gitSkillPackageFixture("agent-mesh", "agent-tmux");
+
+    await runCli(["add", unrelated, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+
+    const { stdout } = await runCli([
+      "install",
+      `git:${source}#main`,
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--skill",
+      "agent-tmux",
+      "--only-source",
+      "--no-deps",
+    ]);
+
+    expect(stdout).toContain("Applied codex");
+    await expect(readFile(join(workspace, ".agents", "skills", "agent-tmux", "SKILL.md"), "utf8")).resolves.toContain("agent-tmux");
+    await expect(readFile(join(workspace, "AGENTS.md"), "utf8")).rejects.toThrow();
+
+    const config = JSON.parse(await readFile(join(workspace, ".agentwheel", "config.json"), "utf8"));
+    expect(config.packages.map((pkg: { name: string }) => pkg.name)).toEqual(["agent-core-toolkit-private"]);
+  });
+
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");
@@ -581,6 +611,22 @@ async function gitPackageFixture(label: string): Promise<string> {
   await git(root, ["init", "-b", "main"]);
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", label]);
+  return root;
+}
+
+async function gitSkillPackageFixture(name: string, skillName: string): Promise<string> {
+  const root = await tempRoot(`agentwheel-${name}-`);
+  await mkdir(join(root, "skills", skillName), { recursive: true });
+  await writeFile(join(root, "skills", skillName, "SKILL.md"), `# ${skillName}\n`, "utf8");
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    provides: [{ type: "skills", path: "skills" }],
+  }, null, 2)}\n`, "utf8");
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", name]);
   return root;
 }
 

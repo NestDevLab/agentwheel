@@ -10,9 +10,26 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "only-source-selector-scope"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "only-source-selector-scope",
+      "branch": "codex/only-source-selector-scope",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "e6fb9b686bbecc9a70cb950d7cd2259d0f3e3cee"
+      ],
+      "meta": {
+        "purpose": "Scope CLI selectors to explicit install source"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

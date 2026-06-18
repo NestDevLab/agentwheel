@@ -143,6 +143,11 @@ const { createHash } = require("node:crypto");
 const { readdirSync, readFileSync, statSync } = require("node:fs");
 const { join, relative } = require("node:path");
 const target = process.argv[1];
+const ignoredNames = new Set([".git", "node_modules", "__pycache__", ".DS_Store"]);
+const ignoredSuffixes = [".pyc", ".pyo"];
+function isIgnoredGeneratedEntry(name) {
+  return ignoredNames.has(name) || ignoredSuffixes.some((suffix) => name.endsWith(suffix));
+}
 function hashPath(path) {
   const stats = statSync(path);
   if (stats.isFile()) {
@@ -160,7 +165,7 @@ function listFiles(root) {
   const out = [];
   function walk(dir) {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      if (isIgnoredGeneratedEntry(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.isFile()) out.push(full);

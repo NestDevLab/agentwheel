@@ -10,9 +10,24 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "ignore-generated-remote-hash"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "ignore-generated-remote-hash",
+      "branch": "codex/ignore-generated-remote-hash",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "71542a826cbf661cdcab33084eca88304491c5d6"
+      ],
+      "meta": {}
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

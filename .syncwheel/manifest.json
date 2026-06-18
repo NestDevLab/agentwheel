@@ -11,7 +11,8 @@
     "base": "origin/main",
     "strategy": "cherry-pick",
     "stacks": [
-      "artifact-format-validation"
+      "artifact-format-validation",
+      "openclaw-plugin-force-install"
     ]
   },
   "stacks": [
@@ -28,6 +29,18 @@
       "meta": {
         "purpose": "Validate artifact formats before install planning"
       }
+    },
+    {
+      "id": "openclaw-plugin-force-install",
+      "branch": "codex/openclaw-plugin-force-install",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "0045d6a4ee919f93996d9b9641f61b34df2a507a"
+      ],
+      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",

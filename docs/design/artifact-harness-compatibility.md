@@ -35,8 +35,9 @@ inferred path.
 Built-in adapters also validate concrete artifact formats before install planning. For example,
 Codex `rules` accept `codex-command-policy` `.rules` files, Claude `rules` accept Markdown rule
 formats, Copilot rule artifacts render as instruction Markdown, and OpenClaw plugin targets require
-an `openclaw-plugin` directory with `plugin.json`. Invalid or unknown formats fail the package plan
-before runtime files are written.
+an `openclaw-plugin` directory with `plugin.json` or `openclaw.plugin.json`. If both plugin
+descriptors are present they must declare the same plugin name. Invalid or unknown formats fail the
+package plan before runtime files are written.
 
 ## Built-In Matrix
 

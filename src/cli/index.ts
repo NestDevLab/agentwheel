@@ -604,12 +604,8 @@ async function runInstallCommand(
           entry = packageEntryWithAdapterSuffix(entry);
         }
         scope = entry.name;
-        if (behavior.apply) {
-          await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), entry));
-        } else {
-          source = nameOrSource;
-          extraPackage = entry;
-        }
+        source = nameOrSource;
+        extraPackage = entry;
       } catch (error) {
         throw teachingInstallError(nameOrSource, error);
       }
@@ -628,6 +624,10 @@ async function runInstallCommand(
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
+    }
+
+    if (behavior.apply && extraPackage && !targetOptions.onlySource) {
+      await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), extraPackage));
     }
   }
 }
@@ -978,12 +978,13 @@ async function buildGraphPlansForTarget(
         const updateThisPackage = behavior.mode === "update"
           && pkg.mode === "tracking"
           && (!updateScope || updateScope.has(pkg.name) || updateScope.has(pkg.source));
+        const packageIsScoped = scopedRootId ? pkg.name === scopedRootId || pkg.source === targetOptions.scope : true;
         return {
           rootId: pkg.name,
           source: pkg.source,
           mode: pkg.mode,
           ref: pkg.requestedRef,
-          select: selectedArtifacts ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+          select: selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
           aliases: pkg.aliases,
           overrides: pkg.overrides,
           useLock: behavior.mode === "install" ? true : !updateThisPackage,

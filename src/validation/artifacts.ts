@@ -66,7 +66,7 @@ async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): P
   }
 
   if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
-    if (artifact.kind === "dir" && await pathExists(join(artifactPath(artifact), "plugin.json"))) return "openclaw-plugin";
+    if (artifact.kind === "dir" && (await openClawPluginManifestPaths(artifact)).length > 0) return "openclaw-plugin";
   }
 
   return undefined;
@@ -176,21 +176,46 @@ async function validateOpenClawPlugin(artifact: Artifact): Promise<ArtifactValid
   if (artifact.kind !== "dir") {
     return [{ artifact, message: "OpenClaw plugins must be directory artifacts" }];
   }
-  const manifestPath = join(artifactPath(artifact), "plugin.json");
-  if (!(await pathExists(manifestPath))) {
-    return [{ artifact, message: "OpenClaw plugins must contain plugin.json" }];
+
+  const manifestPaths = await openClawPluginManifestPaths(artifact);
+  if (manifestPaths.length === 0) {
+    return [{ artifact, message: "OpenClaw plugins must contain plugin.json or openclaw.plugin.json" }];
   }
+  const parsed = await Promise.all(manifestPaths.map(async (manifestPath) => {
+    const result = await parseOpenClawPluginManifest(manifestPath);
+    if (!result.ok) issues.push({ artifact, message: result.message });
+    return result;
+  }));
+  const names = new Set(parsed.filter((result): result is { ok: true; path: string; name: string } => result.ok).map((result) => result.name));
+  if (names.size > 1) {
+    issues.push({ artifact, message: "OpenClaw plugin descriptors must declare the same name" });
+  }
+  return issues;
+}
+
+async function openClawPluginManifestPaths(artifact: Artifact): Promise<string[]> {
+  const root = artifactPath(artifact);
+  const candidates = [join(root, "plugin.json"), join(root, "openclaw.plugin.json")];
+  const existing = await Promise.all(candidates.map(async (candidate) => await pathExists(candidate) ? candidate : undefined));
+  return existing.filter((candidate): candidate is string => candidate !== undefined);
+}
+
+async function parseOpenClawPluginManifest(
+  manifestPath: string,
+): Promise<{ ok: true; path: string; name: string } | { ok: false; path: string; message: string }> {
+  const manifestName = basename(manifestPath);
   try {
     const parsed = JSON.parse(await readFile(manifestPath, "utf8")) as JsonValue;
     if (!isRecord(parsed)) {
-      issues.push({ artifact, message: "OpenClaw plugin.json must be a JSON object" });
-    } else if (typeof parsed.name !== "string" || parsed.name.trim().length === 0) {
-      issues.push({ artifact, message: "OpenClaw plugin.json must declare a non-empty name" });
+      return { ok: false, path: manifestPath, message: `OpenClaw ${manifestName} must be a JSON object` };
     }
+    if (typeof parsed.name !== "string" || parsed.name.trim().length === 0) {
+      return { ok: false, path: manifestPath, message: `OpenClaw ${manifestName} must declare a non-empty name` };
+    }
+    return { ok: true, path: manifestPath, name: parsed.name.trim() };
   } catch (error) {
-    issues.push({ artifact, message: `OpenClaw plugin.json must be valid JSON: ${errorMessage(error)}` });
+    return { ok: false, path: manifestPath, message: `OpenClaw ${manifestName} must be valid JSON: ${errorMessage(error)}` };
   }
-  return issues;
 }
 
 async function readUtf8Artifact(artifact: Artifact, issues: ArtifactValidationIssue[]): Promise<string | undefined> {

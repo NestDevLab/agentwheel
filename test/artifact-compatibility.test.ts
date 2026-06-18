@@ -223,7 +223,22 @@ describe("artifact compatibility registry", () => {
 
     const pluginDir = await desiredArtifact(source, "plugins", "bad-plugin", "dir");
     await expect(createCombinedInstallPlan([pluginDir], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
-      .rejects.toThrow(/OpenClaw plugins must contain plugin\.json/);
+      .rejects.toThrow(/OpenClaw plugins must contain plugin\.json or openclaw\.plugin\.json/);
+
+    const openClawDescriptorPlugin = await desiredArtifact(source, "plugins", "openclaw-plugin", "dir");
+    await writeFile(join(openClawDescriptorPlugin.sourcePath, "openclaw.plugin.json"), JSON.stringify({ name: "openclaw-plugin" }, null, 2), "utf8");
+    const openClawDescriptorPlan = await createCombinedInstallPlan([
+      { ...openClawDescriptorPlugin, hash: await hashPath(openClawDescriptorPlugin.sourcePath) },
+    ], openClawAdapter, target, undefined, localTransport, { installationType: "local" });
+    expect(openClawDescriptorPlan.operations[0]?.action).toBe("plugin");
+
+    const mismatchedPlugin = await desiredArtifact(source, "plugins", "mismatched-plugin", "dir");
+    await writeFile(join(mismatchedPlugin.sourcePath, "plugin.json"), JSON.stringify({ name: "first" }, null, 2), "utf8");
+    await writeFile(join(mismatchedPlugin.sourcePath, "openclaw.plugin.json"), JSON.stringify({ name: "second" }, null, 2), "utf8");
+    await expect(createCombinedInstallPlan([
+      { ...mismatchedPlugin, hash: await hashPath(mismatchedPlugin.sourcePath) },
+    ], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/OpenClaw plugin descriptors must declare the same name/);
 
     const invalidMcp = await desiredArtifact(source, "mcp", "empty.json");
     await writeFile(invalidMcp.sourcePath, "{}\n", "utf8");

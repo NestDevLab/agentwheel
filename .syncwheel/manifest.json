@@ -22,7 +22,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "1dee9af0cd36f4218723d397d5581e6d831f464f"
+      ],
       "meta": {
         "purpose": "Harden SKILL.md frontmatter validation"
       }

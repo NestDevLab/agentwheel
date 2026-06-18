@@ -11,25 +11,10 @@
     "base": "origin/main",
     "strategy": "cherry-pick",
     "stacks": [
-      "fix-ssh-plugin-install",
       "artifact-format-validation"
     ]
   },
   "stacks": [
-    {
-      "id": "fix-ssh-plugin-install",
-      "branch": "codex/fix-ssh-plugin-install",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "9239a72dfc5c5a56819dc84a94de1cfb90df4980"
-      ],
-      "meta": {
-        "purpose": "Run semantic plugin installs on SSH targets"
-      }
-    },
     {
       "id": "artifact-format-validation",
       "branch": "branch/artifact-format-validation-gate",

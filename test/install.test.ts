@@ -41,7 +41,7 @@ async function createSixFileSource(): Promise<string> {
   await writeFile(join(root, "rules", "review.md"), "Review\n", "utf8");
   await writeFile(join(root, "rules", "handoff.md"), "Handoff\n", "utf8");
   await writeFile(join(root, "rules", "memory.md"), "Memory\n", "utf8");
-  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n", "utf8");
+  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: Fixture skill for tests.\n---\n\n# Demo skill\n", "utf8");
   return root;
 }
 

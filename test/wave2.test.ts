@@ -52,7 +52,7 @@ async function writeFullPackage(root: string, options: { instruction?: string; r
   }, null, 2));
   await writeFile(join(root, "instructions", "AGENTS.md"), options.instruction ?? "# Wave 2 instructions\n");
   await writeFile(join(root, "rules", "core.md"), options.rule ?? "# Wave 2 rule\n");
-  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n");
+  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: Fixture skill for tests.\n---\n\n# Demo skill\n");
   await writeFile(join(root, "commands", "review.md"), "# Review command\n");
   await writeFile(join(root, "subagents", "code-reviewer.md"), "# Code reviewer\n");
   await writeFile(join(root, "subagents", "reviewer", "AGENTS.md"), "# Reviewer\n");

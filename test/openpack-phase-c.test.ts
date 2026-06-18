@@ -46,7 +46,7 @@ describe("OpenPack phase C", () => {
     const root = join(workspace, "root");
     const core = join(workspace, "core");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n\n<!-- openpack:include core:fragments/risk.md -->\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n\n<!-- openpack:include core:fragments/risk.md -->\n`);
     await writeText(join(core, "fragments", "risk.md"), "Risk rubric\n");
     await writeOpenPack(core, {
       name: "phase-c/core",
@@ -91,7 +91,7 @@ describe("OpenPack phase C", () => {
     const target = await tempRoot("agentwheel-phase-c-shadow-target-");
     const root = join(workspace, "root");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n\n<!-- openpack:include core:fragments/risk.md -->\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n\n<!-- openpack:include core:fragments/risk.md -->\n`);
     await writeText(join(root, "core:fragments", "risk.md"), "Not an alias\n");
     await writeOpenPack(root, {
       name: "phase-c/shadow",
@@ -114,7 +114,7 @@ describe("OpenPack phase C", () => {
     const a = join(workspace, "a");
     const b = join(workspace, "b");
 
-    await writeText(join(a, "skills", "app", "SKILL.md"), "# App\n\n<!-- openpack:include b:fragments/b.md -->\n");
+    await writeText(join(a, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n\n<!-- openpack:include b:fragments/b.md -->\n`);
     await writeText(join(a, "fragments", "a.md"), "<!-- openpack:include b:fragments/b.md -->\n");
     await writeText(join(b, "fragments", "b.md"), "<!-- openpack:include a:fragments/a.md -->\n");
     await writeOpenPack(a, {
@@ -147,7 +147,7 @@ describe("OpenPack phase C", () => {
     const root = join(workspace, "root");
     const core = join(workspace, "core");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n\n<!-- openpack:include core:fragments/risk.md -->\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n\n<!-- openpack:include core:fragments/risk.md -->\n`);
     await writeText(join(core, "fragments", "risk.md"), "Upstream\n");
     await writeText(join(workspace, ".agentwheel", "overrides", "phase-c", "core", "fragments", "risk.md"), "Override\n");
     await writeOpenPack(core, {
@@ -180,7 +180,7 @@ describe("OpenPack phase C", () => {
     const target = await tempRoot("agentwheel-phase-c-local-req-target-");
     const root = join(workspace, "root");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n`);
     await writeText(join(root, "rules", "helper.md"), "# Helper\n");
     await writeOpenPack(root, {
       name: "phase-c/local-req",
@@ -219,8 +219,8 @@ describe("OpenPack phase C", () => {
     const root = join(workspace, "root");
     const core = join(workspace, "core");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n");
-    await writeText(join(root, "skills", "other", "SKILL.md"), "# Other\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n`);
+    await writeText(join(root, "skills", "other", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# Other\n`);
     await writeText(join(core, "rules", "core.md"), "# Core\n");
     await writeOpenPack(core, {
       name: "phase-c/alias-core",
@@ -268,7 +268,7 @@ describe("OpenPack phase C", () => {
     const target = await tempRoot("agentwheel-phase-c-optional-target-");
     const root = join(workspace, "root");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n`);
     await writeOpenPack(root, {
       name: "phase-c/optional",
       provides: [{
@@ -300,7 +300,7 @@ describe("OpenPack phase C", () => {
     const target = await tempRoot("agentwheel-phase-c-runtime-target-");
     const root = join(workspace, "root");
 
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n`);
     await writeText(join(root, "rules", "codex.rules"), [
       "# Codex",
       "prefix_rule(",
@@ -351,7 +351,7 @@ describe("OpenPack phase C", () => {
     const target = await tempRoot("agentwheel-phase-c-unused-target-");
     const root = join(workspace, "root");
 
-    await writeText(join(root, "skills", "safe", "SKILL.md"), "# Safe\n");
+    await writeText(join(root, "skills", "safe", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# Safe\n`);
     await writeOpenPack(root, {
       name: "phase-c/unused",
       requires: { loud: { source: "../does-not-exist" } },

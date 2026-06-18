@@ -28,8 +28,8 @@ async function createPackage(): Promise<string> {
   await mkdir(join(root, "skills", "beta"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "shared", "bin"), { recursive: true });
-  await writeFile(join(root, "skills", "alpha", "SKILL.md"), "# Alpha\n", "utf8");
-  await writeFile(join(root, "skills", "beta", "SKILL.md"), "# Beta\n", "utf8");
+  await writeFile(join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Fixture skill for tests.\n---\n\n# Alpha\n", "utf8");
+  await writeFile(join(root, "skills", "beta", "SKILL.md"), "---\nname: beta\ndescription: Fixture skill for tests.\n---\n\n# Beta\n", "utf8");
   await writeFile(join(root, "rules", "core.md"), "# Core\n", "utf8");
   await writeFile(join(root, "rules", "optional.md"), "# Optional\n", "utf8");
   await writeFile(join(root, "shared", "bin", "tool.sh"), "#!/bin/bash\necho tool\n", "utf8");

@@ -144,8 +144,8 @@ describe("OpenPack phase D", () => {
     const fork = join(workspace, "fork");
 
     await writeText(join(meta, "rules", "meta.md"), "# Meta\n");
-    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "upstream\n");
-    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "fork\n");
+    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "---\nname: self-improve\ndescription: Fixture skill for tests.\n---\n\nupstream\n");
+    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "---\nname: self-improve\ndescription: Fixture skill for tests.\n---\n\nfork\n");
     await writeOpenPack(upstream, { name: "example-upstream/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
     await writeOpenPack(fork, { name: "example-upstream/agent-toolkit", provides: [{ type: "skills", path: "skills" }] });
     await writeOpenPack(meta, {
@@ -187,7 +187,9 @@ describe("OpenPack phase D", () => {
 
     const skills = result.bundle.artifacts.filter((artifact) => artifact.type === "skills" && artifact.name === "self-improve");
     expect(skills).toHaveLength(1);
-    expect(await readFile(join(skills[0]!.stagedPath ?? "", "SKILL.md"), "utf8")).toBe("fork\n");
+    const stagedSelfImprove = await readFile(join(skills[0]!.stagedPath ?? "", "SKILL.md"), "utf8");
+    expect(stagedSelfImprove).toContain("fork");
+    expect(stagedSelfImprove).not.toContain("upstream");
     expect(result.bundle.graphLock.canonical.overrides).toMatchObject([{
       rootId: "fork",
       selector: `${upstream}::skills/self-improve`,
@@ -205,8 +207,8 @@ describe("OpenPack phase D", () => {
     const fork = join(workspace, "fork");
 
     await writeText(join(meta, "rules", "meta.md"), "# Meta\n");
-    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "upstream\n");
-    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "fork\n");
+    await writeText(join(upstream, "skills", "self-improve", "SKILL.md"), "---\nname: self-improve\ndescription: Fixture skill for tests.\n---\n\nupstream\n");
+    await writeText(join(fork, "skills", "self-improve", "SKILL.md"), "---\nname: self-improve\ndescription: Fixture skill for tests.\n---\n\nfork\n");
     await writeOpenPack(upstream, { name: "phase-d/upstream", provides: [{ type: "skills", path: "skills" }] });
     await writeOpenPack(fork, { name: "phase-d/fork", provides: [{ type: "skills", path: "skills" }] });
     await writeOpenPack(meta, {
@@ -272,7 +274,7 @@ describe("OpenPack phase D", () => {
     const target = await tempRoot("agentwheel-phase-d-why-target-");
     const root = join(workspace, "root");
     const core = join(workspace, "core");
-    await writeText(join(root, "skills", "app", "SKILL.md"), "# App\n\n<!-- openpack:include core:fragments/risk.md -->\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), `---\nname: fixture\ndescription: Fixture skill for tests.\n---\n\n# App\n\n<!-- openpack:include core:fragments/risk.md -->\n`);
     await writeText(join(root, "rules", "helper.md"), "# Helper\n");
     await writeText(join(core, "fragments", "risk.md"), "Risk\n");
     await writeOpenPack(core, { name: "phase-d/why-core", provides: [{ type: "fragments", path: "fragments" }] });

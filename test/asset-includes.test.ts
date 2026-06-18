@@ -25,8 +25,8 @@ async function createPackage(): Promise<string> {
   await mkdir(join(root, "skills", "alpha"), { recursive: true });
   await mkdir(join(root, "skills", "beta"), { recursive: true });
   await mkdir(join(root, "packages", "tmux-bridge", "bin"), { recursive: true });
-  await writeFile(join(root, "skills", "alpha", "SKILL.md"), "# Alpha\n", "utf8");
-  await writeFile(join(root, "skills", "beta", "SKILL.md"), "# Beta\n", "utf8");
+  await writeFile(join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Fixture skill for tests.\n---\n\n# Alpha\n", "utf8");
+  await writeFile(join(root, "skills", "beta", "SKILL.md"), "---\nname: beta\ndescription: Fixture skill for tests.\n---\n\n# Beta\n", "utf8");
   await writeFile(join(root, "packages", "tmux-bridge", "bin", "agent-send.sh"), "#!/bin/bash\necho send\n", "utf8");
   await writeFile(join(root, "packages", "tmux-bridge", "bin", "agent-read.sh"), "#!/bin/bash\necho read\n", "utf8");
   await writeFile(join(root, "packages", "tmux-bridge", "bin", "README.txt"), "not included\n", "utf8");

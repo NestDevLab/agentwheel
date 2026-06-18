@@ -38,7 +38,8 @@ async function createPackage(options: {
   const root = await tempRoot();
   await mkdir(join(root, "skills", "demo"), { recursive: true });
   await mkdir(join(root, "fragments"), { recursive: true });
-  await writeFile(join(root, "skills", "demo", "SKILL.md"), options.skill ?? "# Demo\n", "utf8");
+  const skillBody = options.skill ?? "# Demo\n";
+  await writeFile(join(root, "skills", "demo", "SKILL.md"), skillBody.startsWith("---") ? skillBody : `---\nname: demo\ndescription: Fixture skill for tests.\n---\n\n${skillBody}`, "utf8");
   for (const [name, content] of Object.entries(options.fragments ?? {})) {
     await writeFile(join(root, "fragments", name), content, "utf8");
   }
@@ -239,8 +240,8 @@ describe("OpenPack composition", () => {
     const source = await tempRoot();
     await mkdir(join(source, "skills", "a"), { recursive: true });
     await mkdir(join(source, "skills", "b"), { recursive: true });
-    await writeFile(join(source, "skills", "a", "SKILL.md"), "# A\n", "utf8");
-    await writeFile(join(source, "skills", "b", "SKILL.md"), "# B\n", "utf8");
+    await writeFile(join(source, "skills", "a", "SKILL.md"), "---\nname: a\ndescription: Fixture skill for tests.\n---\n\n# A\n", "utf8");
+    await writeFile(join(source, "skills", "b", "SKILL.md"), "---\nname: b\ndescription: Fixture skill for tests.\n---\n\n# B\n", "utf8");
     await writeJson(join(source, "openpack.json"), {
       schemaVersion: 2,
       name: "acme/mixed-runtime",

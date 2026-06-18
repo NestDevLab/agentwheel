@@ -617,7 +617,11 @@ async function gitPackageFixture(label: string): Promise<string> {
 async function gitSkillPackageFixture(name: string, skillName: string): Promise<string> {
   const root = await tempRoot(`agentwheel-${name}-`);
   await mkdir(join(root, "skills", skillName), { recursive: true });
-  await writeFile(join(root, "skills", skillName, "SKILL.md"), `# ${skillName}\n`, "utf8");
+  await writeFile(
+    join(root, "skills", skillName, "SKILL.md"),
+    `---\nname: ${skillName}\ndescription: Fixture skill for tests.\n---\n\n# ${skillName}\n`,
+    "utf8",
+  );
   await writeFile(join(root, "openpack.json"), `${JSON.stringify({
     schemaVersion: 2,
     name,

@@ -97,11 +97,16 @@ async function validateGenericStructure(artifact: Artifact, target: TargetMappin
   const issues: ArtifactValidationIssue[] = [];
   if (artifact.type === "skills") {
     if (artifact.kind === "dir") {
-      if (!(await pathExists(join(artifactPath(artifact), "SKILL.md")))) {
+      const skillMd = join(artifactPath(artifact), "SKILL.md");
+      if (!(await pathExists(skillMd))) {
         issues.push({ artifact, message: "skill directory must contain SKILL.md" });
+      } else {
+        issues.push(...await validateSkillFrontmatter(artifact, skillMd));
       }
     } else if (!hasExtension(artifact, ".md")) {
       issues.push({ artifact, message: "file skill artifacts must be Markdown files" });
+    } else {
+      issues.push(...await validateSkillFrontmatter(artifact, artifactPath(artifact)));
     }
   }
 
@@ -117,6 +122,41 @@ async function validateGenericStructure(artifact: Artifact, target: TargetMappin
     } else if (Object.keys(extractMcpServers(parsed.value)).length === 0) {
       issues.push({ artifact, message: "Codex MCP artifact must contain at least one server object, either under mcpServers or as top-level server entries" });
     }
+  }
+  return issues;
+}
+
+// Codex and other harnesses silently skip a skill whose SKILL.md does not begin
+// with YAML frontmatter at byte 0 (no BOM, no content before the first `---`).
+async function validateSkillFrontmatter(artifact: Artifact, skillMdPath: string): Promise<ArtifactValidationIssue[]> {
+  let content: string;
+  try {
+    content = await readFile(skillMdPath, "utf8");
+  } catch (error) {
+    return [{ artifact, message: `could not read SKILL.md: ${errorMessage(error)}` }];
+  }
+
+  if (content.charCodeAt(0) === 0xfeff) {
+    return [{ artifact, message: "SKILL.md must not start with a UTF-8 BOM; YAML frontmatter must be the first bytes" }];
+  }
+
+  const isDelimiter = (line: string): boolean => line.trimEnd() === "---";
+  const lines = content.split(/\r?\n/);
+  if (!isDelimiter(lines[0] ?? "")) {
+    return [{ artifact, message: "SKILL.md must begin with YAML frontmatter delimited by '---' on the first line (no content before it)" }];
+  }
+  const closing = lines.findIndex((line, index) => index > 0 && isDelimiter(line));
+  if (closing === -1) {
+    return [{ artifact, message: "SKILL.md frontmatter is not closed with a '---' delimiter" }];
+  }
+
+  const issues: ArtifactValidationIssue[] = [];
+  const frontmatter = lines.slice(1, closing);
+  if (!frontmatter.some((line) => /^name\s*:/.test(line))) {
+    issues.push({ artifact, message: "SKILL.md frontmatter must define 'name'" });
+  }
+  if (!frontmatter.some((line) => /^description\s*:/.test(line))) {
+    issues.push({ artifact, message: "SKILL.md frontmatter must define 'description'" });
   }
   return issues;
 }

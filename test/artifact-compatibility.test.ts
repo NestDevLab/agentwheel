@@ -42,7 +42,7 @@ async function desiredArtifact(root: string, type: ArtifactType, name: string, k
   const sourcePath = join(root, type, name);
   if (kind === "dir") {
     await mkdir(sourcePath, { recursive: true });
-    await writeFile(join(sourcePath, type === "skills" ? "SKILL.md" : "AGENTS.md"), `# ${name}\n`, "utf8");
+    await writeFile(join(sourcePath, type === "skills" ? "SKILL.md" : "AGENTS.md"), type === "skills" ? `---\nname: ${name}\ndescription: Fixture skill for tests.\n---\n\n# ${name}\n` : `# ${name}\n`, "utf8");
   } else {
     await mkdir(dirname(sourcePath), { recursive: true });
     await writeFile(sourcePath, artifactContent(type, name), "utf8");
@@ -249,6 +249,33 @@ describe("artifact compatibility registry", () => {
     await rm(join(missingSkill.sourcePath, "SKILL.md"));
     await expect(createCombinedInstallPlan([{ ...missingSkill, hash: await hashPath(missingSkill.sourcePath) }], claudeAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/skill directory must contain SKILL\.md/);
+  });
+
+  it("honors custom adapter config installation types and artifact capabilities", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const adapter: AdapterConfig = {
+      name: "custom-profile",
+      targets: {
+        rules: {
+          "profile-main": { enabled: true, dest: ".profile/rules" },
+        },
+        skills: {
+          "profile-main": { enabled: true, dest: ".profile/skills" },
+        },
+      },
+    };
+    const rule = await desiredArtifact(source, "rules", "behavior.md");
+    const skill = await desiredArtifact(source, "skills", "profile-skill", "dir");
+
+    const plan = await createCombinedInstallPlan([rule, skill], adapter, target, undefined, localTransport, {
+      installationType: "profile-main",
+    });
+
+    expect(plan.operations.map((operation) => operation.relativeDestPath).sort()).toEqual([
+      ".profile/rules/behavior.md",
+      ".profile/skills/profile-skill",
+    ]);
   });
 
   it("installs smoke skills end-to-end into separate local and user state", async () => {

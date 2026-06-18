@@ -43,7 +43,7 @@ async function writePackage(root: string): Promise<void> {
     ],
   }, null, 2));
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Wave 3\n", "utf8");
-  await writeFile(join(root, "skills", "demo", "SKILL.md"), "# Demo\n", "utf8");
+  await writeFile(join(root, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Fixture skill for tests.\n---\n\n# Demo\n", "utf8");
   await writeFile(join(root, "mcp", "server.json"), JSON.stringify({
     mcpServers: { managed: { command: "managed" } },
     order: ["managed"],

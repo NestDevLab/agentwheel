@@ -10,9 +10,26 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "skill-frontmatter-validation"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "skill-frontmatter-validation",
+      "branch": "codex/skill-frontmatter-validation",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "1dee9af0cd36f4218723d397d5581e6d831f464f"
+      ],
+      "meta": {
+        "purpose": "Harden SKILL.md frontmatter validation"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

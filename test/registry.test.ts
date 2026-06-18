@@ -59,7 +59,7 @@ async function writePackage(dir: string): Promise<void> {
   }, null, 2), "utf8");
   await writeFile(join(dir, "AGENTS.md"), "# Fixture instructions\n", "utf8");
   await writeFile(join(dir, "rules", "core.md"), "# Fixture rule\n", "utf8");
-  await writeFile(join(dir, "skills", "demo-skill", "SKILL.md"), "# Fixture skill\n", "utf8");
+  await writeFile(join(dir, "skills", "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: Fixture skill for tests.\n---\n\n# Fixture skill\n", "utf8");
 }
 
 describe("registry client", () => {

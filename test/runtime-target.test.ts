@@ -35,7 +35,7 @@ async function writePackage(root: string): Promise<void> {
       { type: "skills", path: "skills" },
     ],
   }, null, 2), "utf8");
-  await writeFile(join(root, "skills", "demo", "SKILL.md"), "# Runtime target skill\n", "utf8");
+  await writeFile(join(root, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Fixture skill for tests.\n---\n\n# Runtime target skill\n", "utf8");
 }
 
 describe("runtime target resolution", () => {

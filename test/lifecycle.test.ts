@@ -42,7 +42,7 @@ async function writePackage(root: string, options: { name?: string; coreRule?: s
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Upstream instructions\n");
   await writeFile(join(root, "rules", "core.md"), options.coreRule ?? "# Upstream core\n");
   await writeFile(join(root, "rules", "ejected.md"), options.ejectedRule ?? "# Upstream ejected\n");
-  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "# Demo skill\n");
+  await writeFile(join(root, "skills", "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: Fixture skill for tests.\n---\n\n# Demo skill\n");
 }
 
 describe("lifecycle core", () => {

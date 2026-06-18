@@ -51,7 +51,7 @@ async function writePackage(root: string): Promise<void> {
   }, null, 2), "utf8");
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Instructions\n", "utf8");
   await writeFile(join(root, "rules", "safe.md"), "# Safe\n", "utf8");
-  await writeFile(join(root, "skills", "demo", "SKILL.md"), "# Demo\n", "utf8");
+  await writeFile(join(root, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Fixture skill for tests.\n---\n\n# Demo\n", "utf8");
   await writeFile(join(root, "commands", "review.md"), "# Review\n", "utf8");
   await writeFile(join(root, "subagents", "reviewer", "AGENTS.md"), "# Reviewer\n", "utf8");
   await writeFile(join(root, "mcp", "managed.json"), JSON.stringify({

@@ -21,7 +21,7 @@ const config = findConfigs(cwd, home);
 const harness = detectHarness(skillRoot, cwd, home);
 const envHint = detectHarnessFromEnv();
 const agentwheel = inspectAgentwheel(parsed.statusArgs, envHint);
-const manifests = findStateFiles(config.projectConfig ? dirname(config.projectConfig) : cwd);
+const manifests = findStateFiles(harness.runtimeRoot ?? projectRootFromConfig(config.projectConfig) ?? cwd);
 const assessment = assess({ harness, agentwheel, manifests, config });
 const report = {
   overall: assessment.overall,
@@ -242,11 +242,21 @@ function assess({ harness, agentwheel, manifests, config }) {
   pushCheck(checks, agentwheel.cliAvailable ? "PASS" : "FAIL", "agentwheel-cli", agentwheel.cliAvailable ? `Found ${agentwheel.cliPath}` : "agentwheel is not available on PATH.");
   pushCheck(checks, agentwheel.status.ok ? "PASS" : "FAIL", "agentwheel-status", agentwheel.status.ok ? "agentwheel status completed." : statusFailure(agentwheel.status));
   pushCheck(checks, config.projectConfig || config.globalConfig ? "PASS" : "WARN", "agentwheel-config", config.projectConfig || config.globalConfig ? "Agentwheel config found." : "No project or global Agentwheel config found.");
-  pushCheck(checks, manifests.installManifests.length > 0 ? "PASS" : "WARN", "install-manifest", manifests.installManifests.length > 0 ? `${manifests.installManifests.length} install manifest file(s) found.` : "No install manifest files found under the target .agentwheel directory.");
-  if (/drift|conflict/i.test(agentwheel.status.stdout + agentwheel.status.stderr)) {
-    pushCheck(checks, "FAIL", "drift-conflict", "agentwheel status mentions drift or conflict.");
+  const statusHasManifest = /Install manifest:\s*(?!missing\b).+/i.test(agentwheel.status.stdout);
+  pushCheck(
+    checks,
+    manifests.installManifests.length > 0 || statusHasManifest ? "PASS" : "WARN",
+    "install-manifest",
+    manifests.installManifests.length > 0
+      ? `${manifests.installManifests.length} install manifest file(s) found.`
+      : statusHasManifest
+        ? "agentwheel status reports an install manifest."
+        : "No install manifest files found under the target .agentwheel directory.",
+  );
+  if (statusHasBlockingDriftOrConflict(agentwheel.status.stdout + agentwheel.status.stderr)) {
+    pushCheck(checks, "FAIL", "drift-conflict", "agentwheel status reports drift or conflict.");
   }
-  if (/Pending install work:\s*(?!none)/i.test(agentwheel.status.stdout)) {
+  if (/^Pending install work:\s*(?!none\b).+/im.test(agentwheel.status.stdout)) {
     pushCheck(checks, "WARN", "pending-work", "agentwheel status reports pending install work.");
   }
   if (/Install manifest:\s*missing/i.test(agentwheel.status.stdout)) {
@@ -254,6 +264,15 @@ function assess({ harness, agentwheel, manifests, config }) {
   }
   const overall = checks.some((check) => check.status === "FAIL") ? "FAIL" : checks.some((check) => check.status === "WARN") ? "WARN" : "PASS";
   return { overall, checks };
+}
+
+function projectRootFromConfig(configPath) {
+  return configPath ? dirname(dirname(configPath)) : null;
+}
+
+function statusHasBlockingDriftOrConflict(text) {
+  return /^Pending install work:.*(?:\bdrift=[1-9]\d*|\bconflict=[1-9]\d*|\bblocking=[1-9]\d*)/im.test(text)
+    || /^\s*(?:DRIFT|CONFLICT)\s+/im.test(text);
 }
 
 function recommendedNextCommand(assessment, statusArgs) {

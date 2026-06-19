@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.14.1
+
+- Fixed `agentwheel-smoke` so fleet-target status with `Pending install work: none` does not produce false warnings, and manifest discovery follows the detected runtime root instead of the workspace `.agentwheel` directory.
+
 ## 0.14.0
 
 - Added profile-aware `status` and `update` targeting, so `agentwheel status --profile <name>` and `agentwheel update --profile <name>` use the same profile runtime resolution, adapter config, and graph lock fingerprinting as `install --profile`; `status --all` and `update --all` now use the `all` profile when one exists.

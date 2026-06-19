@@ -251,6 +251,30 @@ describe("artifact compatibility registry", () => {
       .rejects.toThrow(/skill directory must contain SKILL\.md/);
   });
 
+  it("omits known rule formats that are incompatible with the target when other artifacts remain installable", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const skill = await desiredArtifact(source, "skills", "smoke", "dir");
+    const markdownRule = await desiredArtifact(source, "rules", "behavior.md");
+    const codexRule = await desiredArtifact(source, "rules", "policy.rules");
+
+    const codexPlan = await createCombinedInstallPlan([skill, markdownRule, codexRule], codexAdapter, target, undefined, localTransport, {
+      installationType: "local",
+    });
+    expect(codexPlan.operations.map((operation) => operation.relativeDestPath).sort()).toEqual([
+      ".agents/skills/smoke",
+      ".codex/rules/policy.rules",
+    ]);
+
+    const claudePlan = await createCombinedInstallPlan([skill, markdownRule, codexRule], claudeAdapter, target, undefined, localTransport, {
+      installationType: "local",
+    });
+    expect(claudePlan.operations.map((operation) => operation.relativeDestPath).sort()).toEqual([
+      ".claude/rules/behavior.md",
+      ".claude/skills/smoke",
+    ]);
+  });
+
   it("honors custom adapter config installation types and artifact capabilities", async () => {
     const source = await tempRoot();
     const target = await tempRoot();

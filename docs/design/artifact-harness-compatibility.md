@@ -39,6 +39,12 @@ an `openclaw-plugin` directory with `plugin.json` or `openclaw.plugin.json`. If 
 descriptors are present they must declare the same plugin name. Invalid or unknown formats fail the
 package plan before runtime files are written.
 
+When a cross-runtime package contains multiple known rule formats, Agentwheel renders each target
+with only the formats compatible with that adapter. For example, Codex plans `.rules` policy files
+and skips Markdown rules, while Claude plans Markdown rules and skips Codex `.rules` policy files.
+If every selected artifact is incompatible, planning still fails instead of producing an empty
+install.
+
 ## Built-In Matrix
 
 | Harness | Artifact | `local` | `user` | Notes |

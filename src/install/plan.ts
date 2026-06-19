@@ -17,7 +17,7 @@ import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import { artifactFormatCompatibility, validateArtifactsForInstall } from "../validation/artifacts.js";
+import { validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { normalizeOwners } from "./desired.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
@@ -103,12 +103,11 @@ export async function createInstallPlan(
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const artifacts = await renderPlanArtifacts(bundle, adapter);
   const installationType = resolveInstallationTypeForArtifacts(adapter, artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installableArtifacts = await omitKnownFormatIncompatibleArtifacts(artifacts, adapter, installationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type));
-  await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, artifacts.map((artifact) => artifact.type));
+  await validateArtifactsForInstall(artifacts, adapter, installationType);
   const desired: InstallOperation[] = [];
 
-  for (const artifact of installableArtifacts) {
+  for (const artifact of artifacts) {
     const op = operationForArtifact(artifact, adapter, installRoot, installationType, {
       logicalSelector: `${artifact.type}/${artifact.name}`,
       dependencyRole: "root",
@@ -140,17 +139,16 @@ export async function createCombinedInstallPlan(
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const installationType = resolveInstallationTypeForArtifacts(adapter, desiredArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installableArtifacts = await omitKnownFormatIncompatibleArtifacts(desiredArtifacts, adapter, installationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type));
-  await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
-  for (const artifact of installableArtifacts) {
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, desiredArtifacts.map((artifact) => artifact.type));
+  await validateArtifactsForInstall(desiredArtifacts, adapter, installationType);
+  for (const artifact of desiredArtifacts) {
     if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {
       throw new Error(`Dependency-provided ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
     }
   }
 
   const desired: InstallOperation[] = [];
-  for (const artifact of installableArtifacts) {
+  for (const artifact of desiredArtifacts) {
     const op = operationForArtifact(artifact, adapter, installRoot, installationType, artifact.meta);
     if (op) {
       desired.push(op);
@@ -159,30 +157,6 @@ export async function createCombinedInstallPlan(
 
   await addProgrammaticOperations(desired, adapter, installRoot);
   return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
-}
-
-async function omitKnownFormatIncompatibleArtifacts<T extends Artifact>(
-  artifacts: T[],
-  adapter: AdapterConfig,
-  installationType: string,
-): Promise<T[]> {
-  const installable: T[] = [];
-  const skipped: T[] = [];
-  for (const artifact of artifacts) {
-    if (artifact.type === "fragments") {
-      installable.push(artifact);
-      continue;
-    }
-    const target = targetMappingForArtifact(adapter, artifact.type, installationType);
-    if (!target?.enabled) {
-      installable.push(artifact);
-      continue;
-    }
-    const compatibility = await artifactFormatCompatibility(artifact, target);
-    if (compatibility.knownIncompatible) skipped.push(artifact);
-    else installable.push(artifact);
-  }
-  return installable.length === 0 && skipped.length > 0 ? artifacts : installable;
 }
 
 async function createPlanFromOperations(

@@ -187,9 +187,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const bundle = await renderGraphForTarget(graph, {
     workspaceRoot,
     adapter: options.adapter,
-    installationType,
     targetFingerprint,
-    warn,
   });
   const desiredArtifacts = desiredArtifactsFromGraphBundle(bundle);
   const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);

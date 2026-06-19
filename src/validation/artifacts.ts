@@ -9,13 +9,6 @@ interface ArtifactValidationIssue {
   message: string;
 }
 
-export interface ArtifactFormatCompatibility {
-  compatible: boolean;
-  knownIncompatible: boolean;
-  format?: string;
-  expected?: string[];
-}
-
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonRecord = Record<string, JsonValue>;
 
@@ -44,19 +37,18 @@ export async function validateArtifactsForInstall(
 
 async function validateArtifact(artifact: Artifact, target: TargetMapping): Promise<ArtifactValidationIssue[]> {
   const issues: ArtifactValidationIssue[] = [];
-  const compatibility = await artifactFormatCompatibility(artifact, target);
-  const format = compatibility.format;
+  const format = artifact.format ?? await inferArtifactFormat(artifact, target) ?? semanticDefaultFormat(target);
 
-  if (compatibility.expected?.length) {
-    if (!compatibility.format) {
+  if (target.formats?.length) {
+    if (!format) {
       issues.push({
         artifact,
-        message: `format is unknown; expected one of: ${compatibility.expected.join(", ")}`,
+        message: `format is unknown; expected one of: ${target.formats.join(", ")}`,
       });
-    } else if (!compatibility.compatible) {
+    } else if (!target.formats.includes(format)) {
       issues.push({
         artifact,
-        message: `format '${format}' is not compatible; expected one of: ${compatibility.expected.join(", ")}`,
+        message: `format '${format}' is not compatible; expected one of: ${target.formats.join(", ")}`,
       });
     }
   }
@@ -64,23 +56,6 @@ async function validateArtifact(artifact: Artifact, target: TargetMapping): Prom
   issues.push(...await validateKnownFormat(artifact, format, target));
   issues.push(...await validateGenericStructure(artifact, target));
   return issues;
-}
-
-export async function artifactFormatCompatibility(
-  artifact: Artifact,
-  target: TargetMapping,
-): Promise<ArtifactFormatCompatibility> {
-  const format = artifact.format ?? await inferArtifactFormat(artifact, target) ?? semanticDefaultFormat(target);
-  const expected = target.formats;
-  if (!expected?.length) return { compatible: true, knownIncompatible: false, format };
-  if (!format) return { compatible: false, knownIncompatible: false, expected };
-  const compatible = expected.includes(format);
-  return {
-    compatible,
-    knownIncompatible: !compatible,
-    format,
-    expected,
-  };
 }
 
 async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): Promise<string | undefined> {

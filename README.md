@@ -60,9 +60,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 > `rules` is an OpenPack artifact kind, not a portable runtime concept. Codex rules are command
 > execution policy, Claude rules are behavioral/path-scoped instructions, and Copilot rule-like
 > installs map to path-specific custom instructions. Unsupported rule targets require an explicit
-> custom adapter instead of an inferred folder. Cross-runtime packages may contain multiple known
-> rule formats; Agentwheel plans only the formats compatible with each target and reports skipped
-> incompatible formats during graph planning.
+> custom adapter instead of an inferred folder.
 
 ## Core Commands
 

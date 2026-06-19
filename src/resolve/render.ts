@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { targetMappingForArtifact, type AdapterConfig } from "../model/adapter.js";
+import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact } from "../model/artifact.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
 import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockOverride } from "../model/graph-lock.js";
@@ -12,16 +12,13 @@ import { applyCustomizations, applyFragmentCustomizations } from "../staging/cus
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
-import { artifactFormatCompatibility } from "../validation/artifacts.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
 
 export interface GraphRenderTargetContext {
   workspaceRoot?: string;
   adapter?: AdapterConfig;
-  installationType?: string;
   targetFingerprint?: string;
-  warn?: (message: string) => void;
 }
 
 export async function renderGraphForTarget(
@@ -124,11 +121,8 @@ export async function renderGraphForTarget(
         packageNameAmbiguous: ambiguousPackageNames.has(rawNode.node.name),
       })
       : runtimeRenderedArtifacts;
-    const compatibleArtifacts = targetContext.adapter && targetContext.installationType
-      ? await filterArtifactsByTargetFormat(renderedArtifacts, targetContext.adapter, targetContext.installationType, rawNode.node.selected, targetContext.warn)
-      : renderedArtifacts;
 
-    const installableArtifacts = compatibleArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
+    const installableArtifacts = renderedArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
     artifacts.push(...installableArtifacts.map((artifact) => ({
       ...artifact,
       graphNodeId: rawNode.node.id,
@@ -187,42 +181,6 @@ function filterArtifactsByRuntime(artifacts: Artifact[], adapterName: string, se
     console.warn(`skip (${reason}: runtimes=[${artifact.runtimes.join(",")}]) ${selector}`);
     return false;
   });
-}
-
-async function filterArtifactsByTargetFormat(
-  artifacts: Artifact[],
-  adapter: AdapterConfig,
-  installationType: string,
-  selected: string[],
-  warn?: (message: string) => void,
-): Promise<Artifact[]> {
-  const selectedSet = new Set(normalizeArtifactSelectors(selected) ?? []);
-  const installable: Artifact[] = [];
-  const skipped: Array<{ artifact: Artifact; format: string; expected: string[] }> = [];
-  for (const artifact of artifacts) {
-    if (artifact.type === "fragments") {
-      installable.push(artifact);
-      continue;
-    }
-    const target = targetMappingForArtifact(adapter, artifact.type, installationType);
-    if (!target?.enabled) {
-      installable.push(artifact);
-      continue;
-    }
-    const compatibility = await artifactFormatCompatibility(artifact, target);
-    if (compatibility.knownIncompatible && compatibility.format && compatibility.expected?.length) {
-      skipped.push({ artifact, format: compatibility.format, expected: compatibility.expected });
-    } else {
-      installable.push(artifact);
-    }
-  }
-  if (installable.length === 0 && skipped.length > 0) return artifacts;
-  for (const item of skipped) {
-    const selector = artifactSelectorKey(item.artifact);
-    const reason = selectedSet.has(selector) ? "selected but format-incompatible" : "format-incompatible";
-    warn?.(`skip ${selector} (${reason}: ${adapter.name}/${installationType} expects ${item.expected.join(", ")}, got ${item.format})`);
-  }
-  return installable;
 }
 
 function sha256(content: string): string {

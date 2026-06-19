@@ -3,6 +3,6 @@
   "name": "NestDevLab/agentwheel",
   "version": "0.13.0",
   "provides": [
-    { "type": "skills", "path": "skills", "required": true }
+    { "type": "skills", "path": "skills" }
   ]
 }

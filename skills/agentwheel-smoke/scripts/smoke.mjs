@@ -256,7 +256,7 @@ function assess({ harness, agentwheel, manifests, config }) {
   if (statusHasBlockingDriftOrConflict(agentwheel.status.stdout + agentwheel.status.stderr)) {
     pushCheck(checks, "FAIL", "drift-conflict", "agentwheel status reports drift or conflict.");
   }
-  if (/^Pending install work:\s*(?!none\b).+/im.test(agentwheel.status.stdout)) {
+  if (statusHasPendingInstallWork(agentwheel.status.stdout)) {
     pushCheck(checks, "WARN", "pending-work", "agentwheel status reports pending install work.");
   }
   if (/Install manifest:\s*missing/i.test(agentwheel.status.stdout)) {
@@ -273,6 +273,13 @@ function projectRootFromConfig(configPath) {
 function statusHasBlockingDriftOrConflict(text) {
   return /^Pending install work:.*(?:\bdrift=[1-9]\d*|\bconflict=[1-9]\d*|\bblocking=[1-9]\d*)/im.test(text)
     || /^\s*(?:DRIFT|CONFLICT)\s+/im.test(text);
+}
+
+function statusHasPendingInstallWork(text) {
+  const line = String(text ?? "").split(/\r?\n/).find((entry) => /^Pending install work:/i.test(entry));
+  if (!line) return false;
+  const value = line.replace(/^Pending install work:/i, "").trim();
+  return value.length > 0 && !/^none$/i.test(value);
 }
 
 function recommendedNextCommand(assessment, statusArgs) {

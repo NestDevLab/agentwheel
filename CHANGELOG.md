@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.14.2
+
+- Fixed `agentwheel-smoke` pending-work detection so `Pending install work: none` is parsed as clean output.
+
 ## 0.14.1
 
 - Fixed `agentwheel-smoke` so fleet-target status with `Pending install work: none` does not produce false warnings, and manifest discovery follows the detected runtime root instead of the workspace `.agentwheel` directory.

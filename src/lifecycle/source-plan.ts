@@ -39,6 +39,9 @@ export interface SourcePlanOptions {
   warn?: (message: string) => void;
   installationType?: string;
   stateKey?: string;
+  forceDrift?: boolean;
+  forceConflict?: boolean;
+  replaceConflict?: boolean;
 }
 
 export interface SourcePlanResult {
@@ -70,6 +73,9 @@ export interface GraphSourcePlanOptions {
   globalRoot?: string;
   installationType?: string;
   stateKey?: string;
+  forceDrift?: boolean;
+  forceConflict?: boolean;
+  replaceConflict?: boolean;
 }
 
 export interface GraphSourcePlanResult {
@@ -111,6 +117,9 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     workspaceOwner: workspaceOwnerId(workspaceRoot),
     installationType,
     stateKey,
+    forceDrift: options.forceDrift,
+    forceConflict: options.forceConflict,
+    replaceConflict: options.replaceConflict,
   });
   return { plan, bundle, resolvedSource, registryEntryName: resolvedInput.registryEntry?.name };
 }
@@ -192,6 +201,9 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     workspaceOwner: workspaceOwnerId(workspaceRoot),
     installationType: resolvedInstallationType,
     stateKey,
+    forceDrift: options.forceDrift,
+    forceConflict: options.forceConflict,
+    replaceConflict: options.replaceConflict,
   });
   return {
     plan,

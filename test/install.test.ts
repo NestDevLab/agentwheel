@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { claudeAdapter } from "../src/adapters/claude.js";
 import { formatPlan } from "../src/cli/format.js";
 import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
+import type { CombinedInstallPlanOptions } from "../src/install/plan.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
 
@@ -24,11 +25,11 @@ async function tempRoot(): Promise<string> {
   return root;
 }
 
-async function buildPlan(targetRoot: string) {
+async function buildPlan(targetRoot: string, options: CombinedInstallPlanOptions = {}) {
   const driver = new LocalSourceDriver();
   const bundle = await stageSource(driver, fixtureSource);
   const manifest = await readInstallManifest(targetRoot, claudeAdapter.name);
-  const plan = await createInstallPlan(bundle, claudeAdapter, targetRoot, manifest);
+  const plan = await createInstallPlan(bundle, claudeAdapter, targetRoot, manifest, undefined, options);
   return { bundle, plan };
 }
 
@@ -121,6 +122,70 @@ describe("install engine", () => {
     expect(drift.plan.operations.find((operation) => operation.relativeDestPath === ".claude/rules/core.md")?.action).toBe("drift");
     await expect(applyInstallPlan(drift.plan, drift.bundle.sourceLock)).rejects.toThrow(/Refusing to apply/);
     await rm(drift.bundle.root, { recursive: true, force: true });
+  });
+
+  it("force drift replaces managed artifacts that changed outside agentwheel", async () => {
+    const targetRoot = await tempRoot();
+    const first = await buildPlan(targetRoot);
+    await applyInstallPlan(first.plan, first.bundle.sourceLock);
+    await rm(first.bundle.root, { recursive: true, force: true });
+
+    const driftedPath = join(targetRoot, ".claude", "rules", "core.md");
+    await appendFile(driftedPath, "\nmanual change\n", "utf8");
+
+    const forced = await buildPlan(targetRoot, { forceDrift: true });
+    const operation = forced.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md");
+    expect(forced.plan.hasBlockingChanges).toBe(false);
+    expect(operation?.action).toBe("update");
+    expect(operation?.reason).toContain("force replacing drifted managed destination");
+
+    await applyInstallPlan(forced.plan, forced.bundle.sourceLock);
+    expect(await readFile(driftedPath, "utf8")).not.toContain("manual change");
+    await rm(forced.bundle.root, { recursive: true, force: true });
+  });
+
+  it("force conflict adopts unmanaged artifacts when content already matches", async () => {
+    const targetRoot = await tempRoot();
+    const initial = await buildPlan(targetRoot);
+    const instruction = initial.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")!;
+    await mkdir(dirname(instruction.destPath), { recursive: true });
+    await writeFile(instruction.destPath, await readFile(instruction.sourcePath!, "utf8"), "utf8");
+
+    const blocked = await buildPlan(targetRoot);
+    expect(blocked.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")?.action).toBe("conflict");
+    await rm(blocked.bundle.root, { recursive: true, force: true });
+
+    const forced = await buildPlan(targetRoot, { forceConflict: true });
+    const operation = forced.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md");
+    expect(forced.plan.hasBlockingChanges).toBe(false);
+    expect(operation?.action).toBe("skip");
+    expect(operation?.reason).toContain("force adopting unmanaged destination");
+
+    const manifest = await applyInstallPlan(forced.plan, forced.bundle.sourceLock);
+    expect(manifest.entries.map((entry) => entry.path)).toContain("CLAUDE.md");
+
+    await rm(initial.bundle.root, { recursive: true, force: true });
+    await rm(forced.bundle.root, { recursive: true, force: true });
+  });
+
+  it("replace conflict overwrites unmanaged artifacts that differ", async () => {
+    const targetRoot = await tempRoot();
+    const initial = await buildPlan(targetRoot);
+    const instruction = initial.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")!;
+    await mkdir(dirname(instruction.destPath), { recursive: true });
+    await writeFile(instruction.destPath, "manual unmanaged content\n", "utf8");
+
+    const forced = await buildPlan(targetRoot, { replaceConflict: true });
+    const operation = forced.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md");
+    expect(forced.plan.hasBlockingChanges).toBe(false);
+    expect(operation?.action).toBe("update");
+    expect(operation?.reason).toContain("force replacing unmanaged destination");
+
+    await applyInstallPlan(forced.plan, forced.bundle.sourceLock);
+    expect(await readFile(instruction.destPath, "utf8")).not.toContain("manual unmanaged content");
+
+    await rm(initial.bundle.root, { recursive: true, force: true });
+    await rm(forced.bundle.root, { recursive: true, force: true });
   });
 
   it("uninstalls managed artifacts when there is no drift", async () => {

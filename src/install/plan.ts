@@ -87,6 +87,9 @@ export interface CombinedInstallPlanOptions {
   workspaceOwner?: string;
   installationType?: string;
   stateKey?: string;
+  forceDrift?: boolean;
+  forceConflict?: boolean;
+  replaceConflict?: boolean;
 }
 
 export async function createInstallPlan(
@@ -228,12 +231,39 @@ async function createPlanFromOperations(
 
     const currentHash = await transport.hashPath(op.destPath);
     if (!existing) {
-      operations.push({ ...op, action: "conflict", currentHash, reason: "destination exists but is not managed" });
+      if (currentHash === op.desiredHash && options.forceConflict) {
+        operations.push({
+          ...op,
+          action: "skip",
+          currentHash,
+          reason: "force adopting unmanaged destination with matching hash",
+        });
+      } else if (options.replaceConflict) {
+        operations.push({
+          ...op,
+          action: "update",
+          currentHash,
+          reason: "force replacing unmanaged destination",
+        });
+      } else {
+        operations.push({ ...op, action: "conflict", currentHash, reason: "destination exists but is not managed" });
+      }
       continue;
     }
 
     if (currentHash !== existing.hash) {
       const composedFromDiff = changedComposedSelectors(op.composedFrom, existing.composedFrom);
+      if (options.forceDrift) {
+        operations.push({
+          ...op,
+          action: "update",
+          currentHash,
+          manifestHash: existing.hash,
+          reason: reasonWithComposedDiff("force replacing drifted managed destination", op.composedFrom, existing.composedFrom),
+          composedFromDiff,
+        });
+        continue;
+      }
       operations.push({
         ...op,
         action: "drift",
@@ -284,6 +314,9 @@ async function createPlanFromOperations(
         packageName: entry.packageName,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
+        ...(options.forceDrift
+          ? { action: "remove" as const, reason: "force removing drifted stale managed destination" }
+          : {}),
       });
     } else {
       operations.push({

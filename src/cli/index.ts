@@ -169,6 +169,9 @@ program
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
+  .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -201,6 +204,9 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
+  .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
@@ -234,6 +240,9 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
+  .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
@@ -259,6 +268,9 @@ program
   .option("--all", "run for every configured agent", false)
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plans without writing", false)
+  .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
+  .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
@@ -569,6 +581,9 @@ async function runInstallCommand(
       dryRun: !behavior.apply,
       executePlugins: normalizedOptions.executePlugins,
       allowAdapterCode: normalizedOptions.allowAdapterCode,
+      forceDrift: normalizedOptions.forceDrift,
+      forceConflict: normalizedOptions.forceConflict,
+      replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
       lockedResolution: true,
       frozenLock: normalizedOptions.frozenLock,
@@ -875,6 +890,9 @@ interface GraphCliOptions {
   trust?: string[];
   scope?: string;
   keepFiles?: boolean;
+  forceDrift?: boolean;
+  forceConflict?: boolean;
+  replaceConflict?: boolean;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
 }
@@ -1018,6 +1036,9 @@ async function buildGraphPlansForTarget(
       trustPatterns: targetOptions.trust ?? [],
       readOnly: targetOptions.dryRun === true,
       isTTY: process.stdin.isTTY === true,
+      forceDrift: targetOptions.forceDrift,
+      forceConflict: targetOptions.forceConflict,
+      replaceConflict: targetOptions.replaceConflict,
     });
     if (behavior.mode === "install" && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);

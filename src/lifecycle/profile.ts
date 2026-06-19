@@ -24,6 +24,9 @@ export interface ProfileSyncOptions {
   dryRun?: boolean;
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
+  forceDrift?: boolean;
+  forceConflict?: boolean;
+  replaceConflict?: boolean;
   noDeps?: boolean;
   lockedResolution?: boolean;
   frozenLock?: boolean;
@@ -108,6 +111,9 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       readOnly: options.readOnly,
       isTTY: options.isTTY,
       warn: options.warn,
+      forceDrift: options.forceDrift,
+      forceConflict: options.forceConflict,
+      replaceConflict: options.replaceConflict,
     });
     try {
       results.push({

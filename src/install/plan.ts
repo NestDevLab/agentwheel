@@ -17,7 +17,7 @@ import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import { validateArtifactsForInstall } from "../validation/artifacts.js";
+import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { normalizeOwners } from "./desired.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
@@ -90,6 +90,7 @@ export interface CombinedInstallPlanOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
+  warn?: (message: string) => void;
 }
 
 export async function createInstallPlan(
@@ -102,12 +103,13 @@ export async function createInstallPlan(
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const artifacts = await renderPlanArtifacts(bundle, adapter);
-  const installationType = resolveInstallationTypeForArtifacts(adapter, artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, artifacts.map((artifact) => artifact.type), transport.kind === "ssh");
-  await validateArtifactsForInstall(artifacts, adapter, installationType);
+  const installableArtifacts = await filterArtifactsByInstallFormat(artifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const desired: InstallOperation[] = [];
 
-  for (const artifact of artifacts) {
+  for (const artifact of installableArtifacts) {
     const op = operationForArtifact(artifact, adapter, installRoot, installationType, {
       logicalSelector: `${artifact.type}/${artifact.name}`,
       dependencyRole: "root",
@@ -138,17 +140,18 @@ export async function createCombinedInstallPlan(
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installationType = resolveInstallationTypeForArtifacts(adapter, desiredArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
-  await validateArtifactsForInstall(desiredArtifacts, adapter, installationType);
-  for (const artifact of desiredArtifacts) {
+  const installableArtifacts = await filterArtifactsByInstallFormat(desiredArtifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
+  for (const artifact of installableArtifacts) {
     if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {
       throw new Error(`Dependency-provided ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
     }
   }
 
   const desired: InstallOperation[] = [];
-  for (const artifact of desiredArtifacts) {
+  for (const artifact of installableArtifacts) {
     const op = operationForArtifact(artifact, adapter, installRoot, installationType, artifact.meta);
     if (op) {
       desired.push(op);

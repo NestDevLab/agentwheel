@@ -8,13 +8,13 @@ export const codexAdapter: AdapterConfig = {
       local: { enabled: true, dest: "AGENTS.md" },
       user: { enabled: true, root: "home", dest: ".codex/AGENTS.md" },
     },
-    rules: {
-      local: { enabled: true, dest: ".codex/rules", formats: ["codex-command-policy"] },
-      user: { enabled: true, root: "home", dest: ".codex/rules", formats: ["codex-command-policy"] },
-    },
     skills: {
       local: { enabled: true, dest: ".agents/skills" },
       user: { enabled: true, root: "home", dest: ".agents/skills" },
+    },
+    plugins: {
+      local: { enabled: true, dest: "plugins", semantic: "codex-plugin" },
+      user: { enabled: true, root: "home", dest: ".codex/plugins", semantic: "codex-plugin" },
     },
     subagents: {
       local: { enabled: true, dest: ".codex/agents", semantic: "codex-subagent" },

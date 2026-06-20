@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { parseDocument } from "yaml";
 import { targetMappingForArtifact, type AdapterConfig, type TargetMapping } from "../model/adapter.js";
 import type { Artifact } from "../model/artifact.js";
+import { artifactSelectorKey, normalizeArtifactSelectors } from "../model/selection.js";
 import { pathExists } from "../utils/fs.js";
 
 interface ArtifactValidationIssue {
@@ -9,8 +11,73 @@ interface ArtifactValidationIssue {
   message: string;
 }
 
+export interface ArtifactFormatCompatibility {
+  compatible: boolean;
+  knownIncompatible: boolean;
+  format?: string;
+  expected?: string[];
+  message?: string;
+}
+
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type JsonRecord = Record<string, JsonValue>;
+type YamlRecord = Record<string, unknown>;
+
+const behavioralRuleFormats = ["markdown-rule", "claude-markdown-rule", "copilot-instruction-rule"];
+const pluginFormats = ["claude-plugin", "codex-plugin", "hermes-plugin", "copilot-plugin", "openclaw-plugin"];
+
+export async function filterArtifactsByInstallFormat<T extends Artifact>(
+  artifacts: T[],
+  adapter: AdapterConfig,
+  installationType: string,
+  options: {
+    selected?: string[];
+    warn?: (message: string) => void;
+  } = {},
+): Promise<T[]> {
+  const selectedSet = new Set(normalizeArtifactSelectors(options.selected ?? []) ?? []);
+  const kept: T[] = [];
+  const skipped: Array<{ artifact: T; compatibility: ArtifactFormatCompatibility }> = [];
+  let installableCount = 0;
+
+  for (const artifact of artifacts) {
+    if (artifact.type === "fragments") {
+      kept.push(artifact);
+      continue;
+    }
+    const target = targetMappingForArtifact(adapter, artifact.type, installationType);
+    if (!target?.enabled) {
+      if (artifact.type === "rules") {
+        skipped.push({
+          artifact,
+          compatibility: {
+            compatible: false,
+            knownIncompatible: true,
+            expected: behavioralRuleFormats,
+            message: "target does not support behavioral Markdown rules",
+          },
+        });
+        continue;
+      }
+      kept.push(artifact);
+      continue;
+    }
+    const compatibility = await artifactFormatCompatibility(artifact, target);
+    if (compatibility.knownIncompatible) {
+      skipped.push({ artifact, compatibility });
+      continue;
+    }
+    kept.push(artifact);
+    installableCount += 1;
+  }
+
+  if (installableCount === 0 && skipped.length > 0) return artifacts;
+
+  for (const item of skipped) {
+    options.warn?.(formatSkipWarning(item.artifact, item.compatibility, adapter, installationType, selectedSet));
+  }
+  return kept;
+}
 
 export async function validateArtifactsForInstall(
   artifacts: Artifact[],
@@ -37,18 +104,19 @@ export async function validateArtifactsForInstall(
 
 async function validateArtifact(artifact: Artifact, target: TargetMapping): Promise<ArtifactValidationIssue[]> {
   const issues: ArtifactValidationIssue[] = [];
-  const format = artifact.format ?? await inferArtifactFormat(artifact, target) ?? semanticDefaultFormat(target);
+  const compatibility = await artifactFormatCompatibility(artifact, target);
+  const format = compatibility.format;
 
-  if (target.formats?.length) {
+  if (compatibility.expected?.length) {
     if (!format) {
       issues.push({
         artifact,
-        message: `format is unknown; expected one of: ${target.formats.join(", ")}`,
+        message: `format is unknown; expected one of: ${compatibility.expected.join(", ")}`,
       });
-    } else if (!target.formats.includes(format)) {
+    } else if (!compatibility.compatible) {
       issues.push({
         artifact,
-        message: `format '${format}' is not compatible; expected one of: ${target.formats.join(", ")}`,
+        message: compatibility.message ?? `format '${format}' is not compatible; expected one of: ${compatibility.expected.join(", ")}`,
       });
     }
   }
@@ -58,9 +126,35 @@ async function validateArtifact(artifact: Artifact, target: TargetMapping): Prom
   return issues;
 }
 
+export async function artifactFormatCompatibility(
+  artifact: Artifact,
+  target: TargetMapping,
+): Promise<ArtifactFormatCompatibility> {
+  const format = artifact.format ?? await inferArtifactFormat(artifact, target) ?? semanticDefaultFormat(artifact, target);
+  const expected = expectedFormats(artifact, target);
+  if (!expected?.length) return { compatible: true, knownIncompatible: false, format };
+  if (!format) return { compatible: false, knownIncompatible: false, expected };
+  if (artifact.type === "rules" && target.formats?.length && target.formats.every((item) => !behavioralRuleFormats.includes(item))) {
+    return {
+      compatible: false,
+      knownIncompatible: true,
+      format,
+      expected,
+      message: `target does not support behavioral Markdown rules; expected one of: ${expected.join(", ")}`,
+    };
+  }
+  const compatible = expected.includes(format);
+  return {
+    compatible,
+    knownIncompatible: !compatible,
+    format,
+    expected,
+  };
+}
+
 async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): Promise<string | undefined> {
   if (artifact.type === "rules") {
-    if (hasExtension(artifact, ".rules")) return "codex-command-policy";
+    if (artifact.format === "codex-command-policy" || hasExtension(artifact, ".rules")) return "codex-command-policy";
     if (hasExtension(artifact, ".md") || hasExtension(artifact, ".markdown")) return "markdown-rule";
     return undefined;
   }
@@ -72,9 +166,23 @@ async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): P
   return undefined;
 }
 
-function semanticDefaultFormat(target: TargetMapping): string | undefined {
-  if (target.semantic === "openclaw-plugin") return "openclaw-plugin";
+function semanticDefaultFormat(artifact: Artifact, target: TargetMapping): string | undefined {
+  if (artifact.type === "plugins" && isPluginFormat(target.semantic)) return target.semantic;
   return undefined;
+}
+
+function expectedFormats(artifact: Artifact, target: TargetMapping): string[] | undefined {
+  if (artifact.type === "rules") {
+    const declared = target.formats?.filter((format) => behavioralRuleFormats.includes(format));
+    if (target.formats?.length) return declared?.length ? declared : behavioralRuleFormats;
+    return behavioralRuleFormats;
+  }
+  if (artifact.type === "plugins") {
+    if (isPluginFormat(target.semantic)) return [target.semantic];
+    const declared = target.formats?.filter((format) => pluginFormats.includes(format));
+    if (target.formats?.length) return declared?.length ? declared : pluginFormats;
+  }
+  return target.formats;
 }
 
 async function validateKnownFormat(
@@ -83,13 +191,13 @@ async function validateKnownFormat(
   target: TargetMapping,
 ): Promise<ArtifactValidationIssue[]> {
   if (!format) return [];
-  if (format === "codex-command-policy") return validateCodexCommandPolicyRule(artifact);
   if (format === "markdown-rule" || format === "claude-markdown-rule" || format === "copilot-instruction-rule") {
     return validateMarkdownRule(artifact, format);
   }
   if (format === "openclaw-plugin" || target.semantic === "openclaw-plugin") {
     return validateOpenClawPlugin(artifact);
   }
+  if (pluginFormats.includes(format)) return validatePluginArtifact(artifact, format);
   return [];
 }
 
@@ -112,6 +220,11 @@ async function validateGenericStructure(artifact: Artifact, target: TargetMappin
 
   if (target.merge === "json-deep") {
     const parsed = await parseJsonObjectArtifact(artifact);
+    if (!parsed.ok) issues.push({ artifact, message: parsed.message });
+  }
+
+  if (target.merge === "yaml-deep") {
+    const parsed = await parseYamlObjectArtifact(artifact);
     if (!parsed.ok) issues.push({ artifact, message: parsed.message });
   }
 
@@ -161,34 +274,6 @@ async function validateSkillFrontmatter(artifact: Artifact, skillMdPath: string)
   return issues;
 }
 
-async function validateCodexCommandPolicyRule(artifact: Artifact): Promise<ArtifactValidationIssue[]> {
-  const issues: ArtifactValidationIssue[] = [];
-  if (artifact.type !== "rules") {
-    return [{ artifact, message: "codex-command-policy format is only valid for rules artifacts" }];
-  }
-  if (artifact.kind !== "file") {
-    issues.push({ artifact, message: "Codex command-policy rules must be files" });
-  }
-  if (!hasExtension(artifact, ".rules")) {
-    issues.push({ artifact, message: "Codex command-policy rules must use the .rules extension" });
-  }
-  const content = await readUtf8Artifact(artifact, issues);
-  if (content === undefined) return issues;
-  if (!/\bprefix_rule\s*\(/.test(content)) {
-    issues.push({ artifact, message: "Codex command-policy rules must contain at least one prefix_rule(...)" });
-  }
-  if (/\bprefix_rule\s*\(/.test(content) && !/\bpattern\s*=/.test(content)) {
-    issues.push({ artifact, message: "Codex command-policy rules must define a pattern field" });
-  }
-  for (const match of content.matchAll(/\bdecision\s*=\s*["']([^"']+)["']/g)) {
-    const decision = match[1];
-    if (decision !== "allow" && decision !== "prompt" && decision !== "forbidden") {
-      issues.push({ artifact, message: `Codex command-policy decision '${decision}' must be allow, prompt, or forbidden` });
-    }
-  }
-  return issues;
-}
-
 function validateMarkdownRule(artifact: Artifact, format: string): ArtifactValidationIssue[] {
   const label = format === "copilot-instruction-rule"
     ? "Copilot instruction rules"
@@ -204,6 +289,17 @@ function validateMarkdownRule(artifact: Artifact, format: string): ArtifactValid
   }
   if (!hasExtension(artifact, ".md") && !hasExtension(artifact, ".markdown")) {
     issues.push({ artifact, message: `${label} must use a Markdown extension` });
+  }
+  return issues;
+}
+
+function validatePluginArtifact(artifact: Artifact, format: string): ArtifactValidationIssue[] {
+  const issues: ArtifactValidationIssue[] = [];
+  if (artifact.type !== "plugins") {
+    issues.push({ artifact, message: `${format} format is only valid for plugins artifacts` });
+  }
+  if (artifact.kind !== "dir") {
+    issues.push({ artifact, message: `${format} plugins must be directory artifacts` });
   }
   return issues;
 }
@@ -258,16 +354,6 @@ async function parseOpenClawPluginManifest(
   }
 }
 
-async function readUtf8Artifact(artifact: Artifact, issues: ArtifactValidationIssue[]): Promise<string | undefined> {
-  if (artifact.kind !== "file") return undefined;
-  try {
-    return await readFile(artifactPath(artifact), "utf8");
-  } catch (error) {
-    issues.push({ artifact, message: `could not read artifact: ${errorMessage(error)}` });
-    return undefined;
-  }
-}
-
 async function parseJsonObjectArtifact(artifact: Artifact): Promise<{ ok: true; value: JsonRecord } | { ok: false; message: string }> {
   if (artifact.kind !== "file") {
     return { ok: false, message: "merge artifacts must be JSON files" };
@@ -278,6 +364,23 @@ async function parseJsonObjectArtifact(artifact: Artifact): Promise<{ ok: true; 
     return { ok: true, value: parsed };
   } catch (error) {
     return { ok: false, message: `merge artifact must be valid JSON: ${errorMessage(error)}` };
+  }
+}
+
+async function parseYamlObjectArtifact(artifact: Artifact): Promise<{ ok: true; value: YamlRecord } | { ok: false; message: string }> {
+  if (artifact.kind !== "file") {
+    return { ok: false, message: "merge artifacts must be YAML files" };
+  }
+  try {
+    const document = parseDocument(await readFile(artifactPath(artifact), "utf8"));
+    if (document.errors.length > 0) {
+      return { ok: false, message: `merge artifact must be valid YAML: ${document.errors[0]?.message ?? "parse error"}` };
+    }
+    const parsed = document.toJSON() as unknown;
+    if (!isUnknownRecord(parsed)) return { ok: false, message: "merge artifacts must contain a YAML object" };
+    return { ok: true, value: parsed };
+  } catch (error) {
+    return { ok: false, message: `merge artifact must be valid YAML: ${errorMessage(error)}` };
   }
 }
 
@@ -304,8 +407,31 @@ function hasExtension(artifact: Artifact, extension: string): boolean {
     || basename(artifactPath(artifact)).toLowerCase().endsWith(extension);
 }
 
+function isPluginFormat(value: string | undefined): value is typeof pluginFormats[number] {
+  return value !== undefined && pluginFormats.includes(value);
+}
+
 function isRecord(value: JsonValue | undefined): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnknownRecord(value: unknown): value is YamlRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatSkipWarning(
+  artifact: Artifact,
+  compatibility: ArtifactFormatCompatibility,
+  adapter: AdapterConfig,
+  installationType: string,
+  selectedSet: Set<string>,
+): string {
+  const selector = artifactSelectorKey(artifact);
+  const reason = selectedSet.has(selector) ? "selected but format-incompatible" : "format-incompatible";
+  const expected = compatibility.expected?.join(", ") ?? "supported format";
+  const format = compatibility.format ?? "unknown";
+  const details = compatibility.message ?? `${adapter.name}/${installationType} expects ${expected}, got ${format}`;
+  return `skip ${selector} (${reason}: ${details})`;
 }
 
 function errorMessage(error: unknown): string {

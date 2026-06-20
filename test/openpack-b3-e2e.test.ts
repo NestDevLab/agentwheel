@@ -206,19 +206,12 @@ describe("OpenPack phase B dogfood", () => {
     const root = join(workspace, "root");
     const claudeOnly = join(workspace, "claude-only");
 
-    await writeText(join(root, "rules", "root.rules"), [
-      "# Root",
-      "prefix_rule(",
-      "    pattern = [\"gh\", \"pr\", \"view\"],",
-      "    decision = \"prompt\",",
-      "    justification = \"Viewing PRs is allowed with approval\",",
-      ")",
-      "",
-    ].join("\n"));
+    await writeText(join(root, "instructions", "AGENTS.md"), "# Root\n");
     await writeText(join(claudeOnly, "rules", "dep.md"), "# Claude dep\n");
     await writeOpenPack(claudeOnly, { name: "runtime-edge/dep" });
     await writeOpenPack(root, {
       name: "runtime-edge/root",
+      provides: [{ type: "instructions", path: "instructions/AGENTS.md" }],
       requires: {
         dep: { source: "../claude-only", select: ["rules/dep.md"], runtimes: ["claude"] },
       },

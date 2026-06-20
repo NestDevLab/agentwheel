@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.14.3
+
+- Fixed ssh install targeting: home-rooted installation types (for example `user`) over ssh now resolve their install/state root to the remote agent `root` instead of the orchestrator's local home, so the apply-lock and managed files land under the remote user's home. Previously an ssh agent whose remote user differed from the local user failed with a `.agentwheel` apply-lock `Permission denied`.
+
 ## 0.14.2
 
 - Fixed `agentwheel-smoke` pending-work detection so `Pending install work: none` is parsed as clean output.

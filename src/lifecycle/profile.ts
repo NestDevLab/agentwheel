@@ -118,7 +118,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     try {
       results.push({
         runtime: adapter.name,
-        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType),
+        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
         transport: transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,

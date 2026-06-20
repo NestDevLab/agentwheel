@@ -1347,7 +1347,7 @@ function installStateForTarget(
   return {
     installationType,
     stateKey: stateKeyFor(adapter.name, { installationType, targetFingerprint }),
-    installRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType),
+    installRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh"),
   };
 }
 

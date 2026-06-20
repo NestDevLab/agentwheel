@@ -35,10 +35,11 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Publish to npm
+      - name: Upgrade npm for Trusted Publishing (>= 11.5.1)
+        run: npm install -g npm@latest
+
+      - name: Publish to npm (Trusted Publishing via OIDC)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         env:

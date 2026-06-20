@@ -38,7 +38,9 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Publish to npm (Trusted Publishing via OIDC)
-        run: npm publish --provenance --access public
+        run: |
+          echo "node $(node --version) / npm $(npm --version) (trusted publishing needs npm >= 11.5.1)"
+          npm publish --provenance --access public
 
       - name: Create GitHub Release
         env:

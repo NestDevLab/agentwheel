@@ -5,7 +5,7 @@ export const openClawAdapter: AdapterConfig = {
   displayName: "OpenClaw",
   targets: {
     instructions: {
-      user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md" },
+      user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md", mode: "managed-block" },
     },
     skills: {
       local: { enabled: true, dest: "skills" },

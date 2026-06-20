@@ -5,8 +5,9 @@ export const hermesAdapter: AdapterConfig = {
   displayName: "Hermes",
   targets: {
     instructions: {
-      local: { enabled: true, dest: "AGENTS.md" },
-      user: { enabled: true, root: "home", dest: ".hermes/SOUL.md" },
+      local: { enabled: true, dest: "AGENTS.md", mode: "managed-block" },
+      // Hermes documents SOUL.md as the user-level instruction surface.
+      user: { enabled: true, root: "home", dest: ".hermes/SOUL.md", mode: "managed-block" },
     },
     skills: {
       user: { enabled: true, root: "home", dest: ".hermes/skills" },

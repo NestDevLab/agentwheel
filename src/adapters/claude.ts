@@ -5,8 +5,8 @@ export const claudeAdapter: AdapterConfig = {
   displayName: "Claude Code",
   targets: {
     instructions: {
-      local: { enabled: true, dest: "CLAUDE.md" },
-      user: { enabled: true, root: "home", dest: ".claude/CLAUDE.md" },
+      local: { enabled: true, dest: "CLAUDE.md", mode: "managed-block" },
+      user: { enabled: true, root: "home", dest: ".claude/CLAUDE.md", mode: "managed-block" },
     },
     rules: {
       local: { enabled: true, dest: ".claude/rules", formats: ["markdown-rule", "claude-markdown-rule"] },

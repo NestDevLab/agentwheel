@@ -5,8 +5,8 @@ export const codexAdapter: AdapterConfig = {
   displayName: "Codex CLI",
   targets: {
     instructions: {
-      local: { enabled: true, dest: "AGENTS.md" },
-      user: { enabled: true, root: "home", dest: ".codex/AGENTS.md" },
+      local: { enabled: true, dest: "AGENTS.md", mode: "managed-block" },
+      user: { enabled: true, root: "home", dest: ".codex/AGENTS.md", mode: "managed-block" },
     },
     skills: {
       local: { enabled: true, dest: ".agents/skills" },

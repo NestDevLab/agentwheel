@@ -5,6 +5,7 @@ import type { InstallManifest, InstallManifestEntry, InstallManifestV1Entry } fr
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { DesiredArtifact } from "./desired.js";
+import { managedInstructionBlockMode, managedInstructionSelector, readManagedInstructionBlockState } from "./instructions-block.js";
 import { createCombinedInstallPlan } from "./plan.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 
@@ -18,7 +19,7 @@ export async function createUninstallPlan(
   for (const entry of manifest.entries) {
     const destPath = join(manifest.targetRoot, entry.path);
     if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await transport.hashPath(destPath);
+    const currentHash = await currentEntryHash(entry, destPath, transport);
     if (currentHash !== entry.hash) {
       operations.push({
         action: "keep",
@@ -35,6 +36,7 @@ export async function createUninstallPlan(
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
         mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
@@ -54,6 +56,7 @@ export async function createUninstallPlan(
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
         mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
@@ -92,7 +95,7 @@ export async function createOwnershipUninstallPlan(
   for (const entry of manifest.entries) {
     const destPath = join(manifest.targetRoot, entry.path);
     if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await transport.hashPath(destPath);
+    const currentHash = await currentEntryHash(entry, destPath, transport);
     const remainingOwners = ownersByPath.get(entry.path) ?? [];
 
     if (remainingOwners.length > 0) {
@@ -111,6 +114,7 @@ export async function createOwnershipUninstallPlan(
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
         mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry, remainingOwners),
         graphLockDigest: options.graphLockDigest,
@@ -135,6 +139,7 @@ export async function createOwnershipUninstallPlan(
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
         mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
         graphLockDigest: options.graphLockDigest,
@@ -155,6 +160,7 @@ export async function createOwnershipUninstallPlan(
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
         mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry, []),
       });
@@ -173,6 +179,13 @@ export async function createOwnershipUninstallPlan(
     adapterCode: manifest.adapterCode,
     graphLockDigest: options.graphLockDigest,
   };
+}
+
+async function currentEntryHash(entry: ManifestEntry, destPath: string, transport: TargetTransport): Promise<string | undefined> {
+  if (entry.mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
+  const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
+  const state = await readManagedInstructionBlockState(destPath, selector, transport);
+  return state.drifted ? state.markerHash : state.hash;
 }
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<

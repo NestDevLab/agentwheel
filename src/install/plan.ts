@@ -1,4 +1,4 @@
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import {
   defaultInstallationType,
   installRootForArtifacts,
@@ -20,6 +20,15 @@ import type { TargetTransport } from "../transport/index.js";
 import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { normalizeOwners } from "./desired.js";
+import {
+  claudeInstructionBridgesAgents,
+  desiredManagedInstructionBlockHash,
+  managedInstructionBlockMode,
+  managedInstructionPhysicalKey,
+  managedInstructionSelector,
+  readManagedInstructionBlockState,
+  type ManagedInstructionBlockMode,
+} from "./instructions-block.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
@@ -42,6 +51,7 @@ export interface InstallOperation {
   semanticCommand?: string[];
   execute?: boolean;
   mergeStrategy?: "json-deep" | "yaml-deep" | "codex-toml-mcp";
+  mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
   composedFrom?: Artifact["composedFrom"];
@@ -174,11 +184,12 @@ async function createPlanFromOperations(
   if (workspaceOwner) {
     for (const op of desiredOps) op.workspaceOwner = workspaceOwner;
   }
-  for (const op of desiredOps) assertOperationContained(op, targetRoot);
-  const migration = await migrateManifestForPlan(manifest, desiredOps, targetRoot, transport);
+  const preparedOps = await prepareManagedBlockOperations(desiredOps, adapter, targetRoot, transport, options);
+  for (const op of preparedOps) assertOperationContained(op, targetRoot);
+  const migration = await migrateManifestForPlan(manifest, preparedOps, targetRoot, transport);
   const effectiveEntries = migration.entries;
   const manifestByPath = new Map(effectiveEntries.map((entry) => [entry.path, entry]));
-  const { desired, collisions } = await splitCollisionOperations(desiredOps, manifestByPath, transport);
+  const { desired, collisions } = await splitCollisionOperations(preparedOps, manifestByPath, transport);
   const operations: InstallOperation[] = [];
   operations.push(...collisions);
 
@@ -200,6 +211,11 @@ async function createPlanFromOperations(
       } else {
         operations.push(op);
       }
+      continue;
+    }
+
+    if (op.mode === managedInstructionBlockMode) {
+      operations.push(...await planManagedBlockOperation(op, manifestByPath, transport, options, workspaceOwner, targetRoot));
       continue;
     }
 
@@ -297,7 +313,7 @@ async function createPlanFromOperations(
     if (desired.has(entry.path)) continue;
     const destPath = join(targetRoot, entry.path);
     if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await transport.hashPath(destPath);
+    const currentHash = await currentEntryHash(entry, destPath, transport);
     if (workspaceOwner && !entryOwnedByWorkspace(entry, workspaceOwner)) {
       operations.push(keepForeignManifestEntryOperation(entry, targetRoot, workspaceOwner, undefined, currentHash));
       continue;
@@ -315,6 +331,10 @@ async function createPlanFromOperations(
         reason: "managed stale destination changed outside agentwheel",
         channel: entry.channel,
         packageName: entry.packageName,
+        semanticCommand: entry.semanticCommand,
+        execute: entry.executed,
+        mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
         ...(options.forceDrift
@@ -334,6 +354,10 @@ async function createPlanFromOperations(
         reason: "artifact removed from source",
         channel: entry.channel,
         packageName: entry.packageName,
+        semanticCommand: entry.semanticCommand,
+        execute: entry.executed,
+        mergeStrategy: entry.mergeStrategy,
+        mode: entry.mode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
@@ -419,6 +443,167 @@ async function migrateManifestForPlan(
       dropped,
     },
   };
+}
+
+async function prepareManagedBlockOperations(
+  desiredOps: InstallOperation[],
+  adapter: AdapterConfig,
+  targetRoot: string,
+  transport: TargetTransport,
+  options: CombinedInstallPlanOptions,
+): Promise<InstallOperation[]> {
+  const prepared: InstallOperation[] = [];
+  const physicalInstructionPaths = new Map<string, InstallOperation>();
+  for (const op of desiredOps) {
+    if (op.mode !== managedInstructionBlockMode) {
+      prepared.push(op);
+      continue;
+    }
+    if (!op.sourcePath) {
+      throw new Error(`Managed block instruction operation missing source: ${op.relativeDestPath}`);
+    }
+
+    const managedOp = {
+      ...op,
+      desiredHash: await desiredManagedInstructionBlockHash(op.sourcePath),
+    };
+
+    if (await shouldSkipClaudeBridge(adapter, managedOp, targetRoot, transport)) {
+      continue;
+    }
+    await warnOnCopilotDoubleRead(adapter, managedOp, targetRoot, transport, options);
+
+    const physicalKey = await managedInstructionPhysicalKey(managedOp.destPath, transport);
+    const incumbent = physicalInstructionPaths.get(physicalKey);
+    if (incumbent) {
+      if (incumbent.desiredHash !== managedOp.desiredHash) {
+        options.warn?.(`Multiple instruction targets resolve to ${managedOp.relativeDestPath}; using ${incumbent.relativeDestPath} and skipping duplicate with different content.`);
+      }
+      continue;
+    }
+    physicalInstructionPaths.set(physicalKey, managedOp);
+    prepared.push(managedOp);
+  }
+  return prepared;
+}
+
+async function shouldSkipClaudeBridge(
+  adapter: AdapterConfig,
+  op: InstallOperation,
+  targetRoot: string,
+  transport: TargetTransport,
+): Promise<boolean> {
+  if (adapter.name !== "claude" || op.artifactType !== "instructions" || basename(op.destPath).toLowerCase() !== "claude.md") {
+    return false;
+  }
+  const agentsPath = join(targetRoot, "AGENTS.md");
+  return claudeInstructionBridgesAgents(op.destPath, agentsPath, transport);
+}
+
+async function warnOnCopilotDoubleRead(
+  adapter: AdapterConfig,
+  op: InstallOperation,
+  targetRoot: string,
+  transport: TargetTransport,
+  options: CombinedInstallPlanOptions,
+): Promise<void> {
+  if (adapter.name !== "claude" || op.artifactType !== "instructions" || basename(op.destPath).toLowerCase() !== "claude.md") return;
+  const agentsPath = join(targetRoot, "AGENTS.md");
+  if (!(await transport.pathExists(agentsPath))) return;
+  if (await claudeInstructionBridgesAgents(op.destPath, agentsPath, transport)) return;
+  options.warn?.("CLAUDE.md and AGENTS.md are separate instruction files; if Copilot is active it may read the managed instructions twice.");
+}
+
+async function planManagedBlockOperation(
+  op: InstallOperation,
+  manifestByPath: Map<string, PlanningManifestEntry>,
+  transport: TargetTransport,
+  options: CombinedInstallPlanOptions,
+  workspaceOwner: string | undefined,
+  targetRoot: string,
+): Promise<InstallOperation[]> {
+  const existing = manifestByPath.get(op.relativeDestPath);
+  if (existing && workspaceOwner && !entryOwnedByWorkspace(existing, workspaceOwner)) {
+    return [keepForeignManifestEntryOperation(existing, targetRoot, workspaceOwner, op)];
+  }
+
+  const selector = managedInstructionSelector(op.logicalSelector, op.artifactType, op.artifactName);
+  const state = await readManagedInstructionBlockState(op.destPath, selector, transport);
+  if (!state.exists) {
+    return [{ ...op, action: "create", reason: "managed instruction destination missing" }];
+  }
+
+  if (!existing) {
+    if (state.hasBlock && !state.drifted && state.hash === op.desiredHash && options.forceConflict) {
+      return [{
+        ...op,
+        action: "skip",
+        currentHash: state.hash,
+        reason: "force adopting unmanaged managed-block destination with matching hash",
+      }];
+    }
+    if (options.replaceConflict) {
+      return [{
+        ...op,
+        action: "update",
+        currentHash: state.hash,
+        reason: "force adopting managed-block destination",
+      }];
+    }
+    return [{
+      ...op,
+      action: "conflict",
+      currentHash: state.hash,
+      reason: "destination exists but is not managed",
+    }];
+  }
+
+  if (!state.hasBlock || state.drifted || state.hash !== existing.hash) {
+    const composedFromDiff = changedComposedSelectors(op.composedFrom, existing.composedFrom);
+    if (options.forceDrift) {
+      return [{
+        ...op,
+        action: "update",
+        currentHash: state.hash,
+        manifestHash: existing.hash,
+        reason: reasonWithComposedDiff("force replacing drifted managed instruction block", op.composedFrom, existing.composedFrom),
+        composedFromDiff,
+      }];
+    }
+    return [{
+      ...op,
+      action: "drift",
+      currentHash: state.hash,
+      manifestHash: existing.hash,
+      reason: state.hasBlock ? "managed instruction block changed outside agentwheel" : "managed instruction block missing from destination",
+      blockedDesiredHash: op.desiredHash,
+      blockedReason: blockedDriftReason(op.composedFrom, existing.composedFrom),
+      composedFromDiff,
+    }];
+  }
+
+  if (existing.sourceHash === op.desiredHash) {
+    return [{ ...op, action: "skip", currentHash: state.hash, manifestHash: existing.hash, reason: "managed instruction block already up to date" }];
+  }
+
+  return [{
+    ...op,
+    action: "update",
+    currentHash: state.hash,
+    manifestHash: existing.hash,
+    reason: reasonWithComposedDiff("managed instruction source changed", op.composedFrom, existing.composedFrom),
+  }];
+}
+
+async function currentEntryHash(
+  entry: PlanningManifestEntry,
+  destPath: string,
+  transport: TargetTransport,
+): Promise<string | undefined> {
+  if (entry.mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
+  const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
+  const state = await readManagedInstructionBlockState(destPath, selector, transport);
+  return state.drifted ? state.markerHash : state.hash;
 }
 
 async function canStrictlyAdoptLegacyEntry(
@@ -547,6 +732,7 @@ function adoptLegacyEntry(entry: InstallManifestV1Entry, op: InstallOperation): 
     workspaceOwner: op.workspaceOwner ?? legacyUnownedWorkspaceOwner,
     graphLockDigest: op.graphLockDigest,
     composedFrom: op.composedFrom ?? entry.composedFrom,
+    mode: op.mode,
   };
 }
 
@@ -612,6 +798,7 @@ function keepForeignManifestEntryOperation(
     semanticCommand: entry.semanticCommand,
     execute: entry.executed,
     mergeStrategy: entry.mergeStrategy,
+    mode: entry.mode,
     composedFrom: entry.composedFrom,
     preserveInManifest: true,
     ...operationMetadataFromEntry(entry),
@@ -697,6 +884,7 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
     channel: artifact.channel ?? "managed",
     packageName: artifact.packageName,
     mergeStrategy: target.merge,
+    mode: target.mode,
     composedFrom: metadata.composedFrom,
     ...metadata,
     installName,

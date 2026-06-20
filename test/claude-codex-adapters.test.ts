@@ -22,7 +22,7 @@ async function tempRoot(prefix = "agentwheel-claude-codex-"): Promise<string> {
   return root;
 }
 
-async function writePackage(root: string): Promise<void> {
+async function writePackage(root: string, options: { plugins?: boolean } = {}): Promise<void> {
   await mkdir(join(root, "instructions"), { recursive: true });
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills", "demo"), { recursive: true });
@@ -30,6 +30,9 @@ async function writePackage(root: string): Promise<void> {
   await mkdir(join(root, "subagents", "reviewer"), { recursive: true });
   await mkdir(join(root, "mcp"), { recursive: true });
   await mkdir(join(root, "hooks"), { recursive: true });
+  if (options.plugins) {
+    await mkdir(join(root, "plugins", "demo-plugin", ".codex-plugin"), { recursive: true });
+  }
   await mkdir(join(root, "shared", "bin"), { recursive: true });
   await writeFile(join(root, "openpack.json"), JSON.stringify({
     schemaVersion: 2,
@@ -47,6 +50,7 @@ async function writePackage(root: string): Promise<void> {
       { type: "subagents", path: "subagents" },
       { type: "mcp", path: "mcp" },
       { type: "hooks", path: "hooks" },
+      ...(options.plugins ? [{ type: "plugins", path: "plugins" }] : []),
     ],
   }, null, 2), "utf8");
   await writeFile(join(root, "instructions", "AGENTS.md"), "# Instructions\n", "utf8");
@@ -60,6 +64,13 @@ async function writePackage(root: string): Promise<void> {
   await writeFile(join(root, "hooks", "events.json"), JSON.stringify({
     hooks: { managed: [{ matcher: ".*", hooks: [{ type: "command", command: "echo managed" }] }] },
   }, null, 2), "utf8");
+  if (options.plugins) {
+    await writeFile(join(root, "plugins", "demo-plugin", ".codex-plugin", "plugin.json"), JSON.stringify({
+      name: "demo-plugin",
+      version: "1.0.0",
+      description: "Fixture plugin for Codex adapter tests.",
+    }, null, 2), "utf8");
+  }
   await writeFile(join(root, "shared", "bin", "tool.sh"), "#!/bin/sh\necho ok\n", "utf8");
   await chmod(join(root, "shared", "bin", "tool.sh"), 0o755);
 }
@@ -105,15 +116,7 @@ describe("Claude and Codex adapters", () => {
   it("installs Codex artifacts and merges MCP into config.toml without deleting user config", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
-    await writePackage(source);
-    await writeFile(join(source, "rules", "safe.rules"), [
-      "prefix_rule(",
-      "    pattern = [\"gh\", \"pr\", \"view\"],",
-      "    decision = \"prompt\",",
-      "    justification = \"Viewing PRs is allowed with approval\",",
-      ")",
-      "",
-    ].join("\n"), "utf8");
+    await writePackage(source, { plugins: true });
     await mkdir(join(target, ".codex"), { recursive: true });
     await writeFile(join(target, ".codex", "config.toml"), [
       "model = \"gpt-5.1-codex\"",
@@ -128,18 +131,24 @@ describe("Claude and Codex adapters", () => {
     }, null, 2), "utf8");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, {
-      select: ["instructions/AGENTS.md", "rules/safe.rules", "skills/demo", "mcp/managed.json", "hooks/events.json"],
+      select: ["instructions/AGENTS.md", "skills/demo", "plugins/demo-plugin", "mcp/managed.json", "hooks/events.json"],
     });
     const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
+    const plugin = plan.operations.find((operation) => operation.artifactType === "plugins");
+
+    expect(codexAdapter.targets.plugins?.local).toMatchObject({ dest: "plugins", semantic: "codex-plugin" });
+    expect(codexAdapter.targets.plugins?.user).toMatchObject({ root: "home", dest: ".codex/plugins", semantic: "codex-plugin" });
+    expect(plugin?.relativeDestPath).toBe("plugins/demo-plugin");
+    expect(plugin?.installName).toBe("demo-plugin");
     await applyInstallPlan(plan, bundle.sourceLock);
 
     await expect(stat(join(target, "AGENTS.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".agents", "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).resolves.toBeTruthy();
     expect((await stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
+    await expect(stat(join(target, "plugins", "demo-plugin", ".codex-plugin", "plugin.json"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".codex", "commands", "review.md"))).rejects.toThrow();
     await expect(stat(join(target, ".codex", "agents", "reviewer", "AGENTS.md"))).rejects.toThrow();
-    await expect(stat(join(target, ".codex", "rules", "safe.rules"))).resolves.toBeTruthy();
 
     const config = await readFile(join(target, ".codex", "config.toml"), "utf8");
     expect(config).toContain("model = \"gpt-5.1-codex\"");
@@ -154,6 +163,28 @@ describe("Claude and Codex adapters", () => {
     expect(hooks.hooks.user[0].command).toBe("echo user");
     expect(hooks.hooks.managed[0].hooks[0].command).toBe("echo managed");
     await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("does not support Codex rules artifacts through the built-in adapter", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writePackage(source);
+    await writeFile(join(source, "rules", "safe.rules"), [
+      "prefix_rule(",
+      "    pattern = [\"gh\", \"pr\", \"view\"],",
+      "    decision = \"prompt\",",
+      "    justification = \"Viewing PRs is allowed with approval\",",
+      ")",
+      "",
+    ].join("\n"), "utf8");
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["rules/safe.rules"] });
+    try {
+      await expect(createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" }))
+        .rejects.toThrow(/Adapter codex does not support rules artifacts for any installation type/);
+    } finally {
+      await rm(bundle.root, { recursive: true, force: true });
+    }
   });
 
   it("plans selected mesh skills into Claude and Codex skill directories", async () => {

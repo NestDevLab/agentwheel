@@ -21,6 +21,7 @@ import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
+import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
 
@@ -110,7 +111,8 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   const transport = options.transport ?? localTransport;
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const installationType = resolveInstallationTypeForArtifacts(options.adapter, bundle.artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, bundle.artifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRootArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, installationType);
+  const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType });
   const manifest = await readInstallManifest(installRoot, options.adapter.name, transport, { installationType, stateKey });
   const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport, {
@@ -120,6 +122,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     forceDrift: options.forceDrift,
     forceConflict: options.forceConflict,
     replaceConflict: options.replaceConflict,
+    warn: options.warn,
   });
   return { plan, bundle, resolvedSource, registryEntryName: resolvedInput.registryEntry?.name };
 }
@@ -187,7 +190,9 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const bundle = await renderGraphForTarget(graph, {
     workspaceRoot,
     adapter: options.adapter,
+    installationType,
     targetFingerprint,
+    warn,
   });
   const desiredArtifacts = desiredArtifactsFromGraphBundle(bundle);
   const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);
@@ -204,6 +209,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     forceDrift: options.forceDrift,
     forceConflict: options.forceConflict,
     replaceConflict: options.replaceConflict,
+    warn,
   });
   return {
     plan,

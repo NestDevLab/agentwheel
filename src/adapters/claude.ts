@@ -24,6 +24,10 @@ export const claudeAdapter: AdapterConfig = {
       local: { enabled: true, dest: ".claude/agents" },
       user: { enabled: true, root: "home", dest: ".claude/agents" },
     },
+    plugins: {
+      local: { enabled: true, dest: ".claude/plugins", semantic: "claude-plugin" },
+      user: { enabled: true, root: "home", dest: ".claude/plugins", semantic: "claude-plugin" },
+    },
     mcp: {
       local: { enabled: true, dest: ".mcp.json", merge: "json-deep" },
     },

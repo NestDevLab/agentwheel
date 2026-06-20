@@ -26,6 +26,14 @@ import {
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
 import { normalizeOwners } from "./desired.js";
+import {
+  managedInstructionBlockLanded,
+  managedInstructionBlockMode,
+  managedInstructionSelector,
+  readManagedInstructionBlockState,
+  removeManagedInstructionBlock,
+  writeManagedInstructionBlock,
+} from "./instructions-block.js";
 import { writeJsonAtomic } from "../utils/fs.js";
 
 const execFileAsync = promisify(execFile);
@@ -391,6 +399,19 @@ async function applyOperation(
     if (!operation.sourcePath || !operation.desiredHash) {
       throw new Error(`Invalid operation missing source/hash: ${operation.relativeDestPath}`);
     }
+    if (operation.mode === managedInstructionBlockMode) {
+      const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+      const hash = await writeManagedInstructionBlock(operation.sourcePath, operation.destPath, selector, transport, operation.manifestHash);
+      if (hash !== operation.desiredHash) {
+        throw new Error(`Managed block hash verification failed for ${operation.relativeDestPath}: expected ${operation.desiredHash}, got ${hash}`);
+      }
+      return manifestEntryForOperation(operation, {
+        now,
+        hash,
+        sourceHash: operation.desiredHash,
+        graphLockDigest: context.graphLockDigest,
+      });
+    }
     if (operation.mergeStrategy === "json-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
     } else if (operation.mergeStrategy === "yaml-deep") {
@@ -420,7 +441,7 @@ async function applyOperation(
     }
     return manifestEntryForOperation(operation, {
       now,
-      hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : operation.desiredHash,
+      hash: (operation.mergeStrategy || operation.mode === managedInstructionBlockMode) && operation.currentHash ? operation.currentHash : operation.desiredHash,
       sourceHash: operation.desiredHash,
       graphLockDigest: context.graphLockDigest,
     });
@@ -439,7 +460,12 @@ async function applyOperation(
   }
 
   if (operation.action === "remove") {
-    await transport.rm(operation.destPath);
+    if (operation.mode === managedInstructionBlockMode) {
+      const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+      await removeManagedInstructionBlock(operation.destPath, selector, transport, operation.manifestHash);
+    } else {
+      await transport.rm(operation.destPath);
+    }
     return undefined;
   }
 
@@ -484,6 +510,16 @@ async function entryForCompletedOperation(
 ): Promise<InstallManifestEntry | undefined> {
   if (operation.action === "remove") return undefined;
   if (operation.action === "create" || operation.action === "update") {
+    if (operation.mode === managedInstructionBlockMode) {
+      const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+      const state = await readManagedInstructionBlockState(operation.destPath, selector, transport);
+      return manifestEntryForOperation(operation, {
+        now,
+        hash: state.hash ?? requireDesiredHash(operation),
+        sourceHash: requireDesiredHash(operation),
+        graphLockDigest,
+      });
+    }
     return manifestEntryForOperation(operation, {
       now,
       hash: await transport.hashPath(operation.destPath),
@@ -494,7 +530,7 @@ async function entryForCompletedOperation(
   if (operation.action === "skip") {
     return manifestEntryForOperation(operation, {
       now,
-      hash: operation.mergeStrategy && operation.currentHash ? operation.currentHash : requireDesiredHash(operation),
+      hash: (operation.mergeStrategy || operation.mode === managedInstructionBlockMode) && operation.currentHash ? operation.currentHash : requireDesiredHash(operation),
       sourceHash: requireDesiredHash(operation),
       graphLockDigest,
     });
@@ -533,6 +569,7 @@ function manifestEntryForOperation(
     semanticCommand: operation.semanticCommand,
     executed: values.executed ?? operation.execute,
     mergeStrategy: operation.mergeStrategy,
+    mode: operation.mode,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,
   };
@@ -558,9 +595,20 @@ function operationNeedsSource(operation: InstallOperation): boolean {
 }
 
 async function operationLanded(operation: InstallOperation, transport: TargetTransport): Promise<boolean> {
-  if (operation.action === "remove") return !(await transport.pathExists(operation.destPath));
+  if (operation.action === "remove") {
+    if (operation.mode === managedInstructionBlockMode) {
+      const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+      const state = await readManagedInstructionBlockState(operation.destPath, selector, transport);
+      return !state.exists || !state.hasBlock;
+    }
+    return !(await transport.pathExists(operation.destPath));
+  }
   if (operation.action !== "create" && operation.action !== "update") return false;
   if (!(await transport.pathExists(operation.destPath))) return false;
+  if (operation.mode === managedInstructionBlockMode) {
+    const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+    return managedInstructionBlockLanded(operation.destPath, selector, operation.desiredHash, transport);
+  }
   if (operation.mergeStrategy) return true;
   if (!operation.desiredHash) return false;
   return (await transport.hashPath(operation.destPath)) === operation.desiredHash;

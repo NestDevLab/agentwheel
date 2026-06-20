@@ -5,8 +5,8 @@ export const copilotAdapter: AdapterConfig = {
   displayName: "GitHub Copilot CLI",
   targets: {
     instructions: {
-      local: { enabled: true, dest: ".github/copilot-instructions.md" },
-      user: { enabled: true, root: "home", dest: ".copilot/copilot-instructions.md" },
+      local: { enabled: true, dest: ".github/copilot-instructions.md", mode: "managed-block" },
+      user: { enabled: true, root: "home", dest: ".copilot/copilot-instructions.md", mode: "managed-block" },
     },
     rules: {
       local: { enabled: true, dest: ".github/instructions", formats: ["markdown-rule", "copilot-instruction-rule"], semantic: "copilot-instruction" },

@@ -147,22 +147,22 @@ describe("install engine", () => {
   it("force conflict adopts unmanaged artifacts when content already matches", async () => {
     const targetRoot = await tempRoot();
     const initial = await buildPlan(targetRoot);
-    const instruction = initial.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")!;
-    await mkdir(dirname(instruction.destPath), { recursive: true });
-    await writeFile(instruction.destPath, await readFile(instruction.sourcePath!, "utf8"), "utf8");
+    const rule = initial.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md")!;
+    await mkdir(dirname(rule.destPath), { recursive: true });
+    await writeFile(rule.destPath, await readFile(rule.sourcePath!, "utf8"), "utf8");
 
     const blocked = await buildPlan(targetRoot);
-    expect(blocked.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")?.action).toBe("conflict");
+    expect(blocked.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md")?.action).toBe("conflict");
     await rm(blocked.bundle.root, { recursive: true, force: true });
 
     const forced = await buildPlan(targetRoot, { forceConflict: true });
-    const operation = forced.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md");
+    const operation = forced.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md");
     expect(forced.plan.hasBlockingChanges).toBe(false);
     expect(operation?.action).toBe("skip");
     expect(operation?.reason).toContain("force adopting unmanaged destination");
 
     const manifest = await applyInstallPlan(forced.plan, forced.bundle.sourceLock);
-    expect(manifest.entries.map((entry) => entry.path)).toContain("CLAUDE.md");
+    expect(manifest.entries.map((entry) => entry.path)).toContain(".claude/rules/core.md");
 
     await rm(initial.bundle.root, { recursive: true, force: true });
     await rm(forced.bundle.root, { recursive: true, force: true });
@@ -171,18 +171,18 @@ describe("install engine", () => {
   it("replace conflict overwrites unmanaged artifacts that differ", async () => {
     const targetRoot = await tempRoot();
     const initial = await buildPlan(targetRoot);
-    const instruction = initial.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md")!;
-    await mkdir(dirname(instruction.destPath), { recursive: true });
-    await writeFile(instruction.destPath, "manual unmanaged content\n", "utf8");
+    const rule = initial.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md")!;
+    await mkdir(dirname(rule.destPath), { recursive: true });
+    await writeFile(rule.destPath, "manual unmanaged content\n", "utf8");
 
     const forced = await buildPlan(targetRoot, { replaceConflict: true });
-    const operation = forced.plan.operations.find((item) => item.relativeDestPath === "CLAUDE.md");
+    const operation = forced.plan.operations.find((item) => item.relativeDestPath === ".claude/rules/core.md");
     expect(forced.plan.hasBlockingChanges).toBe(false);
     expect(operation?.action).toBe("update");
     expect(operation?.reason).toContain("force replacing unmanaged destination");
 
     await applyInstallPlan(forced.plan, forced.bundle.sourceLock);
-    expect(await readFile(instruction.destPath, "utf8")).not.toContain("manual unmanaged content");
+    expect(await readFile(rule.destPath, "utf8")).not.toContain("manual unmanaged content");
 
     await rm(initial.bundle.root, { recursive: true, force: true });
     await rm(forced.bundle.root, { recursive: true, force: true });
@@ -200,7 +200,8 @@ describe("install engine", () => {
     expect(plan.operations.map((operation) => operation.action)).toEqual(["remove", "remove", "remove"]);
 
     await uninstall(plan, false);
-    await expect(stat(join(targetRoot, "CLAUDE.md"))).rejects.toThrow();
+    await expect(stat(join(targetRoot, "CLAUDE.md"))).resolves.toBeTruthy();
+    expect(await readFile(join(targetRoot, "CLAUDE.md"), "utf8")).not.toContain("openpack:include instructions/instructions.md");
     expect(await readInstallManifest(targetRoot, claudeAdapter.name)).toBeUndefined();
   });
 
@@ -225,7 +226,8 @@ describe("install engine", () => {
     const result = await uninstall(uninstallPlan, { dryRun: false });
     expect(result).toEqual({ removed: 5, kept: 1, removedDrifted: 0 });
     await expect(stat(driftedPath)).resolves.toBeTruthy();
-    await expect(stat(join(targetRoot, "CLAUDE.md"))).rejects.toThrow();
+    await expect(stat(join(targetRoot, "CLAUDE.md"))).resolves.toBeTruthy();
+    expect(await readFile(join(targetRoot, "CLAUDE.md"), "utf8")).not.toContain("openpack:include instructions/instructions.md");
 
     const partialManifest = await readInstallManifest(targetRoot, claudeAdapter.name);
     expect(partialManifest?.entries.map((entry) => entry.path)).toEqual([".claude/rules/safe-actions.md"]);

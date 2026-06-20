@@ -46,7 +46,7 @@ async function writePackage(root: string, provides: Array<{ type: string; path: 
 describe("OpenClaw adapter", () => {
   it("declares user-level config targets without a subagents target", () => {
     expect(openClawAdapter.targets.instructions).toEqual({
-      user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md" },
+      user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md", mode: "managed-block" },
     });
     expect(openClawAdapter.targets.mcp).toEqual({
       user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },

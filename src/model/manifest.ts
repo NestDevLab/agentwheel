@@ -19,6 +19,7 @@ export const manifestEntryV1Schema = z.object({
   semanticCommand: z.array(z.string()).optional(),
   executed: z.boolean().optional(),
   mergeStrategy: z.enum(["json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });
 

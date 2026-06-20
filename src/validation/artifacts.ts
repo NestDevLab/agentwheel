@@ -159,7 +159,7 @@ async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): P
     return undefined;
   }
 
-  if (artifact.type === "plugins" && isPluginFormat(target.semantic)) {
+  if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
     if (artifact.kind === "dir" && (await openClawPluginManifestPaths(artifact)).length > 0) return "openclaw-plugin";
   }
 

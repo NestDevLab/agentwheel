@@ -92,13 +92,11 @@ const pathCases: Array<{
   expectedPath: string;
 }> = [
   { label: "codex local instructions", adapter: codexAdapter, installationType: "local", type: "instructions", name: "AGENTS.md", expectedRoot: "target", expectedPath: "AGENTS.md" },
-  { label: "codex local rules", adapter: codexAdapter, installationType: "local", type: "rules", name: "default.rules", expectedRoot: "target", expectedPath: ".codex/rules/default.rules" },
   { label: "codex local skills", adapter: codexAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: ".agents/skills/smoke" },
   { label: "codex local subagents", adapter: codexAdapter, installationType: "local", type: "subagents", name: "reviewer", expectedRoot: "target", expectedPath: ".codex/agents/reviewer.toml" },
   { label: "codex local mcp", adapter: codexAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".codex/config.toml" },
   { label: "codex local hooks", adapter: codexAdapter, installationType: "local", type: "hooks", name: "hooks.json", expectedRoot: "target", expectedPath: ".codex/hooks.json" },
   { label: "codex user instructions", adapter: codexAdapter, installationType: "user", type: "instructions", name: "AGENTS.md", expectedRoot: "home", expectedPath: ".codex/AGENTS.md" },
-  { label: "codex user rules", adapter: codexAdapter, installationType: "user", type: "rules", name: "default.rules", expectedRoot: "home", expectedPath: ".codex/rules/default.rules" },
   { label: "codex user skills", adapter: codexAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".agents/skills/smoke" },
   { label: "codex user subagents", adapter: codexAdapter, installationType: "user", type: "subagents", name: "reviewer", expectedRoot: "home", expectedPath: ".codex/agents/reviewer.toml" },
   { label: "codex user mcp", adapter: codexAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".codex/config.toml" },
@@ -177,6 +175,10 @@ describe("artifact compatibility registry", () => {
     await expect(createCombinedInstallPlan([command], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/does not support commands artifacts/);
 
+    const codexRule = await desiredArtifact(source, "rules", "policy.rules");
+    await expect(createCombinedInstallPlan([codexRule], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/does not support rules artifacts/);
+
     const claudeMcp = await desiredArtifact(source, "mcp", "server.json");
     const claudeMcpPlan = await createCombinedInstallPlan([claudeMcp], claudeAdapter, target, undefined, localTransport, { installationType: "local" });
     expect(claudeMcpPlan.operations[0]?.relativeDestPath).toBe(".mcp.json");
@@ -210,16 +212,21 @@ describe("artifact compatibility registry", () => {
 
     const markdownRule = await desiredArtifact(source, "rules", "policy.md");
     await expect(createCombinedInstallPlan([markdownRule], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
-      .rejects.toThrow(/format 'markdown-rule' is not compatible.*codex-command-policy/s);
+      .rejects.toThrow(/does not support rules artifacts/);
+
+    const codexSkill = await desiredArtifact(source, "skills", "codex-skill", "dir");
+    const skippedCodexRule = await desiredArtifact(source, "rules", "policy.rules");
+    const warnings: string[] = [];
+    const codexPlan = await createCombinedInstallPlan([codexSkill, skippedCodexRule], codexAdapter, target, undefined, localTransport, {
+      installationType: "local",
+      warn: (message) => warnings.push(message),
+    });
+    expect(codexPlan.operations.map((operation) => operation.relativeDestPath)).toEqual([".agents/skills/codex-skill"]);
+    expect(warnings.join("\n")).toMatch(/skip rules\/policy\.rules .*target does not support behavioral Markdown rules/);
 
     const codexRule = await desiredArtifact(source, "rules", "policy.rules");
     await expect(createCombinedInstallPlan([codexRule], claudeAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/format 'codex-command-policy' is not compatible.*markdown-rule/s);
-
-    const invalidCodexRule = await desiredArtifact(source, "rules", "empty.rules");
-    await writeFile(invalidCodexRule.sourcePath, "# Just a comment\n", "utf8");
-    await expect(createCombinedInstallPlan([{ ...invalidCodexRule, hash: await hashPath(invalidCodexRule.sourcePath) }], codexAdapter, target, undefined, localTransport, { installationType: "local" }))
-      .rejects.toThrow(/must contain at least one prefix_rule/);
 
     const pluginDir = await desiredArtifact(source, "plugins", "bad-plugin", "dir");
     await expect(createCombinedInstallPlan([pluginDir], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))

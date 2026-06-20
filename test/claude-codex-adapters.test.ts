@@ -130,7 +130,12 @@ describe("Claude and Codex adapters", () => {
     const bundle = await stageSource(new LocalSourceDriver(), source, {
       select: ["instructions/AGENTS.md", "rules/safe.rules", "skills/demo", "mcp/managed.json", "hooks/events.json"],
     });
-    const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, { installationType: "local" });
+    const warnings: string[] = [];
+    const plan = await createInstallPlan(bundle, codexAdapter, target, undefined, localTransport, {
+      installationType: "local",
+      warn: (message) => warnings.push(message),
+    });
+    expect(warnings.join("\n")).toMatch(/skip rules\/safe\.rules .*target does not support behavioral Markdown rules/);
     await applyInstallPlan(plan, bundle.sourceLock);
 
     await expect(stat(join(target, "AGENTS.md"))).resolves.toBeTruthy();
@@ -139,7 +144,7 @@ describe("Claude and Codex adapters", () => {
     expect((await stat(join(target, ".agents", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
     await expect(stat(join(target, ".codex", "commands", "review.md"))).rejects.toThrow();
     await expect(stat(join(target, ".codex", "agents", "reviewer", "AGENTS.md"))).rejects.toThrow();
-    await expect(stat(join(target, ".codex", "rules", "safe.rules"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".codex", "rules", "safe.rules"))).rejects.toThrow();
 
     const config = await readFile(join(target, ".codex", "config.toml"), "utf8");
     expect(config).toContain("model = \"gpt-5.1-codex\"");

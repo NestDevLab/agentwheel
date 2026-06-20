@@ -110,8 +110,8 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   });
   const transport = options.transport ?? localTransport;
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installationType = resolveInstallationTypeForArtifacts(options.adapter, bundle.artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRootArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, installationType);
+  const installRootArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, requestedInstallationType);
+  const installationType = resolveInstallationTypeForArtifacts(options.adapter, installRootArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType });
   const manifest = await readInstallManifest(installRoot, options.adapter.name, transport, { installationType, stateKey });

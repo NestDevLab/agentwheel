@@ -19,6 +19,10 @@ export const copilotAdapter: AdapterConfig = {
       local: { enabled: true, dest: ".github/skills" },
       user: { enabled: true, root: "home", dest: ".copilot/skills" },
     },
+    plugins: {
+      local: { enabled: true, dest: ".github/plugins", semantic: "copilot-plugin" },
+      user: { enabled: true, root: "home", dest: ".copilot/plugins", semantic: "copilot-plugin" },
+    },
     subagents: {
       local: { enabled: true, dest: ".github/agents", semantic: "copilot-agent" },
       user: { enabled: true, root: "home", dest: ".copilot/agents", semantic: "copilot-agent" },
@@ -30,6 +34,10 @@ export const copilotAdapter: AdapterConfig = {
     hooks: {
       local: { enabled: true, dest: ".github/hooks" },
       user: { enabled: true, root: "home", dest: ".copilot/hooks" },
+    },
+    settings: {
+      local: { enabled: true, dest: ".github/settings.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".copilot/settings.json", merge: "json-deep" },
     },
   },
 };

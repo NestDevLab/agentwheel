@@ -38,10 +38,7 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Publish to npm (Trusted Publishing via OIDC)
-        run: |
-          echo "node $(node --version) / npm $(npm --version) (trusted publishing needs npm >= 11.5.1)"
-          echo "OIDC env present: ID_TOKEN_URL=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes} ID_TOKEN_TOKEN=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
-          npm publish --provenance --access public --loglevel verbose
+        run: npm publish --provenance --access public
 
       - name: Create GitHub Release
         env:

@@ -47,6 +47,18 @@ export async function filterArtifactsByInstallFormat<T extends Artifact>(
     }
     const target = targetMappingForArtifact(adapter, artifact.type, installationType);
     if (!target?.enabled) {
+      if (artifact.type === "rules") {
+        skipped.push({
+          artifact,
+          compatibility: {
+            compatible: false,
+            knownIncompatible: true,
+            expected: behavioralRuleFormats,
+            message: "target does not support behavioral Markdown rules",
+          },
+        });
+        continue;
+      }
       kept.push(artifact);
       continue;
     }

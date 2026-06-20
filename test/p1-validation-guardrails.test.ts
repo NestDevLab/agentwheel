@@ -29,9 +29,10 @@ describe("P1 validation guardrails", () => {
     const target = await tempRoot();
     const skill = await desiredArtifact(source, "skills", "smoke", "dir");
     const rule = await desiredArtifact(source, "rules", "behavior.md");
+    const adapter = codexAdapterWithoutRules();
     const warnings: string[] = [];
 
-    const plan = await createCombinedInstallPlan([skill, rule], codexAdapter, target, undefined, localTransport, {
+    const plan = await createCombinedInstallPlan([skill, rule], adapter, target, undefined, localTransport, {
       installationType: "local",
       warn: (message) => warnings.push(message),
     });
@@ -39,9 +40,9 @@ describe("P1 validation guardrails", () => {
     expect(plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".agents/skills/smoke"]);
     expect(warnings.join("\n")).toMatch(/skip rules\/behavior\.md .*target does not support behavioral Markdown rules/);
 
-    await expect(createCombinedInstallPlan([rule], codexAdapter, target, undefined, localTransport, {
+    await expect(createCombinedInstallPlan([rule], adapter, target, undefined, localTransport, {
       installationType: "local",
-    })).rejects.toThrow(/target does not support behavioral Markdown rules/);
+    })).rejects.toThrow(/does not support rules artifacts/);
   });
 
   it("filters non-behavioral rule artifacts before graph desired artifacts and locks", async () => {
@@ -78,7 +79,7 @@ describe("P1 validation guardrails", () => {
       roots: [{ rootId: "root", source: root }],
       targetRoot: target,
       workspaceRoot: workspace,
-      adapter: codexAdapter,
+      adapter: codexAdapterWithoutRules(),
       targetKey: "p1-guardrails",
       isTTY: false,
     });
@@ -180,4 +181,10 @@ async function writeOpenPack(root: string, manifest: Record<string, unknown>): P
     version: "1.0.0",
     ...manifest,
   }, null, 2)}\n`);
+}
+
+function codexAdapterWithoutRules(): AdapterConfig {
+  const targets = { ...codexAdapter.targets };
+  delete targets.rules;
+  return { ...codexAdapter, targets };
 }

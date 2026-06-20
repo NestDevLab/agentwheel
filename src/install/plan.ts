@@ -103,8 +103,8 @@ export async function createInstallPlan(
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const artifacts = await renderPlanArtifacts(bundle, adapter);
-  const installationType = resolveInstallationTypeForArtifacts(adapter, artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installableArtifacts = await filterArtifactsByInstallFormat(artifacts, adapter, installationType, { warn: options.warn });
+  const installableArtifacts = await filterArtifactsByInstallFormat(artifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const desired: InstallOperation[] = [];
@@ -140,8 +140,8 @@ export async function createCombinedInstallPlan(
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installationType = resolveInstallationTypeForArtifacts(adapter, desiredArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installableArtifacts = await filterArtifactsByInstallFormat(desiredArtifacts, adapter, installationType, { warn: options.warn });
+  const installableArtifacts = await filterArtifactsByInstallFormat(desiredArtifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   for (const artifact of installableArtifacts) {

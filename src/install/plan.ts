@@ -41,7 +41,7 @@ export interface InstallOperation {
   packageName?: string;
   semanticCommand?: string[];
   execute?: boolean;
-  mergeStrategy?: "json-deep" | "codex-toml-mcp";
+  mergeStrategy?: "json-deep" | "yaml-deep" | "codex-toml-mcp";
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
   composedFrom?: Artifact["composedFrom"];
@@ -211,7 +211,7 @@ async function createPlanFromOperations(
       if (existing && existing.sourceHash === op.desiredHash) {
         operations.push({ ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
-        operations.push({ ...op, action: "update", currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing JSON" });
+        operations.push({ ...op, action: "update", currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
       }
       continue;
     }
@@ -720,7 +720,7 @@ function withExtension(name: string, targetExtension: string, knownExtensions: s
 }
 
 function isFileTarget(dest: string): boolean {
-  return /\.(json|jsonc|toml|md)$/i.test(dest);
+  return /\.(json|jsonc|ya?ml|toml|md)$/i.test(dest);
 }
 
 function reasonWithComposedDiff(reason: string, desired?: Artifact["composedFrom"], current?: Artifact["composedFrom"]): string {

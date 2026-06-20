@@ -24,6 +24,7 @@ import {
   writeApplyJournal,
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
+import { mergeYamlFile } from "./yaml-merge.js";
 import { normalizeOwners } from "./desired.js";
 import { writeJsonAtomic } from "../utils/fs.js";
 
@@ -392,8 +393,12 @@ async function applyOperation(
     }
     if (operation.mergeStrategy === "json-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+    } else if (operation.mergeStrategy === "yaml-deep") {
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeYamlFile);
     } else if (operation.mergeStrategy === "codex-toml-mcp") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeCodexTomlMcp);
+    } else if (operation.mergeStrategy) {
+      throw new Error(`Merge strategy '${operation.mergeStrategy}' is not implemented by apply.`);
     } else {
       await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
     }

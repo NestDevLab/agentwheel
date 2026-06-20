@@ -16,8 +16,19 @@ export const targetMappingSchema = z.object({
   enabled: z.boolean().default(true),
   root: z.enum(["target", "home"]).optional(),
   formats: z.array(z.string().min(1)).optional(),
-  semantic: z.enum(["openclaw-plugin", "codex-subagent", "copilot-instruction", "copilot-prompt", "copilot-agent"]).optional(),
-  merge: z.enum(["json-deep", "codex-toml-mcp"]).optional(),
+  semantic: z.enum([
+    "openclaw-plugin",
+    "claude-plugin",
+    "codex-plugin",
+    "hermes-plugin",
+    "copilot-plugin",
+    "codex-subagent",
+    "copilot-instruction",
+    "copilot-prompt",
+    "copilot-agent",
+  ]).optional(),
+  merge: z.enum(["json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  mode: z.enum(["managed-block"]).optional(),
 });
 
 export const targetRegistrySchema = z.record(installationTypeSchema, targetMappingSchema);

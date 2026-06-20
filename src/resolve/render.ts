@@ -12,13 +12,16 @@ import { applyCustomizations, applyFragmentCustomizations } from "../staging/cus
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
+import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
 
 export interface GraphRenderTargetContext {
   workspaceRoot?: string;
   adapter?: AdapterConfig;
+  installationType?: string;
   targetFingerprint?: string;
+  warn?: (message: string) => void;
 }
 
 export async function renderGraphForTarget(
@@ -122,7 +125,14 @@ export async function renderGraphForTarget(
       })
       : runtimeRenderedArtifacts;
 
-    const installableArtifacts = renderedArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
+    const compatibleArtifacts = targetContext.adapter && targetContext.installationType
+      ? await filterArtifactsByInstallFormat(renderedArtifacts, targetContext.adapter, targetContext.installationType, {
+        selected: rawNode.node.selected,
+        warn: targetContext.warn,
+      })
+      : renderedArtifacts;
+
+    const installableArtifacts = compatibleArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
     artifacts.push(...installableArtifacts.map((artifact) => ({
       ...artifact,
       graphNodeId: rawNode.node.id,

@@ -146,6 +146,7 @@ export function installRootForArtifacts(
   targetRoot: string,
   installationType: string,
   artifactTypes: ArtifactType[],
+  isSsh = false,
 ): string {
   const roots = new Set(
     [...new Set(artifactTypes.filter((type) => type !== "fragments"))]
@@ -154,13 +155,15 @@ export function installRootForArtifacts(
   if (roots.has("home") && roots.has("target")) {
     throw new Error(`Installation type '${installationType}' for ${adapter.name} mixes home-rooted and target-rooted artifacts.`);
   }
-  return roots.has("home") ? userHomeRoot() : targetRoot;
+  // ssh: home-rooted artifacts live under the REMOTE home (= targetRoot/agent.root), not the orchestrator's local os.homedir().
+  return roots.has("home") && !isSsh ? userHomeRoot() : targetRoot;
 }
 
 export function installRootForAdapterInstallationType(
   adapter: AdapterConfig,
   targetRoot: string,
   installationType: string,
+  isSsh = false,
 ): string {
   const roots = new Set<string>();
   for (const registry of Object.values(adapter.targets)) {
@@ -170,7 +173,8 @@ export function installRootForAdapterInstallationType(
   if (roots.has("home") && roots.has("target")) {
     throw new Error(`Installation type '${installationType}' for ${adapter.name} mixes home-rooted and target-rooted artifacts.`);
   }
-  return roots.has("home") ? userHomeRoot() : targetRoot;
+  // ssh: home-rooted artifacts live under the REMOTE home (= targetRoot/agent.root), not the orchestrator's local os.homedir().
+  return roots.has("home") && !isSsh ? userHomeRoot() : targetRoot;
 }
 
 function userHomeRoot(): string {

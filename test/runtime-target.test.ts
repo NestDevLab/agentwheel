@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
+import { installRootForAdapterInstallationType, installRootForArtifacts } from "../src/model/adapter.js";
+import type { ArtifactType } from "../src/model/artifact.js";
 import { applyInstallPlan } from "../src/install/index.js";
 import { stateKeyFor } from "../src/install/paths.js";
 import { createSourcePlan } from "../src/lifecycle/source-plan.js";
@@ -307,5 +309,14 @@ describe("runtime target resolution", () => {
 
     await expect(stat(join(remoteRoot, "skills", "demo", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(remoteRoot, ".agentwheel", "openclaw.local.install-manifest.json"))).resolves.toBeTruthy();
+  });
+
+  it("home-rooted user install uses the remote agent root over ssh, the local home otherwise", () => {
+    const remoteHome = "/home/remote-user";
+    // over ssh the user's home is the remote agent root (= targetRoot), not the orchestrator's local os.homedir()
+    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", true)).toBe(remoteHome);
+    expect(installRootForArtifacts(openClawAdapter, remoteHome, "user", ["skills"] as ArtifactType[], true)).toBe(remoteHome);
+    // locally it stays the orchestrator's home, never the passed (remote) target root
+    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", false)).not.toBe(remoteHome);
   });
 });

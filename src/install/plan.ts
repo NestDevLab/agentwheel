@@ -103,7 +103,7 @@ export async function createInstallPlan(
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const artifacts = await renderPlanArtifacts(bundle, adapter);
   const installationType = resolveInstallationTypeForArtifacts(adapter, artifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, artifacts.map((artifact) => artifact.type));
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, artifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(artifacts, adapter, installationType);
   const desired: InstallOperation[] = [];
 
@@ -139,7 +139,7 @@ export async function createCombinedInstallPlan(
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const installationType = resolveInstallationTypeForArtifacts(adapter, desiredArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, desiredArtifacts.map((artifact) => artifact.type));
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(desiredArtifacts, adapter, installationType);
   for (const artifact of desiredArtifacts) {
     if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {

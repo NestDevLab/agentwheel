@@ -545,7 +545,7 @@
 
     .matrix {
       width: 100%;
-      min-width: 840px;
+      min-width: 980px;
       border-collapse: collapse;
       font-size: 12px;
     }
@@ -579,19 +579,6 @@
       border-bottom: 0;
     }
 
-    .matrix-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--cyan);
-      box-shadow: 0 0 18px rgba(6, 182, 212, 0.58);
-    }
-
-    .matrix-dash {
-      color: rgba(156, 163, 175, 0.46);
-    }
-
     .badge {
       display: inline-flex;
       align-items: center;
@@ -607,40 +594,40 @@
       text-transform: uppercase;
     }
 
-    .badge.mapped {
+    .badge.format {
+      border-color: rgba(34, 197, 94, 0.38);
+      background: rgba(34, 197, 94, 0.12);
+      color: #bbf7d0;
+    }
+
+    .badge.route {
       border-color: rgba(99, 102, 241, 0.44);
       background: rgba(99, 102, 241, 0.14);
       color: #c7d2fe;
     }
 
-    .badge.custom {
-      border-color: rgba(168, 85, 247, 0.38);
-      background: rgba(168, 85, 247, 0.12);
-      color: #ddd6fe;
-    }
-
-    .badge.config {
+    .badge.semantic {
       border-color: rgba(245, 158, 11, 0.42);
       background: rgba(245, 158, 11, 0.12);
       color: #fde68a;
-    }
-
-    .badge.policy {
-      border-color: rgba(244, 114, 182, 0.42);
-      background: rgba(244, 114, 182, 0.12);
-      color: #fbcfe8;
-    }
-
-    .badge.behavior {
-      border-color: rgba(34, 197, 94, 0.38);
-      background: rgba(34, 197, 94, 0.12);
-      color: #bbf7d0;
     }
 
     .badge.internal {
       border-color: rgba(20, 184, 166, 0.38);
       background: rgba(20, 184, 166, 0.12);
       color: #99f6e4;
+    }
+
+    .badge.runtime {
+      border-color: rgba(148, 163, 184, 0.3);
+      background: rgba(148, 163, 184, 0.08);
+      color: #cbd5e1;
+    }
+
+    .badge.none {
+      border-color: rgba(148, 163, 184, 0.2);
+      background: rgba(148, 163, 184, 0.05);
+      color: rgba(203, 213, 225, 0.68);
     }
 
     .matrix-caption {
@@ -1115,7 +1102,7 @@
           <span class="section-kicker">01</span>
           <h2 class="section-title">Runtime matrix</h2>
         </div>
-        <div class="matrix-wrap" aria-label="Built-in adapter support matrix">
+        <div class="matrix-wrap" aria-label="Built-in adapter delivery-surface matrix">
           <table class="matrix">
             <thead>
               <tr>
@@ -1135,92 +1122,94 @@
             <tbody>
               <tr>
                 <th>OpenClaw</th>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="badge custom">custom</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="badge config">config</span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="badge config">config</span></td>
-                <td><span class="badge config">config</span></td>
+                <td><span class="badge format">md user</span></td>
+                <td><span class="badge route">via md</span></td>
+                <td><span class="badge format">dir</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">json settings</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">json settings</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge semantic">semantic</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Claude Code</th>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="badge behavior">behavior</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">dir</span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Codex CLI</th>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge route">via md</span></td>
+                <td><span class="badge format">dir</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge format">toml</span></td>
+                <td><span class="badge format">toml</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">toml</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>Hermes</th>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="badge custom">custom</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="badge config">config</span></td>
-                <td><span class="matrix-dash">—</span></td>
-                <td><span class="badge config">config</span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge route">via md</span></td>
+                <td><span class="badge format">dir user</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">yaml knobs</span></td>
+                <td><span class="badge format">yaml</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">yaml</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>GitHub Copilot CLI</th>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="badge mapped">mapped</span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
-                <td><span class="matrix-dot"></span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge route">via md</span></td>
+                <td><span class="badge format">dir</span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">md</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="matrix-legend" aria-label="Runtime matrix legend">
-          <span class="legend-item"><span class="matrix-dot"></span> supported file path</span>
-          <span class="legend-item"><strong>Rules are not portable:</strong> same OpenPack kind, different runtime meaning</span>
-          <span class="legend-item"><span class="badge custom">custom</span> adapter needed</span>
-          <span class="legend-item"><span class="badge config">config</span> config merge or semantic install</span>
+          <span class="legend-item"><span class="badge format">md</span> <span class="badge format">json</span> <span class="badge format">yaml</span> <span class="badge format">toml</span> delivery surface</span>
+          <span class="legend-item"><span class="badge format">dir</span> native directory</span>
+          <span class="legend-item"><span class="badge format">json settings</span> config-backed capability</span>
+          <span class="legend-item"><span class="badge route">via md</span> behavioral guidance through instructions</span>
+          <span class="legend-item"><span class="badge semantic">semantic</span> runtime install command</span>
+          <span class="legend-item"><span class="badge runtime">runtime</span> no managed artifact</span>
           <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
-          <span class="legend-item"><a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Full matrix</a></span>
+          <span class="legend-item"><a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Artifact-level matrix</a></span>
         </div>
         <div class="rules-explainer" aria-label="Rules semantics by runtime">
           <div class="rule-card">
-            <strong><span class="badge custom">custom</span> Codex command policy</strong>
-            <span><code>.codex/rules</code> is command policy, not OpenPack behavioral rules. The built-in adapter does not install it.</span>
+            <strong><span class="badge format">md</span> Claude rules</strong>
+            <span>Claude is the only native behavioral rules target; rules are Markdown files under <code>.claude/rules</code>.</span>
           </div>
           <div class="rule-card">
-            <strong><span class="badge behavior">behavior</span> Claude rules</strong>
-            <span>Behavioral instructions, often path-scoped, that shape how Claude should work on files.</span>
+            <strong><span class="badge route">via md</span> Other runtimes</strong>
+            <span>Behavioral guidance is delivered as managed instructions, not as a separate rules artifact.</span>
           </div>
           <div class="rule-card">
-            <strong><span class="badge mapped">mapped</span> Copilot rules</strong>
-            <span>Written as Copilot custom instructions, because Copilot has no native command-policy rules.</span>
+            <strong><span class="badge none">no</span> Codex command policy</strong>
+            <span><code>.codex/rules</code> is shell command policy, not OpenPack behavioral rules.</span>
           </div>
         </div>
       </section>
@@ -1249,7 +1238,7 @@
           </svg>
           <div class="step">
             <span class="step-mark">3</span>
-            <span><strong>Install native</strong><span>Harness files</span></span>
+            <span><strong>Install native</strong><span>Harness surfaces</span></span>
           </div>
         </div>
       </section>

@@ -22,7 +22,7 @@ composition metadata, runtime targeting, or fragments.
   "schemaVersion": 2,
   "name": "example/agent-pack",
   "version": "1.0.0",
-  "runtimes": ["claude", "codex"],
+  "runtimes": ["claude", "copilot"],
   "requires": {
     "core": {
       "source": "registry:core-rules",
@@ -37,11 +37,11 @@ composition metadata, runtime targeting, or fragments.
   },
   "provides": [
     { "type": "fragments", "path": "fragments" },
-    { "type": "rules", "path": "rules/codex.rules", "format": "codex-command-policy", "runtimes": ["codex"] },
+    { "type": "rules", "path": "rules/safe-actions.md", "format": "markdown-rule", "runtimes": ["claude", "copilot"] },
     {
       "type": "skills",
       "path": "skills",
-      "runtimes": ["claude", "codex"],
+      "runtimes": ["claude", "copilot"],
       "items": {
         "triage": {
           "requires": ["rules/safe-actions.md"],
@@ -49,7 +49,7 @@ composition metadata, runtime targeting, or fragments.
             { "include": "fragments/review-style.md" },
             { "include": "fragments/local-note.md", "optional": true, "markers": false }
           ],
-          "runtimes": ["codex"]
+          "runtimes": ["copilot"]
         }
       }
     }
@@ -105,9 +105,11 @@ defines a fragment target.
 `provides[].format` and `provides[].items.<name>.format` optionally describe the concrete artifact
 format inside a broad type. Installers may infer obvious formats from file names and structure, but
 runtime adapters can reject artifacts whose format is unknown or incompatible with the target. Common
-formats include `codex-command-policy` for Codex `.rules` files, `markdown-rule` or
-`claude-markdown-rule` for Markdown behavioral rules, `copilot-instruction-rule` for Copilot rule
-artifacts that render as instructions, and `openclaw-plugin` for OpenClaw plugin directories.
+formats include `markdown-rule` or `claude-markdown-rule` for Markdown behavioral rules,
+`copilot-instruction-rule` for Copilot rule artifacts that render as instructions, and
+`openclaw-plugin`, `claude-plugin`, `codex-plugin`, `copilot-plugin`, or `hermes-plugin` for
+runtime plugin directories. Codex `.codex/rules` command policy is intentionally not the built-in
+OpenPack behavioral `rules` target.
 
 ## Selectors
 

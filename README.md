@@ -45,11 +45,13 @@ Every built-in target is scoped by `--installation-type <type>`; built-ins curre
 for project/workspace installs and `user` for documented user-level installs. If a package can be
 installed in more than one type, agentwheel requires `--installation-type` instead of guessing.
 
-- **OpenClaw** — workspace `skills/`, user `~/.openclaw/skills`
-- **Claude Code** — `CLAUDE.md`, `.claude/`, and user `~/.claude/`
-- **Codex CLI** — `AGENTS.md`, `.agents/skills`, `.codex/`, and user equivalents
+- **OpenClaw** — workspace `skills/`, local semantic plugin install; user `~/.openclaw/skills`,
+  `~/.openclaw/workspace/AGENTS.md`, and `~/.openclaw/openclaw.json`
+- **Claude Code** — `CLAUDE.md`, `.claude/`, `.mcp.json`, and user `~/.claude/`
+- **Codex CLI** — `AGENTS.md`, `.agents/skills`, `plugins/`, `.codex/`, and user equivalents
 - **GitHub Copilot CLI** — `.github/`, user `~/.copilot/`, and documented `.agents` skill alternatives
-- **Hermes** — local instructions via `AGENTS.md`; skills are user-only at `~/.hermes/skills`
+- **Hermes** — local `AGENTS.md`; user `~/.hermes/SOUL.md`, `~/.hermes/skills`,
+  `~/.hermes/plugins`, and `~/.hermes/config.yaml`
 - **Bring your own** — JSONC config adapters with `--adapter-config`, or programmatic adapters with `--adapter-module`
 
 Supported resource types include instructions, rules, skills, commands, subagents, MCP, hooks,
@@ -57,10 +59,10 @@ settings, plugins, and fragments. Runtime compatibility is per artifact and per 
 see [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md).
 Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 
-> `rules` is an OpenPack artifact kind, not a portable runtime concept. Codex rules are command
-> execution policy, Claude rules are behavioral/path-scoped instructions, and Copilot rule-like
-> installs map to path-specific custom instructions. Unsupported rule targets require an explicit
-> custom adapter instead of an inferred folder.
+> `rules` is an OpenPack artifact kind, not a portable runtime concept. Claude rules are
+> behavioral/path-scoped instructions, Copilot rule-like installs map to custom instructions, and
+> Codex `.codex/rules` command policy is intentionally outside the built-in behavioral `rules`
+> target. Unsupported rule targets require an explicit custom adapter instead of an inferred folder.
 
 ## Core Commands
 
@@ -404,11 +406,11 @@ Built-in runtime targets:
 
 | Runtime | Native supported targets |
 |---|---|
-| **OpenClaw** | `local: skills/`; `user: ~/.openclaw/skills`; plugins require runtime-specific config |
-| **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP; rules are behavioral/path-scoped |
-| **Codex CLI** | `local: AGENTS.md, .agents/skills, .codex/rules, .codex/agents, .codex/config.toml, .codex/hooks.json`; `user: ~/.agents/skills, ~/.codex/...`; rules are command execution policy; subagents are TOML custom agents |
-| **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/skills`; rules require explicit adapter config |
-| **GitHub Copilot CLI** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/agents, .github/mcp.json, .github/hooks`; `user: ~/.copilot/copilot-instructions.md, ~/.copilot/instructions, ~/.copilot/skills, ~/.copilot/agents, ~/.copilot/mcp-config.json, ~/.copilot/hooks`; rule-like artifacts map to instructions |
+| **OpenClaw** | `local: skills/, semantic plugin install`; `user: ~/.openclaw/workspace/AGENTS.md, ~/.openclaw/skills, ~/.openclaw/openclaw.json`; rules require explicit adapter config |
+| **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .claude/plugins, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP; rules are behavioral/path-scoped |
+| **Codex CLI** | `local: AGENTS.md, .agents/skills, plugins/, .codex/agents, .codex/config.toml, .codex/hooks.json`; `user: ~/.codex/AGENTS.md, ~/.agents/skills, ~/.codex/plugins, ~/.codex/agents, ~/.codex/config.toml, ~/.codex/hooks.json`; no built-in `rules` target |
+| **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/SOUL.md, ~/.hermes/skills, ~/.hermes/plugins, ~/.hermes/config.yaml`; rules require explicit adapter config |
+| **GitHub Copilot CLI** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/plugins, .github/agents, .github/mcp.json, .github/hooks, .github/settings.json`; `user: ~/.copilot/copilot-instructions.md, ~/.copilot/instructions, ~/.copilot/skills, ~/.copilot/plugins, ~/.copilot/agents, ~/.copilot/mcp-config.json, ~/.copilot/hooks, ~/.copilot/settings.json`; rule-like artifacts map to instructions |
 
 ## Docs
 

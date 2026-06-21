@@ -33,11 +33,11 @@ inferred path.
 | Hermes | `rules` | None documented | `custom-adapter-only` | Built-in installs reject rules unless a custom adapter explicitly defines a target. |
 
 Built-in adapters also validate concrete artifact formats before install planning. For example,
-Codex `rules` accept `codex-command-policy` `.rules` files, Claude `rules` accept Markdown rule
-formats, Copilot rule artifacts render as instruction Markdown, and OpenClaw plugin targets require
-an `openclaw-plugin` directory with `plugin.json` or `openclaw.plugin.json`. If both plugin
-descriptors are present they must declare the same plugin name. Invalid or unknown formats fail the
-package plan before runtime files are written.
+Claude `rules` accept Markdown rule formats, Copilot rule artifacts render as instruction Markdown,
+and plugin targets require harness-specific plugin format/semantic values such as `openclaw-plugin`,
+`claude-plugin`, `codex-plugin`, `copilot-plugin`, or `hermes-plugin`. OpenPack behavioral `rules`
+do not map to Codex `.codex/rules` command policy in the built-in adapter. Invalid or unknown
+formats fail the package plan before runtime files are written.
 
 ## Instructions Delivery
 

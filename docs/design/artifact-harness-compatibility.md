@@ -68,7 +68,7 @@ path, not from the inverse Codex/Copilot path.
 | Codex | `hooks` | `supported-native`: `.codex/hooks.json` | `supported-native`: `~/.codex/hooks.json` | Project config must be trusted. |
 | Codex | `commands` | `unsupported` | `unsupported` | Custom prompts are deprecated; use skills. |
 | Codex | `subagents` | `supported-native`: `.codex/agents/*.toml` | `supported-native`: `~/.codex/agents/*.toml` | TOML custom agent definitions. Markdown OpenPack subagents are rendered to TOML. |
-| Codex | `settings` | `unsupported` | `unsupported` | Use `config.toml`-backed artifacts instead of generic JSON settings. |
+| Codex | `settings` | `planned` | `planned` | Planned: a TOML-deep settings merger is intended for `config.toml`; not yet implemented. |
 | Claude Code | `instructions` | `supported-native`: `CLAUDE.md` managed block | `supported-native`: `~/.claude/CLAUDE.md` managed block | Root project instructions are not `.claude/CLAUDE.md`; local writes are skipped when Claude already bridges `AGENTS.md`. |
 | Claude Code | `skills` | `supported-native`: `.claude/skills/<name>/SKILL.md` | `supported-native`: `~/.claude/skills/<name>/SKILL.md` | Native skill directories. |
 | Claude Code | `plugins` | `supported-native`: `.claude/plugins/<name>` | `supported-native`: `~/.claude/plugins/<name>` | Semantic Claude plugin directories. |
@@ -93,7 +93,7 @@ path, not from the inverse Codex/Copilot path.
 | OpenClaw | `rules` | `custom-adapter-only` | `custom-adapter-only` | No built-in file-drop target is documented for runtime-native rules. |
 | OpenClaw | `mcp` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON under `mcp.servers.<name>`. |
 | OpenClaw | `settings` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON; `agents.list[]` is covered by settings config-merge. |
-| OpenClaw | `plugins` | `requires-config`: semantic plugin install | `unsupported` | Local plugins are not treated as plain file-drop; user-level plugin install is not built into the adapter. |
+| OpenClaw | `plugins` | `supported-native`: `.openclaw/plugins/<name>` | `unsupported` | Local plugins are directory artifacts; user-level plugin install is not built into the adapter. |
 | OpenClaw | other artifacts | `unsupported` | `unsupported` | Add only after official file-drop or config docs are confirmed. |
 | Hermes | `instructions` | `supported-native`: `AGENTS.md` managed block | `supported-native`: `~/.hermes/SOUL.md` managed block | Hermes also detects `.hermes.md`, `HERMES.md`, and `CLAUDE.md`; Agentwheel writes project `AGENTS.md` and user `SOUL.md`. |
 | Hermes | `skills` | `unsupported` | `supported-native`: `~/.hermes/skills/<name>/SKILL.md` | Local skills require configured external dirs, so they are not file-drop supported. |

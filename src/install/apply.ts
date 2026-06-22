@@ -91,7 +91,7 @@ export async function recoverPendingApply(
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
 
-    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program")) {
+    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
       throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
     }
 
@@ -360,9 +360,6 @@ async function applyOperation(
       throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
     }
     if (context.executePlugins) {
-      if (!operation.semanticCommand || operation.semanticCommand.length === 0) {
-        throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
-      }
       await executePluginInstall(operation, transport);
     }
     return manifestEntryForOperation(operation, {
@@ -460,6 +457,10 @@ async function applyOperation(
   }
 
   if (operation.action === "remove") {
+    if (operation.semanticPlugin) {
+      if (operation.execute !== false) await executePluginUninstall(operation, transport);
+      return undefined;
+    }
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
       await removeManagedInstructionBlock(operation.destPath, selector, transport, operation.manifestHash);
@@ -473,33 +474,66 @@ async function applyOperation(
 }
 
 async function executePluginInstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
-  const command = operation.semanticCommand?.[0];
-  const args = operation.semanticCommand?.slice(1) ?? [];
-  if (!command) {
-    throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
-  }
+  const commands = semanticInstallCommands(operation);
+  if (commands.length === 0) throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
   if (!operation.sourcePath) {
     throw new Error(`Invalid plugin operation missing source path: ${operation.relativeDestPath}`);
   }
+  await executeSemanticCommands(operation, commands, transport, { stageSource: true });
+}
 
+async function executePluginUninstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const commands = operation.semanticPlugin?.uninstallCommands ?? [];
+  if (commands.length === 0) throw new Error(`Invalid semantic plugin operation missing uninstall command: ${operation.relativeDestPath}`);
+  await executeSemanticCommands(operation, commands, transport);
+}
+
+async function executeSemanticCommands(
+  operation: InstallOperation,
+  commands: string[][],
+  transport: TargetTransport,
+  options: { stageSource?: boolean } = {},
+): Promise<void> {
   if (transport.kind === "local") {
-    await execFileAsync(command, args);
+    for (const [command, ...args] of commands) {
+      if (!command) throw new Error(`Invalid semantic plugin command for ${operation.relativeDestPath}`);
+      await execFileAsync(command, args);
+    }
     return;
   }
 
   if (!transport.execFile) {
-    throw new Error(`Cannot execute semantic plugin install over ${transport.description}: transport does not support remote commands.`);
+    throw new Error(`Cannot execute semantic plugin command over ${transport.description}: transport does not support remote commands.`);
   }
 
+  if (!options.stageSource) {
+    for (const [command, ...args] of commands) {
+      if (!command) throw new Error(`Invalid semantic plugin command for ${operation.relativeDestPath}`);
+      await transport.execFile(command, args, { cwd: operation.destPath });
+    }
+    return;
+  }
+
+  if (!operation.sourcePath) {
+    throw new Error(`Invalid semantic plugin operation missing source path: ${operation.relativeDestPath}`);
+  }
   const stagingRoot = join(operation.destPath, ".agentwheel", "plugin-staging", `${process.pid}-${Date.now()}`);
   const remoteSourcePath = join(stagingRoot, basename(operation.sourcePath));
   try {
     await transport.atomicCopy(operation.sourcePath, remoteSourcePath, operation.kind);
-    const remoteArgs = args.map((arg) => arg === operation.sourcePath ? remoteSourcePath : arg);
-    await transport.execFile(command, remoteArgs, { cwd: operation.destPath });
+    for (const [command, ...args] of commands) {
+      if (!command) throw new Error(`Invalid semantic plugin command for ${operation.relativeDestPath}`);
+      const remoteArgs = args.map((arg) => arg === operation.sourcePath ? remoteSourcePath : arg);
+      await transport.execFile(command, remoteArgs, { cwd: operation.destPath });
+    }
   } finally {
     await transport.rm(stagingRoot);
   }
+}
+
+function semanticInstallCommands(operation: InstallOperation): string[][] {
+  if (operation.semanticPlugin) return operation.semanticPlugin.installCommands;
+  return operation.semanticCommand ? [operation.semanticCommand] : [];
 }
 
 async function entryForCompletedOperation(
@@ -567,6 +601,7 @@ function manifestEntryForOperation(
     channel: operation.channel,
     packageName: operation.packageName,
     semanticCommand: operation.semanticCommand,
+    semanticPlugin: operation.semanticPlugin,
     executed: values.executed ?? operation.execute,
     mergeStrategy: operation.mergeStrategy,
     mode: operation.mode,
@@ -587,6 +622,7 @@ async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport)
 }
 
 function isJournaledMutation(operation: InstallOperation): boolean {
+  if (operation.semanticPlugin && (operation.action === "plugin" || operation.action === "remove")) return false;
   return operation.action === "create" || operation.action === "update" || operation.action === "remove";
 }
 

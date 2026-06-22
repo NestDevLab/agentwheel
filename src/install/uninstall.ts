@@ -17,9 +17,10 @@ export async function createUninstallPlan(
 ): Promise<InstallPlan> {
   const operations: InstallOperation[] = [];
   for (const entry of manifest.entries) {
-    const destPath = join(manifest.targetRoot, entry.path);
-    if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await currentEntryHash(entry, destPath, transport);
+    const semanticPlugin = "semanticPlugin" in entry ? entry.semanticPlugin : undefined;
+    const destPath = semanticPlugin ? manifest.targetRoot : join(manifest.targetRoot, entry.path);
+    if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
+    const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     if (currentHash !== entry.hash) {
       operations.push({
         action: "keep",
@@ -35,6 +36,8 @@ export async function createUninstallPlan(
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
+        semanticPlugin,
+        execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
         composedFrom: entry.composedFrom,
@@ -54,7 +57,9 @@ export async function createUninstallPlan(
         reason: "uninstall managed artifact",
         channel: entry.channel,
         packageName: entry.packageName,
-        semanticCommand: entry.semanticCommand,
+        semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
+        semanticPlugin,
+        execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
         composedFrom: entry.composedFrom,
@@ -93,9 +98,10 @@ export async function createOwnershipUninstallPlan(
   const operations: InstallOperation[] = [];
 
   for (const entry of manifest.entries) {
-    const destPath = join(manifest.targetRoot, entry.path);
-    if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await currentEntryHash(entry, destPath, transport);
+    const semanticPlugin = "semanticPlugin" in entry ? entry.semanticPlugin : undefined;
+    const destPath = semanticPlugin ? manifest.targetRoot : join(manifest.targetRoot, entry.path);
+    if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
+    const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     const remainingOwners = ownersByPath.get(entry.path) ?? [];
 
     if (remainingOwners.length > 0) {
@@ -113,6 +119,8 @@ export async function createOwnershipUninstallPlan(
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
+        semanticPlugin,
+        execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
         composedFrom: entry.composedFrom,
@@ -138,6 +146,8 @@ export async function createOwnershipUninstallPlan(
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
+        semanticPlugin,
+        execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
         composedFrom: entry.composedFrom,
@@ -158,7 +168,9 @@ export async function createOwnershipUninstallPlan(
         reason: "owner set became empty",
         channel: entry.channel,
         packageName: entry.packageName,
-        semanticCommand: entry.semanticCommand,
+        semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
+        semanticPlugin,
+        execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
         composedFrom: entry.composedFrom,

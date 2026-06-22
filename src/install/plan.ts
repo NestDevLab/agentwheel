@@ -14,7 +14,7 @@ import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest,
 import type { StagedBundle } from "../staging/staging.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
-import { openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
+import { semanticPluginSpecForArtifact, type SemanticPluginSpec } from "../targets/plugins/index.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
@@ -49,6 +49,7 @@ export interface InstallOperation {
   channel: PlanChannel;
   packageName?: string;
   semanticCommand?: string[];
+  semanticPlugin?: SemanticPluginSpec;
   execute?: boolean;
   mergeStrategy?: "json-deep" | "yaml-deep" | "codex-toml-mcp";
   mode?: ManagedInstructionBlockMode;
@@ -120,7 +121,7 @@ export async function createInstallPlan(
   const desired: InstallOperation[] = [];
 
   for (const artifact of installableArtifacts) {
-    const op = operationForArtifact(artifact, adapter, installRoot, installationType, {
+    const op = await operationForArtifact(artifact, adapter, installRoot, installationType, {
       logicalSelector: `${artifact.type}/${artifact.name}`,
       dependencyRole: "root",
       owners: [artifact.packageName ?? bundle.source.packageName ?? bundle.source.source],
@@ -162,7 +163,7 @@ export async function createCombinedInstallPlan(
 
   const desired: InstallOperation[] = [];
   for (const artifact of installableArtifacts) {
-    const op = operationForArtifact(artifact, adapter, installRoot, installationType, artifact.meta);
+    const op = await operationForArtifact(artifact, adapter, installRoot, installationType, artifact.meta);
     if (op) {
       desired.push(op);
     }
@@ -196,10 +197,12 @@ async function createPlanFromOperations(
   for (const op of desired.values()) {
     if (op.action === "plugin") {
       const existing = manifestByPath.get(op.relativeDestPath);
-      if (existing && existing.hash === op.desiredHash) {
-        operations.push({ ...op, action: "skip", manifestHash: existing.hash, reason: "plugin already planned" });
+      if (existing && existing.sourceHash === op.desiredHash && existing.executed === true) {
+        operations.push({ ...op, action: "skip", manifestHash: existing.hash, reason: "semantic plugin already executed" });
       } else {
-        operations.push(op);
+        operations.push(existing && existing.sourceHash === op.desiredHash
+          ? { ...op, manifestHash: existing.hash, reason: "semantic plugin pending execution" }
+          : op);
       }
       continue;
     }
@@ -311,9 +314,10 @@ async function createPlanFromOperations(
 
   for (const entry of effectiveEntries) {
     if (desired.has(entry.path)) continue;
-    const destPath = join(targetRoot, entry.path);
-    if (!(await transport.pathExists(destPath))) continue;
-    const currentHash = await currentEntryHash(entry, destPath, transport);
+    const semanticPlugin = entry.semanticPlugin;
+    const destPath = semanticPlugin ? targetRoot : join(targetRoot, entry.path);
+    if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
+    const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     if (workspaceOwner && !entryOwnedByWorkspace(entry, workspaceOwner)) {
       operations.push(keepForeignManifestEntryOperation(entry, targetRoot, workspaceOwner, undefined, currentHash));
       continue;
@@ -332,6 +336,7 @@ async function createPlanFromOperations(
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: entry.semanticCommand,
+        semanticPlugin,
         execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
@@ -354,7 +359,8 @@ async function createPlanFromOperations(
         reason: "artifact removed from source",
         channel: entry.channel,
         packageName: entry.packageName,
-        semanticCommand: entry.semanticCommand,
+        semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
+        semanticPlugin,
         execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
         mode: entry.mode,
@@ -796,6 +802,7 @@ function keepForeignManifestEntryOperation(
     channel: entry.channel,
     packageName: entry.packageName,
     semanticCommand: entry.semanticCommand,
+    semanticPlugin: entry.semanticPlugin,
     execute: entry.executed,
     mergeStrategy: entry.mergeStrategy,
     mode: entry.mode,
@@ -813,7 +820,7 @@ function isGuardedMergeTarget(type: ArtifactType): boolean {
   return type === "mcp" || type === "hooks" || type === "settings" || type === "plugins";
 }
 
-function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, targetRoot: string, installationType: string, meta: DesiredEntryMeta): InstallOperation | undefined {
+async function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, targetRoot: string, installationType: string, meta: DesiredEntryMeta): Promise<InstallOperation | undefined> {
   if (artifact.type === "fragments") return undefined;
   const target = targetMappingForArtifact(adapter, artifact.type, installationType);
   if (!target?.enabled) {
@@ -827,24 +834,34 @@ function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, target
   const installName = semanticInstallName(artifact, target.semantic, rawInstallName);
   assertSafeInstallName(installName, `${artifact.type}/${artifact.name}`);
 
-  if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
+  if (artifact.type === "plugins") {
     const sourcePath = artifact.stagedPath ?? artifact.sourcePath;
-    return {
-      action: "plugin",
-      artifactType: artifact.type,
-      artifactName: artifact.name,
-      kind: artifact.kind,
+    const semanticPlugin = await semanticPluginSpecForArtifact({
+      semantic: target.semantic,
+      artifact,
+      installName,
       sourcePath,
-      destPath: targetRoot,
-      relativeDestPath: `plugins/${installName}`,
-      desiredHash: artifact.hash,
-      reason: "semantic plugin install planned",
-      channel: artifact.channel ?? "managed",
-      packageName: artifact.packageName,
-      semanticCommand: openClawPluginInstallCommand({ path: sourcePath, dryRun: true }),
-      composedFrom: metadata.composedFrom,
-      ...metadata,
-    };
+      targetRoot,
+    });
+    if (semanticPlugin) {
+      return {
+        action: "plugin",
+        artifactType: artifact.type,
+        artifactName: artifact.name,
+        kind: artifact.kind,
+        sourcePath,
+        destPath: targetRoot,
+        relativeDestPath: `plugins/${installName}`,
+        desiredHash: artifact.hash,
+        reason: "semantic plugin install planned",
+        channel: artifact.channel ?? "managed",
+        packageName: artifact.packageName,
+        semanticCommand: semanticPlugin.installCommands[0],
+        semanticPlugin,
+        composedFrom: metadata.composedFrom,
+        ...metadata,
+      };
+    }
   }
 
   if (artifact.type === "subagents" && target.semantic === "codex-subagent") {

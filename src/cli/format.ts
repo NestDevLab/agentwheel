@@ -33,7 +33,7 @@ export function formatPlan(plan: InstallPlan): string {
   }
   for (const operation of sortedPlanOperations(plan.operations)) {
     const source = operation.sourcePath ? `${operation.sourcePath} -> ` : "";
-    const command = operation.semanticCommand ? ` :: ${operation.semanticCommand.join(" ")}` : "";
+    const command = formatSemanticCommandSuffix(operation);
     const blocked = operation.blockedReason ? `; ${operation.blockedReason}` : "";
     lines.push(`${labels[operation.action].padEnd(8)} ${channelLabels[operation.channel].padEnd(8)} ${operation.artifactType}/${operation.artifactName} ${source}${operation.relativeDestPath} (${operation.reason}${blocked})${command}`);
   }
@@ -42,6 +42,20 @@ export function formatPlan(plan: InstallPlan): string {
     `Summary: create ${summary.create}, update ${summary.update}, skip ${summary.skip}, remove ${summary.remove}, keep ${summary.keep}, drift ${summary.drift}, conflict ${summary.conflict}, plugin ${summary.plugin}`,
   );
   return lines.join("\n");
+}
+
+function formatSemanticCommandSuffix(operation: InstallPlan["operations"][number]): string {
+  const commands = semanticCommandsForOperation(operation);
+  return commands.length > 0 ? ` :: ${commands.map((command) => command.join(" ")).join(" && ")}` : "";
+}
+
+function semanticCommandsForOperation(operation: InstallPlan["operations"][number]): string[][] {
+  if (operation.semanticPlugin) {
+    if (operation.action === "remove" && operation.execute === false) return [];
+    if (operation.action === "remove") return operation.semanticPlugin.uninstallCommands;
+    if (operation.action === "plugin") return operation.semanticPlugin.installCommands;
+  }
+  return operation.semanticCommand ? [operation.semanticCommand] : [];
 }
 
 function sortedPlanOperations(operations: InstallPlan["operations"]): InstallPlan["operations"] {

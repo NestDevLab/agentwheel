@@ -6,7 +6,8 @@ import { claudeAdapter } from "../src/adapters/claude.js";
 import { copilotAdapter } from "../src/adapters/copilot.js";
 import { hermesAdapter } from "../src/adapters/hermes.js";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
-import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
+import { formatPlan } from "../src/cli/format.js";
+import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { ejectArtifact, remember } from "../src/lifecycle/customization.js";
 import { upsertPackage, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { LocalSourceDriver } from "../src/source/local.js";
@@ -164,6 +165,14 @@ describe("v0.2 wave 2", () => {
     expect(plugin?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
     expect(plugin?.semanticCommand).toContain("--force");
     expect(plugin?.semanticCommand).not.toContain("--link");
+    const installCommand = plugin?.semanticCommand;
+    expect(installCommand).toBeDefined();
+    expect(plugin?.semanticPlugin).toMatchObject({
+      runtime: "openclaw",
+      pluginName: "demo-plugin",
+      installCommands: [installCommand],
+      uninstallCommands: [["openclaw", "plugins", "uninstall", "demo-plugin", "--force"]],
+    });
     await expect(stat(join(stagedPlugin ?? "", "__pycache__", "demo.cpython-312.pyc"))).rejects.toThrow();
 
     const manifest = await applyInstallPlan(plan, bundle.sourceLock);
@@ -171,6 +180,8 @@ describe("v0.2 wave 2", () => {
     expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
     expect(entry?.semanticCommand).toContain("--force");
     expect(entry?.semanticCommand).not.toContain("--link");
+    expect(entry?.semanticPlugin?.runtime).toBe("openclaw");
+    expect(entry?.semanticPlugin?.uninstallCommands).toEqual([["openclaw", "plugins", "uninstall", "demo-plugin", "--force"]]);
     expect(entry?.executed).toBe(false);
     await expect(stat(join(target, "skills", "demo-skill", "SKILL.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".openclaw", "plugins", "demo-plugin"))).rejects.toThrow();
@@ -213,6 +224,95 @@ describe("v0.2 wave 2", () => {
     expect(entry?.semanticCommand?.slice(0, 3)).toEqual(["openclaw", "plugins", "install"]);
     expect(entry?.semanticCommand).toContain("--force");
     await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("keeps unexecuted OpenClaw semantic plugins pending for a later execute run", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writeFullPackage(source);
+
+    const executed: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+      async execFile(command, args, options = {}) {
+        executed.push({ command, args, cwd: options.cwd });
+        await stat(args.at(-1) ?? "");
+      },
+    };
+
+    const firstBundle = await stageSource(new LocalSourceDriver(), source, { select: ["plugins/demo-plugin"] });
+    const firstPlan = await createInstallPlan(firstBundle, openClawAdapter, target, undefined, sshTransport);
+    const firstManifest = await applyInstallPlan(firstPlan, firstBundle.sourceLock, { transport: sshTransport });
+    expect(firstManifest.entries[0]?.executed).toBe(false);
+    const persistedFirstManifest = await readInstallManifest(target, openClawAdapter.name, sshTransport);
+    expect(persistedFirstManifest?.entries[0]?.executed).toBe(false);
+    const plannedOnlyUninstall = await createUninstallPlan(persistedFirstManifest!, sshTransport);
+    expect(plannedOnlyUninstall.operations[0]?.action).toBe("remove");
+    expect(formatPlan(plannedOnlyUninstall)).not.toContain("openclaw plugins uninstall");
+    await rm(firstBundle.root, { recursive: true, force: true });
+
+    const secondBundle = await stageSource(new LocalSourceDriver(), source, { select: ["plugins/demo-plugin"] });
+    const secondPlan = await createInstallPlan(secondBundle, openClawAdapter, target, persistedFirstManifest, sshTransport);
+    const pending = secondPlan.operations.find((operation) => operation.artifactType === "plugins");
+    expect(pending?.action).toBe("plugin");
+    expect(pending?.reason).toBe("semantic plugin pending execution");
+
+    const secondManifest = await applyInstallPlan(secondPlan, secondBundle.sourceLock, {
+      executePlugins: true,
+      transport: sshTransport,
+    });
+    expect(executed).toHaveLength(1);
+    expect(executed[0]?.args.slice(0, 2)).toEqual(["plugins", "install"]);
+    expect(secondManifest.entries[0]?.executed).toBe(true);
+    await rm(secondBundle.root, { recursive: true, force: true });
+  });
+
+  it("plans and executes OpenClaw semantic plugin uninstall without a copied plugin path", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writeFullPackage(source);
+
+    const executed: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+      async execFile(command, args, options = {}) {
+        executed.push({ command, args, cwd: options.cwd });
+        if (args[0] === "plugins" && args[1] === "install") await stat(args.at(-1) ?? "");
+      },
+    };
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, { select: ["plugins/demo-plugin"] });
+    const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, sshTransport);
+    await applyInstallPlan(plan, bundle.sourceLock, {
+      executePlugins: true,
+      transport: sshTransport,
+    });
+    const manifest = await readInstallManifest(target, openClawAdapter.name, sshTransport);
+    expect(manifest).toBeTruthy();
+    await rm(bundle.root, { recursive: true, force: true });
+
+    await expect(stat(join(target, "plugins", "demo-plugin"))).rejects.toThrow();
+    const uninstallPlan = await createUninstallPlan(manifest!, sshTransport);
+    expect(uninstallPlan.operations).toHaveLength(1);
+    expect(uninstallPlan.operations[0]).toMatchObject({
+      action: "remove",
+      artifactType: "plugins",
+      relativeDestPath: "plugins/demo-plugin",
+      destPath: target,
+    });
+    expect(formatPlan(uninstallPlan)).toContain("openclaw plugins uninstall demo-plugin --force");
+
+    const result = await uninstall(uninstallPlan, { transport: sshTransport });
+    expect(result).toEqual({ removed: 1, kept: 0, removedDrifted: 0 });
+    expect(executed.map((item) => [item.command, ...item.args])).toEqual([
+      ["openclaw", "plugins", "install", "--force", expect.stringContaining(join(target, ".agentwheel", "plugin-staging"))],
+      ["openclaw", "plugins", "uninstall", "demo-plugin", "--force"],
+    ]);
+    expect(await readInstallManifest(target, openClawAdapter.name, sshTransport)).toBeUndefined();
   });
 
   it("ejects an artifact into local ownership and plans it as ejected", async () => {

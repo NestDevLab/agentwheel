@@ -10,24 +10,9 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": [
-      "runtime-matrix-public"
-    ]
+    "stacks": []
   },
-  "stacks": [
-    {
-      "id": "runtime-matrix-public",
-      "branch": "pr/runtime-matrix-public-adapters",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "413870360271c49e5c6f29fad198042642039b1b"
-      ],
-      "meta": {}
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

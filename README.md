@@ -45,7 +45,7 @@ Every built-in target is scoped by `--installation-type <type>`; built-ins curre
 for project/workspace installs and `user` for documented user-level installs. If a package can be
 installed in more than one type, agentwheel requires `--installation-type` instead of guessing.
 
-- **OpenClaw** — workspace `skills/`, local semantic plugin install; user `~/.openclaw/skills`,
+- **OpenClaw** — workspace `skills/`, local plugin directories; user `~/.openclaw/skills`,
   `~/.openclaw/workspace/AGENTS.md`, and `~/.openclaw/openclaw.json`
 - **Claude Code** — `CLAUDE.md`, `.claude/`, `.mcp.json`, and user `~/.claude/`
 - **Codex CLI** — `AGENTS.md`, `.agents/skills`, `plugins/`, `.codex/`, and user equivalents
@@ -406,9 +406,9 @@ Built-in runtime targets:
 
 | Runtime | Native supported targets |
 |---|---|
-| **OpenClaw** | `local: skills/, semantic plugin install`; `user: ~/.openclaw/workspace/AGENTS.md, ~/.openclaw/skills, ~/.openclaw/openclaw.json`; rules require explicit adapter config |
+| **OpenClaw** | `local: skills/, .openclaw/plugins/`; `user: ~/.openclaw/workspace/AGENTS.md, ~/.openclaw/skills, ~/.openclaw/openclaw.json`; no built-in `rules` target |
 | **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .claude/plugins, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP; rules are behavioral/path-scoped |
-| **Codex CLI** | `local: AGENTS.md, .agents/skills, plugins/, .codex/agents, .codex/config.toml, .codex/hooks.json`; `user: ~/.codex/AGENTS.md, ~/.agents/skills, ~/.codex/plugins, ~/.codex/agents, ~/.codex/config.toml, ~/.codex/hooks.json`; no built-in `rules` target |
+| **Codex CLI** | `local: AGENTS.md, .agents/skills, plugins/, .codex/agents, .codex/config.toml, .codex/hooks.json`; `user: ~/.codex/AGENTS.md, ~/.agents/skills, ~/.codex/plugins, ~/.codex/agents, ~/.codex/config.toml, ~/.codex/hooks.json`; no built-in `rules` target; generic settings are planned, not implemented |
 | **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/SOUL.md, ~/.hermes/skills, ~/.hermes/plugins, ~/.hermes/config.yaml`; rules require explicit adapter config |
 | **GitHub Copilot CLI** | `local: .github/copilot-instructions.md, .github/instructions, .github/prompts, .github/skills, .github/plugins, .github/agents, .github/mcp.json, .github/hooks, .github/settings.json`; `user: ~/.copilot/copilot-instructions.md, ~/.copilot/instructions, ~/.copilot/skills, ~/.copilot/plugins, ~/.copilot/agents, ~/.copilot/mcp-config.json, ~/.copilot/hooks, ~/.copilot/settings.json`; rule-like artifacts map to instructions |
 

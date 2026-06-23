@@ -388,6 +388,33 @@
       font-size: 13px;
     }
 
+    .codebar-title {
+      flex: 1;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .copy-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #dbeafe;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .copy-button:hover,
+    .copy-button:focus-visible {
+      border-color: rgba(56, 189, 248, 0.55);
+      color: #f8fafc;
+    }
+
     .light {
       width: 10px;
       height: 10px;
@@ -403,6 +430,13 @@
       font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       text-align: left;
       white-space: pre;
+    }
+
+    .lead-code pre,
+    .lead-code pre code {
+      overflow-x: visible;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
 
     .prompt {
@@ -612,6 +646,12 @@
       color: #fde68a;
     }
 
+    .badge.mapped {
+      border-color: rgba(56, 189, 248, 0.55);
+      background: rgba(56, 189, 248, 0.13);
+      color: #bae6fd;
+    }
+
     .badge.internal {
       border-color: rgba(20, 184, 166, 0.38);
       background: rgba(20, 184, 166, 0.12);
@@ -652,105 +692,123 @@
       margin-top: 12px;
     }
 
-    .matrix-legend {
+    .section-copy {
+      max-width: 920px;
+      margin: -12px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .matrix-support {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .matrix-glossary,
+    .matrix-note {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.62);
+    }
+
+    .matrix-glossary {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin: 12px 0 0;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 14px;
       color: var(--muted);
       font-size: 12px;
+    }
+
+    .legend-title {
+      width: 100%;
+      margin-bottom: 2px;
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
     .legend-item {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      min-height: 28px;
-      padding: 0 9px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(17, 24, 39, 0.55);
+      margin-right: 8px;
+      min-height: 26px;
+      font-weight: 750;
     }
 
-    .legend-item strong {
-      color: #e5e7eb;
-      font-weight: 850;
-    }
-
-    .legend-item a {
+    .legend-link {
       color: #bae6fd;
       font-weight: 850;
+      white-space: nowrap;
     }
 
-    .install-note {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+    .command-explain {
       margin: 0 0 42px;
-    }
-
-    .note-chip {
-      min-height: 56px;
-      padding: 11px 13px;
+      padding: 18px 20px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: rgba(17, 24, 39, 0.62);
-      color: #dbeafe;
-      font-size: 13px;
-      font-weight: 800;
     }
 
-    .note-chip span {
+    .command-explain > strong,
+    .matrix-note strong {
       display: block;
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.3;
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    .note-chip code {
+    .command-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .command-list li {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .command-list b {
+      display: block;
+      margin-bottom: 4px;
+      color: #dbeafe;
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .command-list code,
+    .matrix-note code {
       color: #c7d2fe;
       font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
-    .note-chip a {
-      color: #bae6fd;
-      text-decoration: underline;
-      text-underline-offset: 3px;
+    .matrix-note {
+      padding: 14px 16px;
     }
 
-    .rules-explainer {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .rule-card {
-      min-height: 92px;
-      padding: 13px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(17, 24, 39, 0.62);
-    }
-
-    .rule-card strong {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #e5e7eb;
-      font-size: 13px;
-      line-height: 1.2;
-    }
-
-    .rule-card span:last-child {
+    .matrix-note span {
       display: block;
       margin-top: 8px;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
-      line-height: 1.35;
+      line-height: 1.45;
     }
 
     .toggle-grid {
@@ -893,11 +951,11 @@
         grid-template-columns: 1fr;
       }
 
-      .install-note {
+      .command-list {
         grid-template-columns: 1fr;
       }
 
-      .rules-explainer {
+      .matrix-support {
         grid-template-columns: 1fr;
       }
 
@@ -1094,14 +1152,18 @@
       <div id="install" class="code lead-code" aria-label="Install snippet">
         <div class="codebar">
           <span class="light"></span><span class="light"></span><span class="light"></span>
-          <span>agentwheel install</span>
+          <span class="codebar-title">agentwheel install</span>
+          <button class="copy-button" type="button" data-copy-command>Copy</button>
         </div>
-        <pre><code>npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
+        <pre><code id="install-command">npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
       </div>
-      <div class="install-note" aria-label="Install snippet explanation">
-        <div class="note-chip">Two adapters<span><code>codex,claude</code> applies the same OpenPack once per runtime and keeps separate saved entries.</span></div>
-        <div class="note-chip">Must-have pack<span><a href="https://github.com/NestDevLab/agent-must-have">agent-must-have</a> standard adds baseline rules where supported, plus self-improve, context-checkup, code-review, and planning skills.</span></div>
-        <div class="note-chip">Global default<span>Explicit source installs target user artifacts; use <code>--local</code> or <code>-t</code> for project scope.</span></div>
+      <div class="command-explain" aria-label="Install command explanation">
+        <strong>This command explained</strong>
+        <ul class="command-list">
+          <li><b>Installs one pack</b>Pulls the selected OpenPack source and resolves its managed artifacts.</li>
+          <li><b>Targets two runtimes</b>Applies the pack once for Codex and once for Claude, with separate manifests.</li>
+          <li><b>Defaults to user scope</b>Use <code>--local</code> when you want project-local targets.</li>
+        </ul>
       </div>
 
       <section id="adapters">
@@ -1109,6 +1171,7 @@
           <span class="section-kicker">01</span>
           <h2 class="section-title">Runtime matrix</h2>
         </div>
+        <p class="section-copy">Cells show the install target Agentwheel supports today for each OpenPack artifact type. Similar runtime behavior is not counted unless the artifact itself is installable.</p>
         <div class="matrix-wrap" aria-label="Built-in adapter delivery-surface matrix">
           <table class="matrix">
             <thead>
@@ -1132,12 +1195,12 @@
                 <td><span class="badge format">md user</span></td>
                 <td><span class="badge none">no</span></td>
                 <td><span class="badge format">dir</span></td>
-                <td><span class="badge runtime">runtime</span></td>
-                <td><span class="badge format">json settings</span></td>
-                <td><span class="badge format">json</span></td>
-                <td><span class="badge runtime">runtime</span></td>
-                <td><span class="badge format">json</span></td>
-                <td><span class="badge format">dir</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge format">json user</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge format">json user</span></td>
+                <td><span class="badge semantic">semantic</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1150,7 +1213,7 @@
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
-                <td><span class="badge format">dir</span></td>
+                <td><span class="badge semantic">semantic</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1163,7 +1226,7 @@
                 <td><span class="badge format">toml</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge todo">todo</span></td>
-                <td><span class="badge format">dir</span></td>
+                <td><span class="badge semantic">semantic</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1171,53 +1234,48 @@
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge none">no</span></td>
                 <td><span class="badge format">dir user</span></td>
-                <td><span class="badge runtime">runtime</span></td>
-                <td><span class="badge format">yaml knobs</span></td>
-                <td><span class="badge format">yaml</span></td>
-                <td><span class="badge runtime">runtime</span></td>
-                <td><span class="badge format">yaml</span></td>
-                <td><span class="badge format">dir</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge format">yaml user</span></td>
+                <td><span class="badge none">no</span></td>
+                <td><span class="badge format">yaml user</span></td>
+                <td><span class="badge semantic">semantic user</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>GitHub Copilot CLI</th>
                 <td><span class="badge format">md</span></td>
-                <td><span class="badge format">md</span></td>
+                <td><span class="badge mapped">md mapped</span></td>
                 <td><span class="badge format">dir</span></td>
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
-                <td><span class="badge format">dir</span></td>
+                <td><span class="badge semantic">semantic user</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div class="matrix-legend" aria-label="Runtime matrix legend">
-          <span class="legend-item"><span class="badge format">md</span> <span class="badge format">json</span> <span class="badge format">yaml</span> <span class="badge format">toml</span> delivery surface</span>
-          <span class="legend-item"><span class="badge format">dir</span> native directory</span>
-          <span class="legend-item"><span class="badge format">json settings</span> <span class="badge format">yaml knobs</span> config-backed capability (via the settings/config merge)</span>
-          <span class="legend-item"><span class="badge none">no</span> not a supported target</span>
-          <span class="legend-item"><span class="badge todo">todo</span> planned — not yet implemented</span>
-          <span class="legend-item"><span class="badge format">md user</span> <span class="badge format">dir user</span> user scope only — no project-local target</span>
-          <span class="legend-item"><span class="badge runtime">runtime</span> no managed artifact</span>
-          <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
-          <span class="legend-item"><a href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Artifact-level matrix</a></span>
-        </div>
-        <div class="rules-explainer" aria-label="Rules semantics by runtime">
-          <div class="rule-card">
-            <strong>Claude · native rules</strong>
-            <span>Markdown files under <code>.claude/rules</code> — the only runtime with a native behavioral-rules concept.</span>
+        <div class="matrix-support">
+          <div class="matrix-glossary" aria-label="Matrix glossary">
+            <strong class="legend-title">Glossary</strong>
+            <span class="legend-item"><span class="badge format">md</span> Markdown</span>
+            <span class="legend-item"><span class="badge format">json</span> JSON</span>
+            <span class="legend-item"><span class="badge format">yaml</span> YAML</span>
+            <span class="legend-item"><span class="badge format">toml</span> TOML</span>
+            <span class="legend-item"><span class="badge format">dir</span> directory</span>
+            <span class="legend-item"><span class="badge semantic">semantic</span> runtime command</span>
+            <span class="legend-item"><span class="badge mapped">mapped</span> explicit mapping</span>
+            <span class="legend-item"><span class="badge none">no</span> unsupported artifact</span>
+            <span class="legend-item"><span class="badge todo">todo</span> planned</span>
+            <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
+            <a class="legend-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Artifact-level matrix</a>
           </div>
-          <div class="rule-card">
-            <strong>Copilot · custom instructions</strong>
-            <span>No native rules engine; Agentwheel delivers rules as markdown custom-instruction files under <code>.github/instructions</code>.</span>
-          </div>
-          <div class="rule-card">
-            <strong>Codex, OpenClaw, Hermes · no rules</strong>
-            <span>No rules concept — the artifact is rejected. Codex's <code>.codex/rules</code> is shell command policy, not OpenPack rules.</span>
+          <div class="matrix-note" aria-label="Runtime matrix notes">
+            <strong>Rules and runtime-only features</strong>
+            <span>Behavioral guidance for Codex, OpenClaw, and Hermes belongs in <code>instructions</code>, not <code>rules</code>. OpenClaw <code>agents.list</code> and Hermes <code>delegation:</code> are settings/config knobs, not separate installable artifacts.</span>
           </div>
         </div>
       </section>
@@ -1496,5 +1554,25 @@
       </a>
     </footer>
   </div>
+  <script>
+    const copyButton = document.querySelector("[data-copy-command]");
+    const installCommand = document.querySelector("#install-command");
+
+    copyButton?.addEventListener("click", async () => {
+      const command = installCommand?.textContent?.trim() ?? "";
+      if (!command) return;
+
+      try {
+        await navigator.clipboard.writeText(command);
+        copyButton.textContent = "Copied";
+      } catch {
+        copyButton.textContent = "Select";
+      }
+
+      window.setTimeout(() => {
+        copyButton.textContent = "Copy";
+      }, 1400);
+    });
+  </script>
 </body>
 </html>

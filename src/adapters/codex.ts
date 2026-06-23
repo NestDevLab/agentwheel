@@ -13,8 +13,8 @@ export const codexAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".agents/skills" },
     },
     plugins: {
-      local: { enabled: true, dest: "plugins", semantic: "codex-plugin" },
-      user: { enabled: true, root: "home", dest: ".codex/plugins", semantic: "codex-plugin" },
+      local: { enabled: true, dest: ".agentwheel/plugins/codex", semantic: "codex-plugin" },
+      user: { enabled: true, root: "home", dest: ".agentwheel/plugins/codex", semantic: "codex-plugin" },
     },
     subagents: {
       local: { enabled: true, dest: ".codex/agents", semantic: "codex-subagent" },

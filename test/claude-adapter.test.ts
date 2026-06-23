@@ -27,8 +27,8 @@ async function tempRoot(prefix = "agentwheel-claude-adapter-"): Promise<string> 
 
 async function pluginArtifact(root: string, name = "demo-plugin"): Promise<DesiredArtifact> {
   const sourcePath = join(root, "plugins", name);
-  await mkdir(sourcePath, { recursive: true });
-  await writeFile(join(sourcePath, "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+  await mkdir(join(sourcePath, ".claude-plugin"), { recursive: true });
+  await writeFile(join(sourcePath, ".claude-plugin", "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
   return {
     type: "plugins",
     name,
@@ -37,6 +37,7 @@ async function pluginArtifact(root: string, name = "demo-plugin"): Promise<Desir
     relativePath: join("plugins", name),
     kind: "dir",
     hash: await hashPath(sourcePath),
+    packageName: "acme/claude-pack",
     channel: "managed",
     meta: {
       logicalSelector: `plugins/${name}`,
@@ -49,17 +50,17 @@ async function pluginArtifact(root: string, name = "demo-plugin"): Promise<Desir
 describe("Claude adapter", () => {
   it("declares Claude plugin targets with claude-plugin semantics", () => {
     expect(claudeAdapter.targets.plugins?.local).toMatchObject({
-      dest: ".claude/plugins",
+      dest: ".agentwheel/plugins/claude",
       semantic: "claude-plugin",
     });
     expect(claudeAdapter.targets.plugins?.user).toMatchObject({
       root: "home",
-      dest: ".claude/plugins",
+      dest: ".agentwheel/plugins/claude",
       semantic: "claude-plugin",
     });
   });
 
-  it("plans Claude plugin installs to local and user plugin directories", async () => {
+  it("plans Claude plugin installs as local and user semantic marketplace operations", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     const home = await tempRoot();
@@ -73,9 +74,24 @@ describe("Claude adapter", () => {
       artifactType: "plugins",
       artifactName: "demo-plugin",
       installName: "demo-plugin",
-      relativeDestPath: ".claude/plugins/demo-plugin",
+      action: "plugin",
+      relativeDestPath: "plugins/demo-plugin",
     });
-    expect(localPlan.operations[0]?.destPath).toBe(join(target, ".claude", "plugins", "demo-plugin"));
+    expect(localPlan.operations[0]?.destPath).toBe(target);
+    expect(localPlan.operations[0]?.semanticPlugin).toMatchObject({
+      runtime: "claude",
+      pluginName: "demo-plugin",
+      marketplaceName: "agentwheel-acme-claude-pack-demo-plugin",
+      stateRoot: join(target, ".agentwheel", "plugins", "claude", "local", "acme-claude-pack", "demo-plugin"),
+      installCommands: [
+        ["claude", "plugin", "marketplace", "add", join(target, ".agentwheel", "plugins", "claude", "local", "acme-claude-pack", "demo-plugin", "marketplace"), "--scope", "local"],
+        ["claude", "plugin", "install", "demo-plugin@agentwheel-acme-claude-pack-demo-plugin", "--scope", "local"],
+      ],
+      uninstallCommands: [
+        ["claude", "plugin", "uninstall", "demo-plugin@agentwheel-acme-claude-pack-demo-plugin", "--scope", "local"],
+        ["claude", "plugin", "marketplace", "remove", "agentwheel-acme-claude-pack-demo-plugin", "--scope", "local"],
+      ],
+    });
 
     const userPlan = await createCombinedInstallPlan([artifact], claudeAdapter, target, undefined, undefined, { installationType: "user" });
     expect(userPlan.targetRoot).toBe(home);
@@ -84,8 +100,38 @@ describe("Claude adapter", () => {
       artifactType: "plugins",
       artifactName: "demo-plugin",
       installName: "demo-plugin",
-      relativeDestPath: ".claude/plugins/demo-plugin",
+      action: "plugin",
+      relativeDestPath: "plugins/demo-plugin",
     });
-    expect(userPlan.operations[0]?.destPath).toBe(join(home, ".claude", "plugins", "demo-plugin"));
+    expect(userPlan.operations[0]?.destPath).toBe(home);
+    expect(userPlan.operations[0]?.semanticPlugin?.stateRoot).toBe(join(home, ".agentwheel", "plugins", "claude", "user", "acme-claude-pack", "demo-plugin"));
+    expect(userPlan.operations[0]?.semanticPlugin?.installCommands[0]).toEqual([
+      "claude",
+      "plugin",
+      "marketplace",
+      "add",
+      join(home, ".agentwheel", "plugins", "claude", "user", "acme-claude-pack", "demo-plugin", "marketplace"),
+      "--scope",
+      "user",
+    ]);
+  });
+
+  it("rejects Claude plugins without .claude-plugin/plugin.json", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const sourcePath = join(source, "plugins", "demo-plugin");
+    await mkdir(sourcePath, { recursive: true });
+    await writeFile(join(sourcePath, "plugin.json"), `${JSON.stringify({ name: "demo-plugin" }, null, 2)}\n`, "utf8");
+    const artifact = {
+      ...(await pluginArtifact(await tempRoot(), "valid-plugin")),
+      name: "demo-plugin",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: join("plugins", "demo-plugin"),
+      hash: await hashPath(sourcePath),
+    };
+
+    await expect(createCombinedInstallPlan([artifact], claudeAdapter, target, undefined, undefined, { installationType: "local" }))
+      .rejects.toThrow(/Claude plugins must contain \.claude-plugin\/plugin\.json/);
   });
 });

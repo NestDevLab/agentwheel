@@ -42,7 +42,16 @@ async function desiredArtifact(root: string, type: ArtifactType, name: string, k
   const sourcePath = join(root, type, name);
   if (kind === "dir") {
     await mkdir(sourcePath, { recursive: true });
-    await writeFile(join(sourcePath, type === "skills" ? "SKILL.md" : "AGENTS.md"), type === "skills" ? `---\nname: ${name}\ndescription: Fixture skill for tests.\n---\n\n# ${name}\n` : `# ${name}\n`, "utf8");
+    if (type === "plugins") {
+      await mkdir(join(sourcePath, ".claude-plugin"), { recursive: true });
+      await mkdir(join(sourcePath, ".codex-plugin"), { recursive: true });
+      await writeFile(join(sourcePath, "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+      await writeFile(join(sourcePath, ".claude-plugin", "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+      await writeFile(join(sourcePath, ".codex-plugin", "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+      await writeFile(join(sourcePath, "plugin.yaml"), `name: ${name}\nversion: '1.0.0'\n`, "utf8");
+    } else {
+      await writeFile(join(sourcePath, type === "skills" ? "SKILL.md" : "AGENTS.md"), type === "skills" ? `---\nname: ${name}\ndescription: Fixture skill for tests.\n---\n\n# ${name}\n` : `# ${name}\n`, "utf8");
+    }
   } else {
     await mkdir(dirname(sourcePath), { recursive: true });
     await writeFile(sourcePath, artifactContent(type, name), "utf8");
@@ -99,7 +108,7 @@ const pathCases: Array<{
   { label: "codex local hooks", adapter: codexAdapter, installationType: "local", type: "hooks", name: "hooks.json", expectedRoot: "target", expectedPath: ".codex/hooks.json" },
   { label: "codex user instructions", adapter: codexAdapter, installationType: "user", type: "instructions", name: "AGENTS.md", expectedRoot: "home", expectedPath: ".codex/AGENTS.md" },
   { label: "codex user skills", adapter: codexAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".agents/skills/smoke" },
-  { label: "codex user plugins", adapter: codexAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: ".codex/plugins/demo-plugin" },
+  { label: "codex user plugins", adapter: codexAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: "plugins/demo-plugin" },
   { label: "codex user subagents", adapter: codexAdapter, installationType: "user", type: "subagents", name: "reviewer", expectedRoot: "home", expectedPath: ".codex/agents/reviewer.toml" },
   { label: "codex user mcp", adapter: codexAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".codex/config.toml" },
   { label: "codex user hooks", adapter: codexAdapter, installationType: "user", type: "hooks", name: "hooks.json", expectedRoot: "home", expectedPath: ".codex/hooks.json" },
@@ -107,7 +116,7 @@ const pathCases: Array<{
   { label: "claude local instructions", adapter: claudeAdapter, installationType: "local", type: "instructions", name: "CLAUDE.md", expectedRoot: "target", expectedPath: "CLAUDE.md" },
   { label: "claude local rules", adapter: claudeAdapter, installationType: "local", type: "rules", name: "testing.md", expectedRoot: "target", expectedPath: ".claude/rules/testing.md" },
   { label: "claude local skills", adapter: claudeAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: ".claude/skills/smoke" },
-  { label: "claude local plugins", adapter: claudeAdapter, installationType: "local", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "target", expectedPath: ".claude/plugins/demo-plugin" },
+  { label: "claude local plugins", adapter: claudeAdapter, installationType: "local", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "target", expectedPath: "plugins/demo-plugin" },
   { label: "claude local commands", adapter: claudeAdapter, installationType: "local", type: "commands", name: "review.md", expectedRoot: "target", expectedPath: ".claude/commands/review.md" },
   { label: "claude local subagents", adapter: claudeAdapter, installationType: "local", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "target", expectedPath: ".claude/agents/reviewer" },
   { label: "claude local mcp", adapter: claudeAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".mcp.json" },
@@ -116,7 +125,7 @@ const pathCases: Array<{
   { label: "claude user instructions", adapter: claudeAdapter, installationType: "user", type: "instructions", name: "CLAUDE.md", expectedRoot: "home", expectedPath: ".claude/CLAUDE.md" },
   { label: "claude user rules", adapter: claudeAdapter, installationType: "user", type: "rules", name: "testing.md", expectedRoot: "home", expectedPath: ".claude/rules/testing.md" },
   { label: "claude user skills", adapter: claudeAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".claude/skills/smoke" },
-  { label: "claude user plugins", adapter: claudeAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: ".claude/plugins/demo-plugin" },
+  { label: "claude user plugins", adapter: claudeAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: "plugins/demo-plugin" },
   { label: "claude user commands", adapter: claudeAdapter, installationType: "user", type: "commands", name: "review.md", expectedRoot: "home", expectedPath: ".claude/commands/review.md" },
   { label: "claude user subagents", adapter: claudeAdapter, installationType: "user", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "home", expectedPath: ".claude/agents/reviewer" },
   { label: "claude user settings", adapter: claudeAdapter, installationType: "user", type: "settings", name: "settings.json", expectedRoot: "home", expectedPath: ".claude/settings.json" },
@@ -128,7 +137,6 @@ const pathCases: Array<{
   { label: "copilot local commands", adapter: copilotAdapter, installationType: "local", type: "commands", name: "review.prompt.md", expectedRoot: "target", expectedPath: ".github/prompts/review.prompt.md" },
   { label: "copilot local generic command", adapter: copilotAdapter, installationType: "local", type: "commands", name: "review.md", expectedRoot: "target", expectedPath: ".github/prompts/review.prompt.md" },
   { label: "copilot local skills", adapter: copilotAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: ".github/skills/smoke" },
-  { label: "copilot local plugins", adapter: copilotAdapter, installationType: "local", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "target", expectedPath: ".github/plugins/demo-plugin" },
   { label: "copilot local subagents", adapter: copilotAdapter, installationType: "local", type: "subagents", name: "reviewer.agent.md", expectedRoot: "target", expectedPath: ".github/agents/reviewer.agent.md" },
   { label: "copilot local generic subagent", adapter: copilotAdapter, installationType: "local", type: "subagents", name: "reviewer.md", expectedRoot: "target", expectedPath: ".github/agents/reviewer.agent.md" },
   { label: "copilot local mcp", adapter: copilotAdapter, installationType: "local", type: "mcp", name: "server.json", expectedRoot: "target", expectedPath: ".github/mcp.json" },
@@ -137,7 +145,7 @@ const pathCases: Array<{
   { label: "copilot user instructions", adapter: copilotAdapter, installationType: "user", type: "instructions", name: "copilot-instructions.md", expectedRoot: "home", expectedPath: ".copilot/copilot-instructions.md" },
   { label: "copilot user rules", adapter: copilotAdapter, installationType: "user", type: "rules", name: "style.instructions.md", expectedRoot: "home", expectedPath: ".copilot/instructions/style.instructions.md" },
   { label: "copilot user skills", adapter: copilotAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".copilot/skills/smoke" },
-  { label: "copilot user plugins", adapter: copilotAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: ".copilot/plugins/demo-plugin" },
+  { label: "copilot user plugins", adapter: copilotAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: "plugins/demo-plugin" },
   { label: "copilot user subagents", adapter: copilotAdapter, installationType: "user", type: "subagents", name: "reviewer.agent.md", expectedRoot: "home", expectedPath: ".copilot/agents/reviewer.agent.md" },
   { label: "copilot user mcp", adapter: copilotAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".copilot/mcp-config.json" },
   { label: "copilot user hooks", adapter: copilotAdapter, installationType: "user", type: "hooks", name: "notify.json", expectedRoot: "home", expectedPath: ".copilot/hooks/notify.json" },
@@ -152,7 +160,7 @@ const pathCases: Array<{
   { label: "hermes local instructions", adapter: hermesAdapter, installationType: "local", type: "instructions", name: "AGENTS.md", expectedRoot: "target", expectedPath: "AGENTS.md" },
   { label: "hermes user instructions", adapter: hermesAdapter, installationType: "user", type: "instructions", name: "SOUL.md", expectedRoot: "home", expectedPath: ".hermes/SOUL.md" },
   { label: "hermes user skills", adapter: hermesAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".hermes/skills/smoke" },
-  { label: "hermes user plugins", adapter: hermesAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: ".hermes/plugins/demo-plugin" },
+  { label: "hermes user plugins", adapter: hermesAdapter, installationType: "user", type: "plugins", name: "demo-plugin", kind: "dir", expectedRoot: "home", expectedPath: "plugins/demo-plugin" },
   { label: "hermes user mcp", adapter: hermesAdapter, installationType: "user", type: "mcp", name: "servers.yaml", expectedRoot: "home", expectedPath: ".hermes/config.yaml" },
   { label: "hermes user settings", adapter: hermesAdapter, installationType: "user", type: "settings", name: "settings.yaml", expectedRoot: "home", expectedPath: ".hermes/config.yaml" },
 ];
@@ -172,6 +180,53 @@ describe("artifact compatibility registry", () => {
     expect(plan.installationType).toBe(item.installationType);
     expect(plan.targetRoot).toBe(item.expectedRoot === "home" ? home : target);
     expect(plan.operations.map((operation) => operation.relativeDestPath)).toEqual([item.expectedPath]);
+  });
+
+  it("plans built-in plugin installs as semantic operations rather than inert directory copies", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-compat-home-");
+    process.env.AGENTWHEEL_TEST_HOME = home;
+    const plugin = await desiredArtifact(source, "plugins", "demo-plugin", "dir");
+    const cases = [
+      {
+        adapter: claudeAdapter,
+        installationType: "local",
+        inertPaths: [join(target, ".claude", "plugins", "demo-plugin")],
+      },
+      {
+        adapter: codexAdapter,
+        installationType: "local",
+        inertPaths: [join(target, "plugins", "demo-plugin")],
+      },
+      {
+        adapter: copilotAdapter,
+        installationType: "user",
+        inertPaths: [
+          join(target, ".github", "plugins", "demo-plugin"),
+          join(home, ".copilot", "plugins", "demo-plugin"),
+        ],
+      },
+      {
+        adapter: hermesAdapter,
+        installationType: "user",
+        inertPaths: [join(home, ".hermes", "plugins", "demo-plugin")],
+      },
+    ];
+
+    for (const item of cases) {
+      const plan = await createCombinedInstallPlan([plugin], item.adapter, target, undefined, localTransport, {
+        installationType: item.installationType,
+      });
+      expect(plan.operations).toHaveLength(1);
+      const operation = plan.operations[0]!;
+      expect(operation.action).toBe("plugin");
+      expect(operation.semanticPlugin?.runtime).toBe(item.adapter.name);
+      for (const inertPath of item.inertPaths) {
+        expect(operation.destPath).not.toBe(inertPath);
+      }
+      expect(["create", "update"]).not.toContain(operation.action);
+    }
   });
 
   it("rejects known undocumented or wrong mappings", async () => {
@@ -217,6 +272,10 @@ describe("artifact compatibility registry", () => {
     await expect(createCombinedInstallPlan([copilotUserCommand], copilotAdapter, target, undefined, localTransport, { installationType: "user" }))
       .rejects.toThrow(/does not support commands artifacts for installation type 'user'/);
 
+    const copilotLocalPlugin = await desiredArtifact(source, "plugins", "demo-plugin", "dir");
+    await expect(createCombinedInstallPlan([copilotLocalPlugin], copilotAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/does not support plugins artifacts for installation type 'local'/);
+
     const openClawRule = await desiredArtifact(source, "rules", "policy.md");
     await expect(createCombinedInstallPlan([openClawRule], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/does not support rules artifacts/);
@@ -257,7 +316,10 @@ describe("artifact compatibility registry", () => {
       .rejects.toThrow(/format 'codex-command-policy' is not compatible.*markdown-rule/s);
 
     const pluginDir = await desiredArtifact(source, "plugins", "bad-plugin", "dir");
-    await expect(createCombinedInstallPlan([pluginDir], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
+    await rm(join(pluginDir.sourcePath, "plugin.json"));
+    await expect(createCombinedInstallPlan([
+      { ...pluginDir, hash: await hashPath(pluginDir.sourcePath) },
+    ], openClawAdapter, target, undefined, localTransport, { installationType: "local" }))
       .rejects.toThrow(/OpenClaw plugins must contain plugin\.json or openclaw\.plugin\.json/);
 
     const openClawDescriptorPlugin = await desiredArtifact(source, "plugins", "openclaw-plugin", "dir");

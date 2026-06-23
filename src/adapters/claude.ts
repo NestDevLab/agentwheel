@@ -25,8 +25,8 @@ export const claudeAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".claude/agents" },
     },
     plugins: {
-      local: { enabled: true, dest: ".claude/plugins", semantic: "claude-plugin" },
-      user: { enabled: true, root: "home", dest: ".claude/plugins", semantic: "claude-plugin" },
+      local: { enabled: true, dest: ".agentwheel/plugins/claude", semantic: "claude-plugin" },
+      user: { enabled: true, root: "home", dest: ".agentwheel/plugins/claude", semantic: "claude-plugin" },
     },
     mcp: {
       local: { enabled: true, dest: ".mcp.json", merge: "json-deep" },

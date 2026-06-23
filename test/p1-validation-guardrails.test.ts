@@ -126,6 +126,9 @@ describe("P1 validation guardrails", () => {
     await expect(createCombinedInstallPlan([plugin], adapter, target))
       .rejects.toThrow(/format 'claude-plugin' is not compatible; expected one of: codex-plugin/);
 
+    await mkdir(join(plugin.sourcePath, ".codex-plugin"), { recursive: true });
+    await writeFile(join(plugin.sourcePath, ".codex-plugin", "plugin.json"), JSON.stringify({ name: "demo" }, null, 2), "utf8");
+    plugin.hash = await hashPath(plugin.sourcePath);
     const matching = { ...plugin, format: "codex-plugin" as ArtifactFormat };
     const plan = await createCombinedInstallPlan([matching], adapter, target);
     expect(plan.operations.map((operation) => operation.relativeDestPath)).toEqual(["plugins/demo"]);

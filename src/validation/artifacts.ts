@@ -197,6 +197,18 @@ async function validateKnownFormat(
   if (format === "openclaw-plugin" || target.semantic === "openclaw-plugin") {
     return validateOpenClawPlugin(artifact);
   }
+  if (format === "claude-plugin" || target.semantic === "claude-plugin") {
+    return validateJsonPluginDescriptor(artifact, ".claude-plugin/plugin.json", "Claude");
+  }
+  if (format === "codex-plugin" || target.semantic === "codex-plugin") {
+    return validateJsonPluginDescriptor(artifact, ".codex-plugin/plugin.json", "Codex");
+  }
+  if (format === "copilot-plugin" || target.semantic === "copilot-plugin") {
+    return validateJsonPluginDescriptor(artifact, "plugin.json", "Copilot");
+  }
+  if (format === "hermes-plugin" || target.semantic === "hermes-plugin") {
+    return validateHermesPlugin(artifact);
+  }
   if (pluginFormats.includes(format)) return validatePluginArtifact(artifact, format);
   return [];
 }
@@ -302,6 +314,69 @@ function validatePluginArtifact(artifact: Artifact, format: string): ArtifactVal
     issues.push({ artifact, message: `${format} plugins must be directory artifacts` });
   }
   return issues;
+}
+
+async function validateJsonPluginDescriptor(artifact: Artifact, relativeManifestPath: string, label: string): Promise<ArtifactValidationIssue[]> {
+  const generic = validatePluginArtifact(artifact, `${label.toLowerCase()}-plugin`);
+  if (generic.length > 0) return generic;
+  const manifestPath = join(artifactPath(artifact), relativeManifestPath);
+  if (!(await pathExists(manifestPath))) {
+    return [{ artifact, message: `${label} plugins must contain ${relativeManifestPath}` }];
+  }
+  const parsed = await parseJsonPluginManifest(manifestPath, label);
+  return parsed.ok ? [] : [{ artifact, message: parsed.message }];
+}
+
+async function validateHermesPlugin(artifact: Artifact): Promise<ArtifactValidationIssue[]> {
+  const generic = validatePluginArtifact(artifact, "hermes-plugin");
+  if (generic.length > 0) return generic;
+  const root = artifactPath(artifact);
+  const manifestPaths = [join(root, "plugin.yaml"), join(root, "plugin.yml")];
+  const manifestPath = await firstExistingPath(manifestPaths);
+  if (!manifestPath) {
+    return [{ artifact, message: "Hermes plugins must contain plugin.yaml or plugin.yml" }];
+  }
+  try {
+    const document = parseDocument(await readFile(manifestPath, "utf8"));
+    if (document.errors.length > 0) {
+      return [{ artifact, message: `Hermes ${basename(manifestPath)} must be valid YAML: ${document.errors[0]?.message ?? "parse error"}` }];
+    }
+    const parsed = document.toJSON() as unknown;
+    if (!isUnknownRecord(parsed)) {
+      return [{ artifact, message: `Hermes ${basename(manifestPath)} must contain a YAML object` }];
+    }
+    if (!hasStringField(parsed, "name") && !hasStringField(parsed, "module") && !hasStringField(parsed, "package") && !hasNestedPackageName(parsed)) {
+      return [{ artifact, message: `Hermes ${basename(manifestPath)} must declare a non-empty name, module, or package name` }];
+    }
+    return [];
+  } catch (error) {
+    return [{ artifact, message: `Hermes ${basename(manifestPath)} must be valid YAML: ${errorMessage(error)}` }];
+  }
+}
+
+async function firstExistingPath(paths: string[]): Promise<string | undefined> {
+  for (const path of paths) {
+    if (await pathExists(path)) return path;
+  }
+  return undefined;
+}
+
+async function parseJsonPluginManifest(
+  manifestPath: string,
+  label: string,
+): Promise<{ ok: true; name: string } | { ok: false; message: string }> {
+  try {
+    const parsed = JSON.parse(await readFile(manifestPath, "utf8")) as JsonValue;
+    if (!isRecord(parsed)) {
+      return { ok: false, message: `${label} ${basename(manifestPath)} must be a JSON object` };
+    }
+    if (typeof parsed.name !== "string" || parsed.name.trim().length === 0) {
+      return { ok: false, message: `${label} ${basename(manifestPath)} must declare a non-empty name` };
+    }
+    return { ok: true, name: parsed.name.trim() };
+  } catch (error) {
+    return { ok: false, message: `${label} ${basename(manifestPath)} must be valid JSON: ${errorMessage(error)}` };
+  }
 }
 
 async function validateOpenClawPlugin(artifact: Artifact): Promise<ArtifactValidationIssue[]> {
@@ -417,6 +492,16 @@ function isRecord(value: JsonValue | undefined): value is JsonRecord {
 
 function isUnknownRecord(value: unknown): value is YamlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasStringField(value: YamlRecord, field: string): boolean {
+  const raw = value[field];
+  return typeof raw === "string" && raw.trim().length > 0;
+}
+
+function hasNestedPackageName(value: YamlRecord): boolean {
+  const raw = value.package;
+  return isUnknownRecord(raw) && hasStringField(raw, "name");
 }
 
 function formatSkipWarning(

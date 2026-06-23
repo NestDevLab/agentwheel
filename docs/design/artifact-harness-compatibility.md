@@ -62,7 +62,7 @@ path, not from the inverse Codex/Copilot path.
 |---|---|---|---|---|
 | Codex | `instructions` | `supported-native`: `AGENTS.md` managed block | `supported-native`: `~/.codex/AGENTS.md` managed block | Project/user custom instructions. |
 | Codex | `skills` | `supported-native`: `.agents/skills/<name>/SKILL.md` | `supported-native`: `~/.agents/skills/<name>/SKILL.md` | `.codex/skills` is not a portable documented target. |
-| Codex | `plugins` | `supported-native`: `plugins/<name>` | `supported-native`: `~/.codex/plugins/<name>` | Semantic Codex plugin directories. |
+| Codex | `plugins` | `requires-config`: generated local marketplace under `.agentwheel/plugins/codex/...` plus `codex plugin marketplace add` and `codex plugin add` | `requires-config`: generated local marketplace under `~/.agentwheel/plugins/codex/...` plus `codex plugin marketplace add` and `codex plugin add` | Semantic install; no runtime plugin directory copy is planned. |
 | Codex | `rules` | `unsupported` | `unsupported` | OpenPack `rules` are behavioral; Codex `.rules` command policy is intentionally out of scope for the built-in adapter. |
 | Codex | `mcp` | `supported-native`: `.codex/config.toml` | `supported-native`: `~/.codex/config.toml` | Merged into `[mcp_servers]`. |
 | Codex | `hooks` | `supported-native`: `.codex/hooks.json` | `supported-native`: `~/.codex/hooks.json` | Project config must be trusted. |
@@ -71,7 +71,7 @@ path, not from the inverse Codex/Copilot path.
 | Codex | `settings` | `planned` | `planned` | Planned: a TOML-deep settings merger is intended for `config.toml`; not yet implemented. |
 | Claude Code | `instructions` | `supported-native`: `CLAUDE.md` managed block | `supported-native`: `~/.claude/CLAUDE.md` managed block | Root project instructions are not `.claude/CLAUDE.md`; local writes are skipped when Claude already bridges `AGENTS.md`. |
 | Claude Code | `skills` | `supported-native`: `.claude/skills/<name>/SKILL.md` | `supported-native`: `~/.claude/skills/<name>/SKILL.md` | Native skill directories. |
-| Claude Code | `plugins` | `supported-native`: `.claude/plugins/<name>` | `supported-native`: `~/.claude/plugins/<name>` | Semantic Claude plugin directories. |
+| Claude Code | `plugins` | `requires-config`: generated local marketplace under `.agentwheel/plugins/claude/...` plus `claude plugin marketplace add --scope local` and `claude plugin install --scope local` | `requires-config`: generated local marketplace under `~/.agentwheel/plugins/claude/...` plus `claude plugin marketplace add --scope user` and `claude plugin install --scope user` | Semantic install; no `.claude/plugins` directory copy is planned. |
 | Claude Code | `rules` | `supported-native`: `.claude/rules/*.md` | `supported-native`: `~/.claude/rules/*.md` | Behavioral/path-scoped instructions. |
 | Claude Code | `commands` | `supported-native`: `.claude/commands/*.md` | `supported-native`: `~/.claude/commands/*.md` | Legacy-compatible command prompts. |
 | Claude Code | `subagents` | `supported-native`: `.claude/agents/*.md` | `supported-native`: `~/.claude/agents/*.md` | Markdown subagent definitions. |
@@ -82,7 +82,7 @@ path, not from the inverse Codex/Copilot path.
 | GitHub Copilot CLI | `rules` | `mapped-as-instructions`: `.github/instructions/*.instructions.md` | `mapped-as-instructions`: `~/.copilot/instructions/*.instructions.md` | Custom instructions, not command rules. |
 | GitHub Copilot CLI | `commands` | `supported-native`: `.github/prompts/*.prompt.md` | `unsupported` | Prompt files. |
 | GitHub Copilot CLI | `skills` | `supported-native`: `.github/skills/<name>/SKILL.md` | `supported-native`: `~/.copilot/skills/<name>/SKILL.md` | `.agents/skills` is documented alternative, not default. |
-| GitHub Copilot CLI | `plugins` | `supported-native`: `.github/plugins/<name>` | `supported-native`: `~/.copilot/plugins/<name>` | Semantic Copilot plugin directories. |
+| GitHub Copilot CLI | `plugins` | `unsupported` | `requires-config`: staged local plugin under `~/.agentwheel/plugins/copilot/...` plus `copilot plugin install <path>` | Persistent plugin installs are user-level; local/project plugin dirs are inert. |
 | GitHub Copilot CLI | `subagents` | `supported-native`: `.github/agents/*.agent.md` | `supported-native`: `~/.copilot/agents/*.agent.md` | Custom agents for Copilot CLI/coding agent. |
 | GitHub Copilot CLI | `mcp` | `supported-native`: `.github/mcp.json` | `supported-native`: `~/.copilot/mcp-config.json` | `.mcp.json` is a documented project alternative; `.vscode/mcp.json` is not Agentwheel's Copilot CLI target. |
 | GitHub Copilot CLI | `hooks` | `supported-native`: `.github/hooks/*.json` | `supported-native`: `~/.copilot/hooks/*.json` | Shell-command lifecycle hooks for Copilot agent execution. |
@@ -100,7 +100,7 @@ path, not from the inverse Codex/Copilot path.
 | Hermes | `rules` | `custom-adapter-only` | `custom-adapter-only` | No built-in file-drop target is documented for runtime-native rules. |
 | Hermes | `mcp` | `unsupported` | `supported-native`: `~/.hermes/config.yaml` | Deep-merged YAML at top-level `mcp_servers:`. |
 | Hermes | `settings` | `unsupported` | `supported-native`: `~/.hermes/config.yaml` | Deep-merged YAML, including `delegation:` and `mcp_servers:` keys. |
-| Hermes | `plugins` | `unsupported` | `supported-native`: `~/.hermes/plugins/<name>` | Semantic Hermes plugin directories. |
+| Hermes | `plugins` | `unsupported` | `requires-config`: generated local git repo under `~/.agentwheel/plugins/hermes/...` plus `hermes plugins install --force --enable file://<repo>` | Semantic install; no `~/.hermes/plugins` directory copy is planned. |
 | Hermes | other artifacts | `unsupported` | `unsupported` | Hooks and local skills require custom adapter/config support. |
 | All built-ins | `fragments` | `agentwheel-internal` | `agentwheel-internal` | Fragments compose other artifacts during resolution; they are never runtime file-drop targets. |
 
@@ -112,6 +112,7 @@ path, not from the inverse Codex/Copilot path.
 - GitHub Copilot CLI hooks are lifecycle shell-command hooks, stored as JSON files under `.github/hooks/` or `~/.copilot/hooks/`.
 - Copilot rule-like artifacts are custom instructions. They do not provide command execution policy like Codex rules.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
+- Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, or git shims under `.agentwheel/plugins/...` and runs the runtime CLI; it does not copy plugin sources into `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
 - Hermes local skills remain unsupported by default because local/project discovery requires configured `external_dirs`; user skills install to `~/.hermes/skills`.
 - OpenClaw and Hermes built-ins do not emulate rules through legacy file drops such as `.openclaw/rules` or `.hermes/rules`; rules remain custom-adapter-only unless native runtime support is documented.
 - OpenPack `fragments` are Agentwheel composition inputs, not runtime-native artifacts. They should not appear as supported harness file targets.

@@ -27,8 +27,8 @@ async function tempRoot(prefix = "agentwheel-codex-adapter-"): Promise<string> {
 
 async function pluginArtifact(root: string, name = "demo-plugin"): Promise<DesiredArtifact> {
   const sourcePath = join(root, "plugins", name);
-  await mkdir(sourcePath, { recursive: true });
-  await writeFile(join(sourcePath, "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+  await mkdir(join(sourcePath, ".codex-plugin"), { recursive: true });
+  await writeFile(join(sourcePath, ".codex-plugin", "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
   return {
     type: "plugins",
     name,
@@ -37,6 +37,7 @@ async function pluginArtifact(root: string, name = "demo-plugin"): Promise<Desir
     relativePath: join("plugins", name),
     kind: "dir",
     hash: await hashPath(sourcePath),
+    packageName: "acme/codex-pack",
     channel: "managed",
     meta: {
       logicalSelector: `plugins/${name}`,
@@ -70,18 +71,18 @@ async function ruleArtifact(root: string): Promise<DesiredArtifact> {
 describe("Codex adapter", () => {
   it("declares Codex plugin targets and omits behavioral rules", () => {
     expect(codexAdapter.targets.plugins?.local).toMatchObject({
-      dest: "plugins",
+      dest: ".agentwheel/plugins/codex",
       semantic: "codex-plugin",
     });
     expect(codexAdapter.targets.plugins?.user).toMatchObject({
       root: "home",
-      dest: ".codex/plugins",
+      dest: ".agentwheel/plugins/codex",
       semantic: "codex-plugin",
     });
     expect(codexAdapter.targets.rules).toBeUndefined();
   });
 
-  it("plans Codex plugin installs to local and user plugin directories", async () => {
+  it("plans Codex plugin installs as local and user semantic marketplace operations", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     const home = await tempRoot();
@@ -95,9 +96,24 @@ describe("Codex adapter", () => {
       artifactType: "plugins",
       artifactName: "demo-plugin",
       installName: "demo-plugin",
+      action: "plugin",
       relativeDestPath: "plugins/demo-plugin",
     });
-    expect(localPlan.operations[0]?.destPath).toBe(join(target, "plugins", "demo-plugin"));
+    expect(localPlan.operations[0]?.destPath).toBe(target);
+    expect(localPlan.operations[0]?.semanticPlugin).toMatchObject({
+      runtime: "codex",
+      pluginName: "demo-plugin",
+      marketplaceName: "agentwheel-acme-codex-pack-demo-plugin",
+      stateRoot: join(target, ".agentwheel", "plugins", "codex", "local", "acme-codex-pack", "demo-plugin"),
+      installCommands: [
+        ["codex", "plugin", "marketplace", "add", join(target, ".agentwheel", "plugins", "codex", "local", "acme-codex-pack", "demo-plugin", "marketplace"), "--json"],
+        ["codex", "plugin", "add", "demo-plugin@agentwheel-acme-codex-pack-demo-plugin", "--json"],
+      ],
+      uninstallCommands: [
+        ["codex", "plugin", "remove", "demo-plugin@agentwheel-acme-codex-pack-demo-plugin", "--json"],
+        ["codex", "plugin", "marketplace", "remove", "agentwheel-acme-codex-pack-demo-plugin", "--json"],
+      ],
+    });
 
     const userPlan = await createCombinedInstallPlan([artifact], codexAdapter, target, undefined, undefined, { installationType: "user" });
     expect(userPlan.targetRoot).toBe(home);
@@ -106,9 +122,11 @@ describe("Codex adapter", () => {
       artifactType: "plugins",
       artifactName: "demo-plugin",
       installName: "demo-plugin",
-      relativeDestPath: ".codex/plugins/demo-plugin",
+      action: "plugin",
+      relativeDestPath: "plugins/demo-plugin",
     });
-    expect(userPlan.operations[0]?.destPath).toBe(join(home, ".codex", "plugins", "demo-plugin"));
+    expect(userPlan.operations[0]?.destPath).toBe(home);
+    expect(userPlan.operations[0]?.semanticPlugin?.stateRoot).toBe(join(home, ".agentwheel", "plugins", "codex", "user", "acme-codex-pack", "demo-plugin"));
   });
 
   it("rejects behavioral rules through the built-in Codex adapter", async () => {
@@ -118,5 +136,24 @@ describe("Codex adapter", () => {
 
     await expect(createCombinedInstallPlan([artifact], codexAdapter, target, undefined, undefined, { installationType: "local" }))
       .rejects.toThrow(/Adapter codex does not support rules artifacts for any installation type/);
+  });
+
+  it("rejects Codex plugins without .codex-plugin/plugin.json", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const sourcePath = join(source, "plugins", "demo-plugin");
+    await mkdir(sourcePath, { recursive: true });
+    await writeFile(join(sourcePath, "plugin.json"), `${JSON.stringify({ name: "demo-plugin" }, null, 2)}\n`, "utf8");
+    const artifact = {
+      ...(await pluginArtifact(await tempRoot(), "valid-plugin")),
+      name: "demo-plugin",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: join("plugins", "demo-plugin"),
+      hash: await hashPath(sourcePath),
+    };
+
+    await expect(createCombinedInstallPlan([artifact], codexAdapter, target, undefined, undefined, { installationType: "local" }))
+      .rejects.toThrow(/Codex plugins must contain \.codex-plugin\/plugin\.json/);
   });
 });

@@ -1,12 +1,16 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { copilotAdapter } from "../src/adapters/copilot.js";
-import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
+import { applyInstallPlan, createInstallPlan, createUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { LocalSourceDriver } from "../src/source/local.js";
 import { stageSource } from "../src/staging/staging.js";
-import { localTransport } from "../src/transport/index.js";
+import { localTransport, type TargetTransport } from "../src/transport/index.js";
+
+const execFileAsync = promisify(execFile);
 
 const tempRoots: string[] = [];
 
@@ -57,42 +61,21 @@ async function withTestHome<T>(home: string, fn: () => Promise<T>): Promise<T> {
 }
 
 describe("Copilot adapter", () => {
-  it("installs local plugins and deep-merges local settings", async () => {
+  it("rejects local persistent plugin installs clearly", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     await writeCopilotPackage(source);
-    await mkdir(join(target, ".github"), { recursive: true });
-    await writeFile(join(target, ".github", "settings.json"), JSON.stringify({
-      featureFlags: { user: true },
-      keep: true,
-    }, null, 2), "utf8");
 
     const bundle = await stageSource(new LocalSourceDriver(), source, {
-      select: ["plugins/demo-plugin", "settings/settings.json"],
+      select: ["plugins/demo-plugin"],
     });
-    const plan = await createInstallPlan(bundle, copilotAdapter, target, undefined, localTransport, { installationType: "local" });
-    const plugin = plan.operations.find((operation) => operation.artifactType === "plugins");
-    const settings = plan.operations.find((operation) => operation.artifactType === "settings");
-
-    expect(copilotAdapter.targets.plugins?.local?.semantic).toBe("copilot-plugin");
-    expect(plugin?.relativeDestPath).toBe(".github/plugins/demo-plugin");
-    expect(plugin?.action).toBe("create");
-    expect(settings?.relativeDestPath).toBe(".github/settings.json");
-    expect(settings?.mergeStrategy).toBe("json-deep");
-
-    const manifest = await applyInstallPlan(plan, bundle.sourceLock);
-
-    await expect(stat(join(target, ".github", "plugins", "demo-plugin", "plugin.json"))).resolves.toBeTruthy();
-    const mergedSettings = JSON.parse(await readFile(join(target, ".github", "settings.json"), "utf8"));
-    expect(mergedSettings.keep).toBe(true);
-    expect(mergedSettings.managedOnly).toBe(true);
-    expect(mergedSettings.featureFlags).toEqual({ user: true, managed: true });
-    expect(manifest.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("json-deep");
-    expect(manifest.entries.find((entry) => entry.artifactType === "plugins")?.path).toBe(".github/plugins/demo-plugin");
+    expect(copilotAdapter.targets.plugins?.local).toBeUndefined();
+    await expect(createInstallPlan(bundle, copilotAdapter, target, undefined, localTransport, { installationType: "local" }))
+      .rejects.toThrow(/Adapter copilot does not support plugins artifacts for installation type 'local'.*Supported: user/);
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("installs user plugins and deep-merges user settings", async () => {
+  it("plans user plugins as semantic local-path installs and deep-merges user settings", async () => {
     const source = await tempRoot();
     const target = await tempRoot();
     const home = await tempRoot("agentwheel-copilot-home-");
@@ -112,20 +95,115 @@ describe("Copilot adapter", () => {
       const settings = plan.operations.find((operation) => operation.artifactType === "settings");
 
       expect(copilotAdapter.targets.plugins?.user?.semantic).toBe("copilot-plugin");
-      expect(plugin?.relativeDestPath).toBe(".copilot/plugins/demo-plugin");
+      expect(copilotAdapter.targets.plugins?.user?.dest).toBe(".agentwheel/plugins/copilot");
+      expect(plugin?.action).toBe("plugin");
+      expect(plugin?.relativeDestPath).toBe("plugins/demo-plugin");
+      expect(plugin?.destPath).toBe(home);
+      expect(plugin?.semanticPlugin).toMatchObject({
+        runtime: "copilot",
+        pluginName: "demo-plugin",
+        stateRoot: join(home, ".agentwheel", "plugins", "copilot", "user", "acme-copilot-adapter", "demo-plugin"),
+        installCommands: [["copilot", "plugin", "install", join(home, ".agentwheel", "plugins", "copilot", "user", "acme-copilot-adapter", "demo-plugin", "plugin")]],
+        uninstallCommands: [["copilot", "plugin", "uninstall", "demo-plugin"]],
+      });
       expect(settings?.relativeDestPath).toBe(".copilot/settings.json");
       expect(settings?.mergeStrategy).toBe("json-deep");
 
       const manifest = await applyInstallPlan(plan, bundle.sourceLock);
 
-      await expect(stat(join(home, ".copilot", "plugins", "demo-plugin", "plugin.json"))).resolves.toBeTruthy();
+      await expect(stat(join(home, ".copilot", "plugins", "demo-plugin", "plugin.json"))).rejects.toThrow();
       const mergedSettings = JSON.parse(await readFile(join(home, ".copilot", "settings.json"), "utf8"));
       expect(mergedSettings.keep).toBe(true);
       expect(mergedSettings.managedOnly).toBe(true);
       expect(mergedSettings.featureFlags).toEqual({ user: true, managed: true });
       expect(manifest.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("json-deep");
-      expect(manifest.entries.find((entry) => entry.artifactType === "plugins")?.path).toBe(".copilot/plugins/demo-plugin");
+      expect(manifest.entries.find((entry) => entry.artifactType === "plugins")?.path).toBe("plugins/demo-plugin");
+      expect(manifest.entries.find((entry) => entry.artifactType === "plugins")?.executed).toBe(false);
       await rm(bundle.root, { recursive: true, force: true });
     });
   });
+
+  it("executes Copilot user plugin install/uninstall through the persistent Agentwheel state dir", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await writeCopilotPackage(source);
+    const executed: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh transport",
+      async execFile(command, args, options = {}) {
+        executed.push({ command, args, cwd: options.cwd });
+        if (command === "copilot" && args[0] === "plugin" && args[1] === "install") {
+          await stat(args[2] ?? "");
+        }
+      },
+    };
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, {
+      select: ["plugins/demo-plugin"],
+    });
+    const plan = await createInstallPlan(bundle, copilotAdapter, target, undefined, sshTransport, { installationType: "user" });
+    const manifest = await applyInstallPlan(plan, bundle.sourceLock, {
+      executePlugins: true,
+      transport: sshTransport,
+    });
+    const stateRoot = join(target, ".agentwheel", "plugins", "copilot", "user", "acme-copilot-adapter", "demo-plugin");
+
+    expect(executed).toEqual([
+      {
+        command: "copilot",
+        args: ["plugin", "install", join(stateRoot, "plugin")],
+        cwd: target,
+      },
+    ]);
+    await expect(stat(join(stateRoot, "plugin", "plugin.json"))).resolves.toBeTruthy();
+    expect(manifest.entries[0]?.executed).toBe(true);
+
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(target, copilotAdapter.name, sshTransport, { installationType: "user" }))!, sshTransport);
+    await uninstall(uninstallPlan, { transport: sshTransport });
+
+    expect(executed.at(-1)).toEqual({
+      command: "copilot",
+      args: ["plugin", "uninstall", "demo-plugin"],
+      cwd: target,
+    });
+    await expect(stat(stateRoot)).rejects.toThrow();
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("rejects Copilot plugins without plugin.json", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    await mkdir(join(source, "plugins", "demo-plugin"), { recursive: true });
+    await writeFile(join(source, "openpack.json"), JSON.stringify({
+      schemaVersion: 2,
+      name: "acme/copilot-adapter",
+      version: "1.0.0",
+      provides: [{ type: "plugins", path: "plugins" }],
+    }, null, 2), "utf8");
+
+    const bundle = await stageSource(new LocalSourceDriver(), source, {
+      select: ["plugins/demo-plugin"],
+    });
+
+    await expect(createInstallPlan(bundle, copilotAdapter, target, undefined, localTransport, { installationType: "user" }))
+      .rejects.toThrow(/Copilot plugins must contain plugin\.json/);
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("smoke checks installed Copilot plugin install help when available", async () => {
+    if (!(await hasCopilotBinary())) return;
+    const { stdout } = await execFileAsync("copilot", ["plugin", "install", "--help"]);
+    expect(stdout).toContain("Usage: copilot plugin install");
+  });
 });
+
+async function hasCopilotBinary(): Promise<boolean> {
+  try {
+    await execFileAsync("copilot", ["plugin", "--help"]);
+    return true;
+  } catch {
+    return false;
+  }
+}

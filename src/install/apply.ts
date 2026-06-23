@@ -479,13 +479,136 @@ async function executePluginInstall(operation: InstallOperation, transport: Targ
   if (!operation.sourcePath) {
     throw new Error(`Invalid plugin operation missing source path: ${operation.relativeDestPath}`);
   }
-  await executeSemanticCommands(operation, commands, transport, { stageSource: true });
+  if (operation.semanticPlugin?.stateRoot) {
+    await prepareSemanticPluginState(operation, transport);
+  }
+  await executeSemanticCommands(operation, commands, transport, { stageSource: operation.semanticPlugin?.stateRoot ? false : true });
 }
 
 async function executePluginUninstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
   const commands = operation.semanticPlugin?.uninstallCommands ?? [];
   if (commands.length === 0) throw new Error(`Invalid semantic plugin operation missing uninstall command: ${operation.relativeDestPath}`);
   await executeSemanticCommands(operation, commands, transport);
+  if (operation.semanticPlugin?.stateRoot) {
+    await transport.rm(operation.semanticPlugin.stateRoot);
+  }
+}
+
+async function prepareSemanticPluginState(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const spec = operation.semanticPlugin;
+  if (!spec?.stateRoot) return;
+  if (!operation.sourcePath) {
+    throw new Error(`Invalid semantic plugin operation missing source path: ${operation.relativeDestPath}`);
+  }
+
+  if (spec.runtime === "claude") {
+    await prepareClaudeMarketplace(operation, transport);
+    return;
+  }
+  if (spec.runtime === "codex") {
+    await prepareCodexMarketplace(operation, transport);
+    return;
+  }
+  if (spec.runtime === "copilot") {
+    await prepareCopilotPlugin(operation, transport);
+    return;
+  }
+  if (spec.runtime === "hermes") {
+    await prepareHermesGitShim(operation, transport);
+  }
+}
+
+async function prepareClaudeMarketplace(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const spec = requireSemanticPluginState(operation);
+  const marketplaceName = requireMarketplaceName(operation);
+  const marketplaceRoot = join(spec.stateRoot, "marketplace");
+  await transport.rm(spec.stateRoot);
+  await transport.atomicCopy(requireSourcePath(operation), join(marketplaceRoot, "plugins", spec.pluginName), operation.kind);
+  await transport.writeJsonAtomic(join(marketplaceRoot, ".claude-plugin", "marketplace.json"), {
+    name: marketplaceName,
+    owner: { name: "Agentwheel" },
+    plugins: [
+      {
+        name: spec.pluginName,
+        source: `./plugins/${spec.pluginName}`,
+        description: `Installed by Agentwheel${operation.packageName ? ` from ${operation.packageName}` : ""}`,
+      },
+    ],
+  });
+}
+
+async function prepareCodexMarketplace(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const spec = requireSemanticPluginState(operation);
+  const marketplaceName = requireMarketplaceName(operation);
+  const marketplaceRoot = join(spec.stateRoot, "marketplace");
+  await transport.rm(spec.stateRoot);
+  await transport.atomicCopy(requireSourcePath(operation), join(marketplaceRoot, "plugins", spec.pluginName), operation.kind);
+  await transport.writeJsonAtomic(join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), {
+    name: marketplaceName,
+    interface: {
+      displayName: "Agentwheel",
+    },
+    plugins: [
+      {
+        name: spec.pluginName,
+        source: {
+          source: "local",
+          path: `./plugins/${spec.pluginName}`,
+        },
+        policy: {
+          installation: "AVAILABLE",
+          authentication: "ON_INSTALL",
+        },
+        category: "Agentwheel",
+      },
+    ],
+  });
+}
+
+async function prepareCopilotPlugin(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const spec = requireSemanticPluginState(operation);
+  await transport.rm(spec.stateRoot);
+  await transport.atomicCopy(requireSourcePath(operation), join(spec.stateRoot, "plugin"), operation.kind);
+}
+
+async function prepareHermesGitShim(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const spec = requireSemanticPluginState(operation);
+  const repoRoot = join(spec.stateRoot, "repo");
+  await transport.rm(spec.stateRoot);
+  await transport.atomicCopy(requireSourcePath(operation), repoRoot, operation.kind);
+  if (!transport.execFile) {
+    throw new Error(`Cannot prepare Hermes plugin git shim over ${transport.description}: transport does not support remote commands.`);
+  }
+  await transport.execFile("git", ["init", repoRoot], { cwd: operation.destPath });
+  await transport.execFile("git", ["-C", repoRoot, "add", "-A"], { cwd: operation.destPath });
+  await transport.execFile("git", [
+    "-C",
+    repoRoot,
+    "-c",
+    "user.name=agentwheel",
+    "-c",
+    "user.email=agentwheel@example.invalid",
+    "commit",
+    "-m",
+    `agentwheel plugin ${operation.desiredHash ?? "unknown"}`,
+  ], { cwd: operation.destPath });
+}
+
+function requireSemanticPluginState(operation: InstallOperation): NonNullable<InstallOperation["semanticPlugin"]> & { stateRoot: string } {
+  const spec = operation.semanticPlugin;
+  if (!spec?.stateRoot) throw new Error(`Invalid semantic plugin operation missing state root: ${operation.relativeDestPath}`);
+  return spec as NonNullable<InstallOperation["semanticPlugin"]> & { stateRoot: string };
+}
+
+function requireSourcePath(operation: InstallOperation): string {
+  if (!operation.sourcePath) throw new Error(`Invalid semantic plugin operation missing source path: ${operation.relativeDestPath}`);
+  return operation.sourcePath;
+}
+
+function requireMarketplaceName(operation: InstallOperation): string {
+  const marketplaceName = operation.semanticPlugin?.marketplaceName;
+  if (!marketplaceName) throw new Error(`Invalid semantic plugin operation missing marketplace name: ${operation.relativeDestPath}`);
+  return marketplaceName;
 }
 
 async function executeSemanticCommands(

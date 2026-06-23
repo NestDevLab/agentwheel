@@ -4,9 +4,9 @@ import { dirname, join } from "node:path";
 import { parse } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { hermesAdapter } from "../src/adapters/hermes.js";
-import { applyCombinedInstallPlan, createCombinedInstallPlan, readInstallManifest, type DesiredArtifact } from "../src/install/index.js";
+import { applyCombinedInstallPlan, createCombinedInstallPlan, createUninstallPlan, readInstallManifest, uninstall, type DesiredArtifact } from "../src/install/index.js";
 import type { ArtifactType, FileKind } from "../src/model/artifact.js";
-import { localTransport } from "../src/transport/index.js";
+import { localTransport, type TargetTransport } from "../src/transport/index.js";
 import { hashPath } from "../src/utils/fs.js";
 
 const tempRoots: string[] = [];
@@ -143,7 +143,7 @@ describe("Hermes adapter", () => {
     });
   });
 
-  it("maps user plugins to ~/.hermes/plugins with hermes-plugin semantic metadata", async () => {
+  it("plans user plugins with hermes-plugin semantic metadata", async () => {
     const target = await tempRoot();
     const home = await tempRoot("agentwheel-hermes-home-");
     const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
@@ -158,7 +158,7 @@ describe("Hermes adapter", () => {
     expect(hermesAdapter.targets.plugins?.user).toMatchObject({
       enabled: true,
       root: "home",
-      dest: ".hermes/plugins",
+      dest: ".agentwheel/plugins/hermes",
       semantic: "hermes-plugin",
     });
 
@@ -167,12 +167,82 @@ describe("Hermes adapter", () => {
       const plan = await createCombinedInstallPlan([plugin], hermesAdapter, target, undefined, localTransport, { installationType: "user" });
       expect(plan.targetRoot).toBe(home);
       expect(plan.operations[0]).toMatchObject({
+        action: "plugin",
         artifactType: "plugins",
         artifactName: "demo-plugin",
-        relativeDestPath: ".hermes/plugins/demo-plugin",
-        destPath: join(home, ".hermes", "plugins", "demo-plugin"),
+        relativeDestPath: "plugins/demo-plugin",
+        destPath: home,
+        semanticPlugin: {
+          runtime: "hermes",
+          pluginName: "demo-plugin",
+          stateRoot: join(home, ".agentwheel", "plugins", "hermes", "user", "package", "demo-plugin"),
+          installCommands: [["hermes", "plugins", "install", "--force", "--enable", `file://${join(home, ".agentwheel", "plugins", "hermes", "user", "package", "demo-plugin", "repo")}`]],
+          uninstallCommands: [["hermes", "plugins", "remove", "demo-plugin"]],
+        },
       });
     });
+  });
+
+  it("executes Hermes install over ssh using a persistent remote git shim", async () => {
+    const target = await tempRoot();
+    const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "plugin.yaml"), [
+      "name: demo-plugin",
+      "version: '1.0'",
+      "description: Demo Hermes plugin",
+      "",
+    ].join("\n"), "utf8");
+    const plugin = await desiredArtifact("plugins", "demo-plugin", pluginRoot, "dir", "hermes-plugin");
+    const executed: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const sshTransport: TargetTransport = {
+      ...localTransport,
+      kind: "ssh",
+      description: "fake ssh",
+      async execFile(command, args, options = {}) {
+        executed.push({ command, args, cwd: options.cwd });
+        if (command === "git") {
+          await localTransport.execFile!(command, args, options);
+        }
+      },
+    };
+
+    const plan = await createCombinedInstallPlan([plugin], hermesAdapter, target, undefined, sshTransport, { installationType: "user" });
+    const manifest = await applyCombinedInstallPlan(plan, {
+      executePlugins: true,
+      transport: sshTransport,
+    });
+    const repoRoot = join(target, ".agentwheel", "plugins", "hermes", "user", "package", "demo-plugin", "repo");
+
+    await expect(readFile(join(repoRoot, "plugin.yaml"), "utf8")).resolves.toContain("name: demo-plugin");
+    await expect(readFile(join(repoRoot, ".git", "HEAD"), "utf8")).resolves.toBeTruthy();
+    expect(executed.map((item) => [item.command, ...item.args])).toEqual([
+      ["git", "init", repoRoot],
+      ["git", "-C", repoRoot, "add", "-A"],
+      ["git", "-C", repoRoot, "-c", "user.name=agentwheel", "-c", "user.email=agentwheel@example.invalid", "commit", "-m", `agentwheel plugin ${plugin.hash}`],
+      ["hermes", "plugins", "install", "--force", "--enable", `file://${repoRoot}`],
+    ]);
+    expect(manifest.entries[0]?.executed).toBe(true);
+
+    const uninstallPlan = await createUninstallPlan((await readInstallManifest(target, hermesAdapter.name, sshTransport, { installationType: "user" }))!, sshTransport);
+    await uninstall(uninstallPlan, { transport: sshTransport });
+    expect(executed.at(-1)).toEqual({
+      command: "hermes",
+      args: ["plugins", "remove", "demo-plugin"],
+      cwd: target,
+    });
+    await expect(readFile(repoRoot, "utf8")).rejects.toThrow();
+  });
+
+  it("rejects Hermes plugins without plugin.yaml or plugin.yml", async () => {
+    const target = await tempRoot();
+    const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "plugin.json"), JSON.stringify({ name: "demo-plugin" }), "utf8");
+    const plugin = await desiredArtifact("plugins", "demo-plugin", pluginRoot, "dir", "hermes-plugin");
+
+    await expect(createCombinedInstallPlan([plugin], hermesAdapter, target, undefined, localTransport, { installationType: "user" }))
+      .rejects.toThrow(/Hermes plugins must contain plugin.yaml or plugin.yml/);
   });
 });
 

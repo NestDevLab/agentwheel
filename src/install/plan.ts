@@ -842,6 +842,7 @@ async function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, 
       installName,
       sourcePath,
       targetRoot,
+      installationType,
     });
     if (semanticPlugin) {
       return {

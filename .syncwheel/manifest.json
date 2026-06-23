@@ -10,9 +10,25 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "plugins-multiruntime-shims"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "plugins-multiruntime-shims",
+      "branch": "pr/plugins-multiruntime-shims",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "21ec68a19276ae5bd9ffc03a5cdd151eb1eaa095",
+        "a8abcca2dad489a3ed5d4200eab08c464fdab49b"
+      ],
+      "meta": {}
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

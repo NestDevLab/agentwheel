@@ -20,8 +20,7 @@ export const copilotAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".copilot/skills" },
     },
     plugins: {
-      local: { enabled: true, dest: ".github/plugins", semantic: "copilot-plugin" },
-      user: { enabled: true, root: "home", dest: ".copilot/plugins", semantic: "copilot-plugin" },
+      user: { enabled: true, root: "home", dest: ".agentwheel/plugins/copilot", semantic: "copilot-plugin" },
     },
     subagents: {
       local: { enabled: true, dest: ".github/agents", semantic: "copilot-agent" },

@@ -19,7 +19,7 @@ export const hermesAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".hermes/config.yaml", merge: "yaml-deep" },
     },
     plugins: {
-      user: { enabled: true, root: "home", dest: ".hermes/plugins", semantic: "hermes-plugin" },
+      user: { enabled: true, root: "home", dest: ".agentwheel/plugins/hermes", semantic: "hermes-plugin" },
     },
   },
 };

@@ -6,6 +6,17 @@ export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fra
 export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
 export const legacyUnownedWorkspaceOwner = "legacy:unowned";
 
+export const semanticPluginSpecSchema = z.object({
+  runtime: z.enum(["openclaw", "claude", "codex", "copilot", "hermes"]),
+  pluginName: z.string().min(1),
+  marketplaceName: z.string().min(1).optional(),
+  stateRoot: z.string().min(1).optional(),
+  installCommands: z.array(z.array(z.string()).min(1)).min(1),
+  uninstallCommands: z.array(z.array(z.string()).min(1)).min(1),
+  enableCommands: z.array(z.array(z.string()).min(1)).optional(),
+  disableCommands: z.array(z.array(z.string()).min(1)).optional(),
+});
+
 export const manifestEntryV1Schema = z.object({
   path: z.string().min(1),
   artifactType: artifactTypeSchema,
@@ -17,6 +28,7 @@ export const manifestEntryV1Schema = z.object({
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   packageName: z.string().min(1).optional(),
   semanticCommand: z.array(z.string()).optional(),
+  semanticPlugin: semanticPluginSpecSchema.optional(),
   executed: z.boolean().optional(),
   mergeStrategy: z.enum(["json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
   mode: z.enum(["managed-block"]).optional(),

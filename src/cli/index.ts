@@ -1164,6 +1164,7 @@ function keepManifestEntryOperation(
     channel: entry.channel,
     packageName: entry.packageName,
     semanticCommand: entry.semanticCommand,
+    semanticPlugin: entry.semanticPlugin,
     execute: entry.executed,
     mergeStrategy: entry.mergeStrategy,
     composedFrom: entry.composedFrom,

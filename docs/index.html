@@ -716,18 +716,58 @@
     }
 
     .matrix-glossary {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
-      padding: 12px 14px;
       color: var(--muted);
       font-size: 12px;
+      overflow: hidden;
+    }
+
+    .matrix-glossary summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .matrix-glossary summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .matrix-glossary summary::after {
+      content: "Open";
+      flex: 0 0 auto;
+      color: #bae6fd;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .matrix-glossary[open] summary::after {
+      content: "Close";
+    }
+
+    .glossary-summary {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .glossary-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      padding: 0 16px 16px;
     }
 
     .legend-title {
-      width: 100%;
-      margin-bottom: 2px;
+      display: block;
       color: #f8fafc;
       font-size: 13px;
       font-weight: 900;
@@ -736,18 +776,34 @@
     }
 
     .legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-right: 8px;
-      min-height: 26px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: start;
+      gap: 8px;
       font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .legend-item strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #dbeafe;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .legend-item small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
     }
 
     .legend-link {
+      display: inline-flex;
+      align-items: center;
       color: #bae6fd;
       font-weight: 850;
-      white-space: nowrap;
     }
 
     .command-explain {
@@ -1171,7 +1227,7 @@
           <span class="section-kicker">01</span>
           <h2 class="section-title">Runtime matrix</h2>
         </div>
-        <p class="section-copy">Cells show the install target Agentwheel supports today for each OpenPack artifact type. Similar runtime behavior is not counted unless the artifact itself is installable.</p>
+        <p class="section-copy">Cells show how Agentwheel can surface each OpenPack capability today: files, directories, config-backed entries, runtime-only behavior, planned work, or unsupported targets.</p>
         <div class="matrix-wrap" aria-label="Built-in adapter delivery-surface matrix">
           <table class="matrix">
             <thead>
@@ -1195,12 +1251,12 @@
                 <td><span class="badge format">md user</span></td>
                 <td><span class="badge none">no</span></td>
                 <td><span class="badge format">dir</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge format">json user</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge format">json user</span></td>
-                <td><span class="badge semantic">semantic</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">json settings</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">json</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1213,7 +1269,7 @@
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
-                <td><span class="badge semantic">semantic</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1226,7 +1282,7 @@
                 <td><span class="badge format">toml</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge todo">todo</span></td>
-                <td><span class="badge semantic">semantic</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
@@ -1234,48 +1290,56 @@
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge none">no</span></td>
                 <td><span class="badge format">dir user</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge format">yaml user</span></td>
-                <td><span class="badge none">no</span></td>
-                <td><span class="badge format">yaml user</span></td>
-                <td><span class="badge semantic">semantic user</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">yaml knobs</span></td>
+                <td><span class="badge format">yaml</span></td>
+                <td><span class="badge runtime">runtime</span></td>
+                <td><span class="badge format">yaml</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
               <tr>
                 <th>GitHub Copilot CLI</th>
                 <td><span class="badge format">md</span></td>
-                <td><span class="badge mapped">md mapped</span></td>
+                <td><span class="badge format">md</span></td>
                 <td><span class="badge format">dir</span></td>
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge format">md</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge format">json</span></td>
-                <td><span class="badge semantic">semantic user</span></td>
+                <td><span class="badge format">dir</span></td>
                 <td><span class="badge internal">compose</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="matrix-support">
-          <div class="matrix-glossary" aria-label="Matrix glossary">
-            <strong class="legend-title">Glossary</strong>
-            <span class="legend-item"><span class="badge format">md</span> Markdown</span>
-            <span class="legend-item"><span class="badge format">json</span> JSON</span>
-            <span class="legend-item"><span class="badge format">yaml</span> YAML</span>
-            <span class="legend-item"><span class="badge format">toml</span> TOML</span>
-            <span class="legend-item"><span class="badge format">dir</span> directory</span>
-            <span class="legend-item"><span class="badge semantic">semantic</span> runtime command</span>
-            <span class="legend-item"><span class="badge mapped">mapped</span> explicit mapping</span>
-            <span class="legend-item"><span class="badge none">no</span> unsupported artifact</span>
-            <span class="legend-item"><span class="badge todo">todo</span> planned</span>
-            <span class="legend-item"><span class="badge internal">compose</span> Agentwheel-only</span>
-            <a class="legend-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Artifact-level matrix</a>
-          </div>
+          <details class="matrix-glossary" aria-label="Matrix glossary">
+            <summary>
+              <span>
+                <strong class="legend-title">Glossary</strong>
+                <span class="glossary-summary">Open the legend for what each badge means in the matrix.</span>
+              </span>
+            </summary>
+            <div class="glossary-items">
+              <span class="legend-item"><span class="badge format">md</span><span><strong>Markdown surface</strong><small>Agentwheel writes Markdown files or managed Markdown blocks the runtime reads directly.</small></span></span>
+              <span class="legend-item"><span class="badge format">json</span><span><strong>JSON config</strong><small>The capability is delivered through a JSON file or JSON deep-merge.</small></span></span>
+              <span class="legend-item"><span class="badge format">yaml</span><span><strong>YAML config</strong><small>The capability is delivered through YAML config, usually via deep-merge.</small></span></span>
+              <span class="legend-item"><span class="badge format">toml</span><span><strong>TOML config</strong><small>The runtime consumes TOML files or TOML-backed config entries.</small></span></span>
+              <span class="legend-item"><span class="badge format">dir</span><span><strong>Native directory</strong><small>Agentwheel places a package directory where the harness discovers it.</small></span></span>
+              <span class="legend-item"><span class="badge format">json settings</span><span><strong>JSON settings-backed</strong><small>The capability exists through settings, for example OpenClaw <code>agents.list[]</code>.</small></span></span>
+              <span class="legend-item"><span class="badge format">yaml knobs</span><span><strong>YAML knobs</strong><small>The runtime has config knobs, for example Hermes <code>delegation:</code>, not separate artifact files.</small></span></span>
+              <span class="legend-item"><span class="badge runtime">runtime</span><span><strong>Runtime-only</strong><small>The runtime provides behavior, but there is no managed artifact to install.</small></span></span>
+              <span class="legend-item"><span class="badge none">no</span><span><strong>Unsupported target</strong><small>Agentwheel does not currently manage this capability for the built-in adapter.</small></span></span>
+              <span class="legend-item"><span class="badge todo">todo</span><span><strong>Planned</strong><small>The target is intended but not implemented yet.</small></span></span>
+              <span class="legend-item"><span class="badge internal">compose</span><span><strong>Agentwheel-only</strong><small>Fragments are composed into other artifacts; they are never installed directly.</small></span></span>
+              <a class="legend-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md">Artifact-level matrix</a>
+            </div>
+          </details>
           <div class="matrix-note" aria-label="Runtime matrix notes">
             <strong>Rules and runtime-only features</strong>
-            <span>Behavioral guidance for Codex, OpenClaw, and Hermes belongs in <code>instructions</code>, not <code>rules</code>. OpenClaw <code>agents.list</code> and Hermes <code>delegation:</code> are settings/config knobs, not separate installable artifacts.</span>
+            <span>Behavioral guidance for Codex, OpenClaw, and Hermes belongs in <code>instructions</code>, not <code>rules</code>. Config-backed cells mean the capability is managed through the settings/config merger, not through a separate directory.</span>
           </div>
         </div>
       </section>

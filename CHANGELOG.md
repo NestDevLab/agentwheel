@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.14.5
+
+- Expanded the README and landing page to explain that the Agentwheel companion skill is optional but strongly recommended for the best Agentwheel experience.
+
 ## 0.14.4
 
 - Added `agentwheel doctor` to detect the Agentwheel companion skill for a selected runtime and suggest explicit dry-run/install commands without writing runtime files by default.

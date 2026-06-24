@@ -874,6 +874,38 @@
       margin-top: 18px;
     }
 
+    .companion-callout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+      gap: 16px;
+      align-items: stretch;
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid rgba(6, 182, 212, 0.28);
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(17, 24, 39, 0.78));
+    }
+
+    .companion-callout strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #f8fafc;
+      font-size: 18px;
+    }
+
+    .companion-callout p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .companion-callout .code {
+      margin: 0;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+
     .code-toggle {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1007,6 +1039,10 @@
         grid-template-columns: 1fr;
       }
 
+      .companion-callout {
+        grid-template-columns: 1fr;
+      }
+
       .command-list {
         grid-template-columns: 1fr;
       }
@@ -1130,7 +1166,7 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> v0.14.4 - installation types &amp; harness matrix</span>
+          <span class="eyebrow"><span class="dot"></span> v0.14.5 - installation types &amp; harness matrix</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
           <p class="subhead">Install one OpenPack into every agent runtime.</p>
           <div class="actions">
@@ -1495,6 +1531,21 @@
           <span class="section-kicker">06</span>
           <h2 class="section-title">Advanced usage</h2>
         </div>
+        <div class="companion-callout">
+          <div>
+            <strong>Recommended first step: install the Agentwheel companion skill.</strong>
+            <p>The companion skill is optional, but strongly recommended for anyone using Agentwheel regularly. It brings Agentwheel setup guidance, safety rules, command patterns, and runtime-specific tips directly into your agent so the CLI and the agent reinforce each other.</p>
+          </div>
+          <div class="code" aria-label="Companion skill setup">
+            <div class="codebar">
+              <span class="light"></span><span class="light"></span><span class="light"></span>
+              <span>companion skill</span>
+            </div>
+            <pre><code><span class="prompt">$</span> agentwheel doctor --adapter copilot --user
+<span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
+<span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel</code></pre>
+          </div>
+        </div>
         <div class="toggle-grid">
           <details class="code-toggle">
             <summary>Plan/apply loop</summary>
@@ -1565,6 +1616,10 @@
             <strong>README</strong>
             <span>quick start</span>
           </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#companion-skill-doctor">
+            <strong>Companion skill</strong>
+            <span>recommended setup</span>
+          </a>
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md">
             <strong>OpenPack spec</strong>
             <span>manifest format</span>
@@ -1604,7 +1659,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.14.4.</span>
+      <span>agentwheel is early / v0.14.5.</span>
       <a class="logo-link" href="https://www.nestdev.it/" aria-label="NestDevLab">
         <img src="https://www.nestdev.it/assets/logo-nestdev.png" width="22" height="22" alt="">
       </a>

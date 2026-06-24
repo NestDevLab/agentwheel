@@ -117,14 +117,20 @@ stderr warning when an update is available. Disable it with `--no-update-check` 
 ## Companion Skill Doctor
 
 Agentwheel ships its own companion skill in `github:NestDevLab/agentwheel` as `skills/agentwheel`.
-The CLI never installs it silently into runtime folders. Use `doctor` to check the selected runtime
-and print the exact preview and install commands when the skill is missing:
+Installing it is optional, but strongly recommended if you want to get the most out of Agentwheel:
+the skill keeps Agentwheel commands, setup guidance, safety rules, and operational patterns available
+inside your agent runtime instead of forcing you to leave the flow and look them up elsewhere.
+
+The CLI never installs the companion skill silently into runtime folders. Use `doctor` to check the
+selected runtime and print the exact preview and install commands when the skill is missing:
 
 ```bash
 agentwheel doctor --adapter copilot --user
 agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
 agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel
 ```
+
+Run the dry-run first when you want to inspect the target path and conflict status before writing.
 
 ## Runtime Targeting
 

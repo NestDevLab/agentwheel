@@ -1324,10 +1324,12 @@
             </summary>
             <div class="glossary-items">
               <span class="legend-item"><span class="badge format">md</span><span><strong>Markdown surface</strong><small>Agentwheel writes Markdown files or managed Markdown blocks the runtime reads directly.</small></span></span>
+              <span class="legend-item"><span class="badge format">md user</span><span><strong>User-only Markdown</strong><small>The runtime has a supported user-level Markdown surface, but no project-local target is claimed.</small></span></span>
               <span class="legend-item"><span class="badge format">json</span><span><strong>JSON config</strong><small>The capability is delivered through a JSON file or JSON deep-merge.</small></span></span>
               <span class="legend-item"><span class="badge format">yaml</span><span><strong>YAML config</strong><small>The capability is delivered through YAML config, usually via deep-merge.</small></span></span>
               <span class="legend-item"><span class="badge format">toml</span><span><strong>TOML config</strong><small>The runtime consumes TOML files or TOML-backed config entries.</small></span></span>
               <span class="legend-item"><span class="badge format">dir</span><span><strong>Native directory</strong><small>Agentwheel places a package directory where the harness discovers it.</small></span></span>
+              <span class="legend-item"><span class="badge format">dir user</span><span><strong>User-only directory</strong><small>The runtime supports the directory at user scope; local/project discovery is not claimed.</small></span></span>
               <span class="legend-item"><span class="badge format">json settings</span><span><strong>JSON settings-backed</strong><small>The capability exists through settings, for example OpenClaw <code>agents.list[]</code>.</small></span></span>
               <span class="legend-item"><span class="badge format">yaml knobs</span><span><strong>YAML knobs</strong><small>The runtime has config knobs, for example Hermes <code>delegation:</code>, not separate artifact files.</small></span></span>
               <span class="legend-item"><span class="badge runtime">runtime</span><span><strong>Runtime-only</strong><small>The runtime provides behavior, but there is no managed artifact to install.</small></span></span>

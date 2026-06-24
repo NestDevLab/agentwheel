@@ -28,6 +28,25 @@ afterAll(async () => {
 });
 
 describe("CLI verb redesign", () => {
+  it("doctor suggests the Copilot user companion skill install without writing files", async () => {
+    const { stdout } = await runCli(["doctor", "--adapter", "copilot", "--user"]);
+
+    expect(stdout).toContain("Agentwheel companion skill: missing");
+    expect(stdout).toContain("agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run");
+    expect(stdout).toContain("agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel");
+    await expect(stat(join(cliHome, ".copilot"))).rejects.toThrow();
+  });
+
+  it("doctor detects an installed Copilot user companion skill", async () => {
+    await mkdir(join(cliHome, ".copilot", "skills", "agentwheel"), { recursive: true });
+    await writeFile(join(cliHome, ".copilot", "skills", "agentwheel", "SKILL.md"), "# Agentwheel\n", "utf8");
+
+    const { stdout } = await runCli(["doctor", "--adapter", "copilot", "--user"]);
+
+    expect(stdout).toContain("Agentwheel companion skill: installed");
+    expect(stdout).not.toContain("Suggested commands:");
+  });
+
   it("ensures a new source with install <source> and hides the sync shim from top-level help", async () => {
     const root = await tempRoot();
     const source = await packageFixture("ensure");
@@ -521,6 +540,7 @@ async function cleanCliHomeState(): Promise<void> {
   await Promise.all([
     rm(join(cliHome, ".agentwheel"), { recursive: true, force: true }),
     rm(join(cliHome, ".agents"), { recursive: true, force: true }),
+    rm(join(cliHome, ".copilot"), { recursive: true, force: true }),
     rm(join(cliHome, ".codex"), { recursive: true, force: true }),
     rm(join(cliHome, ".claude"), { recursive: true, force: true }),
   ]);

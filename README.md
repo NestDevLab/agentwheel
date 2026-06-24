@@ -76,6 +76,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
+| `agentwheel doctor` | Check runtime setup and suggest the explicit companion skill install command when it is missing. |
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**
@@ -112,6 +113,18 @@ written. `uninstall` removes clean managed files and keeps drifted files by defa
 agentwheel checks npm for newer versions at most once every 24 hours and prints a non-blocking
 stderr warning when an update is available. Disable it with `--no-update-check` or
 `AGENTWHEEL_NO_UPDATE_CHECK=1`.
+
+## Companion Skill Doctor
+
+Agentwheel ships its own companion skill in `github:NestDevLab/agentwheel` as `skills/agentwheel`.
+The CLI never installs it silently into runtime folders. Use `doctor` to check the selected runtime
+and print the exact preview and install commands when the skill is missing:
+
+```bash
+agentwheel doctor --adapter copilot --user
+agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
+agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel
+```
 
 ## Runtime Targeting
 

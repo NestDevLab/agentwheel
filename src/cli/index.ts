@@ -8,6 +8,7 @@ import {
   installRootForAdapterInstallationType,
   resolveInstallationTypeForAdapter,
   resolveInstallationTypeForArtifacts,
+  targetMappingForArtifact,
   type AdapterConfig,
 } from "../model/adapter.js";
 import { applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, uninstall } from "../install/index.js";
@@ -38,6 +39,8 @@ import { computeTargetFingerprint, readGraphLock } from "../model/graph-lock.js"
 import { resolveCliVersion } from "./version.js";
 
 const CLI_VERSION = resolveCliVersion();
+const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
+const COMPANION_SKILL_NAME = "agentwheel";
 
 const program = new Command();
 
@@ -546,6 +549,29 @@ program
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
+  });
+
+program
+  .command("doctor")
+  .description("check agentwheel runtime setup and companion skill guidance")
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .action(async (options) => {
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const target = await resolveRuntimeTarget({
+      targetRoot: normalizedOptions.targetRoot,
+      adapter: normalizedOptions.adapter,
+      installationType: normalizedOptions.installationType,
+      agent: normalizedOptions.agent,
+    });
+    await printDoctor(target, normalizedOptions);
   });
 
 async function runInstallCommand(
@@ -1429,6 +1455,69 @@ async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliO
   } finally {
     await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }
+}
+
+async function printDoctor(
+  target: RuntimeTarget,
+  options: RuntimeScopeOptions & { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
+): Promise<void> {
+  const adapterOptions = adapterOptionsForTarget(target, options);
+  const adapter = await resolveAdapterForTarget(target, adapterOptions);
+  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForArtifacts(adapter, ["skills"]);
+  const targetMapping = targetMappingForArtifact(adapter, "skills", installationType);
+  if (!targetMapping?.enabled) {
+    throw new Error(`Adapter ${adapter.name} does not support skills for installation type '${installationType}'.`);
+  }
+  const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh");
+  const companionSkillPath = join(installRoot, targetMapping.dest, COMPANION_SKILL_NAME);
+  const installed = await pathExists(companionSkillPath);
+
+  console.log(`Doctor for ${adapter.name}/${installationType} at ${installRoot}`);
+  if (installed) {
+    console.log(`Agentwheel companion skill: installed at ${companionSkillPath}`);
+    return;
+  }
+
+  console.log(`Agentwheel companion skill: missing at ${companionSkillPath}`);
+  console.log("Suggested commands:");
+  console.log(`  ${companionSkillInstallCommand(adapter.name, installationType, options, { dryRun: true })}`);
+  console.log(`  ${companionSkillInstallCommand(adapter.name, installationType, options)}`);
+}
+
+function companionSkillInstallCommand(
+  adapter: string,
+  installationType: string,
+  options: RuntimeScopeOptions,
+  behavior: { dryRun?: boolean } = {},
+): string {
+  const args = [
+    "agentwheel",
+    "install",
+    COMPANION_SKILL_SOURCE,
+    "--adapter",
+    adapter,
+    ...installationTypeCommandArgs(installationType),
+    ...targetRootCommandArgs(options),
+    "--skill",
+    COMPANION_SKILL_NAME,
+  ];
+  if (behavior.dryRun) args.push("--dry-run");
+  return args.map(shellQuoteArg).join(" ");
+}
+
+function installationTypeCommandArgs(installationType: string): string[] {
+  if (installationType === "user") return ["--user"];
+  if (installationType === "local") return ["--local"];
+  return ["--installation-type", installationType];
+}
+
+function targetRootCommandArgs(options: RuntimeScopeOptions): string[] {
+  return options.targetRoot && options.installationType !== "user" ? ["--target-root", options.targetRoot] : [];
+}
+
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@=-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function collectSelectOption(value: string, previous: string[]): string[] {

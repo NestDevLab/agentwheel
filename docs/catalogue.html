@@ -787,6 +787,7 @@
             <button class="chip" type="button" data-filter="ecosystem" data-value="official" aria-pressed="false">Official</button>
             <button class="chip" type="button" data-filter="ecosystem" data-value="openpack" aria-pressed="false">OpenPack</button>
             <button class="chip" type="button" data-filter="ecosystem" data-value="mcp-registry" aria-pressed="false">MCP registry</button>
+            <button class="chip" type="button" data-filter="ecosystem" data-value="clawhub" aria-pressed="false">ClawHub</button>
             <button class="chip" type="button" data-filter="ecosystem" data-value="vercel" aria-pressed="false">Vercel skills</button>
             <button class="chip" type="button" data-filter="ecosystem" data-value="skillkit" aria-pressed="false">SkillKit</button>
           </div>
@@ -798,6 +799,20 @@
             <button class="chip" type="button" data-filter="type" data-value="plugin" aria-pressed="false">Plugins</button>
             <button class="chip" type="button" data-filter="type" data-value="mcp" aria-pressed="false">MCP</button>
             <button class="chip" type="button" data-filter="type" data-value="adapter" aria-pressed="false">Adapters</button>
+          </div>
+
+          <div class="chip-group" aria-label="Artifact filter">
+            <button class="chip" type="button" data-filter="provides" data-value="all" aria-pressed="true">All artifacts</button>
+            <button class="chip" type="button" data-filter="provides" data-value="instructions" aria-pressed="false">Instructions</button>
+            <button class="chip" type="button" data-filter="provides" data-value="rules" aria-pressed="false">Rules</button>
+            <button class="chip" type="button" data-filter="provides" data-value="skills" aria-pressed="false">Skills</button>
+            <button class="chip" type="button" data-filter="provides" data-value="commands" aria-pressed="false">Commands</button>
+            <button class="chip" type="button" data-filter="provides" data-value="subagents" aria-pressed="false">Subagents</button>
+            <button class="chip" type="button" data-filter="provides" data-value="mcp" aria-pressed="false">MCP</button>
+            <button class="chip" type="button" data-filter="provides" data-value="hooks" aria-pressed="false">Hooks</button>
+            <button class="chip" type="button" data-filter="provides" data-value="settings" aria-pressed="false">Settings</button>
+            <button class="chip" type="button" data-filter="provides" data-value="plugins" aria-pressed="false">Plugins</button>
+            <button class="chip" type="button" data-filter="provides" data-value="fragments" aria-pressed="false">Fragments</button>
           </div>
 
           <label>
@@ -864,6 +879,7 @@
       query: "",
       ecosystem: "all",
       type: "all",
+      provides: "all",
       sort: "stars",
     };
 
@@ -903,6 +919,7 @@
       if (ecosystem === "official") return "Official";
       if (ecosystem === "openpack") return "OpenPack";
       if (ecosystem === "mcp-registry") return "MCP registry";
+      if (ecosystem === "clawhub") return "ClawHub";
       if (ecosystem === "vercel") return "Vercel skills";
       if (ecosystem === "skillkit") return "SkillKit";
       return ecosystem || "Unknown";
@@ -912,6 +929,7 @@
       if (ecosystem === "official") return "var(--indigo)";
       if (ecosystem === "openpack") return "#86efac";
       if (ecosystem === "mcp-registry") return "#fcd34d";
+      if (ecosystem === "clawhub") return "#fb923c";
       if (ecosystem === "vercel") return "var(--violet)";
       if (ecosystem === "skillkit") return "var(--cyan)";
       return "rgba(203, 213, 225, 0.46)";
@@ -942,6 +960,7 @@
           entry.name,
           entry.description,
           entry.subtitle,
+          ...(Array.isArray(entry.provides) ? entry.provides : []),
           ...(Array.isArray(entry.tags) ? entry.tags : []),
         ].join(" ").toLowerCase(),
         lastPushTime: Number.isNaN(lastPushTime) ? -Infinity : lastPushTime,
@@ -970,7 +989,7 @@
         version: null,
         featured: false,
         subtitle: `${owner}/${repo}`,
-        skillsLinkLabel: "Verify on skills.sh",
+        homepageLinkLabel: "Verify on skills.sh",
       });
     }
 
@@ -985,6 +1004,42 @@
     function setPressed(group, value) {
       document.querySelectorAll(`[data-filter="${group}"]`).forEach((button) => {
         button.setAttribute("aria-pressed", String(button.dataset.value === value));
+      });
+    }
+
+    function filterHasResults(group, value) {
+      if (value === "all") return true;
+      return state.entries.some((entry) => {
+        if (group === "ecosystem") return entry.ecosystem === value;
+        if (group === "type") return entry.type === value;
+        if (group === "provides") return Array.isArray(entry.provides) && entry.provides.includes(value);
+        return true;
+      });
+    }
+
+    function updateFilterVisibility() {
+      const groups = new Set();
+      document.querySelectorAll("[data-filter]").forEach((button) => {
+        const group = button.dataset.filter;
+        const value = button.dataset.value;
+        groups.add(group);
+        const visible = filterHasResults(group, value);
+        button.hidden = !visible;
+        button.disabled = !visible;
+        if (!visible && state[group] === value) {
+          state[group] = "all";
+          setPressed(group, "all");
+        }
+      });
+
+      groups.forEach((group) => {
+        document.querySelectorAll(`[data-filter="${group}"]`).forEach((button) => {
+          const groupEl = button.closest(".chip-group");
+          if (!groupEl) return;
+          const hasSpecificFilter = [...groupEl.querySelectorAll("[data-filter]")]
+            .some((candidate) => candidate.dataset.value !== "all" && !candidate.hidden);
+          groupEl.hidden = !hasSpecificFilter;
+        });
       });
     }
 
@@ -1207,7 +1262,7 @@
         const link = document.createElement("a");
         link.className = "resource-link";
         link.href = homepage;
-        link.textContent = entry.skillsLinkLabel || "skills.sh";
+        link.textContent = entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage";
         links.appendChild(link);
       }
       card.appendChild(links);
@@ -1220,6 +1275,7 @@
       const filtered = state.entries.filter((entry) => {
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
         if (state.type !== "all" && entry.type !== state.type) return false;
+        if (state.provides !== "all" && (!Array.isArray(entry.provides) || !entry.provides.includes(state.provides))) return false;
         if (!query) return true;
         if (!entry.searchText.includes(query)) return false;
         entry.matchTier = matchTier(entry, query);
@@ -1282,7 +1338,7 @@
       clearGrid();
       count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {
-        showState("empty", "No resources match", "Try a different search, ecosystem, type, or sort combination.");
+        showState("empty", "No resources match", "Try a different search, ecosystem, type, artifact, or sort combination.");
         return;
       }
       state.renderedCount = 0;
@@ -1342,6 +1398,7 @@
 
         if (additions.length) {
           state.entries = state.entries.concat(additions);
+          updateFilterVisibility();
           render();
         }
       } catch (error) {
@@ -1356,6 +1413,7 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         state.entries = Array.isArray(data.entries) ? data.entries.map(prepareEntry) : [];
+        updateFilterVisibility();
         render();
         loadVercelIndex();
       } catch {

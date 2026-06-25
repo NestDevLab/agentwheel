@@ -10,9 +10,24 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "agentwheel-catalogue-doctor-mcp"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "agentwheel-catalogue-doctor-mcp",
+      "branch": "branch/agentwheel-catalogue-doctor-mcp",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "f0b2c601740821cd890efb135b2285e0743711be"
+      ],
+      "meta": {}
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

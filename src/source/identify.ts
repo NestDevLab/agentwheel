@@ -2,16 +2,17 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathExists } from "../utils/fs.js";
 
-export type SourceDriverName = "local" | "git" | "skillkit" | "vercel-skills";
+export type SourceDriverName = "local" | "git" | "skillkit" | "vercel-skills" | "mcp-registry";
 
 export function inferSourceDriverName(source: string): SourceDriverName {
+  if (source.startsWith("mcp-registry:")) return "mcp-registry";
   if (source.startsWith("skillkit:")) return "skillkit";
   if (source.startsWith("vercel:")) return "vercel-skills";
   return source.startsWith("github:") || source.startsWith("git:") ? "git" : "local";
 }
 
 export async function isExplicitSource(source: string): Promise<boolean> {
-  if (source.startsWith("github:") || source.startsWith("git:") || source.startsWith("skillkit:") || source.startsWith("vercel:")) {
+  if (source.startsWith("github:") || source.startsWith("git:") || source.startsWith("skillkit:") || source.startsWith("vercel:") || source.startsWith("mcp-registry:")) {
     return true;
   }
   if (source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~/")) {

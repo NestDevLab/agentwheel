@@ -76,7 +76,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
-| `agentwheel doctor` | Check runtime setup and suggest the explicit companion skill install command when it is missing. |
+| `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**
@@ -95,6 +95,24 @@ agentwheel install
 ```
 
 Prefer pnpm? `pnpm add -g agentwheel` works too.
+
+## Source Inputs
+
+Agentwheel can install from explicit local paths, Git sources, catalogue short names, provider
+indexes, and generated OpenPack wrappers:
+
+```bash
+agentwheel install ./my-pack --adapter codex --local
+agentwheel install github:your-org/agent-pack --adapter codex --user
+agentwheel install skillkit:owner/skill-name --adapter claude --user
+agentwheel install vercel:owner/skill-name --adapter codex --user
+agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+```
+
+`mcp-registry:<server-name>` reads the public MCP Registry and stages a generated OpenPack package
+only when the server exposes a safe unauthenticated `streamable-http` remote. Entries that require
+secret headers or only publish native package instructions remain discovery-only until they are
+wrapped by an explicit OpenPack source.
 
 Contributor install from source:
 
@@ -122,12 +140,22 @@ the skill keeps Agentwheel commands, setup guidance, safety rules, and operation
 inside your agent runtime instead of forcing you to leave the flow and look them up elsewhere.
 
 The CLI never installs the companion skill silently into runtime folders. Use `doctor` to check the
-selected runtime and print the exact preview and install commands when the skill is missing:
+selected runtime and print the exact preview and install commands when a skill is missing:
 
 ```bash
 agentwheel doctor --adapter copilot --user
 agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
 agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel
+```
+
+`doctor` also accepts explicit skill checks and machine-readable output. In Syncwheel-managed
+workspaces, it automatically includes the Syncwheel skill so Git/worktree maintenance guidance can
+be installed into the active agent runtime when needed.
+
+```bash
+agentwheel doctor --adapter codex --local --skill syncwheel --source github:NestDevLab/syncwheel --json
+agentwheel install github:NestDevLab/syncwheel --adapter codex --local --skill syncwheel --dry-run
+agentwheel install github:NestDevLab/syncwheel --adapter codex --local --skill syncwheel
 ```
 
 Run the dry-run first when you want to inspect the target path and conflict status before writing.

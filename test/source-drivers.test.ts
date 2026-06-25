@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { getSourceDriver } from "../src/source/index.js";
+import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
 import { VercelSkillsSourceDriver } from "../src/source/vercel-skills.js";
 import { stageSource } from "../src/staging/staging.js";
@@ -44,6 +45,7 @@ describe("v0.3 source drivers", () => {
   it("registers skill ecosystem source drivers", () => {
     expect(getSourceDriver("skillkit").name).toBe("skillkit");
     expect(getSourceDriver("vercel-skills").name).toBe("vercel-skills");
+    expect(getSourceDriver("mcp-registry").name).toBe("mcp-registry");
   });
 
   it("stages SkillKit skills through the SourceDriver contract without network", async () => {
@@ -109,6 +111,71 @@ describe("v0.3 source drivers", () => {
     expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}`)).toEqual(["skills:vercel-demo"]);
     expect(await readFile(join(target, "skills", "vercel-demo", "SKILL.md"), "utf8")).toContain("vercel-demo");
     await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("stages installable MCP registry remotes into a generated OpenPack package", async () => {
+    const cache = await tempRoot("agentwheel-mcp-registry-cache-");
+    const calls: string[] = [];
+    const fetchImpl = async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            server: {
+              name: "io.example/demo-mcp",
+              title: "Demo MCP",
+              description: "Demo remote MCP server.",
+              version: "1.2.3",
+              remotes: [
+                {
+                  type: "streamable-http",
+                  url: "https://example.com/mcp",
+                },
+              ],
+            },
+          };
+        },
+      } as Response;
+    };
+
+    const driver = new McpRegistrySourceDriver(fetchImpl as typeof fetch);
+    const bundle = await stageSource(driver, "mcp-registry:io.example/demo-mcp", { cacheRoot: cache });
+
+    expect(calls[0]).toContain("/servers/io.example%2Fdemo-mcp/versions/latest");
+    expect(bundle.source.driver).toBe("mcp-registry");
+    expect(bundle.source.packageName).toBe("mcp-registry/io.example/demo-mcp");
+    expect(bundle.source.packageVersion).toBe("1.2.3");
+    expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}`)).toEqual(["mcp:demo-mcp.json"]);
+    expect(await readFile(join(bundle.source.resolvedPath, "mcp", "demo-mcp.json"), "utf8")).toContain("https://example.com/mcp");
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("rejects MCP registry entries that require secret remote headers", async () => {
+    const cache = await tempRoot("agentwheel-mcp-registry-cache-");
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        return {
+          server: {
+            name: "io.example/secret-mcp",
+            remotes: [
+              {
+                type: "streamable-http",
+                url: "https://example.com/mcp",
+                headers: [{ isRequired: true, isSecret: true }],
+              },
+            ],
+          },
+        };
+      },
+    }) as Response;
+
+    const driver = new McpRegistrySourceDriver(fetchImpl as typeof fetch);
+    await expect(stageSource(driver, "mcp-registry:io.example/secret-mcp", { cacheRoot: cache }))
+      .rejects.toThrow(/discovery-only/);
   });
 });
 

@@ -1168,7 +1168,7 @@
         <div>
           <span class="eyebrow"><span class="dot"></span> v0.14.5 - installation types &amp; harness matrix</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
-          <p class="subhead">Install one OpenPack into every agent runtime.</p>
+          <p class="subhead">Install OpenPack packages, skills, plugins, and MCP sources into every agent runtime.</p>
           <div class="actions">
             <a class="button primary" href="catalogue.html">Browse catalogue</a>
             <a class="button secondary" href="#install">Install</a>
@@ -1420,7 +1420,7 @@
           <span class="feature-pill">artifacts <span>&nbsp;skills/rules/MCP</span></span>
           <span class="feature-pill">drift-safe <span>&nbsp;plan/apply</span></span>
           <span class="feature-pill">adapters <span>&nbsp;built-in/custom</span></span>
-          <span class="feature-pill">sources <span>&nbsp;git/local/registry</span></span>
+          <span class="feature-pill">sources <span>&nbsp;git/local/registry/MCP</span></span>
           <span class="feature-pill">selective <span>&nbsp;--skill/--select</span></span>
           <span class="feature-pill">fleet <span>&nbsp;local/SSH</span></span>
         </div>
@@ -1517,6 +1517,21 @@
           </details>
 
           <details class="code-toggle">
+            <summary>MCP registry source</summary>
+            <div class="code" aria-label="MCP registry source example">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span>mcp-registry</span>
+              </div>
+              <pre><code><span class="prompt">$</span> agentwheel install mcp-registry:publisher/server-name \
+    --adapter claude \
+    --local \
+    --mcp server-name \
+    --dry-run</code></pre>
+            </div>
+          </details>
+
+          <details class="code-toggle">
             <summary>Catalogue and registry</summary>
             <div class="toggle-body">
               <a class="tiny-link" href="catalogue.html">Catalogue</a>
@@ -1534,7 +1549,7 @@
         <div class="companion-callout">
           <div>
             <strong>Recommended first step: install the Agentwheel companion skill.</strong>
-            <p>The companion skill is optional, but strongly recommended for anyone using Agentwheel regularly. It brings Agentwheel setup guidance, safety rules, command patterns, and runtime-specific tips directly into your agent so the CLI and the agent reinforce each other.</p>
+            <p>The companion skill is optional, but strongly recommended for anyone using Agentwheel regularly. Doctor can also check selected skills, including Syncwheel in Syncwheel-managed workspaces, so the CLI and the agent reinforce each other.</p>
           </div>
           <div class="code" aria-label="Companion skill setup">
             <div class="codebar">
@@ -1543,7 +1558,7 @@
             </div>
             <pre><code><span class="prompt">$</span> agentwheel doctor --adapter copilot --user
 <span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
-<span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel</code></pre>
+<span class="prompt">$</span> agentwheel doctor --adapter codex --local --skill syncwheel --json</code></pre>
           </div>
         </div>
         <div class="toggle-grid">

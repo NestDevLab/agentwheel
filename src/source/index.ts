@@ -1,5 +1,6 @@
 import { GitSourceDriver } from "./git.js";
 import { LocalSourceDriver } from "./local.js";
+import { McpRegistrySourceDriver } from "./mcp-registry.js";
 import { SkillKitSourceDriver } from "./skillkit.js";
 import type { SourceDriver } from "./types.js";
 import { VercelSkillsSourceDriver } from "./vercel-skills.js";
@@ -9,6 +10,7 @@ const drivers: SourceDriver[] = [
   new GitSourceDriver(),
   new SkillKitSourceDriver(),
   new VercelSkillsSourceDriver(),
+  new McpRegistrySourceDriver(),
 ];
 
 export function getSourceDriver(name = "local"): SourceDriver {

@@ -47,6 +47,54 @@ describe("CLI verb redesign", () => {
     expect(stdout).not.toContain("Suggested commands:");
   });
 
+  it("doctor reports explicit Syncwheel skill status as JSON without writing files", async () => {
+    const root = await tempRoot();
+    await mkdir(join(root, ".syncwheel"), { recursive: true });
+    await writeFile(join(root, ".syncwheel", "manifest.json"), "{}\n", "utf8");
+
+    const { stdout } = await runCli([
+      "doctor",
+      "--adapter",
+      "codex",
+      "--local",
+      "--target-root",
+      root,
+      "--skill",
+      "syncwheel",
+      "--source",
+      "github:NestDevLab/syncwheel",
+      "--json",
+    ]);
+    const report = JSON.parse(stdout);
+
+    expect(report.adapter).toBe("codex");
+    expect(report.installationType).toBe("local");
+    expect(report.skills).toHaveLength(1);
+    expect(report.skills[0]).toMatchObject({
+      name: "syncwheel",
+      source: "github:NestDevLab/syncwheel",
+      status: "missing",
+      managed: false,
+      present: false,
+    });
+    expect(report.skills[0].suggestedCommands.dryRun).toContain("agentwheel install github:NestDevLab/syncwheel --adapter codex --local");
+    expect(report.skills[0].suggestedCommands.dryRun).toContain(`--target-root ${root}`);
+    expect(report.skills[0].suggestedCommands.dryRun).toContain("--skill syncwheel --dry-run");
+    await expect(stat(join(root, ".agents"))).rejects.toThrow();
+  });
+
+  it("doctor suggests Syncwheel skill automatically inside Syncwheel-managed workspaces", async () => {
+    const root = await tempRoot();
+    await mkdir(join(root, ".syncwheel"), { recursive: true });
+    await writeFile(join(root, ".syncwheel", "manifest.json"), "{}\n", "utf8");
+
+    const { stdout } = await runCli(["doctor", "--adapter", "codex", "--local", "--target-root", root]);
+
+    expect(stdout).toContain("Agentwheel companion skill: missing");
+    expect(stdout).toContain("Syncwheel skill: missing");
+    expect(stdout).toContain("agentwheel install github:NestDevLab/syncwheel --adapter codex --local");
+  });
+
   it("ensures a new source with install <source> and hides the sync shim from top-level help", async () => {
     const root = await tempRoot();
     const source = await packageFixture("ensure");

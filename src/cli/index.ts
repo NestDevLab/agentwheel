@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -563,6 +564,9 @@ program
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("--skill <name>", "check a specific skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--source <source>", "source to use in suggested install commands")
+  .option("--json", "print machine-readable doctor report", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const target = await resolveRuntimeTarget({
@@ -1459,7 +1463,7 @@ async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliO
 
 async function printDoctor(
   target: RuntimeTarget,
-  options: RuntimeScopeOptions & { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
+  options: RuntimeScopeOptions & { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; skill?: string[]; source?: string; json?: boolean },
 ): Promise<void> {
   const adapterOptions = adapterOptionsForTarget(target, options);
   const adapter = await resolveAdapterForTarget(target, adapterOptions);
@@ -1468,38 +1472,136 @@ async function printDoctor(
   if (!targetMapping?.enabled) {
     throw new Error(`Adapter ${adapter.name} does not support skills for installation type '${installationType}'.`);
   }
-  const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh");
-  const companionSkillPath = join(installRoot, targetMapping.dest, COMPANION_SKILL_NAME);
-  const installed = await pathExists(companionSkillPath);
+  const transport = transportForTarget(target);
+  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+  const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
+  const requestedSkills = doctorSkillRequests(target, options);
+  const skills = [];
+  for (const request of requestedSkills) {
+    const skillPath = join(state.installRoot, targetMapping.dest, request.name);
+    const exists = await pathExists(skillPath);
+    const manifestEntry = manifest?.entries.find((entry) => {
+      if (entry.artifactType !== "skills") return false;
+      const legacyInstallName = "installName" in entry && typeof entry.installName === "string" ? entry.installName : undefined;
+      return entry.artifactName === request.name
+        || legacyInstallName === request.name
+        || entry.path === join(targetMapping.dest, request.name);
+    });
+    const status = manifestEntry ? "managed" : exists ? "present-unmanaged" : "missing";
+    skills.push({
+      name: request.name,
+      source: request.source,
+      label: request.label,
+      status,
+      path: skillPath,
+      managed: Boolean(manifestEntry),
+      present: exists,
+      suggestedCommands: status === "missing"
+        ? {
+            dryRun: skillInstallCommand(adapter.name, installationType, options, request, { dryRun: true }),
+            apply: skillInstallCommand(adapter.name, installationType, options, request),
+          }
+        : undefined,
+    });
+  }
 
-  console.log(`Doctor for ${adapter.name}/${installationType} at ${installRoot}`);
-  if (installed) {
-    console.log(`Agentwheel companion skill: installed at ${companionSkillPath}`);
+  const report = {
+    adapter: adapter.name,
+    installationType,
+    targetRoot: target.targetRoot,
+    installRoot: state.installRoot,
+    manifest: manifest ? { entries: manifest.entries.length, revision: manifest.revision } : null,
+    skills,
+  };
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
     return;
   }
 
-  console.log(`Agentwheel companion skill: missing at ${companionSkillPath}`);
-  console.log("Suggested commands:");
-  console.log(`  ${companionSkillInstallCommand(adapter.name, installationType, options, { dryRun: true })}`);
-  console.log(`  ${companionSkillInstallCommand(adapter.name, installationType, options)}`);
+  console.log(`Doctor for ${adapter.name}/${installationType} at ${state.installRoot}`);
+  for (const skill of skills) {
+    const statusLabel = skill.status === "managed" ? "installed" : skill.status === "present-unmanaged" ? "installed (unmanaged)" : "missing";
+    console.log(`${skill.label}: ${statusLabel} at ${skill.path}`);
+  }
+  const missing = skills.filter((skill) => skill.status === "missing");
+  if (missing.length > 0) {
+    console.log("Suggested commands:");
+    for (const skill of missing) {
+      console.log(`  ${skill.suggestedCommands?.dryRun}`);
+      console.log(`  ${skill.suggestedCommands?.apply}`);
+    }
+  }
 }
 
-function companionSkillInstallCommand(
+interface DoctorSkillRequest {
+  name: string;
+  source: string;
+  label: string;
+}
+
+function doctorSkillRequests(target: RuntimeTarget, options: { skill?: string[]; source?: string }): DoctorSkillRequest[] {
+  const explicitSkills = normalizeDoctorSkillNames(options.skill ?? []);
+  if (explicitSkills.length > 0) {
+    return explicitSkills.map((name) => ({
+      name,
+      source: options.source ?? defaultSourceForSkill(name),
+      label: doctorSkillLabel(name),
+    }));
+  }
+
+  const requests: DoctorSkillRequest[] = [{
+    name: COMPANION_SKILL_NAME,
+    source: COMPANION_SKILL_SOURCE,
+    label: "Agentwheel companion skill",
+  }];
+  if (isSyncwheelWorkspace(target.targetRoot)) {
+    requests.push({
+      name: "syncwheel",
+      source: "github:NestDevLab/syncwheel",
+      label: "Syncwheel skill",
+    });
+  }
+  return requests;
+}
+
+function normalizeDoctorSkillNames(skills: string[]): string[] {
+  return [...new Set(skills.flatMap(splitSelectorList).map((item) => item.trim()).filter(Boolean))];
+}
+
+function defaultSourceForSkill(name: string): string {
+  if (name === COMPANION_SKILL_NAME) return COMPANION_SKILL_SOURCE;
+  if (name === "syncwheel") return "github:NestDevLab/syncwheel";
+  return `github:NestDevLab/${name}`;
+}
+
+function doctorSkillLabel(name: string): string {
+  if (name === COMPANION_SKILL_NAME) return "Agentwheel companion skill";
+  if (name === "syncwheel") return "Syncwheel skill";
+  return `${name} skill`;
+}
+
+function isSyncwheelWorkspace(targetRoot: string): boolean {
+  return existsSync(join(targetRoot, ".syncwheel", "manifest.json"));
+}
+
+function skillInstallCommand(
   adapter: string,
   installationType: string,
   options: RuntimeScopeOptions,
+  skill: DoctorSkillRequest,
   behavior: { dryRun?: boolean } = {},
 ): string {
   const args = [
     "agentwheel",
     "install",
-    COMPANION_SKILL_SOURCE,
+    skill.source,
     "--adapter",
     adapter,
     ...installationTypeCommandArgs(installationType),
     ...targetRootCommandArgs(options),
     "--skill",
-    COMPANION_SKILL_NAME,
+    skill.name,
   ];
   if (behavior.dryRun) args.push("--dry-run");
   return args.map(shellQuoteArg).join(" ");

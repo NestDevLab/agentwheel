@@ -10,24 +10,9 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": [
-      "catalogue-resource-filter"
-    ]
+    "stacks": []
   },
-  "stacks": [
-    {
-      "id": "catalogue-resource-filter",
-      "branch": "branch/catalogue-resource-filter",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "aeb8842afeeb5f635856bd83625b06a9fccb34d9"
-      ],
-      "meta": {}
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

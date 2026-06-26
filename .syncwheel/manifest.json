@@ -10,9 +10,21 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "clawhub-source-driver"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "clawhub-source-driver",
+      "branch": "branch/clawhub-source-driver",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": []
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

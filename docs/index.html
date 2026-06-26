@@ -825,6 +825,34 @@
       margin-top: 22px;
     }
 
+    .install-tabs {
+      display: none;
+    }
+
+    .install-tab {
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+      color: #cbd5e1;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .install-tab[aria-selected="true"] {
+      border-color: rgba(56, 189, 248, 0.56);
+      background: rgba(56, 189, 248, 0.13);
+      color: #f8fafc;
+    }
+
+    .install-tab:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
     .install-method {
       display: flex;
       flex-direction: column;
@@ -1200,6 +1228,25 @@
         grid-template-columns: 1fr;
       }
 
+      .install-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .install-methods {
+        margin-top: 12px;
+      }
+
+      .install-method {
+        display: none;
+      }
+
+      .install-method.is-active {
+        display: flex;
+      }
+
       .feature-strip,
       .compact-links {
         gap: 8px;
@@ -1324,8 +1371,13 @@
           <h2 class="section-title">Install methods</h2>
         </div>
         <p class="section-copy">Start from the CLI, hand the bootstrap markdown to an AI agent, or install the companion skill into the runtime you already use.</p>
+        <div class="install-tabs" role="tablist" aria-label="Install methods">
+          <button class="install-tab" type="button" role="tab" aria-selected="true" aria-controls="install-panel-cli" id="install-tab-cli" data-install-tab="cli">CLI</button>
+          <button class="install-tab" type="button" role="tab" aria-selected="false" aria-controls="install-panel-ai" id="install-tab-ai" data-install-tab="ai" tabindex="-1">AI handoff</button>
+          <button class="install-tab" type="button" role="tab" aria-selected="false" aria-controls="install-panel-skill" id="install-tab-skill" data-install-tab="skill" tabindex="-1">Skill</button>
+        </div>
         <div class="install-methods" aria-label="Default install methods">
-          <article class="install-method primary-method">
+          <article class="install-method primary-method is-active" id="install-panel-cli" role="tabpanel" aria-labelledby="install-tab-cli" data-install-panel="cli">
             <span class="method-label">CLI</span>
             <strong>Install Agentwheel</strong>
             <p>Use the package manager on your machine, then initialize a workspace or install directly from the catalogue.</p>
@@ -1340,7 +1392,7 @@ agentwheel init</code></pre>
             </div>
           </article>
 
-          <article class="install-method">
+          <article class="install-method" id="install-panel-ai" role="tabpanel" aria-labelledby="install-tab-ai" data-install-panel="ai">
             <span class="method-label">AI handoff</span>
             <strong>Give install.md to an agent</strong>
             <p>The markdown tells an agent how to install Agentwheel, verify it, add the companion skill, and use the catalogue.</p>
@@ -1354,7 +1406,7 @@ agentwheel init</code></pre>
             </div>
           </article>
 
-          <article class="install-method">
+          <article class="install-method" id="install-panel-skill" role="tabpanel" aria-labelledby="install-tab-skill" data-install-panel="skill">
             <span class="method-label">Skill</span>
             <strong>Install the companion skill</strong>
             <p>Keep Agentwheel usage, safety rules, and catalogue workflows available inside your current agent runtime.</p>
@@ -1846,6 +1898,41 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
     </footer>
   </div>
   <script>
+    const installTabs = Array.from(document.querySelectorAll("[data-install-tab]"));
+    const installPanels = Array.from(document.querySelectorAll("[data-install-panel]"));
+
+    function selectInstallTab(name, shouldFocus = false) {
+      installTabs.forEach((tab) => {
+        const active = tab.getAttribute("data-install-tab") === name;
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+        tab.tabIndex = active ? 0 : -1;
+        if (active && shouldFocus) tab.focus();
+      });
+
+      installPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.getAttribute("data-install-panel") === name);
+      });
+    }
+
+    installTabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        selectInstallTab(tab.getAttribute("data-install-tab") ?? "cli");
+      });
+
+      tab.addEventListener("keydown", (event) => {
+        let target = null;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") target = index + 1;
+        if (event.key === "ArrowLeft" || event.key === "ArrowUp") target = index - 1;
+        if (event.key === "Home") target = 0;
+        if (event.key === "End") target = installTabs.length - 1;
+        if (target === null) return;
+
+        event.preventDefault();
+        const next = installTabs[(target + installTabs.length) % installTabs.length];
+        selectInstallTab(next.getAttribute("data-install-tab") ?? "cli", true);
+      });
+    });
+
     document.querySelectorAll("[data-copy-target]").forEach((copyButton) => {
       copyButton.addEventListener("click", async () => {
         const target = copyButton.getAttribute("data-copy-target");

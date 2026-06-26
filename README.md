@@ -34,6 +34,35 @@ agentwheel install
 No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
 live in your workspace, and runtimes stay generated output.
 
+## Install Methods
+
+**CLI install**
+
+```bash
+npm i -g agentwheel
+agentwheel init
+```
+
+Prefer pnpm? `pnpm add -g agentwheel` works too.
+
+**AI agent handoff**
+
+Give an agent [`install.md`](install.md) when you want it to install Agentwheel, verify the CLI,
+install the companion skill, and show the right catalogue flow for your runtime.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NestDevLab/agentwheel/main/install.md
+```
+
+**Companion skill**
+
+The companion skill keeps Agentwheel commands and safety rules inside the runtime you are using:
+
+```bash
+agentwheel doctor --adapter codex --local
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+```
+
 > **Status: early (v0.12).** The public CLI vocabulary is package-manager style:
 > `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for old bootstrapped
 > skills; use `install` in all new docs and scripts.
@@ -86,15 +115,11 @@ to reconcile those removals.
 ## Quick Start
 
 ```bash
-npm i -g agentwheel
-
 agentwheel init
 agentwheel add github:your-org/agent-pack --adapter openclaw --installation-type local --mode tracking
 agentwheel plan
 agentwheel install
 ```
-
-Prefer pnpm? `pnpm add -g agentwheel` works too.
 
 ## Source Inputs
 
@@ -466,6 +491,9 @@ Built-in runtime targets:
 
 ## Docs
 
+- [`install.md`](install.md) — AI-agent handoff for installing Agentwheel and the companion skill.
+- [`AGENT.md`](AGENT.md) — concise operating guide for AI agents using Agentwheel.
+- [`llms.txt`](llms.txt) — LLM-oriented map of the public docs.
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
 - [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md) — artifact/harness compatibility matrix and rule semantics.

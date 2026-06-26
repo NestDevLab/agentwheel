@@ -814,6 +814,79 @@
       background: rgba(17, 24, 39, 0.62);
     }
 
+    .install-section {
+      padding-top: 8px;
+    }
+
+    .install-methods {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .install-method {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 100%;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+    }
+
+    .install-method.primary-method {
+      border-color: rgba(56, 189, 248, 0.46);
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.12), rgba(17, 24, 39, 0.72));
+    }
+
+    .method-label {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      min-height: 26px;
+      padding: 0 9px;
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      border-radius: 999px;
+      background: rgba(6, 182, 212, 0.09);
+      color: #bae6fd;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .install-method strong {
+      display: block;
+      margin: 14px 0 8px;
+      color: #f8fafc;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .install-method p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .install-method .code {
+      margin: auto 0 0;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+
+    .install-method pre {
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .command-explain > strong,
     .matrix-note strong {
       display: block;
@@ -1047,6 +1120,10 @@
         grid-template-columns: 1fr;
       }
 
+      .install-methods {
+        grid-template-columns: 1fr;
+      }
+
       .matrix-support {
         grid-template-columns: 1fr;
       }
@@ -1241,22 +1318,74 @@
         </div>
       </section>
 
-      <div id="install" class="code lead-code" aria-label="Install snippet">
-        <div class="codebar">
-          <span class="light"></span><span class="light"></span><span class="light"></span>
-          <span class="codebar-title">install command example</span>
-          <button class="copy-button" type="button" data-copy-command>Copy</button>
+      <section id="install" class="install-section">
+        <div class="section-head">
+          <span class="section-kicker">00</span>
+          <h2 class="section-title">Install methods</h2>
         </div>
-        <pre><code id="install-command">npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
-      </div>
-      <div class="command-explain" aria-label="Install command explanation">
-        <strong>This command explained</strong>
-        <ul class="command-list">
-          <li><b>Installs one pack</b>Pulls the selected OpenPack source and resolves its managed artifacts.</li>
-          <li><b>Targets two runtimes</b>Applies the pack once for Codex and once for Claude, with separate manifests.</li>
-          <li><b>Defaults to user scope</b>Use <code>--local</code> when you want project-local targets.</li>
-        </ul>
-      </div>
+        <p class="section-copy">Start from the CLI, hand the bootstrap markdown to an AI agent, or install the companion skill into the runtime you already use.</p>
+        <div class="install-methods" aria-label="Default install methods">
+          <article class="install-method primary-method">
+            <span class="method-label">CLI</span>
+            <strong>Install Agentwheel</strong>
+            <p>Use the package manager on your machine, then initialize a workspace or install directly from the catalogue.</p>
+            <div class="code" aria-label="CLI install">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">terminal</span>
+                <button class="copy-button" type="button" data-copy-target="#cli-install-command">Copy</button>
+              </div>
+              <pre><code id="cli-install-command">npm i -g agentwheel
+agentwheel init</code></pre>
+            </div>
+          </article>
+
+          <article class="install-method">
+            <span class="method-label">AI handoff</span>
+            <strong>Give install.md to an agent</strong>
+            <p>The markdown tells an agent how to install Agentwheel, verify it, add the companion skill, and use the catalogue.</p>
+            <div class="code" aria-label="Agent install markdown">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">fetch prompt</span>
+                <button class="copy-button" type="button" data-copy-target="#agent-install-command">Copy</button>
+              </div>
+              <pre><code id="agent-install-command">curl -fsSL https://raw.githubusercontent.com/NestDevLab/agentwheel/main/install.md</code></pre>
+            </div>
+          </article>
+
+          <article class="install-method">
+            <span class="method-label">Skill</span>
+            <strong>Install the companion skill</strong>
+            <p>Keep Agentwheel usage, safety rules, and catalogue workflows available inside your current agent runtime.</p>
+            <div class="code" aria-label="Companion skill install">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">codex local</span>
+                <button class="copy-button" type="button" data-copy-target="#skill-install-command">Copy</button>
+              </div>
+              <pre><code id="skill-install-command">agentwheel doctor --adapter codex --local
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel</code></pre>
+            </div>
+          </article>
+        </div>
+        <div class="command-explain" aria-label="Install command explanation">
+          <strong>Next install a resource</strong>
+          <ul class="command-list">
+            <li><b>Browse the catalogue</b>Find packages, skills, plugins, and MCP servers with copy-ready Agentwheel commands.</li>
+            <li><b>Choose scope explicitly</b>Use <code>--local</code> for project installs or <code>--user</code> for user-level installs.</li>
+            <li><b>Preview when needed</b>Add <code>--dry-run</code> before broad fleet changes or plugin execution.</li>
+          </ul>
+        </div>
+        <div class="code lead-code" aria-label="Resource install example">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span class="codebar-title">resource install example</span>
+            <button class="copy-button" type="button" data-copy-target="#resource-install-command">Copy</button>
+          </div>
+          <pre><code id="resource-install-command">npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
+        </div>
+      </section>
 
       <section id="adapters">
         <div class="section-head">
@@ -1641,6 +1770,18 @@
           <h2 class="section-title">Docs</h2>
         </div>
         <div class="docs-grid">
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/install.md">
+            <strong>install.md</strong>
+            <span>AI handoff</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/AGENT.md">
+            <strong>AGENT.md</strong>
+            <span>agent guide</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/llms.txt">
+            <strong>llms.txt</strong>
+            <span>LLM map</span>
+          </a>
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
             <strong>README</strong>
             <span>quick start</span>
@@ -1705,23 +1846,23 @@
     </footer>
   </div>
   <script>
-    const copyButton = document.querySelector("[data-copy-command]");
-    const installCommand = document.querySelector("#install-command");
+    document.querySelectorAll("[data-copy-target]").forEach((copyButton) => {
+      copyButton.addEventListener("click", async () => {
+        const target = copyButton.getAttribute("data-copy-target");
+        const command = target ? document.querySelector(target)?.textContent?.trim() ?? "" : "";
+        if (!command) return;
 
-    copyButton?.addEventListener("click", async () => {
-      const command = installCommand?.textContent?.trim() ?? "";
-      if (!command) return;
+        try {
+          await navigator.clipboard.writeText(command);
+          copyButton.textContent = "Copied";
+        } catch {
+          copyButton.textContent = "Select";
+        }
 
-      try {
-        await navigator.clipboard.writeText(command);
-        copyButton.textContent = "Copied";
-      } catch {
-        copyButton.textContent = "Select";
-      }
-
-      window.setTimeout(() => {
-        copyButton.textContent = "Copy";
-      }, 1400);
+        window.setTimeout(() => {
+          copyButton.textContent = "Copy";
+        }, 1400);
+      });
     });
   </script>
 </body>

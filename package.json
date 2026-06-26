@@ -31,6 +31,9 @@
     "dist",
     "skills",
     "openpack.json",
+    "install.md",
+    "AGENT.md",
+    "llms.txt",
     "README.md",
     "LICENSE"
   ],

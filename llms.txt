@@ -1,0 +1,27 @@
+# agentwheel
+
+> One source. Every agent. Agentwheel installs OpenPack resources into AI agent runtimes.
+
+## Start Here
+
+- README: https://github.com/NestDevLab/agentwheel#readme
+- AI install handoff: https://github.com/NestDevLab/agentwheel/blob/main/install.md
+- AI agent guide: https://github.com/NestDevLab/agentwheel/blob/main/AGENT.md
+- Public catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html
+
+## Specs And Design
+
+- OpenPack spec: https://github.com/NestDevLab/agentwheel/blob/main/docs/spec/openpack.md
+- Compatibility matrix: https://github.com/NestDevLab/agentwheel/blob/main/docs/design/artifact-harness-compatibility.md
+- Dependency composition: https://github.com/NestDevLab/agentwheel/blob/main/docs/design/dependency-composition.md
+- Fleet config: https://github.com/NestDevLab/agentwheel/blob/main/docs/fleet-config.md
+- Lifecycle model: https://github.com/NestDevLab/agentwheel/blob/main/LIFECYCLE.md
+- Architecture: https://github.com/NestDevLab/agentwheel/blob/main/DESIGN.md
+
+## Install Commands
+
+```bash
+npm i -g agentwheel
+agentwheel doctor --adapter codex --local
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+```

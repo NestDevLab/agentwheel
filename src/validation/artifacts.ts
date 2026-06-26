@@ -24,7 +24,7 @@ type JsonRecord = Record<string, JsonValue>;
 type YamlRecord = Record<string, unknown>;
 
 const behavioralRuleFormats = ["markdown-rule", "claude-markdown-rule", "copilot-instruction-rule"];
-const pluginFormats = ["claude-plugin", "codex-plugin", "hermes-plugin", "copilot-plugin", "openclaw-plugin"];
+const pluginFormats = ["claude-plugin", "codex-plugin", "hermes-plugin", "copilot-plugin", "openclaw-plugin", "openclaw-clawhub-plugin"];
 
 export async function filterArtifactsByInstallFormat<T extends Artifact>(
   artifacts: T[],
@@ -160,6 +160,7 @@ async function inferArtifactFormat(artifact: Artifact, target: TargetMapping): P
   }
 
   if (artifact.type === "plugins" && target.semantic === "openclaw-plugin") {
+    if (artifact.kind === "dir" && await pathExists(join(artifactPath(artifact), "clawhub.json"))) return "openclaw-clawhub-plugin";
     if (artifact.kind === "dir" && (await openClawPluginManifestPaths(artifact)).length > 0) return "openclaw-plugin";
   }
 
@@ -178,9 +179,9 @@ function expectedFormats(artifact: Artifact, target: TargetMapping): string[] | 
     return behavioralRuleFormats;
   }
   if (artifact.type === "plugins") {
-    if (isPluginFormat(target.semantic)) return [target.semantic];
     const declared = target.formats?.filter((format) => pluginFormats.includes(format));
     if (target.formats?.length) return declared?.length ? declared : pluginFormats;
+    if (isPluginFormat(target.semantic)) return [target.semantic];
   }
   return target.formats;
 }
@@ -194,7 +195,10 @@ async function validateKnownFormat(
   if (format === "markdown-rule" || format === "claude-markdown-rule" || format === "copilot-instruction-rule") {
     return validateMarkdownRule(artifact, format);
   }
-  if (format === "openclaw-plugin" || target.semantic === "openclaw-plugin") {
+  if (format === "openclaw-clawhub-plugin") {
+    return validateOpenClawClawHubPlugin(artifact);
+  }
+  if (format === "openclaw-plugin") {
     return validateOpenClawPlugin(artifact);
   }
   if (format === "claude-plugin" || target.semantic === "claude-plugin") {
@@ -402,6 +406,35 @@ async function validateOpenClawPlugin(artifact: Artifact): Promise<ArtifactValid
     issues.push({ artifact, message: "OpenClaw plugin descriptors must declare the same name" });
   }
   return issues;
+}
+
+async function validateOpenClawClawHubPlugin(artifact: Artifact): Promise<ArtifactValidationIssue[]> {
+  if (artifact.type !== "plugins") {
+    return [{ artifact, message: "openclaw-clawhub-plugin format is only valid for plugins artifacts" }];
+  }
+  if (artifact.kind !== "dir") {
+    return [{ artifact, message: "OpenClaw ClawHub plugins must be directory artifacts" }];
+  }
+
+  const metadataPath = join(artifactPath(artifact), "clawhub.json");
+  if (!(await pathExists(metadataPath))) {
+    return [{ artifact, message: "OpenClaw ClawHub plugins must contain clawhub.json" }];
+  }
+  try {
+    const parsed = JSON.parse(await readFile(metadataPath, "utf8")) as JsonValue;
+    if (!isRecord(parsed)) {
+      return [{ artifact, message: "OpenClaw ClawHub clawhub.json must be a JSON object" }];
+    }
+    if (typeof parsed.installSpec !== "string" || !parsed.installSpec.trim().startsWith("clawhub:")) {
+      return [{ artifact, message: "OpenClaw ClawHub clawhub.json must declare installSpec starting with clawhub:" }];
+    }
+    if (typeof parsed.name !== "string" || parsed.name.trim().length === 0) {
+      return [{ artifact, message: "OpenClaw ClawHub clawhub.json must declare a non-empty name" }];
+    }
+    return [];
+  } catch (error) {
+    return [{ artifact, message: `OpenClaw ClawHub clawhub.json must be valid JSON: ${errorMessage(error)}` }];
+  }
 }
 
 async function openClawPluginManifestPaths(artifact: Artifact): Promise<string[]> {

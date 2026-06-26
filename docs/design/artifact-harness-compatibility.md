@@ -35,9 +35,9 @@ inferred path.
 Built-in adapters also validate concrete artifact formats before install planning. For example,
 Claude `rules` accept Markdown rule formats, Copilot rule artifacts render as instruction Markdown,
 and plugin targets require harness-specific plugin format/semantic values such as `openclaw-plugin`,
-`claude-plugin`, `codex-plugin`, `copilot-plugin`, or `hermes-plugin`. OpenPack behavioral `rules`
-do not map to Codex `.codex/rules` command policy in the built-in adapter. Invalid or unknown
-formats fail the package plan before runtime files are written.
+`openclaw-clawhub-plugin`, `claude-plugin`, `codex-plugin`, `copilot-plugin`, or `hermes-plugin`.
+OpenPack behavioral `rules` do not map to Codex `.codex/rules` command policy in the built-in
+adapter. Invalid or unknown formats fail the package plan before runtime files are written.
 
 ## Instructions Delivery
 
@@ -93,7 +93,7 @@ path, not from the inverse Codex/Copilot path.
 | OpenClaw | `rules` | `custom-adapter-only` | `custom-adapter-only` | No built-in file-drop target is documented for runtime-native rules. |
 | OpenClaw | `mcp` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON under `mcp.servers.<name>`. |
 | OpenClaw | `settings` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON; `agents.list[]` is covered by settings config-merge. |
-| OpenClaw | `plugins` | `supported-native`: `.openclaw/plugins/<name>` | `unsupported` | Local plugins are directory artifacts; user-level plugin install is not built into the adapter. |
+| OpenClaw | `plugins` | `requires-config`: semantic `openclaw plugins install --force <path>` or `openclaw plugins install --force clawhub:<name>` for ClawHub wrappers | `unsupported` | Local plugins are directory artifacts staged for CLI install; ClawHub wrappers are generated plugin artifacts. User-level plugin install is not built into the adapter. |
 | OpenClaw | other artifacts | `unsupported` | `unsupported` | Add only after official file-drop or config docs are confirmed. |
 | Hermes | `instructions` | `supported-native`: `AGENTS.md` managed block | `supported-native`: `~/.hermes/SOUL.md` managed block | Hermes also detects `.hermes.md`, `HERMES.md`, and `CLAUDE.md`; Agentwheel writes project `AGENTS.md` and user `SOUL.md`. |
 | Hermes | `skills` | `unsupported` | `supported-native`: `~/.hermes/skills/<name>/SKILL.md` | Local skills require configured external dirs, so they are not file-drop supported. |
@@ -112,7 +112,7 @@ path, not from the inverse Codex/Copilot path.
 - GitHub Copilot CLI hooks are lifecycle shell-command hooks, stored as JSON files under `.github/hooks/` or `~/.copilot/hooks/`.
 - Copilot rule-like artifacts are custom instructions. They do not provide command execution policy like Codex rules.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
-- Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, or git shims under `.agentwheel/plugins/...` and runs the runtime CLI; it does not copy plugin sources into `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
+- OpenClaw, Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, git shims, or generated ClawHub wrappers and runs the runtime CLI; it does not copy plugin sources into `.openclaw/plugins`, `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
 - Hermes local skills remain unsupported by default because local/project discovery requires configured `external_dirs`; user skills install to `~/.hermes/skills`.
 - OpenClaw and Hermes built-ins do not emulate rules through legacy file drops such as `.openclaw/rules` or `.hermes/rules`; rules remain custom-adapter-only unless native runtime support is documented.
 - OpenPack `fragments` are Agentwheel composition inputs, not runtime-native artifacts. They should not appear as supported harness file targets.

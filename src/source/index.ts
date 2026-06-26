@@ -1,3 +1,4 @@
+import { ClawHubSourceDriver } from "./clawhub.js";
 import { GitSourceDriver } from "./git.js";
 import { LocalSourceDriver } from "./local.js";
 import { McpRegistrySourceDriver } from "./mcp-registry.js";
@@ -11,6 +12,7 @@ const drivers: SourceDriver[] = [
   new SkillKitSourceDriver(),
   new VercelSkillsSourceDriver(),
   new McpRegistrySourceDriver(),
+  new ClawHubSourceDriver(),
 ];
 
 export function getSourceDriver(name = "local"): SourceDriver {

@@ -107,12 +107,17 @@ agentwheel install github:your-org/agent-pack --adapter codex --user
 agentwheel install skillkit:owner/skill-name --adapter claude --user
 agentwheel install vercel:owner/skill-name --adapter codex --user
 agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+agentwheel install clawhub:@openclaw/whatsapp --adapter openclaw --local
 ```
 
 `mcp-registry:<server-name>` reads the public MCP Registry and stages a generated OpenPack package
 only when the server exposes a safe unauthenticated `streamable-http` remote. Entries that require
 secret headers or only publish native package instructions remain discovery-only until they are
 wrapped by an explicit OpenPack source.
+
+`clawhub:<package-name>` reads ClawHub package metadata and stages a generated OpenPack plugin
+wrapper for OpenClaw. The generated artifact plans `openclaw plugins install --force clawhub:<name>`;
+plugin execution remains opt-in through Agentwheel's plugin execution controls.
 
 Contributor install from source:
 

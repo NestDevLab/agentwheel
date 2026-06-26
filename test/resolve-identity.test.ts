@@ -94,6 +94,14 @@ describe("dependency source identity normalization", () => {
       declaringPackageRoot: root,
       workspaceRoot: root,
     });
+    const mcpRegistry = await normalizeDependencySource("mcp-registry:publisher/server-name", {
+      declaringPackageRoot: root,
+      workspaceRoot: root,
+    });
+    const clawhub = await normalizeDependencySource("clawhub:@openclaw/whatsapp", {
+      declaringPackageRoot: root,
+      workspaceRoot: root,
+    });
 
     expect(skillkit).toMatchObject({
       driver: "skillkit",
@@ -104,6 +112,16 @@ describe("dependency source identity normalization", () => {
       driver: "vercel-skills",
       source: "vercel:skills.sh/acme/repo/demo#main",
       normalizedSource: "vercel:skills.sh/acme/repo/demo#main",
+    });
+    expect(mcpRegistry).toMatchObject({
+      driver: "mcp-registry",
+      source: "mcp-registry:publisher/server-name",
+      normalizedSource: "mcp-registry:publisher/server-name",
+    });
+    expect(clawhub).toMatchObject({
+      driver: "clawhub",
+      source: "clawhub:@openclaw/whatsapp",
+      normalizedSource: "clawhub:@openclaw/whatsapp",
     });
   });
 });

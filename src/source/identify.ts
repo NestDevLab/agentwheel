@@ -2,9 +2,10 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathExists } from "../utils/fs.js";
 
-export type SourceDriverName = "local" | "git" | "skillkit" | "vercel-skills" | "mcp-registry";
+export type SourceDriverName = "local" | "git" | "skillkit" | "vercel-skills" | "mcp-registry" | "clawhub";
 
 export function inferSourceDriverName(source: string): SourceDriverName {
+  if (source.startsWith("clawhub:")) return "clawhub";
   if (source.startsWith("mcp-registry:")) return "mcp-registry";
   if (source.startsWith("skillkit:")) return "skillkit";
   if (source.startsWith("vercel:")) return "vercel-skills";
@@ -12,7 +13,7 @@ export function inferSourceDriverName(source: string): SourceDriverName {
 }
 
 export async function isExplicitSource(source: string): Promise<boolean> {
-  if (source.startsWith("github:") || source.startsWith("git:") || source.startsWith("skillkit:") || source.startsWith("vercel:") || source.startsWith("mcp-registry:")) {
+  if (source.startsWith("github:") || source.startsWith("git:") || source.startsWith("skillkit:") || source.startsWith("vercel:") || source.startsWith("mcp-registry:") || source.startsWith("clawhub:")) {
     return true;
   }
   if (source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~/")) {

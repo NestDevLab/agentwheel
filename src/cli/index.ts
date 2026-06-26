@@ -88,7 +88,7 @@ program
   .command("add")
   .description("add a package to .agentwheel/config.json without touching runtimes")
   .argument("<source>", "package source")
-  .option("--driver <driver>", "source driver (local, git, skillkit, or vercel-skills)")
+  .option("--driver <driver>", "source driver (local, git, skillkit, vercel-skills, mcp-registry, or clawhub)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "shortcut for --installation-type user and home-scoped state", false)

@@ -14,7 +14,8 @@ Inputs (archived alongside): `dependency-composition.claude-analysis.md`,
 Two intertwined capabilities, one system:
 
 1. **Dependencies** — a package or artifact can `require` resources (skills, rules, mcp, commands,
-   fragments…) from any source agentwheel supports (git, vercel, skillkit, local, registry),
+   fragments…) from any source agentwheel supports (git, vercel, skillkit, local, registry,
+   mcp-registry, clawhub),
    resolved recursively at install time, npm-style: shared when compatible, satisfiable — not
    fatal — when not.
 2. **Composability (DRY / SSOT)** — resources are built from shared fragments referenced — never
@@ -152,7 +153,7 @@ for zero legacy machinery and zero risk of surprise deletions on first sync.
 4. **Resolution by source identity first, semver later.** Manifest `version` is a free string
    today and packs rarely version meaningfully. Phase B resolves/dedupes by **normalized source
    identity + manifest name** — where normalization distinguishes registry source, explicit
-   git/local/skillkit/vercel source, requested ref, resolved commit/content hash, and trust
+   git/local/skillkit/vercel/mcp-registry/clawhub source, requested ref, resolved commit/content hash, and trust
    provenance. `version` is recorded and displayed but not solved. Semver ranges arrive with the
    conflict-satisfaction phase.
 5. **Composition = sync-time transclusion into self-contained artifacts.** Agents just read

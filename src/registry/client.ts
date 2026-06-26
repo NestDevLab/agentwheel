@@ -154,7 +154,7 @@ export async function resolvePackageSource(source: string, workspaceRoot: string
     if (options.offline) {
       throw new Error(`Offline cannot refresh registry indexes (entry not found in cache: ${source}). Run without --offline first.`);
     }
-    throw new Error(`Registry entry not found: ${source}. Use an explicit path/git/skillkit/vercel source to bypass the registry.`);
+    throw new Error(`Registry entry not found: ${source}. Use an explicit path/git/skillkit/vercel/mcp-registry/clawhub source to bypass the registry.`);
   }
   return { source: entry.source, registryEntry: entry };
 }

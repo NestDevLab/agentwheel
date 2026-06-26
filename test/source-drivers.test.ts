@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { getSourceDriver } from "../src/source/index.js";
+import { ClawHubSourceDriver } from "../src/source/clawhub.js";
 import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
 import { VercelSkillsSourceDriver } from "../src/source/vercel-skills.js";
@@ -46,6 +47,7 @@ describe("v0.3 source drivers", () => {
     expect(getSourceDriver("skillkit").name).toBe("skillkit");
     expect(getSourceDriver("vercel-skills").name).toBe("vercel-skills");
     expect(getSourceDriver("mcp-registry").name).toBe("mcp-registry");
+    expect(getSourceDriver("clawhub").name).toBe("clawhub");
   });
 
   it("stages SkillKit skills through the SourceDriver contract without network", async () => {
@@ -176,6 +178,77 @@ describe("v0.3 source drivers", () => {
     const driver = new McpRegistrySourceDriver(fetchImpl as typeof fetch);
     await expect(stageSource(driver, "mcp-registry:io.example/secret-mcp", { cacheRoot: cache }))
       .rejects.toThrow(/discovery-only/);
+  });
+
+  it("stages ClawHub packages into OpenClaw semantic plugin installs", async () => {
+    const cache = await tempRoot("agentwheel-clawhub-cache-");
+    const target = await tempRoot("agentwheel-clawhub-target-");
+    const calls: string[] = [];
+    const fetchImpl = async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            package: {
+              name: "@openclaw/whatsapp",
+              displayName: "WhatsApp",
+              runtimeId: "whatsapp",
+              latestVersion: "2026.6.10",
+              family: "code-plugin",
+              summary: "OpenClaw WhatsApp provider plugin.",
+              artifact: {
+                format: "tgz",
+                kind: "npm-pack",
+                sha256: "abc123",
+              },
+              verification: {
+                trustedOpenClawPlugin: true,
+              },
+            },
+          };
+        },
+      } as Response;
+    };
+
+    const driver = new ClawHubSourceDriver(fetchImpl as typeof fetch);
+    const bundle = await stageSource(driver, "clawhub:@openclaw/whatsapp", { cacheRoot: cache });
+    const plan = await createInstallPlan(bundle, openClawAdapter, target);
+    const plugin = plan.operations.find((operation) => operation.artifactType === "plugins");
+
+    expect(calls[0]).toContain("/packages/%40openclaw%2Fwhatsapp");
+    expect(bundle.source.driver).toBe("clawhub");
+    expect(bundle.source.packageName).toBe("clawhub/@openclaw/whatsapp");
+    expect(bundle.source.packageVersion).toBe("2026.6.10");
+    expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}:${artifact.format}`)).toEqual([
+      "plugins:whatsapp:openclaw-clawhub-plugin",
+    ]);
+    expect(await readFile(join(bundle.source.resolvedPath, "plugins", "whatsapp", "clawhub.json"), "utf8"))
+      .toContain("clawhub:@openclaw/whatsapp");
+    expect(plugin?.semanticCommand).toEqual(["openclaw", "plugins", "install", "--force", "clawhub:@openclaw/whatsapp"]);
+    expect(plugin?.semanticPlugin?.uninstallCommands).toEqual([["openclaw", "plugins", "uninstall", "whatsapp", "--force"]]);
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("rejects ClawHub packages that are not OpenClaw plugin artifacts", async () => {
+    const cache = await tempRoot("agentwheel-clawhub-cache-");
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        return {
+          package: {
+            name: "@openclaw/not-a-plugin",
+            family: "skill",
+          },
+        };
+      },
+    }) as Response;
+
+    const driver = new ClawHubSourceDriver(fetchImpl as typeof fetch);
+    await expect(stageSource(driver, "clawhub:@openclaw/not-a-plugin", { cacheRoot: cache }))
+      .rejects.toThrow(/not an OpenClaw plugin/);
   });
 });
 

@@ -79,7 +79,25 @@ export async function normalizeDependencySource(
     };
   }
 
-  throw new Error(`Unsupported dependency source: ${source}. Use registry:<name>, ./, ../, local:, github:, git:, skillkit:, or vercel:.`);
+  if (trimmed.startsWith("mcp-registry:")) {
+    const spec = normalizeLiteralProviderSpec(trimmed, "mcp-registry:");
+    return {
+      source: spec,
+      normalizedSource: spec,
+      driver: "mcp-registry",
+    };
+  }
+
+  if (trimmed.startsWith("clawhub:")) {
+    const spec = normalizeLiteralProviderSpec(trimmed, "clawhub:");
+    return {
+      source: spec,
+      normalizedSource: spec,
+      driver: "clawhub",
+    };
+  }
+
+  throw new Error(`Unsupported dependency source: ${source}. Use registry:<name>, ./, ../, local:, github:, git:, skillkit:, vercel:, mcp-registry:, or clawhub:.`);
 }
 
 function isBareRegistryName(source: string): boolean {
@@ -115,7 +133,7 @@ async function normalizeRegistrySource(
   if (!entry) {
     throw new Error(
       `Registry entry not found: ${name}. Bare dependency names are registry-only inside package manifests; `
-      + "use ./, ../, local:, github:, git:, skillkit:, or vercel: for explicit sources.",
+      + "use ./, ../, local:, github:, git:, skillkit:, vercel:, mcp-registry:, or clawhub: for explicit sources.",
     );
   }
 
@@ -180,6 +198,12 @@ function normalizeProviderSpec(spec: string, declaringPackageRoot: string): stri
     return resolveLocalPath(spec, declaringPackageRoot);
   }
   return spec.trim();
+}
+
+function normalizeLiteralProviderSpec(source: string, prefix: string): string {
+  const spec = source.slice(prefix.length).trim();
+  if (!spec) throw new Error(`Provider dependency source must include a spec: ${prefix}<name>`);
+  return `${prefix}${spec}`;
 }
 
 export function driverForNormalizedSource(source: string): SourceDriverName {

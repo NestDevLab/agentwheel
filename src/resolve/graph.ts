@@ -816,7 +816,9 @@ function isExplicitNonRegistrySource(source: string): boolean {
     || trimmed.startsWith("github:")
     || trimmed.startsWith("git:")
     || trimmed.startsWith("skillkit:")
-    || trimmed.startsWith("vercel:");
+    || trimmed.startsWith("vercel:")
+    || trimmed.startsWith("mcp-registry:")
+    || trimmed.startsWith("clawhub:");
 }
 
 function lockedRootSourceDrifted(declared: NormalizedDependencySource, locked: GraphLockNode): boolean {

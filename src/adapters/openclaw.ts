@@ -18,7 +18,7 @@ export const openClawAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
     },
     plugins: {
-      local: { enabled: true, dest: ".openclaw/plugins", formats: ["openclaw-plugin"], semantic: "openclaw-plugin" },
+      local: { enabled: true, dest: ".openclaw/plugins", formats: ["openclaw-plugin", "openclaw-clawhub-plugin"], semantic: "openclaw-plugin" },
     },
   },
 };

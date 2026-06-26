@@ -21,6 +21,7 @@ export async function semanticPluginSpecForArtifact(request: SemanticPluginReque
   if (request.semantic === "openclaw-plugin") {
     return openClawPluginSpec({
       path: request.sourcePath,
+      format: request.artifact.format,
       fallbackPluginName: request.installName,
     });
   }

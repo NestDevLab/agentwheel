@@ -9,7 +9,7 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 export const workspacePackageSchema = z.object({
   name: z.string().min(1),
   source: z.string().min(1),
-  driver: z.enum(["local", "git", "skillkit", "vercel-skills"]).default("local"),
+  driver: z.enum(["local", "git", "skillkit", "vercel-skills", "mcp-registry", "clawhub"]).default("local"),
   adapter: z.string().min(1).default("openclaw"),
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),

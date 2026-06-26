@@ -792,27 +792,20 @@
             <button class="chip" type="button" data-filter="ecosystem" data-value="skillkit" aria-pressed="false">SkillKit</button>
           </div>
 
-          <div class="chip-group" aria-label="Type filter">
-            <button class="chip" type="button" data-filter="type" data-value="all" aria-pressed="true">All</button>
-            <button class="chip" type="button" data-filter="type" data-value="package" aria-pressed="false">Packages</button>
-            <button class="chip" type="button" data-filter="type" data-value="skill" aria-pressed="false">Skills</button>
-            <button class="chip" type="button" data-filter="type" data-value="plugin" aria-pressed="false">Plugins</button>
-            <button class="chip" type="button" data-filter="type" data-value="mcp" aria-pressed="false">MCP</button>
-            <button class="chip" type="button" data-filter="type" data-value="adapter" aria-pressed="false">Adapters</button>
-          </div>
-
-          <div class="chip-group" aria-label="Artifact filter">
-            <button class="chip" type="button" data-filter="provides" data-value="all" aria-pressed="true">All artifacts</button>
-            <button class="chip" type="button" data-filter="provides" data-value="instructions" aria-pressed="false">Instructions</button>
-            <button class="chip" type="button" data-filter="provides" data-value="rules" aria-pressed="false">Rules</button>
-            <button class="chip" type="button" data-filter="provides" data-value="skills" aria-pressed="false">Skills</button>
-            <button class="chip" type="button" data-filter="provides" data-value="commands" aria-pressed="false">Commands</button>
-            <button class="chip" type="button" data-filter="provides" data-value="subagents" aria-pressed="false">Subagents</button>
-            <button class="chip" type="button" data-filter="provides" data-value="mcp" aria-pressed="false">MCP</button>
-            <button class="chip" type="button" data-filter="provides" data-value="hooks" aria-pressed="false">Hooks</button>
-            <button class="chip" type="button" data-filter="provides" data-value="settings" aria-pressed="false">Settings</button>
-            <button class="chip" type="button" data-filter="provides" data-value="plugins" aria-pressed="false">Plugins</button>
-            <button class="chip" type="button" data-filter="provides" data-value="fragments" aria-pressed="false">Fragments</button>
+          <div class="chip-group" aria-label="Resource kind filter">
+            <button class="chip" type="button" data-filter="resource" data-value="all" aria-pressed="true">All resources</button>
+            <button class="chip" type="button" data-filter="resource" data-value="package" aria-pressed="false">Packages</button>
+            <button class="chip" type="button" data-filter="resource" data-value="adapter" aria-pressed="false">Adapters</button>
+            <button class="chip" type="button" data-filter="resource" data-value="instructions" aria-pressed="false">Instructions</button>
+            <button class="chip" type="button" data-filter="resource" data-value="rules" aria-pressed="false">Rules</button>
+            <button class="chip" type="button" data-filter="resource" data-value="skills" aria-pressed="false">Skills</button>
+            <button class="chip" type="button" data-filter="resource" data-value="commands" aria-pressed="false">Commands</button>
+            <button class="chip" type="button" data-filter="resource" data-value="subagents" aria-pressed="false">Subagents</button>
+            <button class="chip" type="button" data-filter="resource" data-value="mcp" aria-pressed="false">MCP</button>
+            <button class="chip" type="button" data-filter="resource" data-value="hooks" aria-pressed="false">Hooks</button>
+            <button class="chip" type="button" data-filter="resource" data-value="settings" aria-pressed="false">Settings</button>
+            <button class="chip" type="button" data-filter="resource" data-value="plugins" aria-pressed="false">Plugins</button>
+            <button class="chip" type="button" data-filter="resource" data-value="fragments" aria-pressed="false">Fragments</button>
           </div>
 
           <label>
@@ -878,8 +871,7 @@
       renderedCount: 0,
       query: "",
       ecosystem: "all",
-      type: "all",
-      provides: "all",
+      resource: "all",
       sort: "stars",
     };
 
@@ -1011,10 +1003,21 @@
       if (value === "all") return true;
       return state.entries.some((entry) => {
         if (group === "ecosystem") return entry.ecosystem === value;
-        if (group === "type") return entry.type === value;
-        if (group === "provides") return Array.isArray(entry.provides) && entry.provides.includes(value);
+        if (group === "resource") return resourceMatches(entry, value);
         return true;
       });
+    }
+
+    function resourceMatches(entry, value) {
+      if (value === "package" || value === "adapter") return entry.type === value;
+      if (value === "skills") return entry.type === "skill" || providesArtifact(entry, "skills");
+      if (value === "plugins") return entry.type === "plugin" || providesArtifact(entry, "plugins");
+      if (value === "mcp") return entry.type === "mcp" || providesArtifact(entry, "mcp");
+      return providesArtifact(entry, value);
+    }
+
+    function providesArtifact(entry, value) {
+      return Array.isArray(entry.provides) && entry.provides.includes(value);
     }
 
     function updateFilterVisibility() {
@@ -1274,8 +1277,7 @@
       const query = state.query.trim().toLowerCase();
       const filtered = state.entries.filter((entry) => {
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
-        if (state.type !== "all" && entry.type !== state.type) return false;
-        if (state.provides !== "all" && (!Array.isArray(entry.provides) || !entry.provides.includes(state.provides))) return false;
+        if (state.resource !== "all" && !resourceMatches(entry, state.resource)) return false;
         if (!query) return true;
         if (!entry.searchText.includes(query)) return false;
         entry.matchTier = matchTier(entry, query);
@@ -1338,7 +1340,7 @@
       clearGrid();
       count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {
-        showState("empty", "No resources match", "Try a different search, ecosystem, type, artifact, or sort combination.");
+        showState("empty", "No resources match", "Try a different search, ecosystem, resource, or sort combination.");
         return;
       }
       state.renderedCount = 0;

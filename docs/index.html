@@ -363,9 +363,9 @@
 
     .code {
       margin: 0 0 74px;
-      border: 1px solid var(--line);
+      border: 1px solid rgba(148, 163, 184, 0.3);
       border-radius: 8px;
-      background: rgba(2, 6, 23, 0.7);
+      background: rgba(2, 6, 23, 0.88);
       box-shadow: var(--shadow);
       overflow: hidden;
     }
@@ -383,9 +383,15 @@
       align-items: center;
       gap: 8px;
       padding: 13px 16px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+      background: rgba(15, 23, 42, 0.54);
       color: var(--muted);
       font-size: 13px;
+    }
+
+    .codebar > span:not(.light):last-of-type {
+      flex: 1;
+      min-width: 0;
     }
 
     .codebar-title {
@@ -859,9 +865,9 @@
       min-width: 0;
       min-height: 100%;
       padding: 18px;
-      border: 1px solid var(--line);
+      border: 1px solid rgba(148, 163, 184, 0.32);
       border-radius: 8px;
-      background: rgba(17, 24, 39, 0.72);
+      background: rgba(17, 24, 39, 0.86);
     }
 
     .install-method.primary-method {
@@ -1933,23 +1939,51 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
       });
     });
 
-    document.querySelectorAll("[data-copy-target]").forEach((copyButton) => {
-      copyButton.addEventListener("click", async () => {
-        const target = copyButton.getAttribute("data-copy-target");
-        const command = target ? document.querySelector(target)?.textContent?.trim() ?? "" : "";
-        if (!command) return;
+    function copyTextFrom(code) {
+      return (code.textContent || "")
+        .replace(/^\s*\$\s?/gm, "")
+        .replace(/[ \t]+$/gm, "")
+        .trim();
+    }
 
-        try {
-          await navigator.clipboard.writeText(command);
-          copyButton.textContent = "Copied";
-        } catch {
-          copyButton.textContent = "Select";
-        }
+    async function copyText(text, button) {
+      if (!text) return;
 
-        window.setTimeout(() => {
-          copyButton.textContent = "Copy";
-        }, 1400);
-      });
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select";
+      }
+
+      window.setTimeout(() => {
+        button.textContent = "Copy";
+      }, 1400);
+    }
+
+    document.querySelectorAll(".code").forEach((block, index) => {
+      const code = block.querySelector("pre code");
+      const bar = block.querySelector(".codebar");
+      if (!code || !bar || bar.querySelector(".copy-button")) return;
+
+      if (!code.id) code.id = `copyable-code-${index + 1}`;
+      const button = document.createElement("button");
+      button.className = "copy-button";
+      button.type = "button";
+      button.dataset.copyTarget = `#${code.id}`;
+      button.textContent = "Copy";
+      bar.appendChild(button);
+    });
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest(".copy-button");
+      if (!button) return;
+
+      const target = button.getAttribute("data-copy-target");
+      const code = target ? document.querySelector(target) : button.closest(".code")?.querySelector("pre code");
+      if (!code) return;
+
+      copyText(copyTextFrom(code), button);
     });
   </script>
 </body>

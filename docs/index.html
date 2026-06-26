@@ -1713,7 +1713,6 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
               <pre><code><span class="prompt">$</span> agentwheel install mcp-registry:publisher/server-name \
     --adapter claude \
     --local \
-    --mcp server-name \
     --dry-run</code></pre>
             </div>
           </details>
@@ -1737,6 +1736,15 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
             <div class="toggle-body">
               <a class="tiny-link" href="catalogue.html">Catalogue</a>
               <a class="tiny-link" href="https://github.com/NestDevLab/agentwheel-registry">Registry</a>
+            </div>
+            <div class="code" aria-label="Catalogue publish example">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span>publish draft</span>
+              </div>
+              <pre><code><span class="prompt">$</span> npx agentwheel@latest registry publish https://github.com/owner/repo \
+    --description "Reusable skills and rules for coding agents." \
+    --tag skills,rules</code></pre>
             </div>
           </details>
         </div>

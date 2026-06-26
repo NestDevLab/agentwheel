@@ -28,6 +28,25 @@ afterAll(async () => {
 });
 
 describe("CLI verb redesign", () => {
+  it("drafts a registry publish submission from a GitHub URL without writing workspace state", async () => {
+    const { stdout } = await runCli([
+      "registry",
+      "publish",
+      "https://github.com/Owner/Agent-Pack",
+      "--description",
+      "Reusable rules and skills for coding agents.",
+      "--tag",
+      "agents,skills",
+    ]);
+
+    expect(stdout).toContain("Draft registry entry:");
+    expect(stdout).toContain('"name": "agent-pack"');
+    expect(stdout).toContain('"source": "github:Owner/Agent-Pack"');
+    expect(stdout).toContain("agentwheel install github:Owner/Agent-Pack --adapter codex --local --dry-run");
+    expect(stdout).toContain("https://github.com/NestDevLab/agentwheel-registry/issues/new");
+    await expect(stat(join(cliHome, ".agentwheel"))).rejects.toThrow();
+  });
+
   it("doctor suggests the Copilot user companion skill install without writing files", async () => {
     const { stdout } = await runCli(["doctor", "--adapter", "copilot", "--user"]);
 

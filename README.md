@@ -131,7 +131,7 @@ agentwheel install ./my-pack --adapter codex --local
 agentwheel install github:your-org/agent-pack --adapter codex --user
 agentwheel install skillkit:owner/skill-name --adapter claude --user
 agentwheel install vercel:owner/skill-name --adapter codex --user
-agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+agentwheel install mcp-registry:publisher/server-name --adapter claude --local
 agentwheel install clawhub:@openclaw/whatsapp --adapter openclaw --local
 ```
 
@@ -143,6 +143,17 @@ wrapped by an explicit OpenPack source.
 `clawhub:<package-name>` reads ClawHub package metadata and stages a generated OpenPack plugin
 wrapper for OpenClaw. The generated artifact plans `openclaw plugins install --force clawhub:<name>`;
 plugin execution remains opt-in through Agentwheel's plugin execution controls.
+
+Submit a public resource to the catalogue without editing `index.json` by hand:
+
+```bash
+npx agentwheel@latest registry publish https://github.com/owner/repo \
+  --description "Reusable skills and rules for coding agents." \
+  --tag skills,rules
+```
+
+The command normalizes the source, drafts the registry JSON, prints a verification command, and
+prints a prefilled GitHub submission URL you can review before sending.
 
 Contributor install from source:
 

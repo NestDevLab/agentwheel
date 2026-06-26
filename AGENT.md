@@ -62,7 +62,7 @@ Use direct sources when known:
 agentwheel install github:owner/repo --adapter codex --local
 agentwheel install skillkit:owner/skill-name --adapter claude --user
 agentwheel install vercel:owner/skill-name --adapter codex --user
-agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+agentwheel install mcp-registry:publisher/server-name --adapter claude --local
 agentwheel install clawhub:@openclaw/package-name --adapter openclaw --local
 ```
 
@@ -70,6 +70,12 @@ Use the catalogue for browsing and copy-ready commands:
 
 ```text
 https://nestdevlab.github.io/agentwheel/catalogue.html
+```
+
+Draft a public catalogue submission without editing the registry by hand:
+
+```bash
+npx agentwheel@latest registry publish https://github.com/owner/repo
 ```
 
 ## Safety

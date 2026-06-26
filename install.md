@@ -89,7 +89,7 @@ agentwheel install github:owner/agent-pack --adapter codex --local
 Install an MCP Registry server when Agentwheel reports it as installable:
 
 ```bash
-agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+agentwheel install mcp-registry:publisher/server-name --adapter claude --local
 ```
 
 Install a ClawHub plugin into OpenClaw only when the user approves plugin execution:
@@ -98,9 +98,16 @@ Install a ClawHub plugin into OpenClaw only when the user approves plugin execut
 agentwheel install clawhub:@openclaw/package-name --adapter openclaw --local --execute-plugins
 ```
 
+Draft a catalogue submission for a public repository:
+
+```bash
+npx agentwheel@latest registry publish https://github.com/owner/repo
+```
+
 ## Success Criteria
 
 - `agentwheel --version` works.
 - `agentwheel doctor` runs for the selected adapter.
 - The companion skill is installed if the user requested it.
 - Any catalogue resource install uses the adapter and installation type the user intended.
+- Catalogue submissions use `agentwheel registry publish` unless the user explicitly wants a manual registry PR.

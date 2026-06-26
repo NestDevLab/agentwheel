@@ -25,6 +25,7 @@ import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource } from "../registry/client.js";
+import { createRegistryPublishDraft } from "../registry/publish.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
@@ -396,6 +397,36 @@ program
       .action(async (query, options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries(await client.search(query));
+      }),
+  )
+  .addCommand(
+    new Command("publish")
+      .description("draft a catalogue submission for a public source")
+      .argument("<source>", "public resource source or GitHub URL")
+      .option("--name <name>", "registry short name")
+      .option("--type <type>", "entry type (package, skill, plugin, mcp, or adapter)")
+      .option("--description <text>", "short catalogue description")
+      .option("--tag <tag>", "search tag (repeatable or comma-separated)", collectTagOption, [] as string[])
+      .option("--json", "print only the registry entry JSON", false)
+      .action(async (source, options) => {
+        const draft = createRegistryPublishDraft(source, {
+          name: options.name,
+          type: options.type,
+          description: options.description,
+          tags: options.tag,
+        });
+        if (options.json) {
+          console.log(JSON.stringify(draft.entry, null, 2));
+          return;
+        }
+        console.log("Draft registry entry:");
+        console.log(JSON.stringify(draft.entry, null, 2));
+        console.log("");
+        console.log(`Verify: ${draft.installCommand}`);
+        if (!draft.entry.description) console.log("Tip: add --description \"...\" or fill the description before submitting.");
+        console.log("");
+        console.log("Submit:");
+        console.log(draft.issueUrl);
       }),
   );
 
@@ -1635,6 +1666,10 @@ function collectTrustOption(value: string, previous: string[]): string[] {
 }
 
 function collectOverrideOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
+function collectTagOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
 

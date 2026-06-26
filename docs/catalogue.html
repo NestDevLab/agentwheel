@@ -199,6 +199,36 @@
       background: rgba(124, 58, 237, 0.16);
     }
 
+    .publish-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 520px);
+      align-items: center;
+      gap: 16px;
+      margin: 18px 0 8px;
+      padding: 14px;
+      border: 1px solid rgba(34, 211, 238, 0.22);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.68);
+    }
+
+    .publish-panel h2 {
+      margin: 0 0 5px;
+      color: #e5e7eb;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .publish-panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .publish-command {
+      margin-top: 0;
+    }
+
     .controls-sticky {
       position: sticky;
       top: 0;
@@ -711,6 +741,10 @@
         padding-top: 8px;
       }
 
+      .publish-panel {
+        grid-template-columns: 1fr;
+      }
+
       .controls {
         align-items: stretch;
       }
@@ -768,8 +802,18 @@
             <h1 id="catalogue-title"><span class="gradient-title">Catalogue</span></h1>
             <p class="subhead">Browsable index of agentwheel-installable resources: packages, skills, plugins, MCP servers, and adapters from the official registry plus external ecosystems.</p>
           </div>
-          <a class="button secondary" href="https://github.com/NestDevLab/agentwheel-registry#contributing" target="_blank" rel="noopener" title="Add your package or skill to the catalogue">+ Add yours</a>
+          <a class="button secondary" href="#publish-resource" title="Add your package or skill to the catalogue">+ Add yours</a>
         </div>
+        <section class="publish-panel" id="publish-resource" aria-labelledby="publish-title">
+          <div>
+            <h2 id="publish-title">Publish a resource</h2>
+            <p>Draft a registry submission from a public repository, then review the prefilled GitHub issue before sending it.</p>
+          </div>
+          <div class="install publish-command">
+            <code>npx agentwheel@latest registry publish https://github.com/owner/repo</code>
+            <button class="copy" type="button" data-copy="npx agentwheel@latest registry publish https://github.com/owner/repo">Copy</button>
+          </div>
+        </section>
       </section>
 
       <div class="controls-sticky" aria-label="Catalogue filters">
@@ -1366,13 +1410,15 @@
       });
     });
 
-    grid.addEventListener("click", (event) => {
+    document.addEventListener("click", (event) => {
       const copyButton = event.target.closest("[data-copy]");
-      if (copyButton && grid.contains(copyButton)) {
+      if (copyButton) {
         copyText(copyButton.dataset.copy, copyButton);
         return;
       }
+    });
 
+    grid.addEventListener("click", (event) => {
       const showMoreButton = event.target.closest("[data-show-more]");
       if (showMoreButton && grid.contains(showMoreButton)) {
         showMoreButton.closest(".show-more-row")?.remove();

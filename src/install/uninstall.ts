@@ -197,7 +197,7 @@ async function currentEntryHash(entry: ManifestEntry, destPath: string, transpor
   if (entry.mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
   const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
   const state = await readManagedInstructionBlockState(destPath, selector, transport);
-  return state.drifted ? state.markerHash : state.hash;
+  return state.hash;
 }
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<

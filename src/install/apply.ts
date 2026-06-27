@@ -226,7 +226,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const removable = plan.operations
     .filter((operation) => operation.action === "remove" || (resolvedOptions.force && isForceRemovableKeep(operation)))
     .map((operation) => operation.action === "keep"
-      ? { ...operation, action: "remove" as const, reason: `${operation.reason}; force removing drifted managed file` }
+      ? { ...operation, action: "remove" as const, overrideDrift: true, reason: `${operation.reason}; force removing drifted managed file` }
       : operation);
   const kept = plan.operations.filter((operation) => operation.action === "keep" && (!resolvedOptions.force || !isForceRemovableKeep(operation)));
   const skipped = plan.operations.filter((operation) => operation.action === "skip");
@@ -399,7 +399,7 @@ async function applyOperation(
     }
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
-      const hash = await writeManagedInstructionBlock(operation.sourcePath, operation.destPath, selector, transport, operation.manifestHash);
+      const hash = await writeManagedInstructionBlock(operation.sourcePath, operation.destPath, selector, transport, managedBlockMutationOptions(operation));
       if (hash !== operation.desiredHash) {
         throw new Error(`Managed block hash verification failed for ${operation.relativeDestPath}: expected ${operation.desiredHash}, got ${hash}`);
       }
@@ -466,7 +466,7 @@ async function applyOperation(
     }
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
-      await removeManagedInstructionBlock(operation.destPath, selector, transport, operation.manifestHash);
+      await removeManagedInstructionBlock(operation.destPath, selector, transport, managedBlockMutationOptions(operation));
     } else {
       await transport.rm(operation.destPath);
     }
@@ -660,6 +660,13 @@ async function executeSemanticCommands(
 function semanticInstallCommands(operation: InstallOperation): string[][] {
   if (operation.semanticPlugin) return operation.semanticPlugin.installCommands;
   return operation.semanticCommand ? [operation.semanticCommand] : [];
+}
+
+function managedBlockMutationOptions(operation: InstallOperation): { expectedHash?: string; allowDrift?: boolean } {
+  return {
+    expectedHash: operation.overrideDrift ? undefined : operation.manifestHash,
+    allowDrift: operation.overrideDrift === true,
+  };
 }
 
 async function entryForCompletedOperation(

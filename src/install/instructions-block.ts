@@ -17,6 +17,11 @@ export interface ManagedInstructionBlockState {
   drifted: boolean;
 }
 
+export interface ManagedInstructionBlockMutationOptions {
+  expectedHash?: string;
+  allowDrift?: boolean;
+}
+
 interface LocatedBlock {
   start: number;
   end: number;
@@ -55,12 +60,12 @@ export async function writeManagedInstructionBlock(
   destPath: string,
   selector: string,
   transport: TargetTransport,
-  expectedHash?: string,
+  options: ManagedInstructionBlockMutationOptions = {},
 ): Promise<string> {
   const source = await readFile(sourcePath, "utf8");
   const desired = renderManagedInstructionBlock(selector, source);
   const existing = await readOptionalText(destPath, transport);
-  const merged = upsertManagedInstructionBlock(existing ?? "", selector, desired.block, expectedHash);
+  const merged = upsertManagedInstructionBlock(existing ?? "", selector, desired.block, options);
   await writeTextWithTransport(destPath, merged, transport);
   return desired.hash;
 }
@@ -69,11 +74,11 @@ export async function removeManagedInstructionBlock(
   destPath: string,
   selector: string,
   transport: TargetTransport,
-  expectedHash?: string,
+  options: ManagedInstructionBlockMutationOptions = {},
 ): Promise<void> {
   if (!(await transport.pathExists(destPath))) return;
   const existing = await transport.readFile(destPath);
-  const updated = removeManagedBlockFromContent(existing, selector, expectedHash);
+  const updated = removeManagedBlockFromContent(existing, selector, options);
   await writeTextWithTransport(destPath, updated, transport);
 }
 
@@ -123,26 +128,36 @@ function upsertManagedInstructionBlock(
   content: string,
   selector: string,
   block: string,
-  expectedHash: string | undefined,
+  options: ManagedInstructionBlockMutationOptions,
 ): string {
+  const { expectedHash, allowDrift = false } = options;
   const existing = findManagedInstructionBlock(content, selector);
   if (!existing) {
     if (expectedHash) throw new Error(`Managed instruction block missing for ${selector}`);
     return appendManagedInstructionBlock(content, block);
   }
-  assertCleanBlock(existing, selector);
-  if (expectedHash && hashText(existing.body) !== expectedHash) {
-    throw new Error(`Managed instruction block drift detected for ${selector}`);
+  if (!allowDrift) {
+    assertCleanBlock(existing, selector);
+    if (expectedHash && hashText(existing.body) !== expectedHash) {
+      throw new Error(`Managed instruction block drift detected for ${selector}`);
+    }
   }
   return `${content.slice(0, existing.start)}${block}${content.slice(existing.end)}`;
 }
 
-function removeManagedBlockFromContent(content: string, selector: string, expectedHash: string | undefined): string {
+function removeManagedBlockFromContent(
+  content: string,
+  selector: string,
+  options: ManagedInstructionBlockMutationOptions,
+): string {
+  const { expectedHash, allowDrift = false } = options;
   const existing = findManagedInstructionBlock(content, selector);
   if (!existing) return content;
-  assertCleanBlock(existing, selector);
-  if (expectedHash && hashText(existing.body) !== expectedHash) {
-    throw new Error(`Managed instruction block drift detected for ${selector}`);
+  if (!allowDrift) {
+    assertCleanBlock(existing, selector);
+    if (expectedHash && hashText(existing.body) !== expectedHash) {
+      throw new Error(`Managed instruction block drift detected for ${selector}`);
+    }
   }
   return `${content.slice(0, existing.start)}${content.slice(existing.end)}`;
 }

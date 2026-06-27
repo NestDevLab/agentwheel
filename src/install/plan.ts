@@ -231,7 +231,9 @@ async function createPlanFromOperations(
       }
       const currentHash = await transport.hashPath(op.destPath);
       if (existing && existing.sourceHash === op.desiredHash) {
-        operations.push({ ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
+        operations.push(options.forceDrift
+          ? { ...op, action: "update", currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }
+          : { ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
         operations.push({ ...op, action: "update", currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
       }

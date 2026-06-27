@@ -67,6 +67,45 @@ describe("managed instruction blocks", () => {
     expect(manifestEntrySchema.parse(entry).mode).toBe("managed-block");
   });
 
+  it("keeps drifted managed blocks blocked unless force-drift is requested", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const first = await instructionArtifact(sourceRoot, "Use the managed guidance.\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([first], managedInstructionsAdapter, targetRoot));
+
+    const dest = join(targetRoot, "AGENTS.md");
+    await driftManagedBlock(dest, "Use the managed guidance.\n");
+    const updated = await instructionArtifact(sourceRoot, "Use the updated guidance.\n");
+    const manifest = await readInstallManifest(targetRoot, managedInstructionsAdapter.name);
+    const driftPlan = await createCombinedInstallPlan([updated], managedInstructionsAdapter, targetRoot, manifest);
+
+    expect(driftPlan.hasBlockingChanges).toBe(true);
+    expect(driftPlan.operations).toMatchObject([{ action: "drift", mode: "managed-block" }]);
+    await expect(applyCombinedInstallPlan(driftPlan)).rejects.toThrow(/Refusing to apply with blocking changes/);
+  });
+
+  it("force-drift replaces a drifted managed block", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const first = await instructionArtifact(sourceRoot, "Use the managed guidance.\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([first], managedInstructionsAdapter, targetRoot));
+
+    const dest = join(targetRoot, "AGENTS.md");
+    await driftManagedBlock(dest, "Use the managed guidance.\n");
+    const updated = await instructionArtifact(sourceRoot, "Use the updated guidance.\n");
+    const manifest = await readInstallManifest(targetRoot, managedInstructionsAdapter.name);
+    const forcedPlan = await createCombinedInstallPlan([updated], managedInstructionsAdapter, targetRoot, manifest, localTransport, { forceDrift: true });
+
+    expect(forcedPlan.hasBlockingChanges).toBe(false);
+    expect(forcedPlan.operations).toMatchObject([{ action: "update", mode: "managed-block", overrideDrift: true }]);
+
+    await applyCombinedInstallPlan(forcedPlan);
+    const content = await readFile(dest, "utf8");
+    expect(content).toContain("Use the updated guidance.");
+    expect(content).not.toContain("manual edit");
+    expect(content).not.toContain("Use the managed guidance.");
+  });
+
   it("skips Claude instruction writes when CLAUDE.md imports AGENTS.md", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();
@@ -160,6 +199,28 @@ describe("managed instruction blocks", () => {
     expect(content).not.toContain("openpack:include instructions/AGENTS.md");
     expect(content).not.toContain("Managed guidance.");
   });
+
+  it("force uninstall removes a drifted managed block while preserving user content", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const artifact = await instructionArtifact(sourceRoot, "Managed guidance.\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([artifact], managedInstructionsAdapter, targetRoot));
+
+    const dest = join(targetRoot, "AGENTS.md");
+    await writeFile(dest, `# Keep me\n\n${await readFile(dest, "utf8")}# Also keep me\n`, "utf8");
+    await driftManagedBlock(dest, "Managed guidance.\n");
+    const manifest = await readInstallManifest(targetRoot, managedInstructionsAdapter.name);
+    const uninstallPlan = await createUninstallPlan(manifest!);
+    expect(uninstallPlan.operations).toMatchObject([{ action: "keep", mode: "managed-block" }]);
+
+    await uninstall(uninstallPlan, { force: true });
+    const content = await readFile(dest, "utf8");
+    expect(content).toContain("# Keep me");
+    expect(content).toContain("# Also keep me");
+    expect(content).not.toContain("openpack:include instructions/AGENTS.md");
+    expect(content).not.toContain("Managed guidance.");
+    expect(content).not.toContain("manual edit");
+  });
 });
 
 async function instructionArtifact(root: string, content: string, name = "AGENTS.md"): Promise<DesiredArtifact> {
@@ -181,4 +242,11 @@ async function instructionArtifact(root: string, content: string, name = "AGENTS
       owners: ["root"],
     },
   };
+}
+
+async function driftManagedBlock(path: string, needle: string): Promise<void> {
+  const content = await readFile(path, "utf8");
+  const drifted = content.replace(needle, `${needle}manual edit\n`);
+  if (drifted === content) throw new Error(`test fixture did not contain '${needle.trim()}'`);
+  await writeFile(path, drifted, "utf8");
 }

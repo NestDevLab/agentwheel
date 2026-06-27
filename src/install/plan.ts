@@ -51,7 +51,7 @@ export interface InstallOperation {
   semanticCommand?: string[];
   semanticPlugin?: SemanticPluginSpec;
   execute?: boolean;
-  mergeStrategy?: "json-deep" | "yaml-deep" | "codex-toml-mcp";
+  mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
   mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;

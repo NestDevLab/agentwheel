@@ -3,6 +3,8 @@ import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { pathExists } from "../utils/fs.js";
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
 export async function mergeJsonFile(sourcePath: string, destPath: string): Promise<void> {
   const source = JSON.parse(await readFile(sourcePath, "utf8")) as JsonValue;
   const current = await pathExists(destPath)
@@ -13,9 +15,7 @@ export async function mergeJsonFile(sourcePath: string, destPath: string): Promi
   await writeFile(destPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 }
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
-function deepMerge(base: JsonValue, incoming: JsonValue): JsonValue {
+export function deepMerge(base: JsonValue, incoming: JsonValue): JsonValue {
   if (Array.isArray(base) && Array.isArray(incoming)) {
     return dedupeArray([...base, ...incoming]);
   }
@@ -29,7 +29,7 @@ function deepMerge(base: JsonValue, incoming: JsonValue): JsonValue {
   return incoming;
 }
 
-function isRecord(value: JsonValue): value is Record<string, JsonValue> {
+export function isRecord(value: JsonValue): value is Record<string, JsonValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

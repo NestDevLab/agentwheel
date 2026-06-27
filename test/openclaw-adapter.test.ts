@@ -49,10 +49,10 @@ describe("OpenClaw adapter", () => {
       user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md", mode: "managed-block" },
     });
     expect(openClawAdapter.targets.mcp).toEqual({
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     });
     expect(openClawAdapter.targets.settings).toEqual({
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     });
     expect(openClawAdapter.targets.instructions?.local).toBeUndefined();
     expect(openClawAdapter.targets.subagents).toBeUndefined();
@@ -88,7 +88,7 @@ describe("OpenClaw adapter", () => {
     await mkdir(join(home, ".openclaw"), { recursive: true });
     await writePackage(source, [{ type: "mcp", path: "mcp/server.json" }]);
     await writeFile(join(source, "mcp", "server.json"), JSON.stringify({
-      mcp: { servers: { managed: { command: "managed", args: ["--ok"] } } },
+      mcpServers: { managed: { command: "managed", args: ["--ok"], type: "stdio" } },
     }, null, 2), "utf8");
     await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
       mcp: { servers: { user: { command: "user" } } },
@@ -102,15 +102,18 @@ describe("OpenClaw adapter", () => {
       expect(operation?.action).toBe("update");
       expect(operation?.relativeDestPath).toBe(".openclaw/openclaw.json");
       expect(operation?.destPath).toBe(join(home, ".openclaw", "openclaw.json"));
-      expect(operation?.mergeStrategy).toBe("json-deep");
+      expect(operation?.mergeStrategy).toBe("openclaw-json-deep");
 
       await applyInstallPlan(plan, bundle.sourceLock);
       const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
       expect(config.keep).toBe(true);
+      expect(config.mcpServers).toBeUndefined();
       expect(config.mcp.servers.user.command).toBe("user");
       expect(config.mcp.servers.managed.command).toBe("managed");
+      expect(config.mcp.servers.managed.transport).toBe("stdio");
+      expect(config.mcp.servers.managed.type).toBeUndefined();
       const manifest = await readInstallManifest(home, "openclaw", undefined, { installationType: "user" });
-      expect(manifest?.entries.find((entry) => entry.artifactType === "mcp")?.mergeStrategy).toBe("json-deep");
+      expect(manifest?.entries.find((entry) => entry.artifactType === "mcp")?.mergeStrategy).toBe("openclaw-json-deep");
       await rm(bundle.root, { recursive: true, force: true });
     });
   });
@@ -138,7 +141,7 @@ describe("OpenClaw adapter", () => {
       expect(operation?.action).toBe("update");
       expect(operation?.relativeDestPath).toBe(".openclaw/openclaw.json");
       expect(operation?.destPath).toBe(join(home, ".openclaw", "openclaw.json"));
-      expect(operation?.mergeStrategy).toBe("json-deep");
+      expect(operation?.mergeStrategy).toBe("openclaw-json-deep");
 
       await applyInstallPlan(plan, bundle.sourceLock);
       const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
@@ -149,7 +152,49 @@ describe("OpenClaw adapter", () => {
         { name: "managed", model: "gpt-5" },
       ]);
       const manifest = await readInstallManifest(home, "openclaw", undefined, { installationType: "user" });
-      expect(manifest?.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("json-deep");
+      expect(manifest?.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("openclaw-json-deep");
+      await rm(bundle.root, { recursive: true, force: true });
+    });
+  });
+
+  it("normalizes mcpServers in OpenClaw settings into mcp.servers", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-openclaw-home-");
+    await mkdir(join(source, "settings"), { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writePackage(source, [{ type: "settings", path: "settings/openclaw-mcp.json" }]);
+    await writeFile(join(source, "settings", "openclaw-mcp.json"), JSON.stringify({
+      mcpServers: {
+        "odoo-service": {
+          type: "streamable-http",
+          url: "http://192.168.1.107:3201/mcp",
+          codex: { agents: ["tirrenia-admin", "tirrenia"] },
+        },
+      },
+    }, null, 2), "utf8");
+    await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
+      mcp: { servers: { existing: { command: "existing" } } },
+      keep: true,
+    }, null, 2), "utf8");
+
+    await withTestHome(home, async () => {
+      const bundle = await stageSource(new LocalSourceDriver(), source);
+      const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, undefined, { installationType: "user" });
+      const operation = plan.operations.find((candidate) => candidate.artifactType === "settings");
+      expect(operation?.action).toBe("update");
+      expect(operation?.mergeStrategy).toBe("openclaw-json-deep");
+
+      await applyInstallPlan(plan, bundle.sourceLock);
+      const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+      expect(config.keep).toBe(true);
+      expect(config.mcpServers).toBeUndefined();
+      expect(config.mcp.servers.existing.command).toBe("existing");
+      expect(config.mcp.servers["odoo-service"]).toEqual({
+        transport: "streamable-http",
+        url: "http://192.168.1.107:3201/mcp",
+        codex: { agents: ["tirrenia-admin", "tirrenia"] },
+      });
       await rm(bundle.root, { recursive: true, force: true });
     });
   });

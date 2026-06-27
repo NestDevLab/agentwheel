@@ -9,6 +9,7 @@ import { writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
+import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
 import { readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
@@ -411,6 +412,8 @@ async function applyOperation(
     }
     if (operation.mergeStrategy === "json-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+    } else if (operation.mergeStrategy === "openclaw-json-deep") {
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeOpenClawJsonFile);
     } else if (operation.mergeStrategy === "yaml-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeYamlFile);
     } else if (operation.mergeStrategy === "codex-toml-mcp") {

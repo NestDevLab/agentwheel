@@ -12,10 +12,10 @@ export const openClawAdapter: AdapterConfig = {
       user: { enabled: true, root: "home", dest: ".openclaw/skills" },
     },
     mcp: {
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     },
     settings: {
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     },
     plugins: {
       local: { enabled: true, dest: ".openclaw/plugins", formats: ["openclaw-plugin", "openclaw-clawhub-plugin"], semantic: "openclaw-plugin" },

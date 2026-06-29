@@ -71,6 +71,14 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
         validateSelector(selector, `requires.${alias}.select`, findings, manifestPath, { localOnly: true });
       }
     }
+    for (const [alias, suggestion] of Object.entries(manifest.suggests ?? {})) {
+      if (!alias.trim()) {
+        findings.push({ level: "error", message: "Suggestion alias must be non-empty", path: manifestPath });
+      }
+      for (const selector of suggestion.select ?? []) {
+        validateSelector(selector, `suggests.${alias}.select`, findings, manifestPath, { localOnly: true });
+      }
+    }
   }
 
   for (const [provideIndex, provide] of manifest.provides.entries()) {
@@ -79,6 +87,15 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
       for (const requirement of item.requires ?? []) {
         const selector = typeof requirement === "string" ? requirement : requirement.selector;
         validateSelector(selector, `provides[${provideIndex}].items.${itemName}.requires`, findings, manifestPath, { aliases: manifest.schemaVersion === 2 ? Object.keys(manifest.requires ?? {}) : [] });
+      }
+      for (const suggestion of item.suggests ?? []) {
+        const alias = typeof suggestion === "string" ? suggestion : suggestion.alias;
+        if (manifest.schemaVersion === 2 && !Object.keys(manifest.suggests ?? {}).includes(alias)) {
+          findings.push({ level: "error", message: `provides[${provideIndex}].items.${itemName}.suggests: suggestion alias not declared: ${alias}`, path: manifestPath });
+        }
+        for (const selector of typeof suggestion === "string" ? [] : suggestion.select ?? []) {
+          validateSelector(selector, `provides[${provideIndex}].items.${itemName}.suggests.${alias}.select`, findings, manifestPath, { localOnly: true });
+        }
       }
       for (const entry of item.compose ?? []) {
         validateSelector(entry.include, `provides[${provideIndex}].items.${itemName}.compose.include`, findings, manifestPath, {

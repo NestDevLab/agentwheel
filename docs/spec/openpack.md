@@ -35,6 +35,14 @@ composition metadata, runtime targeting, or fragments.
       "runtimes": ["claude"]
     }
   },
+  "suggests": {
+    "brainstorming": {
+      "source": "vercel:skills.sh/example/agent-skills",
+      "select": ["skills/brainstorming"],
+      "reason": "Generate candidate approaches before converging.",
+      "when": "Use when the selected skill needs divergent ideation first."
+    }
+  },
   "provides": [
     { "type": "fragments", "path": "fragments" },
     { "type": "rules", "path": "rules/safe-actions.md", "format": "markdown-rule", "runtimes": ["claude", "copilot"] },
@@ -45,6 +53,7 @@ composition metadata, runtime targeting, or fragments.
       "items": {
         "triage": {
           "requires": ["rules/safe-actions.md"],
+          "suggests": ["brainstorming"],
           "compose": [
             { "include": "fragments/review-style.md" },
             { "include": "fragments/local-note.md", "optional": true, "markers": false }
@@ -61,6 +70,12 @@ Dependency declarations in `requires` are part of the schema in this draft. Tool
 L4 resolve the dependency graph recursively, apply parseable semver ranges, and lock the selected
 source identities. Tools below L4 may still validate and record these fields without resolving
 them.
+
+Suggestion declarations in `suggests` share the dependency source shape, plus optional `reason`
+and `when` text for humans and catalogues. Suggestions are not dependency requirements: an L4
+installer MUST ignore them unless the user or workspace explicitly requests them. When requested
+as a set, suggestions SHOULD be treated as non-blocking optional edges; when a specific alias is
+requested, failure SHOULD be reported unless the suggestion declares `optional: true`.
 
 ### Meta-packages
 

@@ -28,6 +28,8 @@ export interface ProfileSyncOptions {
   forceConflict?: boolean;
   replaceConflict?: boolean;
   noDeps?: boolean;
+  includeSuggestions?: boolean;
+  suggestionAliases?: string[];
   lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
@@ -84,6 +86,8 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         select: selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
         aliases: pkg.aliases,
         overrides: pkg.overrides,
+        includeSuggestions: options.includeSuggestions === true || pkg.withSuggestions === true,
+        suggestionAliases: combinedSuggestionAliases(pkg.suggestions, options.suggestionAliases),
       })),
       targetRoot: target.targetRoot,
       workspaceRoot: options.workspaceRoot,
@@ -103,6 +107,8 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       },
       installationType,
       noDeps: options.noDeps,
+      includeSuggestions: options.includeSuggestions,
+      suggestionAliases: options.suggestionAliases,
       lockedResolution: options.lockedResolution,
       frozenLock: options.frozenLock,
       offline: options.offline,
@@ -153,5 +159,12 @@ async function packageFromSource(source: string, options: ProfileSyncOptions): P
     mode: options.mode ?? "pinned",
     select: options.select,
     skills: options.skills,
+    withSuggestions: options.includeSuggestions === true ? true : undefined,
+    suggestions: options.suggestionAliases,
   };
+}
+
+function combinedSuggestionAliases(packageAliases: string[] | undefined, optionAliases: string[] | undefined): string[] | undefined {
+  const aliases = [...(packageAliases ?? []), ...(optionAliases ?? [])].map((item) => item.trim()).filter(Boolean);
+  return aliases.length > 0 ? [...new Set(aliases)].sort((a, b) => a.localeCompare(b)) : undefined;
 }

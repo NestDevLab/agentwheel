@@ -11,9 +11,30 @@ export async function mergeOpenClawJsonFile(sourcePath: string, destPath: string
   const current = await pathExists(destPath)
     ? JSON.parse(await readFile(destPath, "utf8")) as JsonValue
     : {};
-  const merged = deepMerge(current, source);
+  const merged = mergeOpenClawJson(current, source);
   await mkdir(dirname(destPath), { recursive: true });
   await writeFile(destPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+}
+
+function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] = []): JsonValue {
+  if (isMcpServerCodexAgentsPath(path) && Array.isArray(incoming)) {
+    return incoming;
+  }
+  if (Array.isArray(base) && Array.isArray(incoming)) {
+    return deepMerge(base, incoming);
+  }
+  if (isRecord(base) && isRecord(incoming)) {
+    const out: Record<string, JsonValue> = { ...base };
+    for (const [key, value] of Object.entries(incoming)) {
+      out[key] = key in out ? mergeOpenClawJson(out[key], value, [...path, key]) : value;
+    }
+    return out;
+  }
+  return incoming;
+}
+
+function isMcpServerCodexAgentsPath(path: string[]): boolean {
+  return path.length === 5 && path[0] === "mcp" && path[1] === "servers" && path[3] === "codex" && path[4] === "agents";
 }
 
 function expandEnvPlaceholders(value: JsonValue, sourcePath: string): JsonValue {

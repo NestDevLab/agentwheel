@@ -227,6 +227,7 @@ describe("OpenClaw adapter", () => {
         await applyInstallPlan(forcedPlan, forcedBundle.sourceLock);
         const refreshed = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
         expect(refreshed.mcp.servers["odoo-service"].url).toBe("http://192.168.1.107:3201/mcp");
+        expect(refreshed.mcp.servers["odoo-service"].codex.agents).toEqual(["tirrenia-admin", "tirrenia"]);
         await rm(forcedBundle.root, { recursive: true, force: true });
         await rm(bundle.root, { recursive: true, force: true });
       });
@@ -237,5 +238,45 @@ describe("OpenClaw adapter", () => {
         process.env.ODOO_SERVICE_MCP_URL = previousUrl;
       }
     }
+  });
+
+  it("replaces OpenClaw MCP codex agent scopes instead of unioning stale agents", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-openclaw-home-");
+    await mkdir(join(source, "settings"), { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writePackage(source, [{ type: "settings", path: "settings/openclaw-mcp.json" }]);
+    await writeFile(join(source, "settings", "openclaw-mcp.json"), JSON.stringify({
+      mcp: {
+        servers: {
+          "odoo-service": {
+            transport: "streamable-http",
+            url: "http://192.168.1.107:3201/mcp",
+            codex: { agents: ["tirrenia-admin", "tirrenia-staff"] },
+          },
+        },
+      },
+    }, null, 2), "utf8");
+    await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
+      mcp: {
+        servers: {
+          "odoo-service": {
+            transport: "streamable-http",
+            url: "http://192.168.1.107:3201/mcp",
+            codex: { agents: ["tirrenia-admin", "tirrenia"] },
+          },
+        },
+      },
+    }, null, 2), "utf8");
+
+    await withTestHome(home, async () => {
+      const bundle = await stageSource(new LocalSourceDriver(), source);
+      const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, undefined, { installationType: "user" });
+      await applyInstallPlan(plan, bundle.sourceLock);
+      const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+      expect(config.mcp.servers["odoo-service"].codex.agents).toEqual(["tirrenia-admin", "tirrenia-staff"]);
+      await rm(bundle.root, { recursive: true, force: true });
+    });
   });
 });

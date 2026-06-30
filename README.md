@@ -330,6 +330,17 @@ be deselected:
 }
 ```
 
+Package authors can also declare suggested companion packages. Suggestions are not installed by
+default; users opt in with `--with-suggestions` for all suggestions relevant to selected artifacts,
+or `--suggestion <alias>` for one named suggestion. The choice is saved when used with `add` or
+`install <source>`.
+
+```bash
+agentwheel add github:your-org/agent-pack --skill triage --with-suggestions --adapter codex --local
+agentwheel plan --skill triage --with-suggestions
+agentwheel install github:your-org/agent-pack --skill triage --suggestion brainstorming --adapter codex --local
+```
+
 ## Dependencies And Composition
 
 OpenPack packages can depend on other packages and compose shared markdown fragments:
@@ -346,9 +357,22 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
       "select": ["rules/safe-actions.md", "fragments/risk.md"]
     }
   },
+  "suggests": {
+    "brainstorming": {
+      "source": "vercel:skills.sh/example/agent-skills",
+      "select": ["skills/brainstorming"],
+      "reason": "Generate options before converging."
+    }
+  },
   "provides": [
     { "type": "fragments", "path": "fragments" },
-    { "type": "skills", "path": "skills" }
+    {
+      "type": "skills",
+      "path": "skills",
+      "items": {
+        "triage": { "suggests": ["brainstorming"] }
+      }
+    }
   ]
 }
 ```
@@ -362,6 +386,10 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
   `core:fragments/risk.md`.
 - **Trust.** New transitive sources prompt before install. Pre-approve with `--trust <glob>` or
   `--yes`, set a workspace trust policy, and manage persisted decisions with `agentwheel trust`.
+- **Suggested companions.** `suggests` uses the same source/selection shape as `requires`, but it
+  is opt-in. `--with-suggestions` pulls all relevant suggestions as non-blocking optional edges;
+  `--suggestion <alias>` pulls a specific suggestion and fails if that explicit suggestion cannot
+  resolve.
 - **Offline & frozen installs.** `--offline` guarantees zero network; `--frozen-lock` hard-fails if
   resolution would differ from the lock.
 - **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why

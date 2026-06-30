@@ -19,6 +19,8 @@ export const workspacePackageSchema = z.object({
   requestedRef: z.string().min(1).optional(),
   select: z.array(z.string().min(1)).optional(),
   skills: z.array(z.string().min(1)).optional(),
+  withSuggestions: z.boolean().optional(),
+  suggestions: z.array(z.string().min(1)).optional(),
   aliases: z.record(z.string(), z.string().min(1)).optional(),
   overrides: z.array(z.string().min(1)).optional(),
 });

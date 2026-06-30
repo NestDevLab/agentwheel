@@ -569,6 +569,52 @@ describe("CLI verb redesign", () => {
     expect(config.packages.map((pkg: { name: string }) => pkg.name)).toEqual(["agent-core-toolkit-private"]);
   });
 
+  it("installs suggested companions only when requested and persists that choice", async () => {
+    const companion = await skillPackageFixture("brainstorming", "Brainstorming");
+    const source = await tempRoot("agentwheel-convergent-pack-");
+    await mkdir(join(source, "skills", "convergent"), { recursive: true });
+    await writeFile(
+      join(source, "skills", "convergent", "SKILL.md"),
+      "---\nname: convergent\ndescription: Fixture convergent skill.\n---\n\n# Convergent\n",
+      "utf8",
+    );
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "convergent-pack",
+      version: "1.0.0",
+      suggests: {
+        brainstorm: {
+          source: companion,
+          select: ["skills/brainstorming"],
+          reason: "Generate options before converging.",
+        },
+      },
+      provides: [
+        {
+          type: "skills",
+          path: "skills",
+          items: {
+            convergent: { suggests: ["brainstorm"] },
+          },
+        },
+      ],
+    }, null, 2)}\n`, "utf8");
+
+    const defaultWorkspace = await tempRoot();
+    await runCli(["install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", defaultWorkspace, "--skill", "convergent"]);
+    await expect(readFile(join(defaultWorkspace, ".agents", "skills", "convergent", "SKILL.md"), "utf8")).resolves.toContain("Convergent");
+    await expect(readFile(join(defaultWorkspace, ".agents", "skills", "brainstorming", "SKILL.md"), "utf8")).rejects.toThrow();
+    const defaultConfig = JSON.parse(await readFile(join(defaultWorkspace, ".agentwheel", "config.json"), "utf8"));
+    expect(defaultConfig.packages[0]?.withSuggestions).toBeUndefined();
+
+    const suggestedWorkspace = await tempRoot();
+    await runCli(["install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", suggestedWorkspace, "--skill", "convergent", "--with-suggestions", "--yes"]);
+    await expect(readFile(join(suggestedWorkspace, ".agents", "skills", "convergent", "SKILL.md"), "utf8")).resolves.toContain("Convergent");
+    await expect(readFile(join(suggestedWorkspace, ".agents", "skills", "brainstorming", "SKILL.md"), "utf8")).resolves.toContain("Brainstorming");
+    const suggestedConfig = JSON.parse(await readFile(join(suggestedWorkspace, ".agentwheel", "config.json"), "utf8"));
+    expect(suggestedConfig.packages[0]?.withSuggestions).toBe(true);
+  });
+
   it("uninstall --keep-files removes management state but leaves runtime files alone", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("keep-files");

@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from "../compose/markdown.js";
-import type { Artifact, PackageItemRequire } from "../model/artifact.js";
+import type { Artifact, PackageItemRequire, PackageItemSuggest } from "../model/artifact.js";
 import { artifactTypeSchema } from "../model/artifact.js";
 import type { GraphNodeId, ResolvedNode } from "../model/graph.js";
 import type { GraphLock, GraphLockArtifact, GraphLockEdge, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockOverride, GraphLockRoot } from "../model/graph-lock.js";
@@ -26,6 +26,8 @@ export interface GraphRootRequest {
   aliases?: Record<string, string>;
   overrides?: string[];
   useLock?: boolean;
+  includeSuggestions?: boolean;
+  suggestionAliases?: string[];
 }
 
 export interface ResolveGraphOptions {
@@ -41,6 +43,8 @@ export interface ResolveGraphOptions {
   previousLock?: GraphLock;
   warn?: (message: string) => void;
   runtime?: string;
+  includeSuggestions?: boolean;
+  suggestionAliases?: string[];
 }
 
 export interface ResolvedGraphRoot {
@@ -90,11 +94,15 @@ interface Requirement {
   integrity?: string;
   selectionReason?: string;
   useLock?: boolean;
+  includeSuggestions?: boolean;
+  suggestionAliases?: string[];
 }
 
 type PackageManifestV2 = Extract<PackageManifest, { schemaVersion: 2 }>;
 type PackageDependencies = NonNullable<PackageManifestV2["requires"]>;
 type PackageDependency = PackageDependencies[string];
+type PackageSuggestions = NonNullable<PackageManifestV2["suggests"]>;
+type PackageSuggestion = PackageSuggestions[string];
 
 interface FetchedPackage {
   normalized: NormalizedDependencySource;
@@ -122,8 +130,11 @@ interface NodeState {
   selectionReasons: Map<string, Set<string>>;
   processedNeeds: Set<string>;
   processedPackageAliases: Set<string>;
+  processedSuggestions: Set<string>;
   depth: number;
   fullPackageSelected: boolean;
+  includeSuggestions: boolean;
+  suggestionAliases: Set<string>;
 }
 
 const cacheLocks = new Map<string, Promise<void>>();
@@ -155,6 +166,8 @@ export async function resolveDependencyGraph(
       depth: 0,
       optional: false,
       chain: [`workspace:${rootId}`],
+      includeSuggestions: root.includeSuggestions ?? options.includeSuggestions,
+      suggestionAliases: sortedUnique([...(root.suggestionAliases ?? []), ...(options.suggestionAliases ?? [])]),
     };
   });
 
@@ -308,14 +321,19 @@ async function processRequirement(
         selectionReasons: new Map(),
         processedNeeds: new Set(),
         processedPackageAliases: new Set(),
+        processedSuggestions: new Set(),
         depth: requirement.depth,
         fullPackageSelected: false,
+        includeSuggestions: false,
+        suggestionAliases: new Set(),
       };
       nodesByKey.set(nodeKey, state);
     }
 
     state.depth = Math.min(state.depth, requirement.depth);
     state.fullPackageSelected = state.fullPackageSelected || requirement.select === undefined;
+    state.includeSuggestions = state.includeSuggestions || requirement.includeSuggestions === true;
+    for (const alias of requirement.suggestionAliases ?? []) state.suggestionAliases.add(alias);
     state.requiredBy.add(requirement.requiredBy);
     for (const selector of selected) addSelectedSelector(state, selector, requirement.selectionReason);
     refreshNode(state);
@@ -371,11 +389,14 @@ async function collectDependencyNeeds(
   if (fetched.manifest?.schemaVersion !== 2) return [];
 
   const dependencies = fetched.manifest.requires ?? {};
+  const suggestions = fetched.manifest.suggests ?? {};
   const dependencyEntries = Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b));
+  const suggestionEntries = Object.entries(suggestions).sort(([a], [b]) => a.localeCompare(b));
+  const suggestionOptions = suggestionOptionsForState(state, options);
   const requirements: Requirement[] = [];
 
   if (options.noDeps) {
-    warnNoDepsOnce(state, dependencyEntries.map(([alias]) => alias), options.warn);
+    warnNoDepsOnce(state, [...dependencyEntries.map(([alias]) => alias), ...suggestionEntries.map(([alias]) => alias)], options.warn);
   } else {
     for (const [alias, dependency] of dependencyEntries) {
       if (state.processedPackageAliases.has(alias)) continue;
@@ -383,6 +404,14 @@ async function collectDependencyNeeds(
       state.processedPackageAliases.add(alias);
       if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
       requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain, options.lockedResolution === true));
+    }
+    for (const [alias, suggestion] of suggestionEntries) {
+      if (state.processedSuggestions.has(alias)) continue;
+      if (!shouldIncludeSuggestionAlias(alias, suggestionOptions, state.fullPackageSelected)) continue;
+      if (!suggestion.select?.length && !(state.fullPackageSelected && suggestion.select === undefined) && !explicitSuggestionAlias(alias, suggestionOptions)) continue;
+      state.processedSuggestions.add(alias);
+      if (!dependencyTargetsRuntime(suggestion.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
+      requirements.push(suggestionRequirement(state, fetched, alias, suggestion, suggestion.select, chain, suggestionOptions));
     }
   }
 
@@ -433,6 +462,29 @@ async function collectDependencyNeeds(
           throw new Error(`Artifact requirement not found in ${state.node.id}: ${parsed.selector} required by ${parentSelector}`);
         }
         addSelectedSelector(state, parsed.selector, `required by ${parentSelector}`);
+      }
+
+      for (const suggestion of artifact.suggests ?? []) {
+        const parsed = parseArtifactSuggestion(suggestion);
+        if (!shouldIncludeSuggestionAlias(parsed.alias, suggestionOptions, true)) continue;
+        if (!requirementTargetsRuntime(parsed.runtimes, options.runtime, `${state.node.id}:${parentSelector} -> ${parsed.raw}`, options.warn)) continue;
+        if (options.noDeps) {
+          warnNoDepsOnce(state, [parsed.alias], options.warn);
+          continue;
+        }
+        const packageSuggestion = suggestionForAlias(suggestions, state.node.id, parsed.alias);
+        if (!dependencyTargetsRuntime(packageSuggestion.runtimes, options.runtime, state.node.id, parsed.alias, options.warn)) continue;
+        requirements.push(suggestionRequirement(
+          state,
+          fetched,
+          parsed.alias,
+          packageSuggestion,
+          combinedSelectors(packageSuggestion.select, parsed.select),
+          chain,
+          suggestionOptions,
+          parsed.optional || shouldTreatSuggestionAsOptional(parsed.alias, packageSuggestion, suggestionOptions),
+          `suggested by ${parentSelector}`,
+        ));
       }
 
       for (const include of await collectIncludeNeeds(artifact, artifactsByRelativePath)) {
@@ -489,7 +541,33 @@ function dependencyRequirement(
     version: dependency.version,
     integrity: dependency.integrity,
     selectionReason,
+    includeSuggestions: state.includeSuggestions,
+    suggestionAliases: sortedUnique([...state.suggestionAliases]),
   };
+}
+
+function suggestionRequirement(
+  state: NodeState,
+  fetched: FetchedPackage,
+  alias: string,
+  suggestion: PackageSuggestion,
+  select: string[] | undefined,
+  chain: string[],
+  options: ResolveGraphOptions,
+  optional = shouldTreatSuggestionAsOptional(alias, suggestion, options),
+  selectionReason?: string,
+): Requirement {
+  return dependencyRequirement(
+    state,
+    fetched,
+    alias,
+    suggestion,
+    select,
+    chain,
+    options.lockedResolution === true,
+    optional,
+    selectionReason,
+  );
 }
 
 function dependencyForAlias(
@@ -502,6 +580,18 @@ function dependencyForAlias(
     throw new Error(`Dependency alias not found in ${nodeId}: ${alias}`);
   }
   return dependency;
+}
+
+function suggestionForAlias(
+  suggestions: PackageSuggestions,
+  nodeId: string,
+  alias: string,
+): PackageSuggestion {
+  const suggestion = suggestions[alias];
+  if (!suggestion) {
+    throw new Error(`Suggestion alias not found in ${nodeId}: ${alias}`);
+  }
+  return suggestion;
 }
 
 function warnNoDepsOnce(state: NodeState, aliases: string[], warn?: (message: string) => void): void {
@@ -519,6 +609,14 @@ interface ParsedArtifactRequirement {
   runtimes?: string[];
 }
 
+interface ParsedArtifactSuggestion {
+  raw: string;
+  alias: string;
+  select?: string[];
+  optional: boolean;
+  runtimes?: string[];
+}
+
 function parseArtifactRequirement(requirement: PackageItemRequire): ParsedArtifactRequirement {
   const raw = typeof requirement === "string" ? requirement : requirement.selector;
   const parsed = parseDependencySelector(raw);
@@ -529,6 +627,51 @@ function parseArtifactRequirement(requirement: PackageItemRequire): ParsedArtifa
     optional: typeof requirement === "string" ? false : requirement.optional === true,
     runtimes: typeof requirement === "string" ? undefined : requirement.runtimes,
   };
+}
+
+function parseArtifactSuggestion(suggestion: PackageItemSuggest): ParsedArtifactSuggestion {
+  if (typeof suggestion === "string") {
+    return {
+      raw: suggestion,
+      alias: suggestion,
+      optional: false,
+    };
+  }
+  return {
+    raw: suggestion.alias,
+    alias: suggestion.alias,
+    select: suggestion.select,
+    optional: suggestion.optional === true,
+    runtimes: suggestion.runtimes,
+  };
+}
+
+function shouldIncludeSuggestionAlias(alias: string, options: ResolveGraphOptions, includeWhenAllSuggestions: boolean): boolean {
+  const aliases = new Set(options.suggestionAliases ?? []);
+  if (aliases.has(alias)) return true;
+  return options.includeSuggestions === true && includeWhenAllSuggestions;
+}
+
+function suggestionOptionsForState(state: NodeState, options: ResolveGraphOptions): ResolveGraphOptions {
+  return {
+    ...options,
+    includeSuggestions: state.includeSuggestions || options.includeSuggestions === true,
+    suggestionAliases: sortedUnique([...(options.suggestionAliases ?? []), ...state.suggestionAliases]),
+  };
+}
+
+function explicitSuggestionAlias(alias: string, options: ResolveGraphOptions): boolean {
+  return (options.suggestionAliases ?? []).includes(alias);
+}
+
+function shouldTreatSuggestionAsOptional(alias: string, suggestion: PackageSuggestion, options: ResolveGraphOptions): boolean {
+  if (suggestion.optional === true) return true;
+  return options.includeSuggestions === true && !(options.suggestionAliases ?? []).includes(alias);
+}
+
+function combinedSelectors(base: string[] | undefined, extra: string[] | undefined): string[] | undefined {
+  const values = [...(base ?? []), ...(extra ?? [])];
+  return values.length > 0 ? sortedUnique(values) : undefined;
 }
 
 function parseDependencySelector(value: string): { alias?: string; selector: string } {

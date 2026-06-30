@@ -21,7 +21,12 @@ describe("catalogue site", () => {
     expect(html).toContain("suggestedSkills");
     expect(html).toContain("readmeExcerpt");
     expect(html).toContain("renderReadme");
-    expect(html).toContain("titleLink.href = detailUrl(entry)");
+    expect(html).toContain('document.body.classList.toggle("detail-mode"');
+    expect(html).toContain("Back to catalogue");
+    expect(html).toContain("Related skills");
+    expect(html).toContain("relatedSkillEntries");
+    expect(html).toContain("relatedOnly");
+    expect(html).toContain("titleLink.href = cardHref(entry)");
     expect(html).toContain('params.get("q")');
   });
 });

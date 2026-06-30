@@ -599,8 +599,29 @@
       background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.74));
     }
 
+    body.detail-mode .catalogue-hero,
+    body.detail-mode .controls-sticky {
+      display: none;
+    }
+
+    body.detail-mode section[aria-labelledby="results-title"] {
+      padding-top: 8px;
+    }
+
+    body.detail-mode .detail-panel {
+      margin-top: 8px;
+    }
+
     .detail-panel[hidden] {
       display: none;
+    }
+
+    .detail-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
     }
 
     .detail-top {
@@ -1104,8 +1125,10 @@
     const queryInput = document.querySelector("#q");
     const sortSelect = document.querySelector("#sort");
     const detailPanel = document.querySelector("#resource-detail");
+    const resultsTitle = document.querySelector("#results-title");
     let searchTimer = 0;
     queryInput.value = state.query;
+    document.body.classList.toggle("detail-mode", Boolean(state.detailResourceId));
 
     function siblingUrl(url, filename) {
       const u = new URL(url, location.href);
@@ -1323,9 +1346,9 @@
       return svg;
     }
 
-    function showState(kind, title, message) {
+    function showState(kind, title, message, countLabel) {
       clearGrid();
-      count.textContent = kind === "empty" ? "0 resources" : "Catalogue data unavailable";
+      count.textContent = countLabel || (kind === "empty" ? "0 resources" : "Catalogue data unavailable");
       const panel = document.createElement("div");
       panel.className = "state-panel";
       panel.appendChild(stateIcon(kind));
@@ -1394,6 +1417,19 @@
       return url.href;
     }
 
+    function catalogueUrl() {
+      const url = new URL(location.href);
+      url.searchParams.delete("resource");
+      url.searchParams.delete("q");
+      url.hash = "";
+      return url.href;
+    }
+
+    function cardHref(entry) {
+      if (entry.relatedOnly) return entry.sourceUrl || entry.homepageUrl || catalogueSearchUrl(entry.name);
+      return detailUrl(entry);
+    }
+
     function appendResourceLink(parent, href, label) {
       const safe = safeUrl(href);
       if (!safe) return;
@@ -1408,13 +1444,121 @@
       appendResourceLink(parent, entry.repoUrl, "GitHub");
       appendResourceLink(parent, entry.homepageUrl, entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage");
       appendResourceLink(parent, entry.sourceUrl, entry.sourceLinkLabel || "Skill source");
-      if (options.details !== false) {
+      if (options.details !== false && !entry.relatedOnly) {
         const details = document.createElement("a");
         details.className = "resource-link";
         details.href = detailUrl(entry);
         details.textContent = "Details";
         parent.appendChild(details);
       }
+    }
+
+    function currentDetailEntry() {
+      if (!state.detailResourceId) return null;
+      return state.entries.find((candidate) => candidate.id === state.detailResourceId) || null;
+    }
+
+    function sourceEcosystem(source) {
+      if (typeof source !== "string") return "official";
+      if (source.startsWith("vercel:")) return "vercel";
+      if (source.startsWith("skillkit:")) return "skillkit";
+      if (source.startsWith("mcp-registry:")) return "mcp-registry";
+      if (source.startsWith("clawhub:")) return "clawhub";
+      return "official";
+    }
+
+    function relatedSuggestionEntry(suggestion, ownerEntry) {
+      const sourceUrl = suggestion.sourceUrl || sourceHrefFromValue(suggestion.source, suggestion.select);
+      return prepareEntry({
+        id: `related:${ownerEntry.id}:${text(suggestion.name).toLowerCase()}`,
+        name: suggestion.name,
+        ecosystem: sourceEcosystem(suggestion.source),
+        type: "skill",
+        description: suggestion.reason || suggestion.when || "Suggested companion skill.",
+        tags: [suggestion.relation || "suggested", ...(Array.isArray(suggestion.select) ? suggestion.select : [])],
+        source: suggestion.source || "",
+        installCommand: suggestion.installCommand || "",
+        repoUrl: null,
+        homepageUrl: sourceUrl,
+        sourceUrl,
+        sourceLinkLabel: "Skill source",
+        stars: null,
+        lastPush: null,
+        archived: false,
+        provides: null,
+        version: null,
+        featured: false,
+        subtitle: "Suggested companion",
+        relatedOnly: true,
+      });
+    }
+
+    const genericSimilarityTerms = new Set([
+      "agent",
+      "agents",
+      "catalogue",
+      "official",
+      "openpack",
+      "package",
+      "public",
+      "public-toolkit",
+      "resource",
+      "rules",
+      "skill",
+      "skills",
+    ]);
+
+    function meaningfulTerms(entry) {
+      const terms = [
+        entry.name,
+        ...(Array.isArray(entry.tags) ? entry.tags : []),
+        ...(Array.isArray(entry.skills) ? entry.skills : []),
+      ].flatMap((value) => text(value).toLowerCase().split(/[^a-z0-9]+/));
+      return [...new Set(terms.filter((term) => term.length > 2 && !genericSimilarityTerms.has(term)))];
+    }
+
+    function similarSkillEntries(entry, usedIds, usedNames, limit) {
+      const terms = meaningfulTerms(entry);
+      if (!terms.length || limit <= 0) return [];
+      return state.entries
+        .filter((candidate) => resourceMatches(candidate, "skills"))
+        .filter((candidate) => !usedIds.has(candidate.id) && !usedNames.has(text(candidate.name).toLowerCase()))
+        .map((candidate) => {
+          const candidateText = [candidate.name, candidate.description, ...(Array.isArray(candidate.tags) ? candidate.tags : [])]
+            .join(" ")
+            .toLowerCase();
+          const score = terms.reduce((total, term) => total + (candidateText.includes(term) ? 1 : 0), 0);
+          return { candidate, score };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || text(a.candidate.name).localeCompare(text(b.candidate.name)))
+        .slice(0, limit)
+        .map((item) => item.candidate);
+    }
+
+    function relatedSkillEntries(entry) {
+      const related = [];
+      const usedIds = new Set([entry.id]);
+      const usedNames = new Set([text(entry.name).toLowerCase()]);
+
+      function add(candidate) {
+        if (!candidate) return;
+        const name = text(candidate.name).toLowerCase();
+        if (!name || usedIds.has(candidate.id) || usedNames.has(name)) return;
+        usedIds.add(candidate.id);
+        usedNames.add(name);
+        related.push(candidate);
+      }
+
+      for (const suggestion of Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills : []) {
+        add(findSkillEntry(suggestion.name) || relatedSuggestionEntry(suggestion, entry));
+      }
+
+      for (const candidate of similarSkillEntries(entry, usedIds, usedNames, Math.max(0, 8 - related.length))) {
+        add(candidate);
+      }
+
+      return related;
     }
 
     function catalogueSearchUrl(query) {
@@ -1697,7 +1841,7 @@
       titleWrap.className = "card-title";
       const title = document.createElement("h2");
       const titleLink = document.createElement("a");
-      titleLink.href = detailUrl(entry);
+      titleLink.href = cardHref(entry);
       titleLink.textContent = text(entry.name);
       title.appendChild(titleLink);
       if (entry.version) {
@@ -1801,6 +1945,14 @@
 
       const entry = state.entries.find((candidate) => candidate.id === state.detailResourceId);
       if (!entry) {
+        const actions = document.createElement("div");
+        actions.className = "detail-actions";
+        const back = document.createElement("a");
+        back.className = "button secondary";
+        back.href = catalogueUrl();
+        back.textContent = "Back to catalogue";
+        actions.appendChild(back);
+        detailPanel.appendChild(actions);
         const title = document.createElement("h2");
         title.textContent = "Resource details";
         const message = document.createElement("p");
@@ -1809,6 +1961,20 @@
         detailPanel.appendChild(message);
         return;
       }
+
+      const actions = document.createElement("div");
+      actions.className = "detail-actions";
+      const back = document.createElement("a");
+      back.className = "button secondary";
+      back.href = catalogueUrl();
+      back.textContent = "Back to catalogue";
+      actions.appendChild(back);
+      const browseSkills = document.createElement("a");
+      browseSkills.className = "button secondary";
+      browseSkills.href = catalogueSearchUrl(entry.name);
+      browseSkills.textContent = "Search catalogue";
+      actions.appendChild(browseSkills);
+      detailPanel.appendChild(actions);
 
       const top = document.createElement("div");
       top.className = "detail-top";
@@ -1868,6 +2034,11 @@
     }
 
     function filteredEntries() {
+      const detailEntry = currentDetailEntry();
+      if (state.detailResourceId) {
+        return detailEntry ? relatedSkillEntries(detailEntry) : [];
+      }
+
       const query = state.query.trim().toLowerCase();
       const filtered = state.entries.filter((entry) => {
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
@@ -1930,12 +2101,21 @@
 
     function render(reset = true) {
       const entries = filteredEntries();
+      const detailMode = Boolean(state.detailResourceId);
       state.filteredEntries = entries;
       renderDetail();
       clearGrid();
-      count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
+      resultsTitle.textContent = detailMode ? "Related skills" : "Resources";
+      count.textContent = detailMode
+        ? `${entries.length} ${entries.length === 1 ? "related skill" : "related skills"}`
+        : `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {
-        showState("empty", "No resources match", "Try a different search, ecosystem, resource, or sort combination.");
+        showState(
+          "empty",
+          detailMode ? "No related skills yet" : "No resources match",
+          detailMode ? "Use the catalogue search to explore all installable resources." : "Try a different search, ecosystem, resource, or sort combination.",
+          detailMode ? "0 related skills" : "0 resources",
+        );
         return;
       }
       state.renderedCount = 0;

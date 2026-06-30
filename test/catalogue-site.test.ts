@@ -19,6 +19,9 @@ describe("catalogue site", () => {
     expect(html).toContain("Dependencies");
     expect(html).toContain("artifactMetadata");
     expect(html).toContain("suggestedSkills");
+    expect(html).toContain("readmeExcerpt");
+    expect(html).toContain("renderReadme");
+    expect(html).toContain("titleLink.href = detailUrl(entry)");
     expect(html).toContain('params.get("q")');
   });
 });

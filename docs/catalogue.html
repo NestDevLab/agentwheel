@@ -386,6 +386,19 @@
       letter-spacing: 0;
     }
 
+    .card-title h2 a {
+      color: #f8fafc;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.44);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .card-title h2 a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.9);
+    }
+
     .version {
       display: inline-block;
       margin-left: 6px;
@@ -560,13 +573,22 @@
       gap: 12px;
       flex-wrap: wrap;
       margin-top: 14px;
-      color: #cbd5e1;
+      color: #67e8f9;
       font-size: 14px;
       font-weight: 700;
     }
 
     .links a {
-      color: #cbd5e1;
+      color: #67e8f9;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .links a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
     }
 
     .detail-panel {
@@ -609,8 +631,18 @@
 
     .detail-links a,
     .resource-link {
-      color: #cbd5e1;
+      color: #67e8f9;
       font-weight: 800;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .detail-links a:hover,
+    .resource-link:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
     }
 
     .detail-meta {
@@ -660,10 +692,16 @@
     }
 
     .detail-item-title a {
-      color: #e5e7eb;
+      color: #67e8f9;
       text-decoration: underline;
-      text-decoration-color: rgba(148, 163, 184, 0.42);
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
       text-underline-offset: 3px;
+    }
+
+    .detail-item-title a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
     }
 
     .detail-note {
@@ -1139,6 +1177,7 @@
         searchText: [
           entry.name,
           entry.description,
+          entry.readmeExcerpt,
           entry.subtitle,
           ...(Array.isArray(entry.provides) ? entry.provides : []),
           ...(Array.isArray(entry.tags) ? entry.tags : []),
@@ -1491,6 +1530,38 @@
       return safeUrl(source);
     }
 
+    function entryDocumentation(entry) {
+      if (entry.readmeExcerpt) {
+        return {
+          title: entry.readmeTitle || "README",
+          url: entry.readmeUrl,
+          excerpt: entry.readmeExcerpt,
+        };
+      }
+      const artifact = Array.isArray(entry.artifactMetadata)
+        ? entry.artifactMetadata.find((item) => item?.readmeExcerpt)
+        : null;
+      if (!artifact) return null;
+      return {
+        title: artifact.readmeTitle || "README",
+        url: artifact.readmeUrl,
+        excerpt: artifact.readmeExcerpt,
+      };
+    }
+
+    function renderReadme(entry) {
+      const documentation = entryDocumentation(entry);
+      if (!documentation) return null;
+
+      const { section, list } = detailSection(documentation.title);
+      const item = document.createElement("div");
+      item.className = "detail-item";
+      detailItemTitle(item, documentation.url ? `Open ${documentation.title}` : documentation.title, documentation.url);
+      appendDetailNote(item, documentation.excerpt);
+      list.appendChild(item);
+      return section;
+    }
+
     function renderArtifacts(entry) {
       const metadata = Array.isArray(entry.artifactMetadata) && entry.artifactMetadata.length
         ? entry.artifactMetadata
@@ -1625,7 +1696,10 @@
       const titleWrap = document.createElement("div");
       titleWrap.className = "card-title";
       const title = document.createElement("h2");
-      title.textContent = text(entry.name);
+      const titleLink = document.createElement("a");
+      titleLink.href = detailUrl(entry);
+      titleLink.textContent = text(entry.name);
+      title.appendChild(titleLink);
       if (entry.version) {
         const version = document.createElement("span");
         version.className = "version";
@@ -1784,6 +1858,7 @@
       const sections = document.createElement("div");
       sections.className = "detail-grid";
       [
+        renderReadme(entry),
         renderArtifacts(entry),
         renderSuggestedSkills(entry),
         renderDependencies(entry),

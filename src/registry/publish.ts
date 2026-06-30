@@ -1,4 +1,5 @@
 import type { RegistryEntry } from "../model/registry.js";
+import { normalizeArtifactSelectors } from "../model/selection.js";
 
 export const DEFAULT_REGISTRY_SUBMISSION_URL = "https://github.com/NestDevLab/agentwheel-registry/issues/new";
 
@@ -9,6 +10,8 @@ export interface RegistryPublishDraftOptions {
   type?: string;
   description?: string;
   tags?: string[];
+  select?: string[];
+  skills?: string[];
   submissionUrl?: string;
 }
 
@@ -30,6 +33,9 @@ export function createRegistryPublishDraft(sourceInput: string, options: Registr
     description: options.description?.trim() ?? "",
     tags: normalizeTags(options.tags ?? []),
   };
+  const selectors = normalizeArtifactSelectors(options.select, options.skills);
+  if (selectors?.length) entry.select = selectors;
+  if (options.skills?.length) entry.skills = normalizeSkillNames(options.skills);
   const installCommand = installCommandForEntry(entry);
   return {
     entry,
@@ -71,8 +77,8 @@ export function parseRegistryEntryType(value: string): RegistryEntryType {
   throw new Error(`Unsupported registry entry type: ${value}. Use ${registryEntryTypes.join(", ")}.`);
 }
 
-export function installCommandForEntry(entry: Pick<RegistryEntry, "source" | "type">): string {
-  const base = ["agentwheel", "install", entry.source];
+export function installCommandForEntry(entry: Pick<RegistryEntry, "source" | "type" | "select" | "skills">): string {
+  const base = ["agentwheel", "install", entry.source, ...selectorArgsForEntry(entry)];
   if (entry.type === "mcp") return [...base, "--adapter", "claude", "--local", "--dry-run"].map(shellQuoteArg).join(" ");
   if (entry.source.startsWith("clawhub:") || entry.type === "plugin") {
     return [...base, "--adapter", "openclaw", "--local", "--dry-run"].map(shellQuoteArg).join(" ");
@@ -176,6 +182,15 @@ function normalizeTags(tags: string[]): string[] {
     .map((tag) => slugify(tag))
     .filter(Boolean);
   return [...new Set(normalized)];
+}
+
+function normalizeSkillNames(skills: string[]): string[] {
+  return [...new Set(skills.flatMap((skill) => skill.split(",")).map((skill) => skill.trim()).filter(Boolean))];
+}
+
+function selectorArgsForEntry(entry: Pick<RegistryEntry, "select" | "skills">): string[] {
+  if (entry.skills?.length) return entry.skills.flatMap((skill) => ["--skill", skill]);
+  return (entry.select ?? []).flatMap((selector) => ["--select", selector]);
 }
 
 function slugify(value: string): string {

@@ -1,0 +1,18 @@
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+
+describe("catalogue site", () => {
+  it("exposes shareable detail pages and source links", async () => {
+    const html = await readFile(join(repoRoot, "docs", "catalogue.html"), "utf8");
+
+    expect(html).toContain('id="resource-detail"');
+    expect(html).toContain('params.get("resource")');
+    expect(html).toContain('url.searchParams.set("resource", entry.id)');
+    expect(html).toContain("Skill source");
+    expect(html).toContain("Details");
+  });
+});

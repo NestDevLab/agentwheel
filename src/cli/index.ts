@@ -24,7 +24,7 @@ import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
-import { RegistryClient, resolvePackageSource } from "../registry/client.js";
+import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
@@ -123,8 +123,8 @@ program
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const selectedArtifacts = selectedArtifactsFromOptions(options);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
     const artifacts = filterArtifactsBySelection(await driver.list(resolved), selectedArtifacts);
@@ -419,6 +419,8 @@ program
       .option("--type <type>", "entry type (package, skill, plugin, mcp, or adapter)")
       .option("--description <text>", "short catalogue description")
       .option("--tag <tag>", "search tag (repeatable or comma-separated)", collectTagOption, [] as string[])
+      .option("--select <type/name>", "selected artifact inside a larger package (repeatable or comma-separated)", collectSelectOption, [] as string[])
+      .option("--skill <name>", "selected skill inside a larger package (repeatable or comma-separated)", collectSkillOption, [] as string[])
       .option("--json", "print only the registry entry JSON", false)
       .action(async (source, options) => {
         const draft = createRegistryPublishDraft(source, {
@@ -426,6 +428,8 @@ program
           type: options.type,
           description: options.description,
           tags: options.tag,
+          select: options.select,
+          skills: options.skill,
         });
         if (options.json) {
           console.log(JSON.stringify(draft.entry, null, 2));
@@ -746,10 +750,10 @@ async function packageEntryFromSource(
     installationType?: string;
   },
 ): Promise<WorkspacePackage> {
-  const selectedArtifacts = selectedArtifactsFromOptions(options);
   const lockMode = options.frozenLock === true || options.offline === true;
   const resolvedInput = await resolvePackageSource(source, targetRoot, { offline: lockMode });
   const resolvedSource = resolvedInput.source;
+  const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
   const driverName = (options.driver ?? inferSourceDriverName(resolvedSource)) as WorkspacePackage["driver"];
   const driver = getSourceDriver(driverName);
   const adapter = await resolveAdapter({
@@ -1798,6 +1802,13 @@ function adapterListFromOption(adapter?: string): string[] {
 
 function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {
   return normalizeArtifactSelectors(options.select, options.skills ?? options.skill);
+}
+
+function selectedArtifactsFromOptionsOrRegistry(
+  options: { select?: string[]; skill?: string[]; skills?: string[] },
+  registryEntry?: Parameters<typeof selectorsFromRegistryEntry>[0],
+): string[] | undefined {
+  return selectedArtifactsFromOptions(options) ?? selectorsFromRegistryEntry(registryEntry);
 }
 
 function suggestionAliasesFromOptions(options: { suggestion?: string[]; suggestions?: string[] }): string[] | undefined {

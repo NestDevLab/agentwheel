@@ -5,7 +5,7 @@ import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan } from "./source-plan.js";
 import { readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
-import { resolvePackageSource } from "../registry/client.js";
+import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { transportForTarget } from "../transport/index.js";
@@ -150,6 +150,7 @@ async function packageFromSource(source: string, options: ProfileSyncOptions): P
     warn: options.warn,
   });
   const driver = options.driver ?? inferSourceDriverName(resolved.source);
+  const selectedArtifacts = normalizeArtifactSelectors(options.select, options.skills) ?? selectorsFromRegistryEntry(resolved.registryEntry);
   return {
     name: resolved.registryEntry?.name ?? source,
     source: resolved.source,
@@ -157,8 +158,7 @@ async function packageFromSource(source: string, options: ProfileSyncOptions): P
     adapter: "openclaw",
     installationType: options.installationType,
     mode: options.mode ?? "pinned",
-    select: options.select,
-    skills: options.skills,
+    select: selectedArtifacts,
     withSuggestions: options.includeSuggestions === true ? true : undefined,
     suggestions: options.suggestionAliases,
   };

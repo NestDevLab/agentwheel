@@ -44,6 +44,26 @@ describe("registry publish draft", () => {
       .toBe("agentwheel install clawhub:@openclaw/demo --adapter openclaw --local --dry-run");
   });
 
+  it("drafts selected skill entries from larger packages", () => {
+    const draft = createRegistryPublishDraft("https://github.com/Owner/Agent-Pack", {
+      name: "decision-interview",
+      type: "skill",
+      description: "Interview loop for high-confidence decisions.",
+      skills: ["decision-interview"],
+    });
+
+    expect(draft.entry).toEqual({
+      name: "decision-interview",
+      source: "github:Owner/Agent-Pack",
+      type: "skill",
+      description: "Interview loop for high-confidence decisions.",
+      tags: [],
+      select: ["skills/decision-interview"],
+      skills: ["decision-interview"],
+    });
+    expect(draft.installCommand).toBe("agentwheel install github:Owner/Agent-Pack --skill decision-interview --adapter codex --local --dry-run");
+  });
+
   it("rejects local catalogue submissions", () => {
     expect(() => normalizeCatalogueSource("./local-pack")).toThrow(/public source/);
   });

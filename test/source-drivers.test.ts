@@ -10,7 +10,7 @@ import { getSourceDriver } from "../src/source/index.js";
 import { ClawHubSourceDriver } from "../src/source/clawhub.js";
 import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
-import { VercelSkillsSourceDriver } from "../src/source/vercel-skills.js";
+import { resolveVercelSkillSubpath, VercelSkillsSourceDriver } from "../src/source/vercel-skills.js";
 import { stageSource } from "../src/staging/staging.js";
 
 const execFileAsync = promisify(execFile);
@@ -113,6 +113,13 @@ describe("v0.3 source drivers", () => {
     expect(bundle.artifacts.map((artifact) => `${artifact.type}:${artifact.name}`)).toEqual(["skills:vercel-demo"]);
     expect(await readFile(join(target, "skills", "vercel-demo", "SKILL.md"), "utf8")).toContain("vercel-demo");
     await rm(bundle.root, { recursive: true, force: true });
+  });
+
+  it("resolves skills.sh skill names from package-level skills directories", async () => {
+    const repo = await tempRoot("agentwheel-vercel-subpath-");
+    await writeSkill(join(repo, "skills", "interview-me"), "interview-me");
+
+    await expect(resolveVercelSkillSubpath(repo, "interview-me")).resolves.toBe(join(repo, "skills", "interview-me"));
   });
 
   it("stages installable MCP registry remotes into a generated OpenPack package", async () => {

@@ -569,6 +569,57 @@
       color: #cbd5e1;
     }
 
+    .detail-panel {
+      margin: 20px 0 10px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.74));
+    }
+
+    .detail-panel[hidden] {
+      display: none;
+    }
+
+    .detail-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .detail-top h2 {
+      margin: 0;
+      font-size: clamp(24px, 3.5vw, 34px);
+      line-height: 1.1;
+    }
+
+    .detail-top p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .detail-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .detail-links a,
+    .resource-link {
+      color: #cbd5e1;
+      font-weight: 800;
+    }
+
+    .detail-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 14px 0 0;
+    }
+
     .show-more-row {
       display: flex;
       grid-column: 1 / -1;
@@ -745,6 +796,10 @@
         grid-template-columns: 1fr;
       }
 
+      .detail-top {
+        flex-direction: column;
+      }
+
       .controls {
         align-items: stretch;
       }
@@ -864,6 +919,7 @@
       </div>
 
       <section aria-labelledby="results-title">
+        <aside class="detail-panel" id="resource-detail" aria-live="polite" hidden></aside>
         <h2 class="section-title" id="results-title">Resources</h2>
         <p class="result-count" id="count" aria-live="polite">Loading resources</p>
         <div class="catalogue-grid" id="grid" aria-live="polite"></div>
@@ -871,7 +927,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.14.5.</span>
+      <span>agentwheel is early / v0.14.6.</span>
       <a class="logo-link" href="https://www.nestdev.it/" aria-label="NestDevLab">
         <img src="https://www.nestdev.it/assets/logo-nestdev.png" width="22" height="22" alt="">
       </a>
@@ -917,12 +973,14 @@
       ecosystem: "all",
       resource: "all",
       sort: "stars",
+      detailResourceId: params.get("resource") || "",
     };
 
     const grid = document.querySelector("#grid");
     const count = document.querySelector("#count");
     const queryInput = document.querySelector("#q");
     const sortSelect = document.querySelector("#sort");
+    const detailPanel = document.querySelector("#resource-detail");
     let searchTimer = 0;
 
     function siblingUrl(url, filename) {
@@ -1096,6 +1154,7 @@
 
     function showSkeletons() {
       clearGrid();
+      renderDetail();
       count.textContent = "Loading resources";
       for (let i = 0; i < 6; i += 1) {
         const card = document.createElement("article");
@@ -1200,6 +1259,36 @@
       return list;
     }
 
+    function detailUrl(entry) {
+      const url = new URL(location.href);
+      url.searchParams.set("resource", entry.id);
+      url.hash = "";
+      return url.href;
+    }
+
+    function appendResourceLink(parent, href, label) {
+      const safe = safeUrl(href);
+      if (!safe) return;
+      const link = document.createElement("a");
+      link.className = "resource-link";
+      link.href = safe;
+      link.textContent = label;
+      parent.appendChild(link);
+    }
+
+    function appendEntryLinks(parent, entry, options = {}) {
+      appendResourceLink(parent, entry.repoUrl, "GitHub");
+      appendResourceLink(parent, entry.homepageUrl, entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage");
+      appendResourceLink(parent, entry.sourceUrl, entry.sourceLinkLabel || "Skill source");
+      if (options.details !== false) {
+        const details = document.createElement("a");
+        details.className = "resource-link";
+        details.href = detailUrl(entry);
+        details.textContent = "Details";
+        parent.appendChild(details);
+      }
+    }
+
     function resourceCard(entry) {
       const card = document.createElement("article");
       card.className = "resource-card";
@@ -1296,25 +1385,76 @@
 
       const links = document.createElement("div");
       links.className = "links";
-      const repo = typeof entry.repoUrl === "string" && entry.repoUrl.trim() ? safeUrl(entry.repoUrl) : null;
-      if (repo) {
-        const link = document.createElement("a");
-        link.className = "resource-link";
-        link.href = repo;
-        link.textContent = "GitHub";
-        links.appendChild(link);
-      }
-      const homepage = safeUrl(entry.homepageUrl);
-      if (homepage) {
-        const link = document.createElement("a");
-        link.className = "resource-link";
-        link.href = homepage;
-        link.textContent = entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage";
-        links.appendChild(link);
-      }
+      appendEntryLinks(links, entry);
       card.appendChild(links);
 
       return card;
+    }
+
+    function renderDetail() {
+      if (!state.detailResourceId) {
+        detailPanel.hidden = true;
+        return;
+      }
+
+      while (detailPanel.firstChild) detailPanel.removeChild(detailPanel.firstChild);
+      detailPanel.hidden = false;
+
+      const entry = state.entries.find((candidate) => candidate.id === state.detailResourceId);
+      if (!entry) {
+        const title = document.createElement("h2");
+        title.textContent = "Resource details";
+        const message = document.createElement("p");
+        message.textContent = state.entries.length ? "This resource was not found in the loaded catalogue data." : "Loading resource details...";
+        detailPanel.appendChild(title);
+        detailPanel.appendChild(message);
+        return;
+      }
+
+      const top = document.createElement("div");
+      top.className = "detail-top";
+      const copy = document.createElement("div");
+      const title = document.createElement("h2");
+      title.textContent = text(entry.name);
+      copy.appendChild(title);
+      if (entry.description) {
+        const description = document.createElement("p");
+        description.textContent = text(entry.description);
+        copy.appendChild(description);
+      }
+      top.appendChild(copy);
+
+      const badge = document.createElement("span");
+      badge.className = `badge ${text(entry.ecosystem)}`;
+      badge.textContent = ecosystemLabel(entry.ecosystem);
+      top.appendChild(badge);
+      detailPanel.appendChild(top);
+
+      if (typeof entry.installCommand === "string" && entry.installCommand.trim()) {
+        const install = document.createElement("div");
+        install.className = "install";
+        const code = document.createElement("code");
+        code.textContent = entry.installCommand;
+        const copyButton = document.createElement("button");
+        copyButton.className = "copy";
+        copyButton.type = "button";
+        copyButton.textContent = "Copy";
+        copyButton.dataset.copy = entry.installCommand;
+        install.appendChild(code);
+        install.appendChild(copyButton);
+        detailPanel.appendChild(install);
+      }
+
+      const links = document.createElement("div");
+      links.className = "detail-links";
+      appendEntryLinks(links, entry, { details: false });
+      detailPanel.appendChild(links);
+
+      const meta = document.createElement("div");
+      meta.className = "detail-meta";
+      if (Array.isArray(entry.tags) && entry.tags.length) meta.appendChild(pillList(entry.tags, "tags"));
+      if (Array.isArray(entry.provides) && entry.provides.length) meta.appendChild(pillList(entry.provides, "provides"));
+      if (meta.childNodes.length) detailPanel.appendChild(meta);
     }
 
     function filteredEntries() {
@@ -1381,6 +1521,7 @@
     function render(reset = true) {
       const entries = filteredEntries();
       state.filteredEntries = entries;
+      renderDetail();
       clearGrid();
       count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {

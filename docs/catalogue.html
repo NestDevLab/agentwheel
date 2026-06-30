@@ -620,6 +620,91 @@
       margin: 14px 0 0;
     }
 
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .detail-section {
+      min-width: 0;
+      padding: 12px 0 0;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .detail-section h3 {
+      margin: 0 0 10px;
+      color: #e5e7eb;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail-item {
+      min-width: 0;
+    }
+
+    .detail-item-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: #e5e7eb;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .detail-item-title a {
+      color: #e5e7eb;
+      text-decoration: underline;
+      text-decoration-color: rgba(148, 163, 184, 0.42);
+      text-underline-offset: 3px;
+    }
+
+    .detail-note {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .detail-code {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 6px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.76);
+      color: #dbeafe;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .detail-mini-install {
+      min-height: 38px;
+      margin-top: 8px;
+    }
+
+    .detail-mini-install code {
+      padding: 9px 10px;
+      font-size: 12px;
+    }
+
+    .detail-mini-install .copy {
+      min-width: 64px;
+      font-size: 12px;
+    }
+
+    .detail-item .pill-list {
+      max-height: none;
+      margin: 7px 0 0;
+    }
+
     .show-more-row {
       display: flex;
       grid-column: 1 / -1;
@@ -969,7 +1054,7 @@
       entries: [],
       filteredEntries: [],
       renderedCount: 0,
-      query: "",
+      query: params.get("q") || "",
       ecosystem: "all",
       resource: "all",
       sort: "stars",
@@ -982,6 +1067,7 @@
     const sortSelect = document.querySelector("#sort");
     const detailPanel = document.querySelector("#resource-detail");
     let searchTimer = 0;
+    queryInput.value = state.query;
 
     function siblingUrl(url, filename) {
       const u = new URL(url, location.href);
@@ -1056,6 +1142,9 @@
           entry.subtitle,
           ...(Array.isArray(entry.provides) ? entry.provides : []),
           ...(Array.isArray(entry.tags) ? entry.tags : []),
+          ...(Array.isArray(entry.skills) ? entry.skills : []),
+          ...(Array.isArray(entry.select) ? entry.select : []),
+          ...(Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills.map((item) => item?.name).filter(Boolean) : []),
         ].join(" ").toLowerCase(),
         lastPushTime: Number.isNaN(lastPushTime) ? -Infinity : lastPushTime,
       };
@@ -1289,6 +1378,242 @@
       }
     }
 
+    function catalogueSearchUrl(query) {
+      const url = new URL(location.href);
+      url.searchParams.delete("resource");
+      url.searchParams.set("q", text(query));
+      url.hash = "";
+      return url.href;
+    }
+
+    function findSkillEntry(name) {
+      const wanted = text(name).toLowerCase();
+      if (!wanted) return null;
+      return state.entries.find((entry) => text(entry.name).toLowerCase() === wanted && resourceMatches(entry, "skills")) || null;
+    }
+
+    function selectedSelectors(entry) {
+      const selectors = [];
+      if (Array.isArray(entry.select)) selectors.push(...entry.select.filter(Boolean));
+      if (Array.isArray(entry.skills)) selectors.push(...entry.skills.filter(Boolean).map((skill) => `skills/${skill}`));
+      return [...new Set(selectors)];
+    }
+
+    function detailSection(title) {
+      const section = document.createElement("section");
+      section.className = "detail-section";
+      section.appendChild(appendText(document.createElement("h3"), title));
+      const list = document.createElement("div");
+      list.className = "detail-list";
+      section.appendChild(list);
+      return { section, list };
+    }
+
+    function detailItemTitle(parent, label, href) {
+      const title = document.createElement("div");
+      title.className = "detail-item-title";
+      const safe = safeUrl(href);
+      if (safe) {
+        const link = document.createElement("a");
+        link.href = safe;
+        link.textContent = text(label);
+        title.appendChild(link);
+      } else {
+        title.appendChild(appendText(document.createElement("span"), label));
+      }
+      parent.appendChild(title);
+      return title;
+    }
+
+    function appendDetailNote(parent, value) {
+      if (!value) return;
+      const note = document.createElement("p");
+      note.className = "detail-note";
+      note.textContent = text(value);
+      parent.appendChild(note);
+    }
+
+    function appendDetailCode(parent, value) {
+      if (!value) return;
+      const code = document.createElement("code");
+      code.className = "detail-code";
+      code.textContent = text(value);
+      parent.appendChild(code);
+    }
+
+    function compactPills(values) {
+      const filtered = values.filter((value) => value != null && text(value).trim());
+      return filtered.length ? pillList(filtered, "detail-pills") : null;
+    }
+
+    function appendMiniInstall(parent, command) {
+      if (typeof command !== "string" || !command.trim()) return;
+      const install = document.createElement("div");
+      install.className = "install detail-mini-install";
+      const code = document.createElement("code");
+      code.textContent = command;
+      const copy = document.createElement("button");
+      copy.className = "copy";
+      copy.type = "button";
+      copy.textContent = "Copy";
+      copy.dataset.copy = command;
+      install.appendChild(code);
+      install.appendChild(copy);
+      parent.appendChild(install);
+    }
+
+    function relationshipText(item) {
+      const selector = item?.selector || item?.name || item?.source;
+      if (!selector) return "";
+      return item.optional ? `${selector} (optional)` : selector;
+    }
+
+    function sourceHrefFromValue(source, select) {
+      if (typeof source !== "string") return null;
+      const selectors = Array.isArray(select) ? select : [];
+      const skillSelector = selectors.find((selector) => typeof selector === "string" && selector.startsWith("skills/"));
+      const skill = skillSelector ? skillSelector.slice("skills/".length) : "";
+      const github = /^github:([^/\s#]+)\/([^/\s#]+)(?:#([^#]+))?$/.exec(source)
+        || /^git:https:\/\/github\.com\/([^/\s#]+)\/([^/\s#]+?)(?:\.git)?(?:#([^#]+))?$/.exec(source);
+      if (github) {
+        const ref = github[3] || "main";
+        return skill
+          ? `https://github.com/${github[1]}/${github[2]}/tree/${encodeURIComponent(ref)}/skills/${encodeURIComponent(skill)}`
+          : `https://github.com/${github[1]}/${github[2]}`;
+      }
+      const vercel = /^vercel:skills\.sh\/([^/\s#]+)\/([^/\s#]+)(?:\/([^/\s#]+))?(?:#.*)?$/.exec(source);
+      if (vercel) {
+        const sourceSkill = vercel[3] || skill;
+        return sourceSkill
+          ? `https://skills.sh/${vercel[1]}/${vercel[2]}/${encodeURIComponent(sourceSkill)}`
+          : `https://skills.sh/${vercel[1]}/${vercel[2]}`;
+      }
+      return safeUrl(source);
+    }
+
+    function renderArtifacts(entry) {
+      const metadata = Array.isArray(entry.artifactMetadata) && entry.artifactMetadata.length
+        ? entry.artifactMetadata
+        : selectedSelectors(entry).map((selector) => {
+          const [type, ...nameParts] = selector.split("/");
+          return { selector, type, name: nameParts.join("/") || selector, sourceUrl: entry.sourceUrl };
+        });
+      if (!metadata.length) return null;
+
+      const { section, list } = detailSection("Selected artifacts");
+      metadata.forEach((artifact) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, artifact.name || artifact.selector, artifact.sourceUrl);
+        const pills = compactPills([
+          artifact.selector,
+          artifact.format,
+          artifact.required ? "required" : null,
+          ...(Array.isArray(artifact.runtimes) ? artifact.runtimes : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        if (artifact.sourcePath) appendDetailNote(item, `Source path: ${artifact.sourcePath}`);
+        if (Array.isArray(artifact.requires) && artifact.requires.length) {
+          appendDetailNote(item, `Requires: ${artifact.requires.map(relationshipText).filter(Boolean).join(", ")}`);
+        }
+        if (Array.isArray(artifact.compose) && artifact.compose.length) {
+          appendDetailNote(item, `Composes: ${artifact.compose.map(relationshipText).filter(Boolean).join(", ")}`);
+        }
+        if (Array.isArray(artifact.suggests) && artifact.suggests.length) {
+          appendDetailNote(item, `Suggests: ${artifact.suggests.join(", ")}`);
+        }
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function suggestionHref(suggestion) {
+      if (suggestion?.sourceUrl) return suggestion.sourceUrl;
+      const fromSource = sourceHrefFromValue(suggestion?.source, suggestion?.select);
+      if (fromSource) return fromSource;
+      const catalogueEntry = findSkillEntry(suggestion?.name);
+      return catalogueEntry ? detailUrl(catalogueEntry) : catalogueSearchUrl(suggestion?.name);
+    }
+
+    function renderSuggestedSkills(entry) {
+      const suggestions = Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills : [];
+      if (!suggestions.length) return null;
+
+      const { section, list } = detailSection("Suggested skills");
+      suggestions.forEach((suggestion) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, suggestion.name, suggestionHref(suggestion));
+        const pills = compactPills([
+          suggestion.relation || "suggested",
+          ...(Array.isArray(suggestion.select) ? suggestion.select : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        appendDetailNote(item, suggestion.reason);
+        appendDetailNote(item, suggestion.when);
+        appendMiniInstall(item, suggestion.installCommand);
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function renderDependencies(entry) {
+      const dependencies = Array.isArray(entry.dependencies) ? entry.dependencies : [];
+      if (!dependencies.length) return null;
+
+      const { section, list } = detailSection("Dependencies");
+      dependencies.forEach((dependency) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, dependency.name, dependency.sourceUrl || sourceHrefFromValue(dependency.source, dependency.select));
+        const pills = compactPills([
+          dependency.optional ? "optional" : "required",
+          ...(Array.isArray(dependency.select) ? dependency.select : []),
+          ...(Array.isArray(dependency.runtimes) ? dependency.runtimes : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        appendDetailCode(item, dependency.source);
+        appendMiniInstall(item, dependency.installCommand);
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function renderPackageMetadata(entry) {
+      const values = [
+        ["Type", entry.type],
+        ["Source", entry.source],
+        ["Version", entry.version ? `v${entry.version}` : null],
+        ["Updated", formatDate(entry.lastPush)],
+        ["Stars", formatStars(entry.stars)],
+      ].filter(([, value]) => value);
+      if (!values.length && !Array.isArray(entry.provides) && !Array.isArray(entry.tags)) return null;
+
+      const { section, list } = detailSection("Metadata");
+      values.forEach(([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, label);
+        appendDetailCode(item, value);
+        list.appendChild(item);
+      });
+      if (Array.isArray(entry.provides) && entry.provides.length) {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, "Provides");
+        item.appendChild(pillList(entry.provides, "provides"));
+        list.appendChild(item);
+      }
+      if (Array.isArray(entry.tags) && entry.tags.length) {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, "Tags");
+        item.appendChild(pillList(entry.tags, "tags"));
+        list.appendChild(item);
+      }
+      return section;
+    }
+
     function resourceCard(entry) {
       const card = document.createElement("article");
       card.className = "resource-card";
@@ -1455,6 +1780,16 @@
       if (Array.isArray(entry.tags) && entry.tags.length) meta.appendChild(pillList(entry.tags, "tags"));
       if (Array.isArray(entry.provides) && entry.provides.length) meta.appendChild(pillList(entry.provides, "provides"));
       if (meta.childNodes.length) detailPanel.appendChild(meta);
+
+      const sections = document.createElement("div");
+      sections.className = "detail-grid";
+      [
+        renderArtifacts(entry),
+        renderSuggestedSkills(entry),
+        renderDependencies(entry),
+        renderPackageMetadata(entry),
+      ].filter(Boolean).forEach((section) => sections.appendChild(section));
+      if (sections.childNodes.length) detailPanel.appendChild(sections);
     }
 
     function filteredEntries() {

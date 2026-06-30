@@ -14,5 +14,11 @@ describe("catalogue site", () => {
     expect(html).toContain('url.searchParams.set("resource", entry.id)');
     expect(html).toContain("Skill source");
     expect(html).toContain("Details");
+    expect(html).toContain("Selected artifacts");
+    expect(html).toContain("Suggested skills");
+    expect(html).toContain("Dependencies");
+    expect(html).toContain("artifactMetadata");
+    expect(html).toContain("suggestedSkills");
+    expect(html).toContain('params.get("q")');
   });
 });

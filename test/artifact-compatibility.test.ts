@@ -463,6 +463,63 @@ describe("artifact compatibility registry", () => {
     }
   });
 
+  it("keeps role subagent nesting guards compatible across native runtimes", async () => {
+    const source = await tempRoot();
+    await writeSubagentPackage(source, join("guarded-role", "AGENTS.md"), [
+      "---",
+      "name: guarded-role",
+      'description: "Guarded role."',
+      "disallowedTools: Agent",
+      "agents: []",
+      "---",
+      "",
+      "# Guarded Role",
+      "",
+      "Work as a leaf role agent and return a concise handoff.",
+      "",
+    ].join("\n"));
+
+    const codexTarget = await tempRoot();
+    const codexBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: codexAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, codexTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(codexPlan);
+    const codexAgent = await readFile(join(codexTarget, ".codex", "agents", "guarded-role.toml"), "utf8");
+    expect(codexAgent).toContain('name = "guarded-role"');
+    expect(codexAgent).toContain('description = "Guarded role."');
+    expect(codexAgent).toContain("Work as a leaf role agent");
+    expect(codexAgent).not.toContain("disallowedTools");
+    expect(codexAgent).not.toContain("agents: []");
+
+    const claudeTarget = await tempRoot();
+    const claudeBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: claudeAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, claudeTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(claudePlan);
+    const claudeAgent = await readFile(join(claudeTarget, ".claude", "agents", "guarded-role", "AGENTS.md"), "utf8");
+    expect(claudeAgent).toContain("name: guarded-role");
+    expect(claudeAgent).toContain("disallowedTools: Agent");
+
+    const copilotTarget = await tempRoot();
+    const copilotBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: copilotAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const copilotPlan = await createInstallPlan(copilotBundle, copilotAdapter, copilotTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(copilotPlan);
+    const copilotAgent = await readFile(join(copilotTarget, ".github", "agents", "guarded-role.agent.md"), "utf8");
+    expect(copilotAgent).toContain("name: guarded-role");
+    expect(copilotAgent).toContain("agents: []");
+
+    await rm(codexBundle.root, { recursive: true, force: true });
+    await rm(claudeBundle.root, { recursive: true, force: true });
+    await rm(copilotBundle.root, { recursive: true, force: true });
+  });
+
   it("rejects Codex custom agent TOML missing required fields before apply", async () => {
     const source = await tempRoot();
     await writeSubagentPackage(source, "broken.toml", [

@@ -469,11 +469,13 @@ describe("artifact compatibility registry", () => {
       "---",
       "name: guarded-role",
       'description: "Guarded role."',
-      "disallowedTools: Agent",
+      "disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage",
       "agents: []",
       "---",
       "",
       "# Guarded Role",
+      "",
+      "Do not start, resume, spawn, message, or orchestrate other agents through native subagents, task tools, skill-driven bridges, agent-tmux, tmux/agent-mesh, OpenClaw `sessions_spawn`, CCD session tools, `SendMessage`, or deferred MCP messaging.",
       "",
       "Work as a leaf role agent and return a concise handoff.",
       "",
@@ -490,7 +492,9 @@ describe("artifact compatibility registry", () => {
     expect(codexAgent).toContain('name = "guarded-role"');
     expect(codexAgent).toContain('description = "Guarded role."');
     expect(codexAgent).toContain("Work as a leaf role agent");
+    expect(codexAgent).toContain("Do not start, resume, spawn, message");
     expect(codexAgent).not.toContain("disallowedTools");
+    expect(codexAgent).not.toContain("mcp__ccd_session__spawn_task");
     expect(codexAgent).not.toContain("agents: []");
 
     const claudeTarget = await tempRoot();
@@ -502,7 +506,8 @@ describe("artifact compatibility registry", () => {
     await applyCombinedInstallPlan(claudePlan);
     const claudeAgent = await readFile(join(claudeTarget, ".claude", "agents", "guarded-role", "AGENTS.md"), "utf8");
     expect(claudeAgent).toContain("name: guarded-role");
-    expect(claudeAgent).toContain("disallowedTools: Agent");
+    expect(claudeAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
+    expect(claudeAgent).toContain("Do not start, resume, spawn, message");
 
     const copilotTarget = await tempRoot();
     const copilotBundle = await stageSource(new LocalSourceDriver(), source, {
@@ -513,6 +518,7 @@ describe("artifact compatibility registry", () => {
     await applyCombinedInstallPlan(copilotPlan);
     const copilotAgent = await readFile(join(copilotTarget, ".github", "agents", "guarded-role.agent.md"), "utf8");
     expect(copilotAgent).toContain("name: guarded-role");
+    expect(copilotAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
     expect(copilotAgent).toContain("agents: []");
 
     await rm(codexBundle.root, { recursive: true, force: true });

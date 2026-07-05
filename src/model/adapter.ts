@@ -22,12 +22,13 @@ export const targetMappingSchema = z.object({
     "codex-plugin",
     "hermes-plugin",
     "copilot-plugin",
+    "openclaw-subagent",
     "codex-subagent",
     "copilot-instruction",
     "copilot-prompt",
     "copilot-agent",
   ]).optional(),
-  merge: z.enum(["json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  merge: z.enum(["json-deep", "openclaw-json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
   mode: z.enum(["managed-block"]).optional(),
 });
 

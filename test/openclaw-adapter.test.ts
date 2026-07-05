@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,18 +44,20 @@ async function writePackage(root: string, provides: Array<{ type: string; path: 
 }
 
 describe("OpenClaw adapter", () => {
-  it("declares user-level config targets without a subagents target", () => {
+  it("declares user-level config and subagent workspace targets", () => {
     expect(openClawAdapter.targets.instructions).toEqual({
       user: { enabled: true, root: "home", dest: ".openclaw/workspace/AGENTS.md", mode: "managed-block" },
     });
+    expect(openClawAdapter.targets.subagents).toEqual({
+      user: { enabled: true, root: "home", dest: ".openclaw/workspace-subagents", semantic: "openclaw-subagent" },
+    });
     expect(openClawAdapter.targets.mcp).toEqual({
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     });
     expect(openClawAdapter.targets.settings).toEqual({
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     });
     expect(openClawAdapter.targets.instructions?.local).toBeUndefined();
-    expect(openClawAdapter.targets.subagents).toBeUndefined();
   });
 
   it("installs user instructions to the OpenClaw workspace AGENTS file", async () => {
@@ -86,12 +88,13 @@ describe("OpenClaw adapter", () => {
     const home = await tempRoot("agentwheel-openclaw-home-");
     await mkdir(join(source, "mcp"), { recursive: true });
     await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writeFakeOpenClaw(home);
     await writePackage(source, [{ type: "mcp", path: "mcp/server.json" }]);
     await writeFile(join(source, "mcp", "server.json"), JSON.stringify({
-      mcp: { servers: { managed: { command: "managed", args: ["--ok"] } } },
+      mcp: { servers: { managed: { command: "managed", args: ["--ok"] }, user: { headers: { Authorization: "Bearer ${MISSING_TEST_TOKEN}" } } } },
     }, null, 2), "utf8");
     await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
-      mcp: { servers: { user: { command: "user" } } },
+      mcp: { servers: { user: { command: "user", headers: { Authorization: "Bearer existing" } } } },
       keep: true,
     }, null, 2), "utf8");
 
@@ -102,15 +105,16 @@ describe("OpenClaw adapter", () => {
       expect(operation?.action).toBe("update");
       expect(operation?.relativeDestPath).toBe(".openclaw/openclaw.json");
       expect(operation?.destPath).toBe(join(home, ".openclaw", "openclaw.json"));
-      expect(operation?.mergeStrategy).toBe("json-deep");
+      expect(operation?.mergeStrategy).toBe("openclaw-json-deep");
 
       await applyInstallPlan(plan, bundle.sourceLock);
       const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
       expect(config.keep).toBe(true);
       expect(config.mcp.servers.user.command).toBe("user");
+      expect(config.mcp.servers.user.headers.Authorization).toBe("Bearer existing");
       expect(config.mcp.servers.managed.command).toBe("managed");
       const manifest = await readInstallManifest(home, "openclaw", undefined, { installationType: "user" });
-      expect(manifest?.entries.find((entry) => entry.artifactType === "mcp")?.mergeStrategy).toBe("json-deep");
+      expect(manifest?.entries.find((entry) => entry.artifactType === "mcp")?.mergeStrategy).toBe("openclaw-json-deep");
       await rm(bundle.root, { recursive: true, force: true });
     });
   });
@@ -121,13 +125,14 @@ describe("OpenClaw adapter", () => {
     const home = await tempRoot("agentwheel-openclaw-home-");
     await mkdir(join(source, "settings"), { recursive: true });
     await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writeFakeOpenClaw(home);
     await writePackage(source, [{ type: "settings", path: "settings/openclaw.json" }]);
     await writeFile(join(source, "settings", "openclaw.json"), JSON.stringify({
-      agents: { list: [{ name: "managed", model: "gpt-5" }] },
+      agents: { list: [{ id: "managed", name: "managed", model: "gpt-5" }] },
       ui: { theme: "dark" },
     }, null, 2), "utf8");
     await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
-      agents: { list: [{ name: "existing", model: "local" }] },
+      agents: { list: [{ id: "existing", name: "existing", model: "local" }, { id: "managed", name: "managed", systemPromptOverride: "stale" }] },
       keep: true,
     }, null, 2), "utf8");
 
@@ -138,19 +143,96 @@ describe("OpenClaw adapter", () => {
       expect(operation?.action).toBe("update");
       expect(operation?.relativeDestPath).toBe(".openclaw/openclaw.json");
       expect(operation?.destPath).toBe(join(home, ".openclaw", "openclaw.json"));
-      expect(operation?.mergeStrategy).toBe("json-deep");
+      expect(operation?.mergeStrategy).toBe("openclaw-json-deep");
 
       await applyInstallPlan(plan, bundle.sourceLock);
       const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
       expect(config.keep).toBe(true);
       expect(config.ui.theme).toBe("dark");
       expect(config.agents.list).toEqual([
-        { name: "existing", model: "local" },
-        { name: "managed", model: "gpt-5" },
+        { id: "existing", name: "existing", model: "local" },
+        { id: "managed", name: "managed", model: "gpt-5" },
       ]);
       const manifest = await readInstallManifest(home, "openclaw", undefined, { installationType: "user" });
-      expect(manifest?.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("json-deep");
+      expect(manifest?.entries.find((entry) => entry.artifactType === "settings")?.mergeStrategy).toBe("openclaw-json-deep");
+      await rm(bundle.root, { recursive: true, force: true });
+    });
+  });
+
+  it("installs OpenClaw subagents as workspace AGENTS directories", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-openclaw-home-");
+    await mkdir(join(source, "subagents", "reviewer"), { recursive: true });
+    await writePackage(source, [{ type: "subagents", path: "subagents" }]);
+    await writeFile(join(source, "subagents", "reviewer", "AGENTS.md"), [
+      "---",
+      "name: reviewer",
+      'description: "Review work."',
+      "disallowedTools: Agent",
+      "---",
+      "",
+      "# Reviewer",
+      "",
+      "Review the work and return a concise handoff.",
+      "",
+    ].join("\n"), "utf8");
+
+    await withTestHome(home, async () => {
+      const bundle = await stageSource(new LocalSourceDriver(), source, { adapter: openClawAdapter });
+      const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, undefined, { installationType: "user" });
+      expect(plan.targetRoot).toBe(home);
+      expect(plan.operations.map((operation) => operation.relativeDestPath)).toEqual([".openclaw/workspace-subagents/reviewer"]);
+
+      await applyInstallPlan(plan, bundle.sourceLock);
+      const installed = await readFile(join(home, ".openclaw", "workspace-subagents", "reviewer", "AGENTS.md"), "utf8");
+      expect(installed).toContain("# Reviewer");
+      expect(installed).toContain("Review the work");
+      expect(installed).not.toContain("disallowedTools");
+      expect(installed).not.toMatch(/^---/);
+      await rm(bundle.root, { recursive: true, force: true });
+    });
+  });
+
+  it("validates openclaw-json-deep merges before replacing openclaw.json", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-openclaw-home-");
+    await mkdir(join(source, "settings"), { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writeFakeOpenClaw(home, { rejectSystemPromptOverride: true });
+    await writePackage(source, [{ type: "settings", path: "settings/openclaw.json" }]);
+    await writeFile(join(source, "settings", "openclaw.json"), JSON.stringify({
+      agents: { list: [{ id: "bad", systemPromptOverride: "invalid" }] },
+    }, null, 2), "utf8");
+    await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({ keep: true }, null, 2), "utf8");
+
+    await withTestHome(home, async () => {
+      const bundle = await stageSource(new LocalSourceDriver(), source);
+      const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, undefined, { installationType: "user" });
+      await expect(applyInstallPlan(plan, bundle.sourceLock)).rejects.toThrow(/valid": false|Invalid config/);
+      const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+      expect(config).toEqual({ keep: true });
       await rm(bundle.root, { recursive: true, force: true });
     });
   });
 });
+
+async function writeFakeOpenClaw(home: string, options: { rejectSystemPromptOverride?: boolean } = {}): Promise<void> {
+  const bin = join(home, ".openclaw", "npm", "node_modules", ".bin", "openclaw");
+  await mkdir(join(home, ".openclaw", "npm", "node_modules", ".bin"), { recursive: true });
+  await writeFile(bin, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const cfg = process.env.OPENCLAW_CONFIG_PATH;",
+    "const text = fs.readFileSync(cfg, 'utf8');",
+    "JSON.parse(text);",
+    options.rejectSystemPromptOverride
+      ? "const valid = !text.includes('systemPromptOverride');"
+      : "const valid = true;",
+    "process.stdout.write(JSON.stringify(valid ? { valid: true, path: cfg } : { valid: false, path: cfg, issues: [{ path: 'agents.list.0', message: 'Invalid config' }] }));",
+    "process.exit(0);",
+    "",
+  ].join("\n"), "utf8");
+  await chmod(bin, 0o755);
+}

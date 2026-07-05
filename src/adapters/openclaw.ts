@@ -11,11 +11,14 @@ export const openClawAdapter: AdapterConfig = {
       local: { enabled: true, dest: "skills" },
       user: { enabled: true, root: "home", dest: ".openclaw/skills" },
     },
+    subagents: {
+      user: { enabled: true, root: "home", dest: ".openclaw/workspace-subagents", semantic: "openclaw-subagent" },
+    },
     mcp: {
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     },
     settings: {
-      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "json-deep" },
+      user: { enabled: true, root: "home", dest: ".openclaw/openclaw.json", merge: "openclaw-json-deep" },
     },
     plugins: {
       local: { enabled: true, dest: ".openclaw/plugins", formats: ["openclaw-plugin", "openclaw-clawhub-plugin"], semantic: "openclaw-plugin" },

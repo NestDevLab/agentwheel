@@ -91,6 +91,7 @@ path, not from the inverse Codex/Copilot path.
 | OpenClaw | `skills` | `supported-native`: `skills/<name>/SKILL.md` | `supported-native`: `~/.openclaw/skills/<name>/SKILL.md` | `.agents/skills` is documented alternative, not default. |
 | OpenClaw | `skills` | `documented-alternative`: `.agents/skills/<name>/SKILL.md` | `documented-alternative`: `~/.agents/skills/<name>/SKILL.md` | Shared agent skill location. |
 | OpenClaw | `rules` | `custom-adapter-only` | `custom-adapter-only` | No built-in file-drop target is documented for runtime-native rules. |
+| OpenClaw | `subagents` | `unsupported` | `supported-native`: `~/.openclaw/workspace-subagents/<name>/AGENTS.md` plus `~/.openclaw/openclaw.json` | Agent instructions live in per-subagent workspaces; `agents.list[]` and `agents.defaults.subagents.allowAgents` are managed through config merge. |
 | OpenClaw | `mcp` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON under `mcp.servers.<name>`. |
 | OpenClaw | `settings` | `unsupported` | `supported-native`: `~/.openclaw/openclaw.json` | Deep-merged JSON; `agents.list[]` is covered by settings config-merge. |
 | OpenClaw | `plugins` | `requires-config`: semantic `openclaw plugins install --force <path>` or `openclaw plugins install --force clawhub:<name>` for ClawHub wrappers | `unsupported` | Local plugins are directory artifacts staged for CLI install; ClawHub wrappers are generated plugin artifacts. User-level plugin install is not built into the adapter. |
@@ -112,6 +113,7 @@ path, not from the inverse Codex/Copilot path.
 - GitHub Copilot CLI hooks are lifecycle shell-command hooks, stored as JSON files under `.github/hooks/` or `~/.copilot/hooks/`.
 - Copilot rule-like artifacts are custom instructions. They do not provide command execution policy like Codex rules.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
+- OpenClaw subagents require both a workspace directory and config registration. Agentwheel renders Markdown OpenPack subagents to `workspace-subagents/<name>/AGENTS.md`; fleet settings provide the `agents.list[]` entries and parent allowlist.
 - OpenClaw, Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, git shims, or generated ClawHub wrappers and runs the runtime CLI; it does not copy plugin sources into `.openclaw/plugins`, `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
 - Hermes local skills remain unsupported by default because local/project discovery requires configured `external_dirs`; user skills install to `~/.hermes/skills`.
 - OpenClaw and Hermes built-ins do not emulate rules through legacy file drops such as `.openclaw/rules` or `.hermes/rules`; rules remain custom-adapter-only unless native runtime support is documented.

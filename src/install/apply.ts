@@ -1,14 +1,14 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
 import { writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import { mergeJsonFile } from "./json-merge.js";
+import { mergeJsonFile, mergeOpenClawJsonFile } from "./json-merge.js";
 import { readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
@@ -411,6 +411,8 @@ async function applyOperation(
     }
     if (operation.mergeStrategy === "json-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+    } else if (operation.mergeStrategy === "openclaw-json-deep") {
+      await mergeOpenClawJsonWithTransport(operation.sourcePath, operation.destPath, transport);
     } else if (operation.mergeStrategy === "yaml-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeYamlFile);
     } else if (operation.mergeStrategy === "codex-toml-mcp") {
@@ -807,4 +809,61 @@ async function mergeWithTransport(
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+async function mergeOpenClawJsonWithTransport(
+  sourcePath: string,
+  destPath: string,
+  transport: TargetTransport,
+): Promise<void> {
+  const tempRoot = await mkdtemp(join(tmpdir(), "agentwheel-openclaw-merge-"));
+  const localDest = join(tempRoot, basename(destPath) || "openclaw.json");
+  const validationPath = transport.kind === "local"
+    ? localDest
+    : `${destPath}.validate-agentwheel-${process.pid}-${Date.now()}`;
+  try {
+    if (await transport.pathExists(destPath)) {
+      await writeFile(localDest, await transport.readFile(destPath), "utf8");
+    }
+    await mergeOpenClawJsonFile(sourcePath, localDest);
+    if (transport.kind !== "local") {
+      await transport.atomicCopy(localDest, validationPath, "file");
+    }
+    await validateOpenClawConfig(validationPath, destPath, transport);
+    await transport.atomicCopy(localDest, destPath, "file");
+  } finally {
+    if (transport.kind !== "local") await transport.rm(validationPath);
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+async function validateOpenClawConfig(
+  configPath: string,
+  destPath: string,
+  transport: TargetTransport,
+): Promise<void> {
+  if (!transport.execFile) {
+    throw new Error(`Cannot validate OpenClaw config over ${transport.description}: transport does not support command execution.`);
+  }
+  const openClawHome = dirname(destPath);
+  const bundledBin = join(openClawHome, "npm", "node_modules", ".bin", "openclaw");
+  const script = String.raw`
+set -euo pipefail
+cfg=$1
+bundled_bin=$2
+if [ -x "$bundled_bin" ]; then
+  bin="$bundled_bin"
+elif command -v openclaw >/dev/null 2>&1; then
+  bin="openclaw"
+else
+  echo "OpenClaw binary not found; cannot validate $cfg" >&2
+  exit 127
+fi
+out=$(OPENCLAW_CONFIG_PATH="$cfg" "$bin" config validate --json 2>&1) || {
+  printf '%s\n' "$out" >&2
+  exit 1
+}
+printf '%s' "$out" | node -e 'let s=""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => { const data = JSON.parse(s); if (!data.valid) { console.error(JSON.stringify(data, null, 2)); process.exit(1); } });'
+`;
+  await transport.execFile("bash", ["-lc", script, "agentwheel-openclaw-validate", configPath, bundledBin]);
 }

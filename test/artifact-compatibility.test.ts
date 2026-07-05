@@ -154,6 +154,7 @@ const pathCases: Array<{
   { label: "openclaw local skills", adapter: openClawAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: "skills/smoke" },
   { label: "openclaw user instructions", adapter: openClawAdapter, installationType: "user", type: "instructions", name: "AGENTS.md", expectedRoot: "home", expectedPath: ".openclaw/workspace/AGENTS.md" },
   { label: "openclaw user skills", adapter: openClawAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".openclaw/skills/smoke" },
+  { label: "openclaw user subagents", adapter: openClawAdapter, installationType: "user", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "home", expectedPath: ".openclaw/workspace-subagents/reviewer" },
   { label: "openclaw user mcp", adapter: openClawAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".openclaw/openclaw.json" },
   { label: "openclaw user settings", adapter: openClawAdapter, installationType: "user", type: "settings", name: "settings.json", expectedRoot: "home", expectedPath: ".openclaw/openclaw.json" },
 
@@ -521,9 +522,25 @@ describe("artifact compatibility registry", () => {
     expect(copilotAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
     expect(copilotAgent).toContain("agents: []");
 
+    const openClawHome = await tempRoot("agentwheel-openclaw-compat-home-");
+    process.env.AGENTWHEEL_TEST_HOME = openClawHome;
+    const openClawBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: openClawAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const openClawPlan = await createInstallPlan(openClawBundle, openClawAdapter, await tempRoot(), undefined, localTransport, { installationType: "user" });
+    await applyCombinedInstallPlan(openClawPlan);
+    const openClawAgent = await readFile(join(openClawHome, ".openclaw", "workspace-subagents", "guarded-role", "AGENTS.md"), "utf8");
+    expect(openClawAgent).toContain("# Guarded Role");
+    expect(openClawAgent).toContain("Do not start, resume, spawn, message");
+    expect(openClawAgent).toContain("Work as a leaf role agent");
+    expect(openClawAgent).not.toContain("disallowedTools");
+    expect(openClawAgent).not.toContain("agents: []");
+
     await rm(codexBundle.root, { recursive: true, force: true });
     await rm(claudeBundle.root, { recursive: true, force: true });
     await rm(copilotBundle.root, { recursive: true, force: true });
+    await rm(openClawBundle.root, { recursive: true, force: true });
   });
 
   it("rejects Codex custom agent TOML missing required fields before apply", async () => {

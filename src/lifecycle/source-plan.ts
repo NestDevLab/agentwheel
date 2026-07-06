@@ -10,7 +10,7 @@ import { stateKeyFor } from "../install/paths.js";
 import type { DesiredArtifact } from "../install/desired.js";
 import type { InstallPlan } from "../install/plan.js";
 import { readApplyJournal } from "../install/transaction.js";
-import { resolvePackageSource } from "../registry/client.js";
+import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { RegistryClient } from "../registry/client.js";
 import { resolveDependencyGraph, type GraphRootRequest, type ResolvedGraph } from "../resolve/graph.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
@@ -24,6 +24,7 @@ import { pathExists } from "../utils/fs.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
+import { normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -61,6 +62,8 @@ export interface GraphSourcePlanOptions {
   targetKey?: string;
   targetFingerprintParts?: unknown;
   noDeps?: boolean;
+  includeSuggestions?: boolean;
+  suggestionAliases?: string[];
   lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
@@ -98,6 +101,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   const lockMode = options.frozenLock === true || options.offline === true;
   const resolvedInput = await resolvePackageSource(options.source, workspaceRoot, { offline: lockMode, warn: options.warn });
   const resolvedSource = resolvedInput.source;
+  const selectedArtifacts = normalizeArtifactSelectors(options.select, options.skills) ?? selectorsFromRegistryEntry(resolvedInput.registryEntry);
   const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedSource));
   const bundle = await stageSource(driver, resolvedSource, {
     workspaceRoot,
@@ -105,8 +109,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     mode: options.mode,
     frozenLock: lockMode,
-    select: options.select,
-    skills: options.skills,
+    select: selectedArtifacts,
   });
   const transport = options.transport ?? localTransport;
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
@@ -172,6 +175,8 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
     registryClient,
     noDeps: options.noDeps,
+    includeSuggestions: options.includeSuggestions,
+    suggestionAliases: options.suggestionAliases,
     lockedResolution: options.lockedResolution,
     frozenLock: lockMode,
     offline: options.offline,

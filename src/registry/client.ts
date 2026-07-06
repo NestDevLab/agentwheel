@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { registryCacheSchema, registryIndexSchema, type RegistryCache, type RegistryEntry } from "../model/registry.js";
+import { normalizeArtifactSelectors } from "../model/selection.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
 import { GitSourceDriver } from "../source/git.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
@@ -157,6 +158,10 @@ export async function resolvePackageSource(source: string, workspaceRoot: string
     throw new Error(`Registry entry not found: ${source}. Use an explicit path/git/skillkit/vercel/mcp-registry/clawhub source to bypass the registry.`);
   }
   return { source: entry.source, registryEntry: entry };
+}
+
+export function selectorsFromRegistryEntry(entry?: Pick<RegistryEntry, "select" | "skills">): string[] | undefined {
+  return normalizeArtifactSelectors(entry?.select, entry?.skills);
 }
 
 export function mergeIndexes(indexes: RegistryEntry[][]): RegistryEntry[] {

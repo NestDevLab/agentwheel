@@ -91,6 +91,15 @@ describe("OpenPack package manifests", () => {
           runtimes: ["claude"],
         },
       },
+      suggests: {
+        brainstorm: {
+          source: "registry:brainstorm",
+          select: ["skills/brainstorming"],
+          reason: "Divergent ideation before converging.",
+          when: "Use before choosing among underspecified options.",
+          runtimes: ["codex"],
+        },
+      },
       provides: [
         { type: "fragments", path: "fragments" },
         {
@@ -100,6 +109,7 @@ describe("OpenPack package manifests", () => {
           items: {
             demo: {
               requires: ["rules/core.md"],
+              suggests: ["brainstorm"],
               compose: [{ include: "fragments/shared.md", markers: false }],
               runtimes: ["codex"],
             },
@@ -111,6 +121,8 @@ describe("OpenPack package manifests", () => {
     const manifest = await readPackageManifest(root);
     expect(manifest?.schemaVersion).toBe(2);
     expect(manifest?.provides.map((provide) => provide.type)).toEqual(["fragments", "skills"]);
+    expect(manifest?.schemaVersion === 2 ? manifest.suggests?.brainstorm.reason : undefined).toBe("Divergent ideation before converging.");
+    expect(manifest?.schemaVersion === 2 && "items" in manifest.provides[1]! ? manifest.provides[1].items?.demo?.suggests : undefined).toEqual(["brainstorm"]);
   });
 
   it("parses v2 meta-packages without a provides key", async () => {
@@ -202,6 +214,7 @@ describe("OpenPack package manifests", () => {
       name: "bad-selectors/pkg",
       version: "1.0.0",
       requires: { core: { source: "registry:core", select: ["not-a-selector"] } },
+      suggests: { brainstorm: { source: "registry:brainstorm", select: ["also-bad"] } },
       provides: [
         { type: "fragments", path: "fragments" },
         {
@@ -210,6 +223,7 @@ describe("OpenPack package manifests", () => {
           items: {
             demo: {
               requires: ["core:missing"],
+              suggests: [{ alias: "missing-suggestion", select: ["skills/demo"] }],
               compose: [{ include: "../escape.md" }],
             },
           },
@@ -221,6 +235,7 @@ describe("OpenPack package manifests", () => {
     expect(result.ok).toBe(false);
     expect(result.findings.map((finding) => finding.message).join("\n")).toMatch(/invalid selector/);
     expect(result.findings.map((finding) => finding.message).join("\n")).toMatch(/include path|selector/);
+    expect(result.findings.map((finding) => finding.message).join("\n")).toMatch(/suggestion alias not declared/);
   });
 
   it("migrates legacy manifests and is idempotent", async () => {

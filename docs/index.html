@@ -363,9 +363,9 @@
 
     .code {
       margin: 0 0 74px;
-      border: 1px solid var(--line);
+      border: 1px solid rgba(148, 163, 184, 0.3);
       border-radius: 8px;
-      background: rgba(2, 6, 23, 0.7);
+      background: rgba(2, 6, 23, 0.88);
       box-shadow: var(--shadow);
       overflow: hidden;
     }
@@ -383,9 +383,15 @@
       align-items: center;
       gap: 8px;
       padding: 13px 16px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+      background: rgba(15, 23, 42, 0.54);
       color: var(--muted);
       font-size: 13px;
+    }
+
+    .codebar > span:not(.light):last-of-type {
+      flex: 1;
+      min-width: 0;
     }
 
     .codebar-title {
@@ -814,6 +820,107 @@
       background: rgba(17, 24, 39, 0.62);
     }
 
+    .install-section {
+      padding-top: 8px;
+    }
+
+    .install-methods {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .install-tabs {
+      display: none;
+    }
+
+    .install-tab {
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.72);
+      color: #cbd5e1;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .install-tab[aria-selected="true"] {
+      border-color: rgba(56, 189, 248, 0.56);
+      background: rgba(56, 189, 248, 0.13);
+      color: #f8fafc;
+    }
+
+    .install-tab:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    .install-method {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 100%;
+      padding: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.86);
+    }
+
+    .install-method.primary-method {
+      border-color: rgba(56, 189, 248, 0.46);
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.12), rgba(17, 24, 39, 0.72));
+    }
+
+    .method-label {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      min-height: 26px;
+      padding: 0 9px;
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      border-radius: 999px;
+      background: rgba(6, 182, 212, 0.09);
+      color: #bae6fd;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .install-method strong {
+      display: block;
+      margin: 14px 0 8px;
+      color: #f8fafc;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .install-method p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .install-method .code {
+      margin: auto 0 0;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+
+    .install-method pre {
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .command-explain > strong,
     .matrix-note strong {
       display: block;
@@ -1047,6 +1154,10 @@
         grid-template-columns: 1fr;
       }
 
+      .install-methods {
+        grid-template-columns: 1fr;
+      }
+
       .matrix-support {
         grid-template-columns: 1fr;
       }
@@ -1123,6 +1234,25 @@
         grid-template-columns: 1fr;
       }
 
+      .install-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .install-methods {
+        margin-top: 12px;
+      }
+
+      .install-method {
+        display: none;
+      }
+
+      .install-method.is-active {
+        display: flex;
+      }
+
       .feature-strip,
       .compact-links {
         gap: 8px;
@@ -1166,7 +1296,7 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> v0.14.5 - installation types &amp; harness matrix</span>
+          <span class="eyebrow"><span class="dot"></span> v0.14.6 - installation types &amp; harness matrix</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
           <p class="subhead">Install OpenPack packages, skills, plugins, and MCP sources into every agent runtime.</p>
           <div class="actions">
@@ -1241,22 +1371,79 @@
         </div>
       </section>
 
-      <div id="install" class="code lead-code" aria-label="Install snippet">
-        <div class="codebar">
-          <span class="light"></span><span class="light"></span><span class="light"></span>
-          <span class="codebar-title">install command example</span>
-          <button class="copy-button" type="button" data-copy-command>Copy</button>
+      <section id="install" class="install-section">
+        <div class="section-head">
+          <span class="section-kicker">00</span>
+          <h2 class="section-title">Install methods</h2>
         </div>
-        <pre><code id="install-command">npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
-      </div>
-      <div class="command-explain" aria-label="Install command explanation">
-        <strong>This command explained</strong>
-        <ul class="command-list">
-          <li><b>Installs one pack</b>Pulls the selected OpenPack source and resolves its managed artifacts.</li>
-          <li><b>Targets two runtimes</b>Applies the pack once for Codex and once for Claude, with separate manifests.</li>
-          <li><b>Defaults to user scope</b>Use <code>--local</code> when you want project-local targets.</li>
-        </ul>
-      </div>
+        <p class="section-copy">Start from the CLI, hand the bootstrap markdown to an AI agent, or install the companion skill into the runtime you already use.</p>
+        <div class="install-tabs" role="tablist" aria-label="Install methods">
+          <button class="install-tab" type="button" role="tab" aria-selected="true" aria-controls="install-panel-cli" id="install-tab-cli" data-install-tab="cli">CLI</button>
+          <button class="install-tab" type="button" role="tab" aria-selected="false" aria-controls="install-panel-ai" id="install-tab-ai" data-install-tab="ai" tabindex="-1">AI handoff</button>
+          <button class="install-tab" type="button" role="tab" aria-selected="false" aria-controls="install-panel-skill" id="install-tab-skill" data-install-tab="skill" tabindex="-1">Skill</button>
+        </div>
+        <div class="install-methods" aria-label="Default install methods">
+          <article class="install-method primary-method is-active" id="install-panel-cli" role="tabpanel" aria-labelledby="install-tab-cli" data-install-panel="cli">
+            <span class="method-label">CLI</span>
+            <strong>Install Agentwheel</strong>
+            <p>Use the package manager on your machine, then initialize a workspace or install directly from the catalogue.</p>
+            <div class="code" aria-label="CLI install">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">terminal</span>
+                <button class="copy-button" type="button" data-copy-target="#cli-install-command">Copy</button>
+              </div>
+              <pre><code id="cli-install-command">npm i -g agentwheel
+agentwheel init</code></pre>
+            </div>
+          </article>
+
+          <article class="install-method" id="install-panel-ai" role="tabpanel" aria-labelledby="install-tab-ai" data-install-panel="ai">
+            <span class="method-label">AI handoff</span>
+            <strong>Give install.md to an agent</strong>
+            <p>The markdown tells an agent how to install Agentwheel, verify it, add the companion skill, and use the catalogue.</p>
+            <div class="code" aria-label="Agent install markdown">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">fetch prompt</span>
+                <button class="copy-button" type="button" data-copy-target="#agent-install-command">Copy</button>
+              </div>
+              <pre><code id="agent-install-command">curl -fsSL https://raw.githubusercontent.com/NestDevLab/agentwheel/main/install.md</code></pre>
+            </div>
+          </article>
+
+          <article class="install-method" id="install-panel-skill" role="tabpanel" aria-labelledby="install-tab-skill" data-install-panel="skill">
+            <span class="method-label">Skill</span>
+            <strong>Install the companion skill</strong>
+            <p>Keep Agentwheel usage, safety rules, and catalogue workflows available inside your current agent runtime.</p>
+            <div class="code" aria-label="Companion skill install">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span class="codebar-title">codex local</span>
+                <button class="copy-button" type="button" data-copy-target="#skill-install-command">Copy</button>
+              </div>
+              <pre><code id="skill-install-command">agentwheel doctor --adapter codex --local
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel</code></pre>
+            </div>
+          </article>
+        </div>
+        <div class="command-explain" aria-label="Install command explanation">
+          <strong>Next install a resource</strong>
+          <ul class="command-list">
+            <li><b>Browse the catalogue</b>Find packages, skills, plugins, and MCP servers with copy-ready Agentwheel commands.</li>
+            <li><b>Choose scope explicitly</b>Use <code>--local</code> for project installs or <code>--user</code> for user-level installs.</li>
+            <li><b>Preview when needed</b>Add <code>--dry-run</code> before broad fleet changes or plugin execution.</li>
+          </ul>
+        </div>
+        <div class="code lead-code" aria-label="Resource install example">
+          <div class="codebar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+            <span class="codebar-title">resource install example</span>
+            <button class="copy-button" type="button" data-copy-target="#resource-install-command">Copy</button>
+          </div>
+          <pre><code id="resource-install-command">npx agentwheel install github:NestDevLab/agent-must-have#standard --adapter codex,claude</code></pre>
+        </div>
+      </section>
 
       <section id="adapters">
         <div class="section-head">
@@ -1527,7 +1714,6 @@
               <pre><code><span class="prompt">$</span> agentwheel install mcp-registry:publisher/server-name \
     --adapter claude \
     --local \
-    --mcp server-name \
     --dry-run</code></pre>
             </div>
           </details>
@@ -1551,6 +1737,15 @@
             <div class="toggle-body">
               <a class="tiny-link" href="catalogue.html">Catalogue</a>
               <a class="tiny-link" href="https://github.com/NestDevLab/agentwheel-registry">Registry</a>
+            </div>
+            <div class="code" aria-label="Catalogue publish example">
+              <div class="codebar">
+                <span class="light"></span><span class="light"></span><span class="light"></span>
+                <span>publish draft</span>
+              </div>
+              <pre><code><span class="prompt">$</span> npx agentwheel@latest registry publish https://github.com/owner/repo \
+    --description "Reusable skills and rules for coding agents." \
+    --tag skills,rules</code></pre>
             </div>
           </details>
         </div>
@@ -1642,6 +1837,18 @@
           <h2 class="section-title">Docs</h2>
         </div>
         <div class="docs-grid">
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/install.md">
+            <strong>install.md</strong>
+            <span>AI handoff</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/AGENT.md">
+            <strong>AGENT.md</strong>
+            <span>agent guide</span>
+          </a>
+          <a class="doc-link" href="https://github.com/NestDevLab/agentwheel/blob/main/llms.txt">
+            <strong>llms.txt</strong>
+            <span>LLM map</span>
+          </a>
           <a class="doc-link" href="https://github.com/NestDevLab/agentwheel#readme">
             <strong>README</strong>
             <span>quick start</span>
@@ -1689,7 +1896,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.14.5.</span>
+      <span>agentwheel is early / v0.14.6.</span>
       <a class="logo-link" href="https://www.nestdev.it/" aria-label="NestDevLab">
         <img src="https://www.nestdev.it/assets/logo-nestdev.png" width="22" height="22" alt="">
       </a>
@@ -1706,23 +1913,86 @@
     </footer>
   </div>
   <script>
-    const copyButton = document.querySelector("[data-copy-command]");
-    const installCommand = document.querySelector("#install-command");
+    const installTabs = Array.from(document.querySelectorAll("[data-install-tab]"));
+    const installPanels = Array.from(document.querySelectorAll("[data-install-panel]"));
 
-    copyButton?.addEventListener("click", async () => {
-      const command = installCommand?.textContent?.trim() ?? "";
-      if (!command) return;
+    function selectInstallTab(name, shouldFocus = false) {
+      installTabs.forEach((tab) => {
+        const active = tab.getAttribute("data-install-tab") === name;
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+        tab.tabIndex = active ? 0 : -1;
+        if (active && shouldFocus) tab.focus();
+      });
+
+      installPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.getAttribute("data-install-panel") === name);
+      });
+    }
+
+    installTabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        selectInstallTab(tab.getAttribute("data-install-tab") ?? "cli");
+      });
+
+      tab.addEventListener("keydown", (event) => {
+        let target = null;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") target = index + 1;
+        if (event.key === "ArrowLeft" || event.key === "ArrowUp") target = index - 1;
+        if (event.key === "Home") target = 0;
+        if (event.key === "End") target = installTabs.length - 1;
+        if (target === null) return;
+
+        event.preventDefault();
+        const next = installTabs[(target + installTabs.length) % installTabs.length];
+        selectInstallTab(next.getAttribute("data-install-tab") ?? "cli", true);
+      });
+    });
+
+    function copyTextFrom(code) {
+      return (code.textContent || "")
+        .replace(/^\s*\$\s?/gm, "")
+        .replace(/[ \t]+$/gm, "")
+        .trim();
+    }
+
+    async function copyText(text, button) {
+      if (!text) return;
 
       try {
-        await navigator.clipboard.writeText(command);
-        copyButton.textContent = "Copied";
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
       } catch {
-        copyButton.textContent = "Select";
+        button.textContent = "Select";
       }
 
       window.setTimeout(() => {
-        copyButton.textContent = "Copy";
+        button.textContent = "Copy";
       }, 1400);
+    }
+
+    document.querySelectorAll(".code").forEach((block, index) => {
+      const code = block.querySelector("pre code");
+      const bar = block.querySelector(".codebar");
+      if (!code || !bar || bar.querySelector(".copy-button")) return;
+
+      if (!code.id) code.id = `copyable-code-${index + 1}`;
+      const button = document.createElement("button");
+      button.className = "copy-button";
+      button.type = "button";
+      button.dataset.copyTarget = `#${code.id}`;
+      button.textContent = "Copy";
+      bar.appendChild(button);
+    });
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest(".copy-button");
+      if (!button) return;
+
+      const target = button.getAttribute("data-copy-target");
+      const code = target ? document.querySelector(target) : button.closest(".code")?.querySelector("pre code");
+      if (!code) return;
+
+      copyText(copyTextFrom(code), button);
     });
   </script>
 </body>

@@ -199,6 +199,36 @@
       background: rgba(124, 58, 237, 0.16);
     }
 
+    .publish-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 520px);
+      align-items: center;
+      gap: 16px;
+      margin: 18px 0 8px;
+      padding: 14px;
+      border: 1px solid rgba(34, 211, 238, 0.22);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.68);
+    }
+
+    .publish-panel h2 {
+      margin: 0 0 5px;
+      color: #e5e7eb;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .publish-panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .publish-command {
+      margin-top: 0;
+    }
+
     .controls-sticky {
       position: sticky;
       top: 0;
@@ -354,6 +384,19 @@
       font-size: 18px;
       line-height: 1.22;
       letter-spacing: 0;
+    }
+
+    .card-title h2 a {
+      color: #f8fafc;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.44);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .card-title h2 a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.9);
     }
 
     .version {
@@ -530,13 +573,195 @@
       gap: 12px;
       flex-wrap: wrap;
       margin-top: 14px;
-      color: #cbd5e1;
+      color: #67e8f9;
       font-size: 14px;
       font-weight: 700;
     }
 
     .links a {
-      color: #cbd5e1;
+      color: #67e8f9;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .links a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
+    }
+
+    .detail-panel {
+      margin: 20px 0 10px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.74));
+    }
+
+    body.detail-mode .catalogue-hero,
+    body.detail-mode .controls-sticky {
+      display: none;
+    }
+
+    body.detail-mode section[aria-labelledby="results-title"] {
+      padding-top: 8px;
+    }
+
+    body.detail-mode .detail-panel {
+      margin-top: 8px;
+    }
+
+    .detail-panel[hidden] {
+      display: none;
+    }
+
+    .detail-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .detail-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .detail-top h2 {
+      margin: 0;
+      font-size: clamp(24px, 3.5vw, 34px);
+      line-height: 1.1;
+    }
+
+    .detail-top p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .detail-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .detail-links a,
+    .resource-link {
+      color: #67e8f9;
+      font-weight: 800;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 4px;
+    }
+
+    .detail-links a:hover,
+    .resource-link:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
+    }
+
+    .detail-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 14px 0 0;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .detail-section {
+      min-width: 0;
+      padding: 12px 0 0;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .detail-section h3 {
+      margin: 0 0 10px;
+      color: #e5e7eb;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail-item {
+      min-width: 0;
+    }
+
+    .detail-item-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: #e5e7eb;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .detail-item-title a {
+      color: #67e8f9;
+      text-decoration: underline;
+      text-decoration-color: rgba(103, 232, 249, 0.55);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+    }
+
+    .detail-item-title a:hover {
+      color: #cffafe;
+      text-decoration-color: rgba(103, 232, 249, 0.96);
+    }
+
+    .detail-note {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .detail-code {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 6px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.76);
+      color: #dbeafe;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .detail-mini-install {
+      min-height: 38px;
+      margin-top: 8px;
+    }
+
+    .detail-mini-install code {
+      padding: 9px 10px;
+      font-size: 12px;
+    }
+
+    .detail-mini-install .copy {
+      min-width: 64px;
+      font-size: 12px;
+    }
+
+    .detail-item .pill-list {
+      max-height: none;
+      margin: 7px 0 0;
     }
 
     .show-more-row {
@@ -711,6 +936,14 @@
         padding-top: 8px;
       }
 
+      .publish-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-top {
+        flex-direction: column;
+      }
+
       .controls {
         align-items: stretch;
       }
@@ -768,8 +1001,18 @@
             <h1 id="catalogue-title"><span class="gradient-title">Catalogue</span></h1>
             <p class="subhead">Browsable index of agentwheel-installable resources: packages, skills, plugins, MCP servers, and adapters from the official registry plus external ecosystems.</p>
           </div>
-          <a class="button secondary" href="https://github.com/NestDevLab/agentwheel-registry#contributing" target="_blank" rel="noopener" title="Add your package or skill to the catalogue">+ Add yours</a>
+          <a class="button secondary" href="#publish-resource" title="Add your package or skill to the catalogue">+ Add yours</a>
         </div>
+        <section class="publish-panel" id="publish-resource" aria-labelledby="publish-title">
+          <div>
+            <h2 id="publish-title">Publish a resource</h2>
+            <p>Draft a registry submission from a public repository, then review the prefilled GitHub issue before sending it.</p>
+          </div>
+          <div class="install publish-command">
+            <code>npx agentwheel@latest registry publish https://github.com/owner/repo</code>
+            <button class="copy" type="button" data-copy="npx agentwheel@latest registry publish https://github.com/owner/repo">Copy</button>
+          </div>
+        </section>
       </section>
 
       <div class="controls-sticky" aria-label="Catalogue filters">
@@ -820,6 +1063,7 @@
       </div>
 
       <section aria-labelledby="results-title">
+        <aside class="detail-panel" id="resource-detail" aria-live="polite" hidden></aside>
         <h2 class="section-title" id="results-title">Resources</h2>
         <p class="result-count" id="count" aria-live="polite">Loading resources</p>
         <div class="catalogue-grid" id="grid" aria-live="polite"></div>
@@ -827,7 +1071,7 @@
     </main>
 
     <footer>
-      <span>agentwheel is early / v0.14.5.</span>
+      <span>agentwheel is early / v0.14.6.</span>
       <a class="logo-link" href="https://www.nestdev.it/" aria-label="NestDevLab">
         <img src="https://www.nestdev.it/assets/logo-nestdev.png" width="22" height="22" alt="">
       </a>
@@ -869,17 +1113,22 @@
       entries: [],
       filteredEntries: [],
       renderedCount: 0,
-      query: "",
+      query: params.get("q") || "",
       ecosystem: "all",
       resource: "all",
       sort: "stars",
+      detailResourceId: params.get("resource") || "",
     };
 
     const grid = document.querySelector("#grid");
     const count = document.querySelector("#count");
     const queryInput = document.querySelector("#q");
     const sortSelect = document.querySelector("#sort");
+    const detailPanel = document.querySelector("#resource-detail");
+    const resultsTitle = document.querySelector("#results-title");
     let searchTimer = 0;
+    queryInput.value = state.query;
+    document.body.classList.toggle("detail-mode", Boolean(state.detailResourceId));
 
     function siblingUrl(url, filename) {
       const u = new URL(url, location.href);
@@ -951,9 +1200,13 @@
         searchText: [
           entry.name,
           entry.description,
+          entry.readmeExcerpt,
           entry.subtitle,
           ...(Array.isArray(entry.provides) ? entry.provides : []),
           ...(Array.isArray(entry.tags) ? entry.tags : []),
+          ...(Array.isArray(entry.skills) ? entry.skills : []),
+          ...(Array.isArray(entry.select) ? entry.select : []),
+          ...(Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills.map((item) => item?.name).filter(Boolean) : []),
         ].join(" ").toLowerCase(),
         lastPushTime: Number.isNaN(lastPushTime) ? -Infinity : lastPushTime,
       };
@@ -1052,6 +1305,7 @@
 
     function showSkeletons() {
       clearGrid();
+      renderDetail();
       count.textContent = "Loading resources";
       for (let i = 0; i < 6; i += 1) {
         const card = document.createElement("article");
@@ -1092,9 +1346,9 @@
       return svg;
     }
 
-    function showState(kind, title, message) {
+    function showState(kind, title, message, countLabel) {
       clearGrid();
-      count.textContent = kind === "empty" ? "0 resources" : "Catalogue data unavailable";
+      count.textContent = countLabel || (kind === "empty" ? "0 resources" : "Catalogue data unavailable");
       const panel = document.createElement("div");
       panel.className = "state-panel";
       panel.appendChild(stateIcon(kind));
@@ -1156,6 +1410,425 @@
       return list;
     }
 
+    function detailUrl(entry) {
+      const url = new URL(location.href);
+      url.searchParams.set("resource", entry.id);
+      url.hash = "";
+      return url.href;
+    }
+
+    function catalogueUrl() {
+      const url = new URL(location.href);
+      url.searchParams.delete("resource");
+      url.searchParams.delete("q");
+      url.hash = "";
+      return url.href;
+    }
+
+    function cardHref(entry) {
+      if (entry.relatedOnly) return entry.sourceUrl || entry.homepageUrl || catalogueSearchUrl(entry.name);
+      return detailUrl(entry);
+    }
+
+    function appendResourceLink(parent, href, label) {
+      const safe = safeUrl(href);
+      if (!safe) return;
+      const link = document.createElement("a");
+      link.className = "resource-link";
+      link.href = safe;
+      link.textContent = label;
+      parent.appendChild(link);
+    }
+
+    function appendEntryLinks(parent, entry, options = {}) {
+      appendResourceLink(parent, entry.repoUrl, "GitHub");
+      appendResourceLink(parent, entry.homepageUrl, entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage");
+      appendResourceLink(parent, entry.sourceUrl, entry.sourceLinkLabel || "Skill source");
+      if (options.details !== false && !entry.relatedOnly) {
+        const details = document.createElement("a");
+        details.className = "resource-link";
+        details.href = detailUrl(entry);
+        details.textContent = "Details";
+        parent.appendChild(details);
+      }
+    }
+
+    function currentDetailEntry() {
+      if (!state.detailResourceId) return null;
+      return state.entries.find((candidate) => candidate.id === state.detailResourceId) || null;
+    }
+
+    function sourceEcosystem(source) {
+      if (typeof source !== "string") return "official";
+      if (source.startsWith("vercel:")) return "vercel";
+      if (source.startsWith("skillkit:")) return "skillkit";
+      if (source.startsWith("mcp-registry:")) return "mcp-registry";
+      if (source.startsWith("clawhub:")) return "clawhub";
+      return "official";
+    }
+
+    function relatedSuggestionEntry(suggestion, ownerEntry) {
+      const sourceUrl = suggestion.sourceUrl || sourceHrefFromValue(suggestion.source, suggestion.select);
+      return prepareEntry({
+        id: `related:${ownerEntry.id}:${text(suggestion.name).toLowerCase()}`,
+        name: suggestion.name,
+        ecosystem: sourceEcosystem(suggestion.source),
+        type: "skill",
+        description: suggestion.reason || suggestion.when || "Suggested companion skill.",
+        tags: [suggestion.relation || "suggested", ...(Array.isArray(suggestion.select) ? suggestion.select : [])],
+        source: suggestion.source || "",
+        installCommand: suggestion.installCommand || "",
+        repoUrl: null,
+        homepageUrl: sourceUrl,
+        sourceUrl,
+        sourceLinkLabel: "Skill source",
+        stars: null,
+        lastPush: null,
+        archived: false,
+        provides: null,
+        version: null,
+        featured: false,
+        subtitle: "Suggested companion",
+        relatedOnly: true,
+      });
+    }
+
+    const genericSimilarityTerms = new Set([
+      "agent",
+      "agents",
+      "catalogue",
+      "official",
+      "openpack",
+      "package",
+      "public",
+      "public-toolkit",
+      "resource",
+      "rules",
+      "skill",
+      "skills",
+    ]);
+
+    function meaningfulTerms(entry) {
+      const terms = [
+        entry.name,
+        ...(Array.isArray(entry.tags) ? entry.tags : []),
+        ...(Array.isArray(entry.skills) ? entry.skills : []),
+      ].flatMap((value) => text(value).toLowerCase().split(/[^a-z0-9]+/));
+      return [...new Set(terms.filter((term) => term.length > 2 && !genericSimilarityTerms.has(term)))];
+    }
+
+    function similarSkillEntries(entry, usedIds, usedNames, limit) {
+      const terms = meaningfulTerms(entry);
+      if (!terms.length || limit <= 0) return [];
+      return state.entries
+        .filter((candidate) => resourceMatches(candidate, "skills"))
+        .filter((candidate) => !usedIds.has(candidate.id) && !usedNames.has(text(candidate.name).toLowerCase()))
+        .map((candidate) => {
+          const candidateText = [candidate.name, candidate.description, ...(Array.isArray(candidate.tags) ? candidate.tags : [])]
+            .join(" ")
+            .toLowerCase();
+          const score = terms.reduce((total, term) => total + (candidateText.includes(term) ? 1 : 0), 0);
+          return { candidate, score };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || text(a.candidate.name).localeCompare(text(b.candidate.name)))
+        .slice(0, limit)
+        .map((item) => item.candidate);
+    }
+
+    function relatedSkillEntries(entry) {
+      const related = [];
+      const usedIds = new Set([entry.id]);
+      const usedNames = new Set([text(entry.name).toLowerCase()]);
+
+      function add(candidate) {
+        if (!candidate) return;
+        const name = text(candidate.name).toLowerCase();
+        if (!name || usedIds.has(candidate.id) || usedNames.has(name)) return;
+        usedIds.add(candidate.id);
+        usedNames.add(name);
+        related.push(candidate);
+      }
+
+      for (const suggestion of Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills : []) {
+        add(findSkillEntry(suggestion.name) || relatedSuggestionEntry(suggestion, entry));
+      }
+
+      for (const candidate of similarSkillEntries(entry, usedIds, usedNames, Math.max(0, 8 - related.length))) {
+        add(candidate);
+      }
+
+      return related;
+    }
+
+    function catalogueSearchUrl(query) {
+      const url = new URL(location.href);
+      url.searchParams.delete("resource");
+      url.searchParams.set("q", text(query));
+      url.hash = "";
+      return url.href;
+    }
+
+    function findSkillEntry(name) {
+      const wanted = text(name).toLowerCase();
+      if (!wanted) return null;
+      return state.entries.find((entry) => text(entry.name).toLowerCase() === wanted && resourceMatches(entry, "skills")) || null;
+    }
+
+    function selectedSelectors(entry) {
+      const selectors = [];
+      if (Array.isArray(entry.select)) selectors.push(...entry.select.filter(Boolean));
+      if (Array.isArray(entry.skills)) selectors.push(...entry.skills.filter(Boolean).map((skill) => `skills/${skill}`));
+      return [...new Set(selectors)];
+    }
+
+    function detailSection(title) {
+      const section = document.createElement("section");
+      section.className = "detail-section";
+      section.appendChild(appendText(document.createElement("h3"), title));
+      const list = document.createElement("div");
+      list.className = "detail-list";
+      section.appendChild(list);
+      return { section, list };
+    }
+
+    function detailItemTitle(parent, label, href) {
+      const title = document.createElement("div");
+      title.className = "detail-item-title";
+      const safe = safeUrl(href);
+      if (safe) {
+        const link = document.createElement("a");
+        link.href = safe;
+        link.textContent = text(label);
+        title.appendChild(link);
+      } else {
+        title.appendChild(appendText(document.createElement("span"), label));
+      }
+      parent.appendChild(title);
+      return title;
+    }
+
+    function appendDetailNote(parent, value) {
+      if (!value) return;
+      const note = document.createElement("p");
+      note.className = "detail-note";
+      note.textContent = text(value);
+      parent.appendChild(note);
+    }
+
+    function appendDetailCode(parent, value) {
+      if (!value) return;
+      const code = document.createElement("code");
+      code.className = "detail-code";
+      code.textContent = text(value);
+      parent.appendChild(code);
+    }
+
+    function compactPills(values) {
+      const filtered = values.filter((value) => value != null && text(value).trim());
+      return filtered.length ? pillList(filtered, "detail-pills") : null;
+    }
+
+    function appendMiniInstall(parent, command) {
+      if (typeof command !== "string" || !command.trim()) return;
+      const install = document.createElement("div");
+      install.className = "install detail-mini-install";
+      const code = document.createElement("code");
+      code.textContent = command;
+      const copy = document.createElement("button");
+      copy.className = "copy";
+      copy.type = "button";
+      copy.textContent = "Copy";
+      copy.dataset.copy = command;
+      install.appendChild(code);
+      install.appendChild(copy);
+      parent.appendChild(install);
+    }
+
+    function relationshipText(item) {
+      const selector = item?.selector || item?.name || item?.source;
+      if (!selector) return "";
+      return item.optional ? `${selector} (optional)` : selector;
+    }
+
+    function sourceHrefFromValue(source, select) {
+      if (typeof source !== "string") return null;
+      const selectors = Array.isArray(select) ? select : [];
+      const skillSelector = selectors.find((selector) => typeof selector === "string" && selector.startsWith("skills/"));
+      const skill = skillSelector ? skillSelector.slice("skills/".length) : "";
+      const github = /^github:([^/\s#]+)\/([^/\s#]+)(?:#([^#]+))?$/.exec(source)
+        || /^git:https:\/\/github\.com\/([^/\s#]+)\/([^/\s#]+?)(?:\.git)?(?:#([^#]+))?$/.exec(source);
+      if (github) {
+        const ref = github[3] || "main";
+        return skill
+          ? `https://github.com/${github[1]}/${github[2]}/tree/${encodeURIComponent(ref)}/skills/${encodeURIComponent(skill)}`
+          : `https://github.com/${github[1]}/${github[2]}`;
+      }
+      const vercel = /^vercel:skills\.sh\/([^/\s#]+)\/([^/\s#]+)(?:\/([^/\s#]+))?(?:#.*)?$/.exec(source);
+      if (vercel) {
+        const sourceSkill = vercel[3] || skill;
+        return sourceSkill
+          ? `https://skills.sh/${vercel[1]}/${vercel[2]}/${encodeURIComponent(sourceSkill)}`
+          : `https://skills.sh/${vercel[1]}/${vercel[2]}`;
+      }
+      return safeUrl(source);
+    }
+
+    function entryDocumentation(entry) {
+      if (entry.readmeExcerpt) {
+        return {
+          title: entry.readmeTitle || "README",
+          url: entry.readmeUrl,
+          excerpt: entry.readmeExcerpt,
+        };
+      }
+      const artifact = Array.isArray(entry.artifactMetadata)
+        ? entry.artifactMetadata.find((item) => item?.readmeExcerpt)
+        : null;
+      if (!artifact) return null;
+      return {
+        title: artifact.readmeTitle || "README",
+        url: artifact.readmeUrl,
+        excerpt: artifact.readmeExcerpt,
+      };
+    }
+
+    function renderReadme(entry) {
+      const documentation = entryDocumentation(entry);
+      if (!documentation) return null;
+
+      const { section, list } = detailSection(documentation.title);
+      const item = document.createElement("div");
+      item.className = "detail-item";
+      detailItemTitle(item, documentation.url ? `Open ${documentation.title}` : documentation.title, documentation.url);
+      appendDetailNote(item, documentation.excerpt);
+      list.appendChild(item);
+      return section;
+    }
+
+    function renderArtifacts(entry) {
+      const metadata = Array.isArray(entry.artifactMetadata) && entry.artifactMetadata.length
+        ? entry.artifactMetadata
+        : selectedSelectors(entry).map((selector) => {
+          const [type, ...nameParts] = selector.split("/");
+          return { selector, type, name: nameParts.join("/") || selector, sourceUrl: entry.sourceUrl };
+        });
+      if (!metadata.length) return null;
+
+      const { section, list } = detailSection("Selected artifacts");
+      metadata.forEach((artifact) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, artifact.name || artifact.selector, artifact.sourceUrl);
+        const pills = compactPills([
+          artifact.selector,
+          artifact.format,
+          artifact.required ? "required" : null,
+          ...(Array.isArray(artifact.runtimes) ? artifact.runtimes : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        if (artifact.sourcePath) appendDetailNote(item, `Source path: ${artifact.sourcePath}`);
+        if (Array.isArray(artifact.requires) && artifact.requires.length) {
+          appendDetailNote(item, `Requires: ${artifact.requires.map(relationshipText).filter(Boolean).join(", ")}`);
+        }
+        if (Array.isArray(artifact.compose) && artifact.compose.length) {
+          appendDetailNote(item, `Composes: ${artifact.compose.map(relationshipText).filter(Boolean).join(", ")}`);
+        }
+        if (Array.isArray(artifact.suggests) && artifact.suggests.length) {
+          appendDetailNote(item, `Suggests: ${artifact.suggests.join(", ")}`);
+        }
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function suggestionHref(suggestion) {
+      if (suggestion?.sourceUrl) return suggestion.sourceUrl;
+      const fromSource = sourceHrefFromValue(suggestion?.source, suggestion?.select);
+      if (fromSource) return fromSource;
+      const catalogueEntry = findSkillEntry(suggestion?.name);
+      return catalogueEntry ? detailUrl(catalogueEntry) : catalogueSearchUrl(suggestion?.name);
+    }
+
+    function renderSuggestedSkills(entry) {
+      const suggestions = Array.isArray(entry.suggestedSkills) ? entry.suggestedSkills : [];
+      if (!suggestions.length) return null;
+
+      const { section, list } = detailSection("Suggested skills");
+      suggestions.forEach((suggestion) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, suggestion.name, suggestionHref(suggestion));
+        const pills = compactPills([
+          suggestion.relation || "suggested",
+          ...(Array.isArray(suggestion.select) ? suggestion.select : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        appendDetailNote(item, suggestion.reason);
+        appendDetailNote(item, suggestion.when);
+        appendMiniInstall(item, suggestion.installCommand);
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function renderDependencies(entry) {
+      const dependencies = Array.isArray(entry.dependencies) ? entry.dependencies : [];
+      if (!dependencies.length) return null;
+
+      const { section, list } = detailSection("Dependencies");
+      dependencies.forEach((dependency) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, dependency.name, dependency.sourceUrl || sourceHrefFromValue(dependency.source, dependency.select));
+        const pills = compactPills([
+          dependency.optional ? "optional" : "required",
+          ...(Array.isArray(dependency.select) ? dependency.select : []),
+          ...(Array.isArray(dependency.runtimes) ? dependency.runtimes : []),
+        ]);
+        if (pills) item.appendChild(pills);
+        appendDetailCode(item, dependency.source);
+        appendMiniInstall(item, dependency.installCommand);
+        list.appendChild(item);
+      });
+      return section;
+    }
+
+    function renderPackageMetadata(entry) {
+      const values = [
+        ["Type", entry.type],
+        ["Source", entry.source],
+        ["Version", entry.version ? `v${entry.version}` : null],
+        ["Updated", formatDate(entry.lastPush)],
+        ["Stars", formatStars(entry.stars)],
+      ].filter(([, value]) => value);
+      if (!values.length && !Array.isArray(entry.provides) && !Array.isArray(entry.tags)) return null;
+
+      const { section, list } = detailSection("Metadata");
+      values.forEach(([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, label);
+        appendDetailCode(item, value);
+        list.appendChild(item);
+      });
+      if (Array.isArray(entry.provides) && entry.provides.length) {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, "Provides");
+        item.appendChild(pillList(entry.provides, "provides"));
+        list.appendChild(item);
+      }
+      if (Array.isArray(entry.tags) && entry.tags.length) {
+        const item = document.createElement("div");
+        item.className = "detail-item";
+        detailItemTitle(item, "Tags");
+        item.appendChild(pillList(entry.tags, "tags"));
+        list.appendChild(item);
+      }
+      return section;
+    }
+
     function resourceCard(entry) {
       const card = document.createElement("article");
       card.className = "resource-card";
@@ -1167,7 +1840,10 @@
       const titleWrap = document.createElement("div");
       titleWrap.className = "card-title";
       const title = document.createElement("h2");
-      title.textContent = text(entry.name);
+      const titleLink = document.createElement("a");
+      titleLink.href = cardHref(entry);
+      titleLink.textContent = text(entry.name);
+      title.appendChild(titleLink);
       if (entry.version) {
         const version = document.createElement("span");
         version.className = "version";
@@ -1252,28 +1928,117 @@
 
       const links = document.createElement("div");
       links.className = "links";
-      const repo = typeof entry.repoUrl === "string" && entry.repoUrl.trim() ? safeUrl(entry.repoUrl) : null;
-      if (repo) {
-        const link = document.createElement("a");
-        link.className = "resource-link";
-        link.href = repo;
-        link.textContent = "GitHub";
-        links.appendChild(link);
-      }
-      const homepage = safeUrl(entry.homepageUrl);
-      if (homepage) {
-        const link = document.createElement("a");
-        link.className = "resource-link";
-        link.href = homepage;
-        link.textContent = entry.homepageLinkLabel || entry.skillsLinkLabel || "Homepage";
-        links.appendChild(link);
-      }
+      appendEntryLinks(links, entry);
       card.appendChild(links);
 
       return card;
     }
 
+    function renderDetail() {
+      if (!state.detailResourceId) {
+        detailPanel.hidden = true;
+        return;
+      }
+
+      while (detailPanel.firstChild) detailPanel.removeChild(detailPanel.firstChild);
+      detailPanel.hidden = false;
+
+      const entry = state.entries.find((candidate) => candidate.id === state.detailResourceId);
+      if (!entry) {
+        const actions = document.createElement("div");
+        actions.className = "detail-actions";
+        const back = document.createElement("a");
+        back.className = "button secondary";
+        back.href = catalogueUrl();
+        back.textContent = "Back to catalogue";
+        actions.appendChild(back);
+        detailPanel.appendChild(actions);
+        const title = document.createElement("h2");
+        title.textContent = "Resource details";
+        const message = document.createElement("p");
+        message.textContent = state.entries.length ? "This resource was not found in the loaded catalogue data." : "Loading resource details...";
+        detailPanel.appendChild(title);
+        detailPanel.appendChild(message);
+        return;
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "detail-actions";
+      const back = document.createElement("a");
+      back.className = "button secondary";
+      back.href = catalogueUrl();
+      back.textContent = "Back to catalogue";
+      actions.appendChild(back);
+      const browseSkills = document.createElement("a");
+      browseSkills.className = "button secondary";
+      browseSkills.href = catalogueSearchUrl(entry.name);
+      browseSkills.textContent = "Search catalogue";
+      actions.appendChild(browseSkills);
+      detailPanel.appendChild(actions);
+
+      const top = document.createElement("div");
+      top.className = "detail-top";
+      const copy = document.createElement("div");
+      const title = document.createElement("h2");
+      title.textContent = text(entry.name);
+      copy.appendChild(title);
+      if (entry.description) {
+        const description = document.createElement("p");
+        description.textContent = text(entry.description);
+        copy.appendChild(description);
+      }
+      top.appendChild(copy);
+
+      const badge = document.createElement("span");
+      badge.className = `badge ${text(entry.ecosystem)}`;
+      badge.textContent = ecosystemLabel(entry.ecosystem);
+      top.appendChild(badge);
+      detailPanel.appendChild(top);
+
+      if (typeof entry.installCommand === "string" && entry.installCommand.trim()) {
+        const install = document.createElement("div");
+        install.className = "install";
+        const code = document.createElement("code");
+        code.textContent = entry.installCommand;
+        const copyButton = document.createElement("button");
+        copyButton.className = "copy";
+        copyButton.type = "button";
+        copyButton.textContent = "Copy";
+        copyButton.dataset.copy = entry.installCommand;
+        install.appendChild(code);
+        install.appendChild(copyButton);
+        detailPanel.appendChild(install);
+      }
+
+      const links = document.createElement("div");
+      links.className = "detail-links";
+      appendEntryLinks(links, entry, { details: false });
+      detailPanel.appendChild(links);
+
+      const meta = document.createElement("div");
+      meta.className = "detail-meta";
+      if (Array.isArray(entry.tags) && entry.tags.length) meta.appendChild(pillList(entry.tags, "tags"));
+      if (Array.isArray(entry.provides) && entry.provides.length) meta.appendChild(pillList(entry.provides, "provides"));
+      if (meta.childNodes.length) detailPanel.appendChild(meta);
+
+      const sections = document.createElement("div");
+      sections.className = "detail-grid";
+      [
+        renderReadme(entry),
+        renderArtifacts(entry),
+        renderSuggestedSkills(entry),
+        renderDependencies(entry),
+        renderPackageMetadata(entry),
+      ].filter(Boolean).forEach((section) => sections.appendChild(section));
+      if (sections.childNodes.length) detailPanel.appendChild(sections);
+    }
+
     function filteredEntries() {
+      const detailEntry = currentDetailEntry();
+      if (state.detailResourceId) {
+        return detailEntry ? relatedSkillEntries(detailEntry) : [];
+      }
+
       const query = state.query.trim().toLowerCase();
       const filtered = state.entries.filter((entry) => {
         if (state.ecosystem !== "all" && entry.ecosystem !== state.ecosystem) return false;
@@ -1336,11 +2101,21 @@
 
     function render(reset = true) {
       const entries = filteredEntries();
+      const detailMode = Boolean(state.detailResourceId);
       state.filteredEntries = entries;
+      renderDetail();
       clearGrid();
-      count.textContent = `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
+      resultsTitle.textContent = detailMode ? "Related skills" : "Resources";
+      count.textContent = detailMode
+        ? `${entries.length} ${entries.length === 1 ? "related skill" : "related skills"}`
+        : `${entries.length} ${entries.length === 1 ? "resource" : "resources"}`;
       if (!entries.length) {
-        showState("empty", "No resources match", "Try a different search, ecosystem, resource, or sort combination.");
+        showState(
+          "empty",
+          detailMode ? "No related skills yet" : "No resources match",
+          detailMode ? "Use the catalogue search to explore all installable resources." : "Try a different search, ecosystem, resource, or sort combination.",
+          detailMode ? "0 related skills" : "0 resources",
+        );
         return;
       }
       state.renderedCount = 0;
@@ -1366,13 +2141,15 @@
       });
     });
 
-    grid.addEventListener("click", (event) => {
+    document.addEventListener("click", (event) => {
       const copyButton = event.target.closest("[data-copy]");
-      if (copyButton && grid.contains(copyButton)) {
+      if (copyButton) {
         copyText(copyButton.dataset.copy, copyButton);
         return;
       }
+    });
 
+    grid.addEventListener("click", (event) => {
       const showMoreButton = event.target.closest("[data-show-more]");
       if (showMoreButton && grid.contains(showMoreButton)) {
         showMoreButton.closest(".show-more-row")?.remove();

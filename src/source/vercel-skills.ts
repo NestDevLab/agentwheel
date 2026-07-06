@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import type { Artifact } from "../model/artifact.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import { discoverSkillPaths, artifactsFromSkillPaths } from "./skill-artifacts.js";
@@ -45,10 +45,7 @@ export class VercelSkillsSourceDriver implements SourceDriver {
       driver: "git",
       source: parsed.gitSource,
     });
-    const resolvedPath = parsed.subpath ? join(fetched.resolvedPath, parsed.subpath) : fetched.resolvedPath;
-    if (!(await pathExists(resolvedPath))) {
-      throw new Error(`Vercel skills subpath not found: ${parsed.subpath}`);
-    }
+    const resolvedPath = await resolveVercelSkillSubpath(fetched.resolvedPath, parsed.subpath);
     return {
       ...resolved,
       resolvedPath,
@@ -76,6 +73,18 @@ export class VercelSkillsSourceDriver implements SourceDriver {
   async export(resolved: ResolvedSource): Promise<ResolvedSource> {
     return resolved;
   }
+}
+
+export async function resolveVercelSkillSubpath(root: string, subpath?: string): Promise<string> {
+  if (!subpath) return root;
+
+  const candidates = [join(root, subpath), join(root, "skills", subpath)];
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) return candidate;
+  }
+
+  const tried = candidates.map((candidate) => relative(root, candidate)).join(", ");
+  throw new Error(`Vercel skills subpath not found: ${subpath} (tried ${tried})`);
 }
 
 type ParsedVercelSource =

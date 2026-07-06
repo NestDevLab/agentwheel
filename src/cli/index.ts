@@ -24,7 +24,8 @@ import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
-import { RegistryClient, resolvePackageSource } from "../registry/client.js";
+import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
+import { createRegistryPublishDraft } from "../registry/publish.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
@@ -101,6 +102,8 @@ program
   .option("--name <name>", "package alias")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots on future installs", false)
+  .option("--suggestion <alias>", "include one suggested companion alias on future installs (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "allow this package to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .action(async (source, options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
@@ -120,8 +123,8 @@ program
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
     const targetRoot = normalizeTargetRoot(options.targetRoot);
-    const selectedArtifacts = selectedArtifactsFromOptions(options);
     const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
     const artifacts = filterArtifactsBySelection(await driver.list(resolved), selectedArtifacts);
@@ -171,6 +174,8 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+  .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
@@ -205,6 +210,8 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+  .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
@@ -241,6 +248,8 @@ program
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+  .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
@@ -279,6 +288,8 @@ program
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+  .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
@@ -312,6 +323,8 @@ program
       .option("--mode <mode>", "pinned or tracking")
       .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
       .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+      .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+      .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
       .option("--no-deps", "resolve only root sources and ignore requires with a warning")
       .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
       .option("--offline", "resolve strictly from graph locks and local caches", false)
@@ -396,6 +409,40 @@ program
       .action(async (query, options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries(await client.search(query));
+      }),
+  )
+  .addCommand(
+    new Command("publish")
+      .description("draft a catalogue submission for a public source")
+      .argument("<source>", "public resource source or GitHub URL")
+      .option("--name <name>", "registry short name")
+      .option("--type <type>", "entry type (package, skill, plugin, mcp, or adapter)")
+      .option("--description <text>", "short catalogue description")
+      .option("--tag <tag>", "search tag (repeatable or comma-separated)", collectTagOption, [] as string[])
+      .option("--select <type/name>", "selected artifact inside a larger package (repeatable or comma-separated)", collectSelectOption, [] as string[])
+      .option("--skill <name>", "selected skill inside a larger package (repeatable or comma-separated)", collectSkillOption, [] as string[])
+      .option("--json", "print only the registry entry JSON", false)
+      .action(async (source, options) => {
+        const draft = createRegistryPublishDraft(source, {
+          name: options.name,
+          type: options.type,
+          description: options.description,
+          tags: options.tag,
+          select: options.select,
+          skills: options.skill,
+        });
+        if (options.json) {
+          console.log(JSON.stringify(draft.entry, null, 2));
+          return;
+        }
+        console.log("Draft registry entry:");
+        console.log(JSON.stringify(draft.entry, null, 2));
+        console.log("");
+        console.log(`Verify: ${draft.installCommand}`);
+        if (!draft.entry.description) console.log("Tip: add --description \"...\" or fill the description before submitting.");
+        console.log("");
+        console.log("Submit:");
+        console.log(draft.issueUrl);
       }),
   );
 
@@ -615,6 +662,8 @@ async function runInstallCommand(
       forceConflict: normalizedOptions.forceConflict,
       replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
+      includeSuggestions: normalizedOptions.withSuggestions,
+      suggestionAliases: suggestionAliasesFromOptions(normalizedOptions),
       lockedResolution: true,
       frozenLock: normalizedOptions.frozenLock,
       offline: normalizedOptions.offline,
@@ -691,6 +740,9 @@ async function packageEntryFromSource(
     select?: string[];
     skill?: string[];
     skills?: string[];
+    withSuggestions?: boolean;
+    suggestion?: string[];
+    suggestions?: string[];
     override?: string[];
     overrides?: string[];
     frozenLock?: boolean;
@@ -698,10 +750,10 @@ async function packageEntryFromSource(
     installationType?: string;
   },
 ): Promise<WorkspacePackage> {
-  const selectedArtifacts = selectedArtifactsFromOptions(options);
   const lockMode = options.frozenLock === true || options.offline === true;
   const resolvedInput = await resolvePackageSource(source, targetRoot, { offline: lockMode });
   const resolvedSource = resolvedInput.source;
+  const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
   const driverName = (options.driver ?? inferSourceDriverName(resolvedSource)) as WorkspacePackage["driver"];
   const driver = getSourceDriver(driverName);
   const adapter = await resolveAdapter({
@@ -734,6 +786,8 @@ async function packageEntryFromSource(
       mode: options.mode ?? "pinned",
       requestedRef: bundle.source.requestedRef,
       select: selectedArtifacts,
+      withSuggestions: options.withSuggestions === true ? true : undefined,
+      suggestions: suggestionAliasesFromOptions(options),
       overrides: overrideArtifactsFromOptions(options),
     };
   } finally {
@@ -913,6 +967,9 @@ interface GraphCliOptions {
   overrides?: string[];
   noDeps?: boolean;
   deps?: boolean;
+  withSuggestions?: boolean;
+  suggestion?: string[];
+  suggestions?: string[];
   onlySource?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
@@ -1035,6 +1092,8 @@ async function buildGraphPlansForTarget(
           select: selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
           aliases: pkg.aliases,
           overrides: pkg.overrides,
+          includeSuggestions: targetOptions.withSuggestions === true || pkg.withSuggestions === true,
+          suggestionAliases: packageSuggestionAliases(pkg, targetOptions),
           useLock: behavior.mode === "install" ? true : !updateThisPackage,
         };
       }),
@@ -1059,6 +1118,8 @@ async function buildGraphPlansForTarget(
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
       installationType: group.installationType,
       noDeps: noDepsFromOptions(targetOptions),
+      includeSuggestions: targetOptions.withSuggestions,
+      suggestionAliases: suggestionAliasesFromOptions(targetOptions),
       lockedResolution: behavior.mode === "install",
       frozenLock: targetOptions.frozenLock,
       offline: targetOptions.offline,
@@ -1254,6 +1315,8 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
           select: normalizeArtifactSelectors(pkg.select, pkg.skills),
           aliases: pkg.aliases,
           overrides: pkg.overrides,
+          includeSuggestions: options.withSuggestions === true || pkg.withSuggestions === true,
+          suggestionAliases: packageSuggestionAliases(pkg, options),
         })),
         targetRoot: remainingGroup.target.targetRoot,
         workspaceRoot: remainingGroup.target.workspaceRoot,
@@ -1262,6 +1325,8 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         targetKey: targetKeyForTarget(remainingGroup.target, remainingAdapter.name),
         targetFingerprintParts: targetFingerprintParts(remainingGroup.target, remainingAdapter, remainingGroup.adapterOptions, remainingGroup.installationType),
         installationType: remainingGroup.installationType,
+        includeSuggestions: options.withSuggestions,
+        suggestionAliases: suggestionAliasesFromOptions(options),
         lockedResolution: true,
         frozenLock: options.frozenLock,
         offline: options.offline,
@@ -1630,11 +1695,19 @@ function collectSkillOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
 
+function collectSuggestionOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
 function collectTrustOption(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
 function collectOverrideOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
+function collectTagOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
 
@@ -1729,6 +1802,26 @@ function adapterListFromOption(adapter?: string): string[] {
 
 function selectedArtifactsFromOptions(options: { select?: string[]; skill?: string[]; skills?: string[] }): string[] | undefined {
   return normalizeArtifactSelectors(options.select, options.skills ?? options.skill);
+}
+
+function selectedArtifactsFromOptionsOrRegistry(
+  options: { select?: string[]; skill?: string[]; skills?: string[] },
+  registryEntry?: Parameters<typeof selectorsFromRegistryEntry>[0],
+): string[] | undefined {
+  return selectedArtifactsFromOptions(options) ?? selectorsFromRegistryEntry(registryEntry);
+}
+
+function suggestionAliasesFromOptions(options: { suggestion?: string[]; suggestions?: string[] }): string[] | undefined {
+  const values = options.suggestions ?? options.suggestion;
+  if (!values?.length) return undefined;
+  return [...new Set(values.flatMap(splitSelectorList).map((item) => item.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function packageSuggestionAliases(pkg: WorkspacePackage, options: { suggestion?: string[]; suggestions?: string[] }): string[] | undefined {
+  const aliases = [...(pkg.suggestions ?? []), ...(suggestionAliasesFromOptions(options) ?? [])]
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return aliases.length > 0 ? [...new Set(aliases)].sort((a, b) => a.localeCompare(b)) : undefined;
 }
 
 function overrideArtifactsFromOptions(options: { override?: string[]; overrides?: string[] }): string[] | undefined {

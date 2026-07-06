@@ -34,6 +34,35 @@ agentwheel install
 No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
 live in your workspace, and runtimes stay generated output.
 
+## Install Methods
+
+**CLI install**
+
+```bash
+npm i -g agentwheel
+agentwheel init
+```
+
+Prefer pnpm? `pnpm add -g agentwheel` works too.
+
+**AI agent handoff**
+
+Give an agent [`install.md`](install.md) when you want it to install Agentwheel, verify the CLI,
+install the companion skill, and show the right catalogue flow for your runtime.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NestDevLab/agentwheel/main/install.md
+```
+
+**Companion skill**
+
+The companion skill keeps Agentwheel commands and safety rules inside the runtime you are using:
+
+```bash
+agentwheel doctor --adapter codex --local
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+```
+
 > **Status: early (v0.12).** The public CLI vocabulary is package-manager style:
 > `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for old bootstrapped
 > skills; use `install` in all new docs and scripts.
@@ -87,15 +116,11 @@ to reconcile those removals.
 ## Quick Start
 
 ```bash
-npm i -g agentwheel
-
 agentwheel init
 agentwheel add github:your-org/agent-pack --adapter openclaw --installation-type local --mode tracking
 agentwheel plan
 agentwheel install
 ```
-
-Prefer pnpm? `pnpm add -g agentwheel` works too.
 
 ## Source Inputs
 
@@ -107,7 +132,7 @@ agentwheel install ./my-pack --adapter codex --local
 agentwheel install github:your-org/agent-pack --adapter codex --user
 agentwheel install skillkit:owner/skill-name --adapter claude --user
 agentwheel install vercel:owner/skill-name --adapter codex --user
-agentwheel install mcp-registry:publisher/server-name --adapter claude --local --mcp server-name
+agentwheel install mcp-registry:publisher/server-name --adapter claude --local
 agentwheel install clawhub:@openclaw/whatsapp --adapter openclaw --local
 ```
 
@@ -119,6 +144,17 @@ wrapped by an explicit OpenPack source.
 `clawhub:<package-name>` reads ClawHub package metadata and stages a generated OpenPack plugin
 wrapper for OpenClaw. The generated artifact plans `openclaw plugins install --force clawhub:<name>`;
 plugin execution remains opt-in through Agentwheel's plugin execution controls.
+
+Submit a public resource to the catalogue without editing `index.json` by hand:
+
+```bash
+npx agentwheel@latest registry publish https://github.com/owner/repo \
+  --description "Reusable skills and rules for coding agents." \
+  --tag skills,rules
+```
+
+The command normalizes the source, drafts the registry JSON, prints a verification command, and
+prints a prefilled GitHub submission URL you can review before sending.
 
 Contributor install from source:
 
@@ -295,6 +331,17 @@ be deselected:
 }
 ```
 
+Package authors can also declare suggested companion packages. Suggestions are not installed by
+default; users opt in with `--with-suggestions` for all suggestions relevant to selected artifacts,
+or `--suggestion <alias>` for one named suggestion. The choice is saved when used with `add` or
+`install <source>`.
+
+```bash
+agentwheel add github:your-org/agent-pack --skill triage --with-suggestions --adapter codex --local
+agentwheel plan --skill triage --with-suggestions
+agentwheel install github:your-org/agent-pack --skill triage --suggestion brainstorming --adapter codex --local
+```
+
 ## Dependencies And Composition
 
 OpenPack packages can depend on other packages and compose shared markdown fragments:
@@ -311,9 +358,22 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
       "select": ["rules/safe-actions.md", "fragments/risk.md"]
     }
   },
+  "suggests": {
+    "brainstorming": {
+      "source": "vercel:skills.sh/example/agent-skills",
+      "select": ["skills/brainstorming"],
+      "reason": "Generate options before converging."
+    }
+  },
   "provides": [
     { "type": "fragments", "path": "fragments" },
-    { "type": "skills", "path": "skills" }
+    {
+      "type": "skills",
+      "path": "skills",
+      "items": {
+        "triage": { "suggests": ["brainstorming"] }
+      }
+    }
   ]
 }
 ```
@@ -327,6 +387,10 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
   `core:fragments/risk.md`.
 - **Trust.** New transitive sources prompt before install. Pre-approve with `--trust <glob>` or
   `--yes`, set a workspace trust policy, and manage persisted decisions with `agentwheel trust`.
+- **Suggested companions.** `suggests` uses the same source/selection shape as `requires`, but it
+  is opt-in. `--with-suggestions` pulls all relevant suggestions as non-blocking optional edges;
+  `--suggestion <alias>` pulls a specific suggestion and fails if that explicit suggestion cannot
+  resolve.
 - **Offline & frozen installs.** `--offline` guarantees zero network; `--frozen-lock` hard-fails if
   resolution would differ from the lock.
 - **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why
@@ -467,6 +531,9 @@ Built-in runtime targets:
 
 ## Docs
 
+- [`install.md`](install.md) — AI-agent handoff for installing Agentwheel and the companion skill.
+- [`AGENT.md`](AGENT.md) — concise operating guide for AI agents using Agentwheel.
+- [`llms.txt`](llms.txt) — LLM-oriented map of the public docs.
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
 - [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md) — artifact/harness compatibility matrix and rule semantics.

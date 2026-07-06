@@ -51,6 +51,21 @@ export const packageItemRequireSchema = z.union([
 ]);
 export type PackageItemRequire = z.infer<typeof packageItemRequireSchema>;
 
+export const packageItemSuggestObjectSchema = z.object({
+  alias: z.string().min(1),
+  select: z.array(z.string().min(1)).optional(),
+  optional: z.boolean().optional(),
+  runtimes: z.array(z.string().min(1)).optional(),
+  reason: z.string().min(1).optional(),
+  when: z.string().min(1).optional(),
+}).passthrough();
+
+export const packageItemSuggestSchema = z.union([
+  z.string().min(1),
+  packageItemSuggestObjectSchema,
+]);
+export type PackageItemSuggest = z.infer<typeof packageItemSuggestSchema>;
+
 export const composedFromEntrySchema = z.object({
   selector: z.string().min(1),
   hash: z.string().min(16),
@@ -71,6 +86,7 @@ export const artifactSchema = z.object({
   assets: z.array(packageAssetSchema).optional(),
   required: z.boolean().optional(),
   requires: z.array(packageItemRequireSchema).optional(),
+  suggests: z.array(packageItemSuggestSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   runtimes: z.array(z.string().min(1)).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),

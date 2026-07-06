@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
-import { artifactFormatSchema, artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema } from "./artifact.js";
+import { artifactFormatSchema, artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema, packageItemSuggestSchema } from "./artifact.js";
 import { pathExists } from "../utils/fs.js";
 
 const legacyArtifactTypeSchema = z.enum([
@@ -31,6 +31,7 @@ export { packageItemRequireObjectSchema, packageItemRequireSchema } from "./arti
 export const packageItemSchema = z.object({
   format: artifactFormatSchema.optional(),
   requires: z.array(packageItemRequireSchema).optional(),
+  suggests: z.array(packageItemSuggestSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   runtimes: runtimeListSchema.optional(),
 });
@@ -44,6 +45,11 @@ export const packageDependencySchema = z.object({
   optional: z.boolean().optional(),
   integrity: z.string().min(1).optional(),
   runtimes: runtimeListSchema.optional(),
+});
+
+export const packageSuggestionSchema = packageDependencySchema.extend({
+  reason: z.string().min(1).optional(),
+  when: z.string().min(1).optional(),
 });
 
 export const packageProvideV1Schema = packageProvideBaseSchema.extend({
@@ -69,6 +75,7 @@ export const packageManifestV2Schema = z.object({
   version: z.string().min(1),
   runtimes: runtimeListSchema.optional(),
   requires: z.record(z.string().min(1), packageDependencySchema).optional(),
+  suggests: z.record(z.string().min(1), packageSuggestionSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   provides: z.array(packageProvideSchema).default([]),
 }).superRefine((manifest, ctx) => {

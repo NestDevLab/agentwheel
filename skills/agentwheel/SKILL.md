@@ -145,6 +145,19 @@ agentwheel add github:owner/repo --select skills/code-review --select rules/core
 agentwheel add github:owner/repo --select skills/code-review,rules/core.md
 ```
 
+Install or persist suggested companion artifacts only when requested:
+
+```bash
+agentwheel plan github:owner/repo --skill review --with-suggestions
+agentwheel install github:owner/repo --skill review --suggestion brainstorming
+agentwheel add github:owner/repo --skill review --with-suggestions --adapter codex --installation-type local
+```
+
+Treat OpenPack `suggests` as opt-in soft composition, not as `requires.optional`.
+`--with-suggestions` includes all suggestions relevant to selected artifacts as non-blocking
+optional graph edges. `--suggestion <alias>` includes one named suggestion and should fail if that
+explicit suggestion cannot resolve.
+
 Use a source override when a selected package should replace the same artifact coming from another
 source, such as a forked skill overriding a meta-pack dependency. The declaration is explicit and
 planning fails if it does not match exactly one losing artifact and one selected replacement:

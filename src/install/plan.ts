@@ -68,6 +68,7 @@ export interface InstallOperation {
   blockedDesiredHash?: string;
   blockedReason?: string;
   composedFromDiff?: string[];
+  overrideDrift?: boolean;
 }
 
 export interface MigrationReport {
@@ -233,7 +234,9 @@ async function createPlanFromOperations(
       }
       const currentHash = await transport.hashPath(op.destPath);
       if (existing && existing.sourceHash === op.desiredHash) {
-        operations.push({ ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
+        operations.push(options.forceDrift
+          ? { ...op, action: "update", currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }
+          : { ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
         operations.push({ ...op, action: "update", currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
       }
@@ -283,6 +286,7 @@ async function createPlanFromOperations(
           action: "update",
           currentHash,
           manifestHash: existing.hash,
+          overrideDrift: true,
           reason: reasonWithComposedDiff("force replacing drifted managed destination", op.composedFrom, existing.composedFrom),
           composedFromDiff,
         });
@@ -345,7 +349,7 @@ async function createPlanFromOperations(
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
         ...(options.forceDrift
-          ? { action: "remove" as const, reason: "force removing drifted stale managed destination" }
+          ? { action: "remove" as const, reason: "force removing drifted stale managed destination", overrideDrift: true }
           : {}),
       });
     } else {
@@ -574,6 +578,7 @@ async function planManagedBlockOperation(
         action: "update",
         currentHash: state.hash,
         manifestHash: existing.hash,
+        overrideDrift: true,
         reason: reasonWithComposedDiff("force replacing drifted managed instruction block", op.composedFrom, existing.composedFrom),
         composedFromDiff,
       }];
@@ -611,7 +616,7 @@ async function currentEntryHash(
   if (entry.mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
   const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
   const state = await readManagedInstructionBlockState(destPath, selector, transport);
-  return state.drifted ? state.markerHash : state.hash;
+  return state.hash;
 }
 
 async function canStrictlyAdoptLegacyEntry(

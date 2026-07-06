@@ -164,6 +164,40 @@ describe("registry client", () => {
     await rm(result.bundle.root, { recursive: true, force: true });
   });
 
+  it("honors registry skill selectors for short-name source plans", async () => {
+    const root = await tempRoot();
+    const source = join(root, "package-source");
+    const target = join(root, "target");
+    await writePackage(source);
+    await writeIndex(join(root, "index.json"), [
+      {
+        name: "demo-skill",
+        source,
+        type: "skill",
+        description: "Short skill entry",
+        tags: ["test"],
+        skills: ["demo-skill"],
+      },
+    ]);
+    await mkdir(join(target, ".agentwheel"), { recursive: true });
+    await writeFile(join(target, ".agentwheel", "config.json"), JSON.stringify({
+      schemaVersion: 1,
+      packages: [],
+      registry: { sources: [join(root, "index.json")] },
+    }, null, 2));
+
+    const result = await createSourcePlan({
+      source: "demo-skill",
+      targetRoot: target,
+      adapter: claudeAdapter,
+    });
+
+    expect(result.plan.operations.map((operation) => `${operation.action}:${operation.relativeDestPath}`)).toEqual([
+      "create:.claude/skills/demo-skill",
+    ]);
+    await rm(result.bundle.root, { recursive: true, force: true });
+  });
+
   it("reads registry indexes from a local git repository without network", async () => {
     const repo = await tempRoot("agentwheel-registry-git-");
     const cacheRoot = await tempRoot("agentwheel-registry-cache-");

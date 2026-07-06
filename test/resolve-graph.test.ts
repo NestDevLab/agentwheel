@@ -74,6 +74,57 @@ describe("dependency graph resolver", () => {
     ]);
   });
 
+  it("keeps suggested packages out of the graph unless suggestions are requested", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const dep = join(workspace, "dep");
+    await writeText(join(root, "rules", "root.md"), "# Root\n");
+    await writeText(join(dep, "rules", "dep.md"), "# Dep\n");
+    await writeOpenPack(dep, {
+      name: "acme/dep",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(root, {
+      name: "acme/root",
+      suggests: {
+        brainstorm: {
+          source: "../dep",
+          select: ["rules/dep.md"],
+          reason: "Try a companion rule before converging.",
+        },
+      },
+      provides: [
+        {
+          type: "rules",
+          path: "rules",
+          items: {
+            "root.md": { suggests: ["brainstorm"] },
+          },
+        },
+      ],
+    });
+
+    const withoutSuggestions = await resolveDependencyGraph([
+      { rootId: "main", source: root, select: ["rules/root.md"] },
+    ], { workspaceRoot: workspace });
+    expect(withoutSuggestions.nodes.map((node) => node.name)).toEqual(["acme/root"]);
+
+    const withSuggestions = await resolveDependencyGraph([
+      { rootId: "main", source: root, select: ["rules/root.md"], includeSuggestions: true },
+    ], { workspaceRoot: workspace });
+    const depNode = withSuggestions.nodes.find((node) => node.name === "acme/dep");
+    expect(withSuggestions.nodes.map((node) => node.name).sort()).toEqual(["acme/dep", "acme/root"]);
+    expect(depNode?.selected).toEqual(["rules/dep.md"]);
+    expect(depNode?.selectionReasons?.["rules/dep.md"]).toEqual(["suggested by rules/root.md"]);
+    expect(withSuggestions.edges).toMatchObject([{ alias: "brainstorm", optional: true, selected: ["rules/dep.md"] }]);
+
+    const withExplicitSuggestion = await resolveDependencyGraph([
+      { rootId: "main", source: root, select: ["rules/root.md"], suggestionAliases: ["brainstorm"] },
+    ], { workspaceRoot: workspace });
+    expect(withExplicitSuggestion.nodes.map((node) => node.name).sort()).toEqual(["acme/dep", "acme/root"]);
+    expect(withExplicitSuggestion.edges).toMatchObject([{ alias: "brainstorm", optional: false }]);
+  });
+
   it("resolves root meta-packages that select local dependency artifacts", async () => {
     const workspace = await tempRoot();
     const root = join(workspace, "root");

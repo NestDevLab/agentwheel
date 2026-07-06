@@ -22,6 +22,7 @@ export const targetMappingSchema = z.object({
     "codex-plugin",
     "hermes-plugin",
     "copilot-plugin",
+    "openclaw-subagent",
     "codex-subagent",
     "copilot-instruction",
     "copilot-prompt",

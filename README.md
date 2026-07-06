@@ -75,7 +75,8 @@ for project/workspace installs and `user` for documented user-level installs. If
 installed in more than one type, agentwheel requires `--installation-type` instead of guessing.
 
 - **OpenClaw** — workspace `skills/`, local plugin directories; user `~/.openclaw/skills`,
-  `~/.openclaw/workspace/AGENTS.md`, and `~/.openclaw/openclaw.json`
+  `~/.openclaw/workspace/AGENTS.md`, `~/.openclaw/workspace-subagents/<name>/AGENTS.md`,
+  and `~/.openclaw/openclaw.json`
 - **Claude Code** — `CLAUDE.md`, `.claude/`, `.mcp.json`, and user `~/.claude/`
 - **Codex CLI** — `AGENTS.md`, `.agents/skills`, `plugins/`, `.codex/`, and user equivalents
 - **GitHub Copilot CLI** — `.github/`, user `~/.copilot/`, and documented `.agents` skill alternatives
@@ -522,7 +523,7 @@ Built-in runtime targets:
 
 | Runtime | Native supported targets |
 |---|---|
-| **OpenClaw** | `local: skills/, .openclaw/plugins/`; `user: ~/.openclaw/workspace/AGENTS.md, ~/.openclaw/skills, ~/.openclaw/openclaw.json`; no built-in `rules` target |
+| **OpenClaw** | `local: skills/, .openclaw/plugins/`; `user: ~/.openclaw/workspace/AGENTS.md, ~/.openclaw/workspace-subagents/<name>/AGENTS.md, ~/.openclaw/skills, ~/.openclaw/openclaw.json`; no built-in `rules` target |
 | **Claude Code** | `local: CLAUDE.md, .claude/skills, .claude/rules, .claude/commands, .claude/agents, .claude/plugins, .mcp.json, .claude/settings.json`; `user: ~/.claude/...` except project MCP; rules are behavioral/path-scoped |
 | **Codex CLI** | `local: AGENTS.md, .agents/skills, plugins/, .codex/agents, .codex/config.toml, .codex/hooks.json`; `user: ~/.codex/AGENTS.md, ~/.agents/skills, ~/.codex/plugins, ~/.codex/agents, ~/.codex/config.toml, ~/.codex/hooks.json`; no built-in `rules` target; generic settings are planned, not implemented |
 | **Hermes** | `local: AGENTS.md`; `user: ~/.hermes/SOUL.md, ~/.hermes/skills, ~/.hermes/plugins, ~/.hermes/config.yaml`; rules require explicit adapter config |

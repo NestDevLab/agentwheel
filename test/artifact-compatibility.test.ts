@@ -154,6 +154,7 @@ const pathCases: Array<{
   { label: "openclaw local skills", adapter: openClawAdapter, installationType: "local", type: "skills", name: "smoke", kind: "dir", expectedRoot: "target", expectedPath: "skills/smoke" },
   { label: "openclaw user instructions", adapter: openClawAdapter, installationType: "user", type: "instructions", name: "AGENTS.md", expectedRoot: "home", expectedPath: ".openclaw/workspace/AGENTS.md" },
   { label: "openclaw user skills", adapter: openClawAdapter, installationType: "user", type: "skills", name: "smoke", kind: "dir", expectedRoot: "home", expectedPath: ".openclaw/skills/smoke" },
+  { label: "openclaw user subagents", adapter: openClawAdapter, installationType: "user", type: "subagents", name: "reviewer", kind: "dir", expectedRoot: "home", expectedPath: ".openclaw/workspace-subagents/reviewer" },
   { label: "openclaw user mcp", adapter: openClawAdapter, installationType: "user", type: "mcp", name: "server.json", expectedRoot: "home", expectedPath: ".openclaw/openclaw.json" },
   { label: "openclaw user settings", adapter: openClawAdapter, installationType: "user", type: "settings", name: "settings.json", expectedRoot: "home", expectedPath: ".openclaw/openclaw.json" },
 
@@ -461,6 +462,85 @@ describe("artifact compatibility registry", () => {
       await expect(stat(join(target, ".codex", "agents", item.name, "AGENTS.md"))).rejects.toThrow();
       await rm(bundle.root, { recursive: true, force: true });
     }
+  });
+
+  it("keeps role subagent nesting guards compatible across native runtimes", async () => {
+    const source = await tempRoot();
+    await writeSubagentPackage(source, join("guarded-role", "AGENTS.md"), [
+      "---",
+      "name: guarded-role",
+      'description: "Guarded role."',
+      "disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage",
+      "agents: []",
+      "---",
+      "",
+      "# Guarded Role",
+      "",
+      "Do not start, resume, spawn, message, or orchestrate other agents through native subagents, task tools, skill-driven bridges, agent-tmux, tmux/agent-mesh, OpenClaw `sessions_spawn`, CCD session tools, `SendMessage`, or deferred MCP messaging.",
+      "",
+      "Work as a leaf role agent and return a concise handoff.",
+      "",
+    ].join("\n"));
+
+    const codexTarget = await tempRoot();
+    const codexBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: codexAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const codexPlan = await createInstallPlan(codexBundle, codexAdapter, codexTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(codexPlan);
+    const codexAgent = await readFile(join(codexTarget, ".codex", "agents", "guarded-role.toml"), "utf8");
+    expect(codexAgent).toContain('name = "guarded-role"');
+    expect(codexAgent).toContain('description = "Guarded role."');
+    expect(codexAgent).toContain("Work as a leaf role agent");
+    expect(codexAgent).toContain("Do not start, resume, spawn, message");
+    expect(codexAgent).not.toContain("disallowedTools");
+    expect(codexAgent).not.toContain("mcp__ccd_session__spawn_task");
+    expect(codexAgent).not.toContain("agents: []");
+
+    const claudeTarget = await tempRoot();
+    const claudeBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: claudeAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, claudeTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(claudePlan);
+    const claudeAgent = await readFile(join(claudeTarget, ".claude", "agents", "guarded-role", "AGENTS.md"), "utf8");
+    expect(claudeAgent).toContain("name: guarded-role");
+    expect(claudeAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
+    expect(claudeAgent).toContain("Do not start, resume, spawn, message");
+
+    const copilotTarget = await tempRoot();
+    const copilotBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: copilotAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const copilotPlan = await createInstallPlan(copilotBundle, copilotAdapter, copilotTarget, undefined, localTransport, { installationType: "local" });
+    await applyCombinedInstallPlan(copilotPlan);
+    const copilotAgent = await readFile(join(copilotTarget, ".github", "agents", "guarded-role.agent.md"), "utf8");
+    expect(copilotAgent).toContain("name: guarded-role");
+    expect(copilotAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
+    expect(copilotAgent).toContain("agents: []");
+
+    const openClawHome = await tempRoot("agentwheel-openclaw-compat-home-");
+    process.env.AGENTWHEEL_TEST_HOME = openClawHome;
+    const openClawBundle = await stageSource(new LocalSourceDriver(), source, {
+      adapter: openClawAdapter,
+      select: ["subagents/guarded-role"],
+    });
+    const openClawPlan = await createInstallPlan(openClawBundle, openClawAdapter, await tempRoot(), undefined, localTransport, { installationType: "user" });
+    await applyCombinedInstallPlan(openClawPlan);
+    const openClawAgent = await readFile(join(openClawHome, ".openclaw", "workspace-subagents", "guarded-role", "AGENTS.md"), "utf8");
+    expect(openClawAgent).toContain("# Guarded Role");
+    expect(openClawAgent).toContain("Do not start, resume, spawn, message");
+    expect(openClawAgent).toContain("Work as a leaf role agent");
+    expect(openClawAgent).not.toContain("disallowedTools");
+    expect(openClawAgent).not.toContain("agents: []");
+
+    await rm(codexBundle.root, { recursive: true, force: true });
+    await rm(claudeBundle.root, { recursive: true, force: true });
+    await rm(copilotBundle.root, { recursive: true, force: true });
+    await rm(openClawBundle.root, { recursive: true, force: true });
   });
 
   it("rejects Codex custom agent TOML missing required fields before apply", async () => {

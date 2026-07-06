@@ -1475,7 +1475,7 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
                 <td><span class="badge none">no</span></td>
                 <td><span class="badge format">dir</span></td>
                 <td><span class="badge runtime">runtime</span></td>
-                <td><span class="badge format">json settings</span></td>
+                <td><span class="badge format">dir + json</span></td>
                 <td><span class="badge format">json</span></td>
                 <td><span class="badge runtime">runtime</span></td>
                 <td><span class="badge format">json</span></td>
@@ -1553,6 +1553,7 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
               <span class="legend-item"><span class="badge format">toml</span><span><strong>TOML config</strong><small>The runtime consumes TOML files or TOML-backed config entries.</small></span></span>
               <span class="legend-item"><span class="badge format">dir</span><span><strong>Native directory</strong><small>Agentwheel places a package directory where the harness discovers it.</small></span></span>
               <span class="legend-item"><span class="badge format">dir user</span><span><strong>User-only directory</strong><small>The runtime supports the directory at user scope; local/project discovery is not claimed.</small></span></span>
+              <span class="legend-item"><span class="badge format">dir + json</span><span><strong>Directory plus JSON</strong><small>The runtime needs files plus JSON registration, for example OpenClaw subagent workspaces and allowlists.</small></span></span>
               <span class="legend-item"><span class="badge format">json settings</span><span><strong>JSON settings-backed</strong><small>The capability exists through settings, for example OpenClaw <code>agents.list[]</code>.</small></span></span>
               <span class="legend-item"><span class="badge format">yaml knobs</span><span><strong>YAML knobs</strong><small>The runtime has config knobs, for example Hermes <code>delegation:</code>, not separate artifact files.</small></span></span>
               <span class="legend-item"><span class="badge runtime">runtime</span><span><strong>Runtime-only</strong><small>The runtime provides behavior, but there is no managed artifact to install.</small></span></span>
@@ -1564,7 +1565,7 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
           </details>
           <div class="matrix-note" aria-label="Runtime matrix notes">
             <strong>Rules and runtime-only features</strong>
-            <span>Behavioral guidance for Codex, OpenClaw, and Hermes belongs in <code>instructions</code>, not <code>rules</code>. Config-backed cells mean the capability is managed through the settings/config merger, not through a separate directory.</span>
+            <span>Behavioral guidance for Codex, OpenClaw, and Hermes belongs in <code>instructions</code>, not <code>rules</code>. Config-backed cells mean the capability is managed through the settings/config merger; mixed cells pair config with native files.</span>
           </div>
         </div>
       </section>

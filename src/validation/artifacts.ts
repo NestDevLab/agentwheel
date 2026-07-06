@@ -234,9 +234,17 @@ async function validateGenericStructure(artifact: Artifact, target: TargetMappin
     }
   }
 
-  if (target.merge === "json-deep") {
+  if (target.merge === "json-deep" || target.merge === "openclaw-json-deep") {
     const parsed = await parseJsonObjectArtifact(artifact);
     if (!parsed.ok) issues.push({ artifact, message: parsed.message });
+  }
+
+  if (artifact.type === "subagents" && target.semantic === "openclaw-subagent") {
+    if (artifact.kind !== "dir") {
+      issues.push({ artifact, message: "OpenClaw subagent artifacts must render to a workspace directory containing AGENTS.md" });
+    } else if (!(await pathExists(join(artifactPath(artifact), "AGENTS.md")))) {
+      issues.push({ artifact, message: "OpenClaw subagent workspace directory must contain AGENTS.md" });
+    }
   }
 
   if (target.merge === "yaml-deep") {

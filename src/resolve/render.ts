@@ -11,6 +11,7 @@ import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../c
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
+import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
@@ -111,7 +112,8 @@ export async function renderGraphForTarget(
       ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
       : selectedArtifacts;
     const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
-    const runtimeRenderedArtifacts = await renderCopilotArtifacts(codexRenderedArtifacts, staged.root, targetContext.adapter);
+    const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);
+    const runtimeRenderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, staged.root, targetContext.adapter);
 
     const renderedArtifacts = targetContext.workspaceRoot && targetContext.adapter
       ? await applyCustomizations(runtimeRenderedArtifacts, {

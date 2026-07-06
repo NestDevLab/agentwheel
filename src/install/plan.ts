@@ -14,6 +14,7 @@ import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest,
 import type { StagedBundle } from "../staging/staging.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
+import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { semanticPluginSpecForArtifact, type SemanticPluginSpec } from "../targets/plugins/index.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
@@ -140,7 +141,8 @@ export async function createInstallPlan(
 
 async function renderPlanArtifacts(bundle: StagedBundle, adapter: AdapterConfig): Promise<Artifact[]> {
   const codexRenderedArtifacts = await renderCodexSubagents(bundle.artifacts, bundle.root, adapter);
-  return renderCopilotArtifacts(codexRenderedArtifacts, bundle.root, adapter);
+  const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, bundle.root, adapter);
+  return renderCopilotArtifacts(openClawRenderedArtifacts, bundle.root, adapter);
 }
 
 export async function createCombinedInstallPlan(

@@ -10,6 +10,7 @@ import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
 import { renderCodexSubagents } from "./codex-subagents.js";
 import { renderCopilotArtifacts } from "./copilot-artifacts.js";
+import { renderOpenClawSubagents } from "./openclaw-subagents.js";
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface StagedBundle {
@@ -92,7 +93,8 @@ export async function renderStagedBundle(bundle: RawStagedBundle, options: Stage
     ? filterArtifactsByRuntime(selectedArtifacts, options.adapter.name, runtimeSelectedSet)
     : selectedArtifacts;
   const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, root, options.adapter);
-  const renderedArtifacts = await renderCopilotArtifacts(codexRenderedArtifacts, root, options.adapter);
+  const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, root, options.adapter);
+  const renderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, root, options.adapter);
 
   const finalArtifacts = options.workspaceRoot && options.adapter
     ? await applyCustomizations(renderedArtifacts, {

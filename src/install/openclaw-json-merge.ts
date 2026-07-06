@@ -20,6 +20,9 @@ function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] 
   if (isMcpServerCodexAgentsPath(path) && Array.isArray(incoming)) {
     return incoming;
   }
+  if (path.join(".") === "agents.list" && Array.isArray(base) && Array.isArray(incoming)) {
+    return mergeOpenClawAgentsById(base, incoming);
+  }
   if (Array.isArray(base) && Array.isArray(incoming)) {
     return deepMerge(base, incoming);
   }
@@ -76,5 +79,24 @@ function normalizeOpenClawMcpServer(server: Record<string, JsonValue>): JsonValu
   const type = typeof out.type === "string" ? out.type : undefined;
   if (type && typeof out.transport !== "string") out.transport = type;
   delete out.type;
+  return out;
+}
+
+function mergeOpenClawAgentsById(base: JsonValue[], incoming: JsonValue[]): JsonValue[] {
+  const out = [...base];
+  const indexById = new Map<string, number>();
+  for (const [index, value] of out.entries()) {
+    const id = isRecord(value) && typeof value.id === "string" ? value.id : undefined;
+    if (id) indexById.set(id, index);
+  }
+  for (const value of incoming) {
+    const id = isRecord(value) && typeof value.id === "string" ? value.id : undefined;
+    if (!id || !indexById.has(id)) {
+      out.push(value);
+      if (id) indexById.set(id, out.length - 1);
+      continue;
+    }
+    out[indexById.get(id)!] = value;
+  }
   return out;
 }

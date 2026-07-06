@@ -21,7 +21,7 @@ const expectedMatrix = {
     Rules: "no",
     Skills: "dir",
     Commands: "runtime",
-    Subagents: "json settings",
+    Subagents: "dir + json",
     MCP: "json",
     Hooks: "runtime",
     Settings: "json",

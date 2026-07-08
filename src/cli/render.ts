@@ -78,7 +78,9 @@ export function renderHtml(report: PlanReport, options: RenderHtmlOptions = {}):
   const assets = options.assets ?? "inline";
   const mermaid = renderMermaid(report);
   const totals = reportTotals(report);
-  const linkedScript = assets === "linked" ? "\n<script src=\"mermaid.js\"></script>" : "";
+  const linkedScript = assets === "linked"
+    ? "\n<script src=\"mermaid.js\"></script>\n<script>if (window.mermaid) { window.mermaid.initialize({ startOnLoad: true }); }</script>"
+    : "";
   const targetSections = report.targets.map((target, index) => renderTargetSection(target, index)).join("\n");
   const warnings = report.warnings.length > 0
     ? `<section class="panel"><h2>Warnings</h2><ul>${report.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></section>`

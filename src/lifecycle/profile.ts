@@ -47,6 +47,8 @@ export interface ProfileSyncResult {
   packageName: string;
   plan: InstallPlan;
   graphPlan: GraphSourcePlanResult;
+  graphLockDigest: string;
+  warnings: string[];
 }
 
 export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileSyncResult[]> {
@@ -134,6 +136,8 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
         graphPlan,
+        graphLockDigest: graphPlan.graphLockDigest,
+        warnings: graphPlan.warnings,
       });
       if (!options.dryRun) {
         await applyCombinedInstallPlan(graphPlan.plan, {

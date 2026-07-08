@@ -15,7 +15,7 @@ import {
 } from "../model/adapter.js";
 import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
-import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport } from "./format.js";
+import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport, installPlanReportTarget, planReport, type PlanReportTarget } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -182,6 +182,7 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
@@ -220,6 +221,7 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
@@ -816,32 +818,29 @@ async function runInstallCommand(
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
-    if (normalizedOptions.json) {
-      console.log(JSON.stringify({
-        profile: options.profile,
-        results: results.map((result) => ({
-          runtime: result.runtime,
-          targetRoot: result.targetRoot,
-          transport: result.transport,
-          packageName: result.packageName,
-          graphPlan: graphPlanReport(result.graphPlan),
-        })),
-      }, null, 2));
-    } else {
-      for (const result of results) {
-        console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
-        console.log(formatGraphPlan(result.graphPlan));
-      }
-    }
+    const jsonTargets: PlanReportTarget[] = [];
+    const jsonWarnings: string[] = [];
     for (const result of results) {
+      if (normalizedOptions.json) {
+        jsonTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
+        jsonWarnings.push(...result.warnings);
+      } else {
+        console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        console.log(formatPlan(result.plan));
+      }
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    if (behavior.apply && !normalizedOptions.json) console.log("Applied.");
+    if (normalizedOptions.json) {
+      console.log(JSON.stringify(planReport(jsonTargets, jsonWarnings), null, 2));
+    } else if (behavior.apply) {
+      console.log("Applied.");
+    }
     return;
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
-  const jsonReports: unknown[] = [];
+  const jsonTargets: PlanReportTarget[] = [];
+  const jsonWarnings: string[] = [];
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -865,8 +864,12 @@ async function runInstallCommand(
     }
 
     for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage }, { mode: "install" })) {
-      if (normalizedOptions.json) jsonReports.push(graphPlanReport(result));
-      else console.log(formatGraphPlan(result));
+      if (normalizedOptions.json) {
+        jsonTargets.push(graphPlanReport(result));
+        jsonWarnings.push(...result.warnings);
+      } else {
+        console.log(formatGraphPlan(result));
+      }
       if (behavior.apply) {
         await applyCombinedInstallPlan(result.plan, {
           executePlugins: targetOptions.executePlugins,
@@ -885,7 +888,11 @@ async function runInstallCommand(
     }
   }
   if (normalizedOptions.json) {
+<<<<<<< HEAD
     console.log(JSON.stringify(jsonReports.length === 1 ? jsonReports[0] : { results: jsonReports }, null, 2));
+=======
+    console.log(JSON.stringify(planReport(jsonTargets, jsonWarnings), null, 2));
+>>>>>>> 5fbcb18 (feat(cli): add --json to plan/install for the resolved reconcile model)
   }
 }
 
@@ -1145,6 +1152,7 @@ interface GraphCliOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
+  json?: boolean;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
 }
@@ -1233,7 +1241,9 @@ async function buildGraphPlansForTarget(
   }
 
   if (groups.size === 0) {
-    if (!options.json) console.log(`No packages configured at ${target.workspaceRoot}.`);
+    const message = `No packages configured at ${target.workspaceRoot}.`;
+    if (targetOptions.json) console.warn(message);
+    else console.log(message);
     return [];
   }
 

@@ -16,6 +16,7 @@ import {
 import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
 import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport, installPlanReportTarget, planReport, type PlanReportTarget } from "./format.js";
+import { renderReport, type ReportFormat } from "./render.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -46,6 +47,8 @@ import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
 const COMPANION_SKILL_NAME = "agentwheel";
+const planOutputFormats = ["human", "json", "mermaid", "html"] as const;
+type PlanOutputFormat = "human" | ReportFormat;
 
 const program = new Command();
 
@@ -182,6 +185,7 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
@@ -221,6 +225,7 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
@@ -785,6 +790,7 @@ async function runInstallCommand(
   behavior: { apply: boolean },
 ): Promise<void> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
+  const outputFormat = effectivePlanOutputFormat(normalizedOptions);
   if (options.profile) {
     const target = await resolveRuntimeTarget({
       targetRoot: normalizedOptions.targetRoot,
@@ -818,20 +824,20 @@ async function runInstallCommand(
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
-    const jsonTargets: PlanReportTarget[] = [];
-    const jsonWarnings: string[] = [];
+    const reportTargets: PlanReportTarget[] = [];
+    const reportWarnings: string[] = [];
     for (const result of results) {
-      if (normalizedOptions.json) {
-        jsonTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
-        jsonWarnings.push(...result.warnings);
+      if (outputFormat !== "human") {
+        reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
+        reportWarnings.push(...result.warnings);
       } else {
         console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
         console.log(formatPlan(result.plan));
       }
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    if (normalizedOptions.json) {
-      console.log(JSON.stringify(planReport(jsonTargets, jsonWarnings), null, 2));
+    if (outputFormat !== "human") {
+      process.stdout.write(`${renderReport(planReport(reportTargets, reportWarnings), outputFormat)}\n`);
     } else if (behavior.apply) {
       console.log("Applied.");
     }
@@ -839,8 +845,8 @@ async function runInstallCommand(
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
-  const jsonTargets: PlanReportTarget[] = [];
-  const jsonWarnings: string[] = [];
+  const reportTargets: PlanReportTarget[] = [];
+  const reportWarnings: string[] = [];
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -863,10 +869,10 @@ async function runInstallCommand(
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage }, { mode: "install" })) {
-      if (normalizedOptions.json) {
-        jsonTargets.push(graphPlanReport(result));
-        jsonWarnings.push(...result.warnings);
+    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
+      if (outputFormat !== "human") {
+        reportTargets.push(graphPlanReport(result));
+        reportWarnings.push(...result.warnings);
       } else {
         console.log(formatGraphPlan(result));
       }
@@ -877,7 +883,7 @@ async function runInstallCommand(
           graphLockDigest: result.graphLockDigest,
           graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
         });
-        if (!normalizedOptions.json) console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (outputFormat === "human") console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
@@ -887,13 +893,24 @@ async function runInstallCommand(
       await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), extraPackage));
     }
   }
-  if (normalizedOptions.json) {
-<<<<<<< HEAD
-    console.log(JSON.stringify(jsonReports.length === 1 ? jsonReports[0] : { results: jsonReports }, null, 2));
-=======
-    console.log(JSON.stringify(planReport(jsonTargets, jsonWarnings), null, 2));
->>>>>>> 5fbcb18 (feat(cli): add --json to plan/install for the resolved reconcile model)
+  if (outputFormat !== "human") {
+    process.stdout.write(`${renderReport(planReport(reportTargets, reportWarnings), outputFormat)}\n`);
   }
+}
+
+function effectivePlanOutputFormat(options: { json?: boolean; format?: string }): PlanOutputFormat {
+  const format = options.format ?? "human";
+  if (!isPlanOutputFormat(format)) {
+    throw new Error(`Unknown --format value: ${format}. Valid formats: ${planOutputFormats.join(", ")}.`);
+  }
+  if (options.json && format !== "human" && format !== "json") {
+    throw new Error(`--json conflicts with --format ${format}. Use --format json instead.`);
+  }
+  return format !== "human" ? format : options.json ? "json" : "human";
+}
+
+function isPlanOutputFormat(value: string): value is PlanOutputFormat {
+  return (planOutputFormats as readonly string[]).includes(value);
 }
 
 async function packageEntryFromSource(
@@ -1153,6 +1170,8 @@ interface GraphCliOptions {
   forceConflict?: boolean;
   replaceConflict?: boolean;
   json?: boolean;
+  format?: string;
+  reportFormat?: PlanOutputFormat;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
 }
@@ -1242,7 +1261,7 @@ async function buildGraphPlansForTarget(
 
   if (groups.size === 0) {
     const message = `No packages configured at ${target.workspaceRoot}.`;
-    if (targetOptions.json) console.warn(message);
+    if (targetOptions.reportFormat && targetOptions.reportFormat !== "human") console.warn(message);
     else console.log(message);
     return [];
   }

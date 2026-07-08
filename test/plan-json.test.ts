@@ -119,6 +119,87 @@ describe("plan JSON output", () => {
     }
   });
 
+  it("--format json is byte-identical to --json", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("format-json-skill");
+    const baseArgs = ["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--only-source", "--no-deps"];
+
+    const alias = await runCli([...baseArgs, "--json"]);
+    const format = await runCli([...baseArgs, "--format", "json"]);
+
+    expect(format.stdout).toBe(alias.stdout);
+  });
+
+  it("--format mermaid prints deterministic flowchart source", async () => {
+    const workspace = await tempRoot();
+    const firstTarget = await tempRoot("agentwheel-mermaid-target-a-");
+    const secondTarget = await tempRoot("agentwheel-mermaid-target-b-");
+    const source = await skillPackageFixture("render-profile-skill");
+    await writeWorkspace(workspace, {
+      schemaVersion: 1,
+      registry: {},
+      trust: {},
+      packages: [{
+        name: "render-profile-skill",
+        source,
+        driver: "local",
+        adapter: "codex",
+        installationType: "local",
+        mode: "pinned",
+      }],
+      agents: {
+        alpha: { adapter: "codex", root: firstTarget, transport: "local", installationType: "local" },
+        beta: { adapter: "claude", root: secondTarget, transport: "local", installationType: "local" },
+      },
+      profiles: {
+        matrix: { runtimes: [{ agent: "alpha" }, { agent: "beta" }] },
+      },
+    });
+    const args = ["install", "--profile", "matrix", "--target-root", workspace, "--dry-run", "--format", "mermaid"];
+
+    const first = await runCli(args);
+    const second = await runCli(args);
+
+    expect(second.stdout).toBe(first.stdout);
+    expect(first.stdout).toMatch(/^flowchart LR\n/);
+    expect(first.stdout).toContain('rt_0["claude/local"]');
+    expect(first.stdout).toContain('rt_1["codex/local"]');
+    expect(first.stdout).toContain('pkg_0["render-profile-skill"]');
+    expect(first.stdout).toContain("classDef ok");
+    expect(first.stdout).toContain("classDef pending");
+    expect(first.stdout).toContain("pkg_0 edge_0@-->|1 op| rt_0");
+    expect(first.stdout).toContain("pkg_0 edge_1@-->|1 op| rt_1");
+  });
+
+  it("--format html prints a deterministic self-contained snapshot", async () => {
+    const workspace = await tempRoot();
+    const source = await mixedPackageFixture("format-html-skill");
+    const args = ["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--only-source", "--no-deps", "--format", "html"];
+
+    const first = await runCli(args);
+    const second = await runCli(args);
+
+    expect(second.stdout).toBe(first.stdout);
+    expect(first.stdout.trim().startsWith("<!doctype html>")).toBe(true);
+    expect(first.stdout.trim().endsWith("</html>")).toBe(true);
+    expect(first.stdout).toContain("<table>");
+    expect(first.stdout).toContain('<pre class="mermaid">');
+    expect(first.stdout).toContain("prefers-color-scheme");
+    expectNoExternalResourceRefs(first.stdout);
+  });
+
+  it("rejects unknown plan formats", async () => {
+    await expect(runCli(["plan", "--adapter", "codex", "--target-root", await tempRoot(), "--format", "bogus"])).rejects.toMatchObject({
+      stderr: expect.stringContaining("Unknown --format value: bogus. Valid formats: human, json, mermaid, html."),
+    });
+  });
+
+  it("rejects --json with a non-json --format", async () => {
+    await expect(runCli(["plan", "--adapter", "codex", "--target-root", await tempRoot(), "--json", "--format", "mermaid"])).rejects.toMatchObject({
+      stderr: expect.stringContaining("--json conflicts with --format mermaid. Use --format json instead."),
+    });
+  });
+
   it("leaves the human plan path unchanged", async () => {
     const workspace = await tempRoot();
     const source = await skillPackageFixture("json-human-skill");
@@ -257,6 +338,11 @@ async function newestTypescriptMtime(root: string): Promise<number> {
     }
   }
   return newest;
+}
+
+function expectNoExternalResourceRefs(value: string): void {
+  expect(value).not.toMatch(/\b(?:src|href)=["']https?:\/\//i);
+  expect(value).not.toMatch(/url\(\s*["']?https?:\/\//i);
 }
 
 interface PlanJsonReport {

@@ -26,7 +26,7 @@ Mental model:
 - Prefer `agentwheel plan ...` or `agentwheel install --dry-run` before applying changes.
 - Do not hand-edit generated runtime files such as `skills/`, `.agents/skills`, `.claude/skills`, `.github/skills`, `~/.hermes/skills`, or generated instructions.
 - If a plan reports `drift` or `conflict`, stop and explain it. Do not use `--force` unless the user explicitly approves that scope.
-- Gmail, Drive, registry publishing, git commits, pushes, and runtime restarts are separate external side effects. Get explicit approval for them.
+- Gmail, Drive, registry publishing, git commits, pushes, and runtime reloads/restarts are separate external side effects. Get explicit approval for them.
 - Programmatic adapters execute local code. Use `--adapter-module` only with `--allow-adapter-code` after the user approves that local code execution.
 - OpenClaw plugin artifacts are only planned by default. Use `--execute-plugins` only after explicit approval.
 
@@ -216,6 +216,19 @@ Apply configured packages:
 
 ```bash
 agentwheel install
+```
+
+Execute semantic plugin installs only after approval:
+
+```bash
+agentwheel install --execute-plugins
+```
+
+If an agent or profile runtime declares structured `reloadCommands`, run them after executed semantic
+plugin changes only with a separate explicit gate:
+
+```bash
+agentwheel install --execute-plugins --reload-runtimes
 ```
 
 ### Hermes plugin rollout checks

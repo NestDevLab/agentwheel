@@ -175,6 +175,14 @@ wrapped by an explicit OpenPack source.
 wrapper for OpenClaw. The generated artifact plans `openclaw plugins install --force clawhub:<name>`;
 plugin execution remains opt-in through Agentwheel's plugin execution controls.
 
+Runtime reloads or service restarts remain a separate opt-in gate. Configure structured
+`reloadCommands` on an agent or profile runtime, then pass `--reload-runtimes` (or the alias
+`--restart-runtimes`) with an apply command that executes plugins:
+
+```bash
+agentwheel install --profile extra-message-policy --execute-plugins --reload-runtimes
+```
+
 Submit a public resource to the catalogue without editing `index.json` by hand:
 
 ```bash
@@ -273,6 +281,15 @@ For a control-plane setup, define named agents in config. Global config lives at
       "user": "agent",
       "port": 22,
       "identityFile": "~/.ssh/id_ed25519"
+    },
+    "tirrenia": {
+      "adapter": "openclaw",
+      "installationType": "local",
+      "root": "/home/openclaw-tirrenia",
+      "transport": "ssh",
+      "host": "ct110",
+      "user": "openclaw-tirrenia",
+      "reloadCommands": [["systemctl", "restart", "openclaw-gateway-tirrenia.service"]]
     }
   },
   "profiles": {

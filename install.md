@@ -98,6 +98,13 @@ Install a ClawHub plugin into OpenClaw only when the user approves plugin execut
 agentwheel install clawhub:@openclaw/package-name --adapter openclaw --local --execute-plugins
 ```
 
+If a fleet profile declares runtime `reloadCommands`, run reloads or service restarts only when
+explicitly approved:
+
+```bash
+agentwheel install --profile extra-message-policy --execute-plugins --reload-runtimes
+```
+
 Draft a catalogue submission for a public repository:
 
 ```bash

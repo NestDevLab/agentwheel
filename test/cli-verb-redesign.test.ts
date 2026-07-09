@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -732,6 +732,71 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(target, ".profile", "rules", "profile-status-rule.md"), "utf8")).resolves.toContain("profile-status-v2");
   });
 
+  it("runs configured runtime reload commands after executed profile plugin changes", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-profile-reload-target-");
+    const source = await openClawPluginPackageFixture("profile-reload-plugin");
+    const bin = await tempRoot("agentwheel-profile-reload-bin-");
+    const log = join(workspace, "reload-log.jsonl");
+    await writeFakeExecutable(join(bin, "openclaw"), "openclaw");
+    await writeFakeExecutable(join(bin, "agentwheel-test-reload"), "reload");
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [{
+        name: "profile-reload-plugin",
+        source,
+        driver: "local",
+        adapter: "openclaw",
+        installationType: "local",
+        mode: "tracking",
+        select: ["plugins/profile-reload-plugin"],
+      }],
+      registry: {},
+      trust: {},
+      agents: {
+        lab: {
+          adapter: "openclaw",
+          root: target,
+          transport: "local",
+          installationType: "local",
+          reloadCommands: [["agentwheel-test-reload", "lab"]],
+        },
+      },
+      profiles: {
+        all: { runtimes: [{ agent: "lab" }] },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const { stdout } = await runCli([
+      "install",
+      "--profile",
+      "all",
+      "--target-root",
+      workspace,
+      "--execute-plugins",
+      "--reload-runtimes",
+    ], {
+      env: {
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        AGENTWHEEL_TEST_RELOAD_LOG: log,
+      },
+    });
+
+    expect(stdout).toContain("Reloaded runtime via agentwheel-test-reload lab.");
+    const events = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    expect(events).toEqual([
+      {
+        name: "openclaw",
+        args: ["plugins", "install", "--force", expect.stringContaining("profile-reload-plugin")],
+      },
+      {
+        name: "reload",
+        args: ["lab"],
+      },
+    ]);
+  });
+
   it("rejects conflicting uninstall --keep-files and --force flags", async () => {
     await expect(runCli(["uninstall", "anything", "--keep-files", "--force", "--target-root", await tempRoot()])).rejects.toMatchObject({
       stderr: expect.stringContaining("--keep-files cannot be combined with --force."),
@@ -887,11 +952,11 @@ describe("CLI verb redesign", () => {
   });
 });
 
-async function runCli(args: string[]) {
+async function runCli(args: string[], options: { env?: Record<string, string> } = {}) {
   try {
     return await execFileAsync("node", [cli, "--no-update-check", ...args], {
       cwd: process.cwd(),
-      env: { ...process.env, HOME: cliHome },
+      env: { ...process.env, ...options.env, HOME: cliHome },
       maxBuffer: 20 * 1024 * 1024,
     });
   } catch (error) {
@@ -927,6 +992,29 @@ async function packageFixture(name: string, options: { requires?: unknown } = {}
     provides: [{ type: "instructions", path: "instructions/AGENTS.md" }],
   }, null, 2)}\n`, "utf8");
   return root;
+}
+
+async function openClawPluginPackageFixture(name: string): Promise<string> {
+  const root = await tempRoot(`agentwheel-${name}-`);
+  await mkdir(join(root, "plugins", name), { recursive: true });
+  await writeFile(join(root, "plugins", name, "plugin.json"), `${JSON.stringify({ name }, null, 2)}\n`, "utf8");
+  await writeFile(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name,
+    version: "1.0.0",
+    provides: [{ type: "plugins", path: "plugins" }],
+  }, null, 2)}\n`, "utf8");
+  return root;
+}
+
+async function writeFakeExecutable(path: string, name: string): Promise<void> {
+  await writeFile(path, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const log = process.env.AGENTWHEEL_TEST_RELOAD_LOG;",
+    "if (log) fs.appendFileSync(log, JSON.stringify({ name: process.argv[1].split('/').pop() === 'openclaw' ? 'openclaw' : '" + name + "', args: process.argv.slice(2) }) + '\\n');",
+  ].join("\n"), "utf8");
+  await chmod(path, 0o755);
 }
 
 async function markdownRulePackageFixture(name: string, content: string, options: { requires?: unknown } = {}): Promise<string> {

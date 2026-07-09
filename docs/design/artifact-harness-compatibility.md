@@ -115,6 +115,9 @@ path, not from the inverse Codex/Copilot path.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
 - OpenClaw subagents require both a workspace directory and config registration. Agentwheel renders Markdown OpenPack subagents to `workspace-subagents/<name>/AGENTS.md`; fleet settings provide the `agents.list[]` entries and parent allowlist.
 - OpenClaw, Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, git shims, or generated ClawHub wrappers and runs the runtime CLI; it does not copy plugin sources into `.openclaw/plugins`, `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
+- Runtime reloads/restarts are not implied by plugin execution. Configure target `reloadCommands`
+  and pass `--reload-runtimes` or `--restart-runtimes` to run them after executed semantic plugin
+  changes.
 - Hermes local skills remain unsupported by default because local/project discovery requires configured `external_dirs`; user skills install to `~/.hermes/skills`.
 - OpenClaw and Hermes built-ins do not emulate rules through legacy file drops such as `.openclaw/rules` or `.hermes/rules`; rules remain custom-adapter-only unless native runtime support is documented.
 - OpenPack `fragments` are Agentwheel composition inputs, not runtime-native artifacts. They should not appear as supported harness file targets.

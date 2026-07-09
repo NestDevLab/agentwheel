@@ -75,6 +75,9 @@ const workspacePackageV1Schema = workspacePackageBaseSchema.extend({
   selection: z.never().optional(),
 });
 
+const commandSchema = z.array(z.string().min(1)).min(1);
+const commandListSchema = z.array(commandSchema).min(1).optional();
+
 export const workspaceProfileRuntimeSchema = z.object({
   agent: z.string().min(1).optional(),
   adapter: z.string().min(1).default("openclaw"),
@@ -83,6 +86,8 @@ export const workspaceProfileRuntimeSchema = z.object({
   installationType: installationTypeSchema.optional(),
   targetRoot: z.string().min(1).optional(),
   executePlugins: z.boolean().optional(),
+  reloadRuntimes: z.boolean().optional(),
+  reloadCommands: commandListSchema,
 });
 
 export const workspaceProfileSchema = z.object({
@@ -112,6 +117,7 @@ export const workspaceAgentSchema = z.object({
   user: z.string().min(1).optional(),
   port: z.number().int().positive().optional(),
   identityFile: z.string().min(1).optional(),
+  reloadCommands: commandListSchema,
 }).superRefine((agent, ctx) => {
   if (agent.transport !== "ssh") return;
   if (!agent.host) {

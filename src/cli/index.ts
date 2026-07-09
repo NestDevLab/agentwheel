@@ -29,6 +29,7 @@ import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
+import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
@@ -232,6 +233,8 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -317,6 +320,8 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -345,6 +350,8 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -862,6 +869,7 @@ async function runInstallCommand(
       installationType: normalizedOptions.installationType,
       dryRun: !behavior.apply,
       executePlugins: normalizedOptions.executePlugins,
+      reloadRuntimes: shouldReloadRuntimes(normalizedOptions),
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
@@ -881,6 +889,7 @@ async function runInstallCommand(
     for (const result of results) {
       console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
       console.log(formatPlan(result.plan));
+      if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
     if (behavior.apply) {
@@ -915,13 +924,20 @@ async function runInstallCommand(
     for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
       console.log(formatGraphPlan(result));
       if (behavior.apply) {
+        const transport = transportForTarget(target);
+        const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
         await applyCombinedInstallPlan(result.plan, {
-          executePlugins: targetOptions.executePlugins,
-          transport: transportForTarget(target),
+          executePlugins,
+          transport,
           graphLockDigest: result.graphLockDigest,
           graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
         });
+        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
+          executePlugins,
+        });
         console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
@@ -1145,6 +1161,10 @@ function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boole
   return options.noDeps === true || options.deps === false;
 }
 
+function shouldReloadRuntimes(options: { reloadRuntimes?: boolean; restartRuntimes?: boolean }): boolean {
+  return options.reloadRuntimes === true || options.restartRuntimes === true;
+}
+
 function packageEntryWithAdapterSuffix(entry: WorkspacePackage): WorkspacePackage {
   const suffix = `-${entry.adapter}`;
   return entry.name.endsWith(suffix) ? entry : { ...entry, name: `${entry.name}${suffix}` };
@@ -1279,6 +1299,8 @@ interface GraphCliOptions {
   dryRun?: boolean;
   json?: boolean;
   executePlugins?: boolean;
+  reloadRuntimes?: boolean;
+  restartRuntimes?: boolean;
   allowAdapterCode?: boolean;
   adapterConfig?: string;
   adapterModule?: string;
@@ -1346,13 +1368,20 @@ async function runConfiguredGraphPackages(
     console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
     console.log(formatGraphPlan(result));
     if (!options.dryRun) {
+      const transport = transportForTarget(target);
+      const executePlugins = target.executePlugins ?? options.executePlugins;
       await applyCombinedInstallPlan(result.plan, {
-        executePlugins: options.executePlugins,
-        transport: transportForTarget(target),
+        executePlugins,
+        transport,
         graphLockDigest: result.graphLockDigest,
         graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
       });
+      const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+        enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
+        executePlugins,
+      });
       console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+      if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
     }
     await rm(result.bundle.root, { recursive: true, force: true });
     if (result.plan.hasBlockingChanges) process.exitCode = 1;

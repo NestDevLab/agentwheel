@@ -12,6 +12,9 @@ export interface RuntimeTarget {
   workspaceRoot: string;
   agentName?: string;
   targetKey?: string;
+  executePlugins?: boolean;
+  reloadRuntimes?: boolean;
+  reloadCommands?: string[][];
   transport: TransportKind;
   ssh?: SshTransportConfig;
   source: "target-root" | "agent" | "profile" | "auto-detect" | "cwd";
@@ -117,6 +120,9 @@ export function resolveProfileRuntimeTarget(
       ...target,
       adapterConfig: runtime.adapterConfig,
       adapterModule: runtime.adapterModule,
+      executePlugins: runtime.executePlugins,
+      reloadRuntimes: runtime.reloadRuntimes,
+      reloadCommands: runtime.reloadCommands ?? target.reloadCommands,
       targetKey: runtime.agent,
       source: "profile",
     };
@@ -129,6 +135,9 @@ export function resolveProfileRuntimeTarget(
     installationType: installationType ?? runtime.installationType,
     targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
     workspaceRoot,
+    executePlugins: runtime.executePlugins,
+    reloadRuntimes: runtime.reloadRuntimes,
+    reloadCommands: runtime.reloadCommands,
     transport: "local",
     source: "profile",
   };
@@ -192,6 +201,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
     installationType: installationType ?? agent.installationType,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
+    reloadCommands: agent.reloadCommands,
     transport: agent.transport,
     ssh: agent.transport === "ssh"
       ? {

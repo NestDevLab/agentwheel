@@ -11,7 +11,7 @@ import { createSourcePlan } from "../src/lifecycle/source-plan.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
 import { computeTargetFingerprint } from "../src/model/graph-lock.js";
 import { readMergedWorkspaceConfig, writeWorkspaceConfig } from "../src/model/workspace.js";
-import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveRuntimeTarget } from "../src/runtime/target.js";
+import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTarget, resolveRuntimeTarget } from "../src/runtime/target.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
 
 const tempRoots: string[] = [];
@@ -209,6 +209,50 @@ describe("runtime target resolution", () => {
     });
     const stateKey = stateKeyFor("openclaw", { installationType: "local", targetFingerprint: fingerprint });
     await expect(stat(join(alpha, ".agentwheel", `${stateKey}.install-manifest.json`))).resolves.toBeTruthy();
+  });
+
+  it("resolves runtime reload commands from agents and profile overrides", async () => {
+    const project = await tempRoot("agentwheel-profile-reload-commands-");
+    const alpha = join(project, "alpha-root");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      agents: {
+        alpha: {
+          adapter: "openclaw",
+          root: alpha,
+          transport: "local",
+          reloadCommands: [["systemctl", "restart", "openclaw-alpha.service"]],
+        },
+      },
+      profiles: {
+        inherited: {
+          runtimes: [{ agent: "alpha" }],
+        },
+        override: {
+          runtimes: [{ agent: "alpha", reloadRuntimes: true, reloadCommands: [["openclaw", "gateway", "reload"]] }],
+        },
+      },
+    });
+
+    const inherited = await resolveRuntimeTarget({ cwd: project, agent: "alpha" });
+    const config = await readMergedWorkspaceConfig(project);
+    const inheritedFromProfile = resolveProfileRuntimeTarget(
+      { agent: "alpha", adapter: "openclaw" },
+      config,
+      project,
+    );
+    const overridden = resolveProfileRuntimeTarget(
+      { agent: "alpha", adapter: "openclaw", reloadRuntimes: true, reloadCommands: [["openclaw", "gateway", "reload"]] },
+      config,
+      project,
+    );
+
+    expect(inherited.reloadCommands).toEqual([["systemctl", "restart", "openclaw-alpha.service"]]);
+    expect(inheritedFromProfile.reloadCommands).toEqual([["systemctl", "restart", "openclaw-alpha.service"]]);
+    expect(overridden.reloadRuntimes).toBe(true);
+    expect(overridden.reloadCommands).toEqual([["openclaw", "gateway", "reload"]]);
   });
 
   it("profile runtimes inherit installation type from named agents", async () => {

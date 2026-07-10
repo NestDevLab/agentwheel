@@ -253,6 +253,33 @@ describe("runtime target resolution", () => {
     await expect(stat(join(alpha, "local-skills", "demo", "SKILL.md"))).rejects.toThrow();
   });
 
+  it("named agents preserve adapter config paths", async () => {
+    const project = await tempRoot("agentwheel-agent-adapter-config-");
+    const alpha = join(project, "alpha-root");
+    const adapterConfig = join(project, "adapter.json");
+    await writeFile(adapterConfig, JSON.stringify({
+      name: "fixture-agent-adapter-config",
+      targets: {
+        skills: {
+          user: { enabled: true, dest: "user-skills" },
+        },
+      },
+    }, null, 2), "utf8");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      agents: {
+        alpha: { adapter: "openclaw", adapterConfig, root: alpha, transport: "local", installationType: "user" },
+      },
+    });
+
+    const target = await resolveRuntimeTarget({ cwd: project, agent: "alpha" });
+
+    expect(target.adapterConfig).toBe(adapterConfig);
+    expect(target.installationType).toBe("user");
+  });
+
   it("resolves ssh agents without local path expansion", async () => {
     const project = await tempRoot("agentwheel-ssh-agent-");
     await writeWorkspaceConfig(project, {

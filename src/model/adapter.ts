@@ -80,6 +80,10 @@ export interface ProgrammaticAdapterRuntime {
 export type ProgrammaticAdapterApply = NonNullable<ProgrammaticAdapterRuntime["apply"]>;
 export type ProgrammaticAdapterUninstall = NonNullable<ProgrammaticAdapterRuntime["uninstall"]>;
 
+export type AdapterTargetSupport =
+  | { ok: true }
+  | { ok: false; reason: "adapter-target-unsupported" | "adapter-target-disabled"; supportedInstallationTypes: string[] };
+
 export function supportedInstallationTypes(adapter: AdapterConfig, artifactType?: ArtifactType): string[] {
   const registries = artifactType
     ? [adapter.targets[artifactType]]
@@ -93,6 +97,27 @@ export function supportedInstallationTypes(adapter: AdapterConfig, artifactType?
     }
   }
   return [...types].sort((a, b) => a.localeCompare(b));
+}
+
+export function adapterTargetSupport(
+  adapter: AdapterConfig,
+  artifactType: ArtifactType,
+  installationType: string,
+): AdapterTargetSupport {
+  if (artifactType === "fragments") return { ok: true };
+  const registry = adapter.targets[artifactType];
+  const supported = supportedInstallationTypes(adapter, artifactType);
+  if (!registry) {
+    return { ok: false, reason: "adapter-target-unsupported", supportedInstallationTypes: supported };
+  }
+
+  const target = registry[installationType];
+  if (target?.enabled) return { ok: true };
+  if (target && !target.enabled) {
+    return { ok: false, reason: "adapter-target-disabled", supportedInstallationTypes: supported };
+  }
+
+  return { ok: false, reason: "adapter-target-unsupported", supportedInstallationTypes: supported };
 }
 
 export function resolveInstallationTypeForArtifacts(

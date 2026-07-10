@@ -18,6 +18,7 @@ import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { semanticPluginSpecForArtifact, type SemanticPluginSpec } from "../targets/plugins/index.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.js";
 import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { normalizeOwners } from "./desired.js";
@@ -104,6 +105,7 @@ export interface CombinedInstallPlanOptions {
   forceConflict?: boolean;
   replaceConflict?: boolean;
   warn?: (message: string) => void;
+  suppressAdapterTargetWarnings?: boolean;
 }
 
 export async function createInstallPlan(
@@ -116,7 +118,10 @@ export async function createInstallPlan(
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
   const artifacts = await renderPlanArtifacts(bundle, adapter);
-  const installableArtifacts = await filterArtifactsByInstallFormat(artifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const formatCompatibleArtifacts = await filterArtifactsByInstallFormat(artifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installableArtifacts = filterArtifactsByAdapterTargets(formatCompatibleArtifacts, adapter, requestedInstallationType, {
+    warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
+  });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
@@ -154,7 +159,10 @@ export async function createCombinedInstallPlan(
   options: CombinedInstallPlanOptions = {},
 ): Promise<InstallPlan> {
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installableArtifacts = await filterArtifactsByInstallFormat(desiredArtifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const formatCompatibleArtifacts = await filterArtifactsByInstallFormat(desiredArtifacts, adapter, requestedInstallationType, { warn: options.warn });
+  const installableArtifacts = filterArtifactsByAdapterTargets(formatCompatibleArtifacts, adapter, requestedInstallationType, {
+    warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
+  });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);

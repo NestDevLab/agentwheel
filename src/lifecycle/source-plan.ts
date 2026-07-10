@@ -20,6 +20,7 @@ import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.js";
 import { pathExists } from "../utils/fs.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
@@ -113,7 +114,8 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   });
   const transport = options.transport ?? localTransport;
   const requestedInstallationType = options.installationType ?? defaultInstallationType;
-  const installRootArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, requestedInstallationType);
+  const formatCompatibleArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, requestedInstallationType);
+  const installRootArtifacts = filterArtifactsByAdapterTargets(formatCompatibleArtifacts, options.adapter, requestedInstallationType, { warn: options.warn });
   const installationType = resolveInstallationTypeForArtifacts(options.adapter, installRootArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType });
@@ -126,6 +128,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
     forceConflict: options.forceConflict,
     replaceConflict: options.replaceConflict,
     warn: options.warn,
+    suppressAdapterTargetWarnings: true,
   });
   return { plan, bundle, resolvedSource, registryEntryName: resolvedInput.registryEntry?.name };
 }
@@ -199,7 +202,12 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     targetFingerprint,
     warn,
   });
-  const desiredArtifacts = desiredArtifactsFromGraphBundle(bundle);
+  const desiredArtifacts = filterArtifactsByAdapterTargets(
+    desiredArtifactsFromGraphBundle(bundle),
+    options.adapter,
+    installationType,
+    { warn },
+  );
   const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);
   const resolvedInstallRoot = installRootForArtifacts(options.adapter, options.targetRoot, resolvedInstallationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   const graphLockDigest = digestGraphLock(bundle.graphLock);

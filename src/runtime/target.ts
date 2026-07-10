@@ -187,6 +187,8 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
     agentName: name,
     targetKey: name,
     adapter: agent.adapter,
+    adapterConfig: agent.adapterConfig,
+    adapterModule: agent.adapterModule,
     installationType: installationType ?? agent.installationType,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,

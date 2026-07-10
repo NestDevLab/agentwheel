@@ -53,6 +53,8 @@ export const workspaceTrustSchema = z.object({
 
 export const workspaceAgentSchema = z.object({
   adapter: z.string().min(1),
+  adapterConfig: z.string().min(1).optional(),
+  adapterModule: z.string().min(1).optional(),
   root: z.string().min(1),
   installationType: installationTypeSchema.optional(),
   transport: z.enum(["local", "ssh"]).default("local"),

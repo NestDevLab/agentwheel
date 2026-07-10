@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,9 +18,13 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -35,7 +45,7 @@ jobs:
         run: pnpm test
 
       - name: Upgrade npm for Trusted Publishing (>= 11.5.1)
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.6.2
 
       - name: Publish to npm (Trusted Publishing via OIDC)
         run: npm publish --provenance --access public
@@ -43,4 +53,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --verify-tag

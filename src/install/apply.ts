@@ -491,7 +491,12 @@ async function executePluginInstall(operation: InstallOperation, transport: Targ
 async function executePluginUninstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
   const commands = operation.semanticPlugin?.uninstallCommands ?? [];
   if (commands.length === 0) throw new Error(`Invalid semantic plugin operation missing uninstall command: ${operation.relativeDestPath}`);
-  await executeSemanticCommands(operation, commands, transport);
+  try {
+    await executeSemanticCommands(operation, commands, transport);
+  } catch (error) {
+    if (!isPluginAlreadyAbsentError(operation, error)) throw error;
+    console.warn(`WARNING plugin-already-absent ${operation.relativeDestPath}: ${firstErrorLine(error)}`);
+  }
   if (operation.semanticPlugin?.stateRoot) {
     await transport.rm(operation.semanticPlugin.stateRoot);
   }
@@ -655,6 +660,40 @@ async function executeSemanticCommands(
   } finally {
     await transport.rm(stagingRoot);
   }
+}
+
+function isPluginAlreadyAbsentError(operation: InstallOperation, error: unknown): boolean {
+  const output = commandErrorOutput(error).toLowerCase();
+  if (!output || output.includes("command not found") || output.includes("module not found")) return false;
+  const pluginName = (operation.semanticPlugin?.pluginName ?? operation.artifactName).toLowerCase();
+  const escapedName = escapeRegExp(pluginName);
+  const namedAbsent = [
+    new RegExp(`${escapedName}.{0,120}\\b(not installed|not found|does not exist|absent)\\b`, "s"),
+    new RegExp(`\\b(not installed|not found|does not exist|absent)\\b.{0,120}${escapedName}`, "s"),
+    new RegExp(`\\bunknown plugin\\b.{0,120}${escapedName}`, "s"),
+    new RegExp(`${escapedName}.{0,120}\\bunknown plugin\\b`, "s"),
+  ].some((pattern) => pattern.test(output));
+  const genericAbsent = /\b(no such|unknown)\s+plugins?\b/.test(output)
+    || /\bplugins?\b.{0,80}\bnot installed\b/s.test(output);
+  return namedAbsent || genericAbsent;
+}
+
+function commandErrorOutput(error: unknown): string {
+  if (typeof error === "object" && error !== null) {
+    const stderr = "stderr" in error ? String((error as { stderr?: unknown }).stderr ?? "") : "";
+    if (stderr.trim()) return stderr;
+    const stdout = "stdout" in error ? String((error as { stdout?: unknown }).stdout ?? "") : "";
+    if (stdout.trim()) return stdout;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function firstErrorLine(error: unknown): string {
+  return commandErrorOutput(error).split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "plugin is already absent";
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function semanticInstallCommands(operation: InstallOperation): string[][] {

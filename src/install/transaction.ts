@@ -47,6 +47,11 @@ export interface ApplyJournal {
   workspaceConfig?: unknown;
 }
 
+export interface AbortedApplyJournal {
+  journalPath: string;
+  archivePath: string;
+}
+
 export function applyLockPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
   return join(metadataDir(targetRoot), `${stateKeyFor(adapter, scope)}.apply-lock`);
 }
@@ -117,6 +122,28 @@ export async function readApplyJournal(
 export async function removeApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport, scope: InstallStateScope = {}): Promise<void> {
   await transport.rm(applyJournalPath(targetRoot, adapter, scope));
   await transport.rm(applyBackupDir(targetRoot, adapter, scope));
+}
+
+export async function abortApplyJournal(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: InstallStateScope = {},
+): Promise<AbortedApplyJournal | undefined> {
+  const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
+  try {
+    const journalPath = applyJournalPath(targetRoot, adapter, scope);
+    if (!(await transport.pathExists(journalPath))) return undefined;
+    const stateKey = stateKeyFor(adapter, scope);
+    const archivePath = join(metadataDir(targetRoot), "archive", `${stateKey}.apply-journal.failed-${journalTimestamp(new Date())}.json`);
+    const content = await transport.readFile(journalPath);
+    await transport.writeFileAtomic(archivePath, content.endsWith("\n") ? content : `${content}\n`);
+    await transport.rm(journalPath);
+    await transport.rm(applyBackupDir(targetRoot, adapter, scope));
+    return { journalPath, archivePath };
+  } finally {
+    await lock.release();
+  }
 }
 
 export async function recordBackup(
@@ -194,6 +221,10 @@ async function readLockOwner(ownerPath: string, transport: TargetTransport): Pro
 
 function isAlreadyExists(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "EEXIST";
+}
+
+function journalTimestamp(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
 export async function localPathExists(path: string): Promise<boolean> {

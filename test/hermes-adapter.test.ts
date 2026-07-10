@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hermesAdapter } from "../src/adapters/hermes.js";
 import { applyCombinedInstallPlan, createCombinedInstallPlan, createUninstallPlan, readInstallManifest, uninstall, type DesiredArtifact } from "../src/install/index.js";
 import type { ArtifactType, FileKind } from "../src/model/artifact.js";
@@ -234,6 +234,52 @@ describe("Hermes adapter", () => {
     await expect(readFile(repoRoot, "utf8")).rejects.toThrow();
   });
 
+  it("treats an already-absent Hermes plugin remove as successful with a warning", async () => {
+    const target = await tempRoot();
+    const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "plugin.yaml"), "name: demo-plugin\nversion: '1.0'\n", "utf8");
+    const plugin = await desiredArtifact("plugins", "demo-plugin", pluginRoot, "dir", "hermes-plugin");
+    const installTransport = hermesPluginTransport();
+
+    const plan = await createCombinedInstallPlan([plugin], hermesAdapter, target, undefined, installTransport, { installationType: "user" });
+    await applyCombinedInstallPlan(plan, { executePlugins: true, transport: installTransport });
+    const manifest = await readInstallManifest(target, hermesAdapter.name, installTransport, { installationType: "user" });
+    const uninstallPlan = await createUninstallPlan(manifest!, installTransport);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const absentTransport = hermesPluginTransport({
+      removeError: Object.assign(new Error("remove failed"), { stderr: "Plugin demo-plugin is not installed\n" }),
+    });
+
+    try {
+      await uninstall(uninstallPlan, { transport: absentTransport });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("plugin-already-absent plugins/demo-plugin"));
+    } finally {
+      warn.mockRestore();
+    }
+
+    await expect(readFile(join(target, ".agentwheel", "plugins", "hermes", "user", "package", "demo-plugin", "repo", "plugin.yaml"), "utf8")).rejects.toThrow();
+  });
+
+  it("does not mask non-absent Hermes plugin remove failures", async () => {
+    const target = await tempRoot();
+    const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "plugin.yaml"), "name: demo-plugin\nversion: '1.0'\n", "utf8");
+    const plugin = await desiredArtifact("plugins", "demo-plugin", pluginRoot, "dir", "hermes-plugin");
+    const installTransport = hermesPluginTransport();
+
+    const plan = await createCombinedInstallPlan([plugin], hermesAdapter, target, undefined, installTransport, { installationType: "user" });
+    await applyCombinedInstallPlan(plan, { executePlugins: true, transport: installTransport });
+    const manifest = await readInstallManifest(target, hermesAdapter.name, installTransport, { installationType: "user" });
+    const uninstallPlan = await createUninstallPlan(manifest!, installTransport);
+    const failingTransport = hermesPluginTransport({
+      removeError: Object.assign(new Error("remove failed"), { stderr: "Permission denied while removing demo-plugin\n" }),
+    });
+
+    await expect(uninstall(uninstallPlan, { transport: failingTransport })).rejects.toThrow(/remove failed/);
+  });
+
   it("rejects Hermes plugins without plugin.yaml or plugin.yml", async () => {
     const target = await tempRoot();
     const pluginRoot = join(await tempRoot("agentwheel-hermes-plugin-"), "demo-plugin");
@@ -267,6 +313,23 @@ async function desiredArtifact(
       logicalSelector: `${type}/${name}`,
       dependencyRole: "root",
       owners: ["root"],
+    },
+  };
+}
+
+function hermesPluginTransport(options: { removeError?: Error } = {}): TargetTransport {
+  return {
+    ...localTransport,
+    kind: "ssh",
+    description: "fake ssh",
+    async execFile(command, args, execOptions = {}) {
+      if (command === "git") {
+        await localTransport.execFile!(command, args, execOptions);
+        return;
+      }
+      if (command === "hermes" && args.join(" ") === "plugins remove demo-plugin" && options.removeError) {
+        throw options.removeError;
+      }
     },
   };
 }

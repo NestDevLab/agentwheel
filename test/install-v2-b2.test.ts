@@ -7,6 +7,7 @@ import type { ArtifactType, FileKind } from "../src/model/artifact.js";
 import type { GraphLock } from "../src/model/graph-lock.js";
 import type { InstallManifestV1Entry, InstallManifestV2 } from "../src/model/manifest.js";
 import {
+  abortApplyJournal,
   applyCombinedInstallPlan,
   createCombinedInstallPlan,
   createOwnershipUninstallPlan,
@@ -16,7 +17,7 @@ import {
   writeInstallManifest,
   type DesiredArtifact,
 } from "../src/install/index.js";
-import { acquireApplyLock, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
+import { acquireApplyLock, applyBackupDir, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
 import { installManifestPath } from "../src/install/paths.js";
 import type { InstallOperation } from "../src/install/plan.js";
 import { localTransport } from "../src/transport/index.js";
@@ -624,6 +625,42 @@ describe("transactional apply", () => {
     };
 
     await expect(recoverPendingApply(target, adapter.name, sshTransport)).rejects.toThrow(/Cannot automatically roll back fake ssh/);
+  });
+
+  it("archives and clears a pending apply journal without touching runtime files", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const scope = { installationType: "local", stateKey: "test.local.abort" };
+    const journalPath = applyJournalPath(target, adapter.name, scope);
+    const backupDir = applyBackupDir(target, adapter.name, scope);
+    await localTransport.writeJsonAtomic(journalPath, {
+      version: 1,
+      adapter: adapter.name,
+      installationType: scope.installationType,
+      stateKey: scope.stateKey,
+      targetRoot: target,
+      baseRevision: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      operations: [],
+      completed: [],
+      manifest: emptyManifest(target),
+    });
+    await mkdir(join(backupDir, "0"), { recursive: true });
+    await writeFile(join(backupDir, "0", "backup.txt"), "backup\n", "utf8");
+
+    const aborted = await abortApplyJournal(target, adapter.name, localTransport, scope);
+
+    expect(aborted?.archivePath).toMatch(/\.agentwheel\/archive\/test\.local\.abort\.apply-journal\.failed-\d{8}T\d{6}Z\.json$/);
+    expect(await pathExists(journalPath)).toBe(false);
+    expect(await pathExists(backupDir)).toBe(false);
+    expect(await pathExists(aborted!.archivePath)).toBe(true);
+    const archived = JSON.parse(await readFile(aborted!.archivePath, "utf8"));
+    expect(archived.stateKey).toBe(scope.stateKey);
+
+    const artifact = await writeArtifact(source, "rules/after-abort.md", "after\n");
+    const manifest = await applyCombinedInstallPlan(await createCombinedInstallPlan([artifact], adapter, target));
+    expect(manifest.entries.map((entry) => entry.path)).toEqual([".runtime/rules/after-abort.md"]);
   });
 });
 

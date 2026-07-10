@@ -12,7 +12,7 @@ import {
   targetMappingForArtifact,
   type AdapterConfig,
 } from "../model/adapter.js";
-import { applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readInstallManifest, uninstall } from "../install/index.js";
+import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
 import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
@@ -597,6 +597,71 @@ program
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
+  });
+
+const journalCommand = program
+  .command("journal")
+  .description("inspect or abort pending apply journals");
+
+journalCommand
+  .command("list")
+  .description("show pending apply journals for resolved runtime targets")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
+  .option("--profile <name>", "workspace runtime profile")
+  .action(async (options) => {
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
+    let pending = 0;
+    for (const target of targets) {
+      const state = await journalStateForTarget(target, normalizedOptions);
+      const journal = await readApplyJournal(state.installRoot, state.adapter.name, state.transport, state.state);
+      if (!journal) continue;
+      pending += 1;
+      console.log(`PENDING ${state.adapter.name}/${state.installationType} at ${state.installRoot}`);
+      console.log(`  journal: ${join(state.installRoot, ".agentwheel", `${state.state.stateKey}.apply-journal.json`)}`);
+      console.log(`  stateKey: ${state.state.stateKey}`);
+      console.log(`  createdAt: ${journal.createdAt}`);
+      console.log(`  updatedAt: ${journal.updatedAt}`);
+      console.log(`  operations: ${journal.operations.length}, completed: ${journal.completed.length}`);
+    }
+    if (pending === 0) console.log("No pending apply journals.");
+  });
+
+journalCommand
+  .command("abort")
+  .description("archive pending apply journals without touching runtime files")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
+  .option("--profile <name>", "workspace runtime profile")
+  .action(async (options) => {
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
+    let aborted = 0;
+    for (const target of targets) {
+      const state = await journalStateForTarget(target, normalizedOptions);
+      const result = await abortApplyJournal(state.installRoot, state.adapter.name, state.transport, state.state);
+      if (!result) continue;
+      aborted += 1;
+      console.log(`Archived ${state.adapter.name}/${state.installationType} pending journal: ${result.archivePath}`);
+    }
+    if (aborted === 0) console.log("No pending apply journals.");
   });
 
 program
@@ -1500,6 +1565,15 @@ async function printStatus(
     console.log("Graph lock: missing");
   }
   await printPendingInstallWork(target, options);
+}
+
+async function journalStateForTarget(target: RuntimeTarget, options: GraphCliOptions) {
+  const adapterOptions = adapterOptionsForTarget(target, options);
+  const adapter = await resolveAdapterForTarget(target, adapterOptions);
+  const transport = transportForTarget(target);
+  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+  return { adapter, transport, installationType, installRoot: state.installRoot, state };
 }
 
 async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliOptions): Promise<void> {

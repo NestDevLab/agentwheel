@@ -629,6 +629,53 @@ describe("CLI verb redesign", () => {
     expect(followUp.stdout).toContain("No packages configured");
     await expect(readFile(join(workspace, "AGENTS.md"), "utf8")).resolves.toContain("keep-files");
   });
+
+  it("lists and aborts a pending apply journal for a resolved runtime target", async () => {
+    const workspace = await tempRoot();
+    const source = await packageFixture("journal-cli");
+    await runCli(["install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    const metadataRoot = join(workspace, ".agentwheel");
+    const stateKey = (await readdir(metadataRoot))
+      .find((entry) => entry.startsWith("codex.local.") && entry.endsWith(".install-manifest.json"))
+      ?.replace(".install-manifest.json", "");
+    if (!stateKey) throw new Error("Codex state key not found");
+    await writeFile(join(metadataRoot, `${stateKey}.apply-journal.json`), `${JSON.stringify({
+      version: 1,
+      adapter: "codex",
+      installationType: "local",
+      stateKey,
+      targetRoot: workspace,
+      baseRevision: null,
+      createdAt: "2026-07-10T00:00:00.000Z",
+      updatedAt: "2026-07-10T00:00:01.000Z",
+      operations: [],
+      completed: [],
+      manifest: {
+        version: 2,
+        adapter: "codex",
+        installationType: "local",
+        stateKey,
+        targetRoot: workspace,
+        generatedAt: "2026-07-10T00:00:00.000Z",
+        revision: "pending-apply-0000",
+        legacy: false,
+        entries: [],
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const listed = await runCli(["journal", "list", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    expect(listed.stdout).toContain("PENDING codex/local");
+    expect(listed.stdout).toContain(`stateKey: ${stateKey}`);
+
+    const aborted = await runCli(["journal", "abort", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    expect(aborted.stdout).toContain("Archived codex/local pending journal:");
+    await expect(stat(join(metadataRoot, `${stateKey}.apply-journal.json`))).rejects.toThrow();
+    const archives = await readdir(join(metadataRoot, "archive"));
+    expect(archives.some((entry) => entry.startsWith(`${stateKey}.apply-journal.failed-`))).toBe(true);
+
+    const clean = await runCli(["journal", "list", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    expect(clean.stdout).toContain("No pending apply journals.");
+  });
 });
 
 async function runCli(args: string[]) {

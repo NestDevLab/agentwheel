@@ -214,6 +214,10 @@ Apply configured packages:
 agentwheel install
 ```
 
+### Hermes plugin rollout checks
+
+When delivering a Hermes plugin, do not equate source package presence or `plugins.enabled` config with a working runtime install. Verify the gateway host has `$HERMES_HOME/plugins/<plugin-name>/` with the expected `plugin.yaml`/code files, the Agentwheel install manifest contains the plugin artifact, and a canary exercises the middleware path. Use `--execute-plugins` for plugin artifacts when applying, after dry-run and explicit approval.
+
 Preview or apply one configured package:
 
 ```bash

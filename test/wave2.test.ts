@@ -266,7 +266,22 @@ describe("v0.2 wave 2", () => {
     expect(executed).toHaveLength(1);
     expect(executed[0]?.args.slice(0, 2)).toEqual(["plugins", "install"]);
     expect(secondManifest.entries[0]?.executed).toBe(true);
+    const persistedSecondManifest = await readInstallManifest(target, openClawAdapter.name, sshTransport);
+    expect(persistedSecondManifest?.entries[0]?.executed).toBe(true);
     await rm(secondBundle.root, { recursive: true, force: true });
+
+    const thirdBundle = await stageSource(new LocalSourceDriver(), source, { select: ["plugins/demo-plugin"] });
+    const thirdPlan = await createInstallPlan(thirdBundle, openClawAdapter, target, persistedSecondManifest, sshTransport);
+    const alreadyExecuted = thirdPlan.operations.find((operation) => operation.artifactType === "plugins");
+    expect(alreadyExecuted?.action).toBe("skip");
+    expect(alreadyExecuted?.reason).toBe("semantic plugin already executed");
+
+    const thirdManifest = await applyInstallPlan(thirdPlan, thirdBundle.sourceLock, { transport: sshTransport });
+    expect(executed).toHaveLength(1);
+    expect(thirdManifest.entries[0]?.executed).toBe(true);
+    const persistedThirdManifest = await readInstallManifest(target, openClawAdapter.name, sshTransport);
+    expect(persistedThirdManifest?.entries[0]?.executed).toBe(true);
+    await rm(thirdBundle.root, { recursive: true, force: true });
   });
 
   it("plans and executes OpenClaw semantic plugin uninstall without a copied plugin path", async () => {

@@ -209,7 +209,7 @@ async function createPlanFromOperations(
     if (op.action === "plugin") {
       const existing = manifestByPath.get(op.relativeDestPath);
       if (existing && existing.sourceHash === op.desiredHash && existing.executed === true) {
-        operations.push({ ...op, action: "skip", manifestHash: existing.hash, reason: "semantic plugin already executed" });
+        operations.push({ ...op, action: "skip", manifestHash: existing.hash, execute: true, reason: "semantic plugin already executed" });
       } else {
         operations.push(existing && existing.sourceHash === op.desiredHash
           ? { ...op, manifestHash: existing.hash, reason: "semantic plugin pending execution" }

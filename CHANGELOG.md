@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed recursive cross-package composition so dependency fragments remain raw until a parent artifact consumes them, and made named package updates preserve operations owned by other configured roots.
 - Added `agentwheel update --dependency <name-or-source>` to advance one locked tracking dependency and its required tracking closure without moving unrelated graph nodes.
 
 ## 0.14.5

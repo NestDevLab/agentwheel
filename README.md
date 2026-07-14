@@ -102,7 +102,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
-| `agentwheel update [name]` | Re-resolve tracking packages, then apply. Use `--dependency <name-or-source>` to move one tracking dependency while unrelated graph nodes stay locked. |
+| `agentwheel update [name]` | Re-resolve tracking packages, then apply. A configured name preserves artifacts owned by other roots; `--dependency <name-or-source>` moves one tracking dependency while unrelated graph nodes stay locked. |
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |

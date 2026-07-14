@@ -355,6 +355,28 @@ describe("CLI verb redesign", () => {
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
   });
 
+  it("scopes update <name> without blocking on unrelated drift", async () => {
+    const workspace = await tempRoot();
+    const alpha = await gitSkillPackageFixture("scoped-update-alpha", "alpha-skill");
+    const beta = await gitSkillPackageFixture("scoped-update-beta", "beta-skill");
+    const betaDest = join(workspace, ".agents", "skills", "beta-skill", "SKILL.md");
+
+    await runCli(["add", `git:${alpha}#main`, "--name", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["add", `git:${beta}#main`, "--name", "beta", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
+    await updateGitSkill(alpha, "alpha-skill", "alpha-v2");
+    await writeFile(betaDest, "local beta drift\n", "utf8");
+
+    const preview = await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run"]);
+    expect(preview.stdout).toContain("UPDATE   MANAGED  skills/alpha-skill");
+    expect(preview.stdout).toContain("KEEP     MANAGED  skills/beta-skill");
+    expect(preview.stdout).not.toContain("DRIFT");
+
+    await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await expect(readFile(join(workspace, ".agents", "skills", "alpha-skill", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
+    await expect(readFile(betaDest, "utf8")).resolves.toBe("local beta drift\n");
+  });
+
   it("scoped install converges out-of-scope ownership without touching shared content", async () => {
     const workspace = await tempRoot();
     const shared = await skillPackageFixture("scope-shared", "shared-v1");

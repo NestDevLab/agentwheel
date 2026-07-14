@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.14.10"
+  version: "0.14.11"
 ---
 
 # agentwheel
@@ -352,6 +352,8 @@ Limit an update to one configured package:
 agentwheel update team-agent-pack --dry-run
 agentwheel update team-agent-pack
 ```
+
+Named package updates preserve artifacts owned by other configured roots, including unrelated drift.
 
 Advance one tracking dependency while unrelated graph nodes remain locked:
 

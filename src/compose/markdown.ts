@@ -44,6 +44,10 @@ export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot:
   const artifactPaths = artifactPathMap(artifacts);
 
   for (const artifact of orderedForExpansion(artifacts)) {
+    // Fragments are composition inputs. Expanding them in place can leave generated
+    // markers in a dependency's staging tree before a parent package consumes it.
+    // Consumers recursively expand the raw fragment content when they include it.
+    if (artifact.type === "fragments") continue;
     const files = await markdownFilesForArtifact(artifact);
     if (files.length === 0) continue;
 

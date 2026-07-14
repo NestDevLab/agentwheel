@@ -1210,7 +1210,7 @@ async function buildGraphPlansForTarget(
       forceConflict: targetOptions.forceConflict,
       replaceConflict: targetOptions.replaceConflict,
     });
-    if (behavior.mode === "install" && scopedRootId) {
+    if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
       results.push(scopeInstallPlanToRoot(result, scopedRootId, manifest));

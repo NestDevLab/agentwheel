@@ -65,6 +65,7 @@ export interface GraphSourcePlanOptions {
   noDeps?: boolean;
   includeSuggestions?: boolean;
   suggestionAliases?: string[];
+  dependencyUpdateSelectors?: string[];
   lockedResolution?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
@@ -180,6 +181,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     noDeps: options.noDeps,
     includeSuggestions: options.includeSuggestions,
     suggestionAliases: options.suggestionAliases,
+    dependencyUpdateSelectors: options.dependencyUpdateSelectors,
     lockedResolution: options.lockedResolution,
     frozenLock: lockMode,
     offline: options.offline,

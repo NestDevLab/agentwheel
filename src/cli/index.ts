@@ -288,6 +288,7 @@ program
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--dependency <name-or-source>", "update one tracking dependency while keeping unrelated graph nodes locked (repeatable)", collectDependencyOption, [] as string[])
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
@@ -296,6 +297,13 @@ program
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
+    if (name && options.dependency.length > 0) throw new Error("A package argument cannot be combined with --dependency.");
+    if (options.dependency.length > 0 && (options.select.length > 0 || options.skill.length > 0)) {
+      throw new Error("--dependency cannot be combined with --select or --skill; package selections remain unchanged.");
+    }
+    if (options.dependency.length > 0 && (options.frozenLock || options.offline)) {
+      throw new Error("--dependency cannot be combined with --frozen-lock or --offline.");
+    }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
     for (const target of targets) {
@@ -1035,6 +1043,7 @@ interface GraphCliOptions {
   withSuggestions?: boolean;
   suggestion?: string[];
   suggestions?: string[];
+  dependency?: string[];
   onlySource?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
@@ -1095,6 +1104,8 @@ async function buildGraphPlansForTarget(
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
   const groups = new Map<string, PackageGraphGroup>();
   const selectedArtifacts = selectedArtifactsFromOptions(targetOptions);
+  const dependencyUpdateSelectors = sortedUniqueValues(targetOptions.dependency ?? []);
+  const scopedDependencyUpdate = behavior.mode === "update" && dependencyUpdateSelectors.length > 0;
   const scopedPackage = targetOptions.scope ? findConfiguredPackage(config.packages, targetOptions.scope) : undefined;
   const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
   if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
@@ -1145,7 +1156,7 @@ async function buildGraphPlansForTarget(
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const roots: GraphRootRequest[] = [
       ...allPackages.map((pkg) => {
-        const updateThisPackage = behavior.mode === "update"
+        const updateThisPackage = behavior.mode === "update" && !scopedDependencyUpdate
           && pkg.mode === "tracking"
           && (!updateScope || updateScope.has(pkg.name) || updateScope.has(pkg.source));
         const packageIsScoped = scopedRootId ? pkg.name === scopedRootId || pkg.source === targetOptions.scope : true;
@@ -1159,14 +1170,14 @@ async function buildGraphPlansForTarget(
           overrides: pkg.overrides,
           includeSuggestions: targetOptions.withSuggestions === true || pkg.withSuggestions === true,
           suggestionAliases: packageSuggestionAliases(pkg, targetOptions),
-          useLock: behavior.mode === "install" ? true : !updateThisPackage,
+          useLock: behavior.mode === "install" || scopedDependencyUpdate ? true : !updateThisPackage,
         };
       }),
       ...group.extraRoots,
     ];
     if (behavior.mode === "update") {
       const changed = roots.filter((root) => root.useLock === false);
-      if (changed.length === 0) {
+      if (changed.length === 0 && !scopedDependencyUpdate) {
         const label = targetOptions.scope ? ` ${targetOptions.scope}` : "";
         console.log(`No tracking packages to update${label}.`);
         continue;
@@ -1185,7 +1196,8 @@ async function buildGraphPlansForTarget(
       noDeps: noDepsFromOptions(targetOptions),
       includeSuggestions: targetOptions.withSuggestions,
       suggestionAliases: suggestionAliasesFromOptions(targetOptions),
-      lockedResolution: behavior.mode === "install",
+      lockedResolution: behavior.mode === "install" || scopedDependencyUpdate,
+      dependencyUpdateSelectors,
       frozenLock: targetOptions.frozenLock,
       offline: targetOptions.offline,
       yes: targetOptions.yes,
@@ -1200,11 +1212,89 @@ async function buildGraphPlansForTarget(
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
       results.push(scopeInstallPlanToRoot(result, scopedRootId, manifest));
+    } else if (scopedDependencyUpdate) {
+      const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
+      const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
+      const previousLock = await readGraphLock(result.graphLockPath);
+      results.push(scopeUpdatePlanToDependencies(result, dependencyUpdateSelectors, previousLock, manifest));
     } else {
       results.push(result);
     }
   }
   return results;
+}
+
+function scopeUpdatePlanToDependencies(
+  result: GraphSourcePlanResult,
+  selectors: string[],
+  previousLock: Awaited<ReturnType<typeof readGraphLock>>,
+  manifest: InstallManifest | undefined,
+): GraphSourcePlanResult {
+  const selectedNames = dependencyUpdatePackageNames(previousLock, selectors);
+  const allowedNodeIds = new Set(result.graph.nodes
+    .filter((node) => selectedNames.has(node.name))
+    .map((node) => node.id));
+  const queue = [...allowedNodeIds];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    for (const edge of result.graph.edges) {
+      if (edge.from !== parentId || allowedNodeIds.has(edge.to)) continue;
+      allowedNodeIds.add(edge.to);
+      queue.push(edge.to);
+    }
+  }
+  const allowedNames = new Set(result.graph.nodes
+    .filter((node) => allowedNodeIds.has(node.id))
+    .map((node) => node.name));
+  for (const name of selectedNames) allowedNames.add(name);
+
+  const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
+  const operations = result.plan.operations.flatMap((operation) => {
+    if (operation.action === "skip" || operation.action === "keep" || operationBelongsToDependencyUpdate(operation, allowedNodeIds, allowedNames)) {
+      return [operation];
+    }
+    return transformOutOfScopeOperation(
+      operation,
+      manifestByPath.get(operation.relativeDestPath),
+      result.plan.targetRoot,
+      `scoped dependency update ${selectors.join(", ")}`,
+    );
+  });
+  return {
+    ...result,
+    plan: {
+      ...result.plan,
+      operations,
+      hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
+    },
+  };
+}
+
+function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphLock>>, selectors: string[]): Set<string> {
+  const nodes = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
+  const names = new Set<string>();
+  for (const selector of selectors) {
+    for (const edge of lock.canonical.edges) {
+      const node = nodes.get(edge.to);
+      if (!node || node.mode !== "tracking") continue;
+      if (selector === edge.alias || selector === edge.source || selector === edge.normalizedSource
+        || selector === node.id || selector === node.name || selector === node.source || selector === node.normalizedSource) {
+        names.add(node.name);
+      }
+    }
+  }
+  return names;
+}
+
+function operationBelongsToDependencyUpdate(
+  operation: InstallOperation,
+  allowedNodeIds: Set<string>,
+  allowedNames: Set<string>,
+): boolean {
+  if (operation.graphNodeId && allowedNodeIds.has(operation.graphNodeId)) return true;
+  if (operation.owners?.some((owner) => allowedNodeIds.has(owner))) return true;
+  return operation.composedFrom?.some((entry) =>
+    [...allowedNames].some((name) => entry.selector.startsWith(`${name}@`) || entry.selector.startsWith(`${name}:`))) === true;
 }
 
 function scopeInstallPlanToRoot(
@@ -1226,7 +1316,7 @@ function scopeInstallPlanToRoot(
     }
 
     const entry = manifestByPath.get(operation.relativeDestPath);
-    const transformed = transformOutOfScopeOperation(operation, entry, result.plan.targetRoot, rootId);
+    const transformed = transformOutOfScopeOperation(operation, entry, result.plan.targetRoot, `scoped install ${rootId}`);
     for (const scopedOperation of transformed) {
       if (preservedPaths.has(scopedOperation.relativeDestPath)) continue;
       preservedPaths.add(scopedOperation.relativeDestPath);
@@ -1237,7 +1327,7 @@ function scopeInstallPlanToRoot(
   for (const entry of manifest?.entries ?? []) {
     if (plannedPaths.has(entry.path) || preservedPaths.has(entry.path) || entryBelongsToScopedRoot(entry, scopedOwners)) continue;
     preservedPaths.add(entry.path);
-    operations.push(keepManifestEntryOperation(entry, result.plan.targetRoot, rootId));
+    operations.push(keepManifestEntryOperation(entry, result.plan.targetRoot, `scoped install ${rootId}`));
   }
 
   return {
@@ -1254,17 +1344,17 @@ function transformOutOfScopeOperation(
   operation: InstallOperation,
   entry: NonNullable<InstallManifest>["entries"][number] | undefined,
   targetRoot: string,
-  rootId: string,
+  scopeDescription: string,
 ): InstallOperation[] {
   if (operation.action === "skip") return [operation];
   if (operation.action === "update" || operation.action === "drift") {
-    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId, operation, { freshMetadata: true })] : [];
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, scopeDescription, operation, { freshMetadata: true })] : [];
   }
   if (operation.action === "remove") {
-    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId)] : [];
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, scopeDescription)] : [];
   }
   if (operation.action === "plugin" || operation.action === "program") {
-    return entry ? [keepManifestEntryOperation(entry, targetRoot, rootId)] : [];
+    return entry ? [keepManifestEntryOperation(entry, targetRoot, scopeDescription)] : [];
   }
   // Out-of-scope create/conflict operations have no managed entry to preserve.
   return [];
@@ -1300,7 +1390,7 @@ function entryBelongsToScopedRoot(entry: NonNullable<InstallManifest>["entries"]
 function keepManifestEntryOperation(
   entry: NonNullable<InstallManifest>["entries"][number],
   targetRoot: string,
-  rootId: string,
+  scopeDescription: string,
   operation?: InstallOperation,
   options: { freshMetadata?: boolean } = {},
 ): InstallOperation {
@@ -1316,7 +1406,7 @@ function keepManifestEntryOperation(
     desiredHash: entry.sourceHash,
     currentHash: operation?.currentHash ?? entry.hash,
     manifestHash: entry.hash,
-    reason: `preserved outside scoped install ${rootId}`,
+    reason: `preserved outside ${scopeDescription}`,
     channel: entry.channel,
     packageName: entry.packageName,
     semanticCommand: entry.semanticCommand,
@@ -1775,6 +1865,14 @@ function collectSuggestionOption(value: string, previous: string[]): string[] {
 
 function collectTrustOption(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function collectDependencyOption(value: string, previous: string[]): string[] {
+  return [...previous, ...splitSelectorList(value)];
+}
+
+function sortedUniqueValues(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
 function collectOverrideOption(value: string, previous: string[]): string[] {

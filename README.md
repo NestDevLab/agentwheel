@@ -102,7 +102,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
-| `agentwheel update [name]` | Re-resolve tracking packages, then apply. Pinned packages stay locked. Use `--profile <name>` for profile-managed fleets. |
+| `agentwheel update [name]` | Re-resolve tracking packages, then apply. Use `--dependency <name-or-source>` to move one tracking dependency while unrelated graph nodes stay locked. |
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
@@ -112,6 +112,19 @@ Mental model: **`install` = make what is declared true. `update` = move tracking
 then make them true.**
 Scoped installs do not remove files owned only by other configured packages; run a full `agentwheel install`
 to reconcile those removals.
+
+For a surgical dependency update, start with a dry-run:
+
+```bash
+agentwheel update --dependency shared-core --agent lab-codex --dry-run
+agentwheel update --dependency github:your-org/shared-core --agent lab-codex
+```
+
+The selector must uniquely match a locked tracking dependency by package name, dependency alias,
+node id, or source. Agentwheel advances that node and its required tracking closure, writes the
+complete graph lock, and applies atomically. Configured selections stay unchanged, so this mode
+rejects package arguments, `--select`, `--skill`, `--frozen-lock`, and `--offline`. A later full
+`update` can advance the remaining graph.
 
 ## Quick Start
 

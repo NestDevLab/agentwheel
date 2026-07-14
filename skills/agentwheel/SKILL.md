@@ -2,6 +2,10 @@
 name: agentwheel
 description: Use agentwheel to discover, add, install, update, customize, eject, and uninstall agent skills, rules, instructions, commands, MCP, hooks, settings, and plugin artifacts across runtimes.
 allowed-tools: [Bash]
+license: MIT
+metadata:
+  author: NestDevLab
+  version: "0.14.10"
 ---
 
 # agentwheel
@@ -348,6 +352,18 @@ Limit an update to one configured package:
 agentwheel update team-agent-pack --dry-run
 agentwheel update team-agent-pack
 ```
+
+Advance one tracking dependency while unrelated graph nodes remain locked:
+
+```bash
+agentwheel update --dependency shared-core --dry-run
+agentwheel update --dependency shared-core
+agentwheel update --dependency github:your-org/shared-core --agent lab-codex
+```
+
+The selector must uniquely match a locked tracking dependency by name, alias, node id, or source.
+Its required tracking closure also advances. Configured selections stay unchanged; this mode
+rejects package arguments, `--select`, `--skill`, `--frozen-lock`, and `--offline`.
 
 `install` uses the graph lock as input when present. `update` re-resolves tracking packages and writes a new lock. Pinned packages stay on the locked graph unless their declaration changes.
 

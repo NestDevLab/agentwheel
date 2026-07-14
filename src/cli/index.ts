@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -37,7 +38,8 @@ import { transportForTarget } from "../transport/index.js";
 import { validatePackage } from "../model/package-validate.js";
 import { migratePackageManifest } from "../model/package-migrate.js";
 import { findPackageManifestPath } from "../model/package.js";
-import { computeTargetFingerprint, readGraphLock } from "../model/graph-lock.js";
+import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
+import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 
 const CLI_VERSION = resolveCliVersion();
@@ -1249,10 +1251,14 @@ function scopeUpdatePlanToDependencies(
   for (const name of selectedNames) allowedNames.add(name);
 
   const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
+  const nodeById = new Map(result.graph.nodes.map((node) => [node.id, node]));
+  const preservedPackageNames = new Set<string>();
   const operations = result.plan.operations.flatMap((operation) => {
     if (operation.action === "skip" || operation.action === "keep" || operationBelongsToDependencyUpdate(operation, allowedNodeIds, allowedNames)) {
       return [operation];
     }
+    const packageName = operation.graphNodeId ? nodeById.get(operation.graphNodeId)?.name : undefined;
+    if (packageName) preservedPackageNames.add(packageName);
     return transformOutOfScopeOperation(
       operation,
       manifestByPath.get(operation.relativeDestPath),
@@ -1260,14 +1266,70 @@ function scopeUpdatePlanToDependencies(
       `scoped dependency update ${selectors.join(", ")}`,
     );
   });
+  const graphLock = preserveUnrelatedGraphPackages(result.bundle.graphLock, previousLock, preservedPackageNames);
+  const graphLockDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
   return {
     ...result,
+    bundle: { ...result.bundle, graphLock },
+    graphLockDigest,
+    graphDiff: diffGraphLocks(previousLock, graphLock),
     plan: {
       ...result.plan,
       operations,
+      graphLockDigest,
       hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
     },
   };
+}
+
+function preserveUnrelatedGraphPackages(current: GraphLock, previous: GraphLock, packageNames: Set<string>): GraphLock {
+  if (packageNames.size === 0) return current;
+  const previousByKey = new Map(previous.canonical.nodes.map((node) => [`${node.normalizedSource}\0${node.name}`, node]));
+  const replacements = new Map<string, string>();
+  for (const node of current.canonical.nodes) {
+    if (!packageNames.has(node.name)) continue;
+    const locked = previousByKey.get(`${node.normalizedSource}\0${node.name}`);
+    if (locked && locked.id !== node.id) replacements.set(node.id, locked.id);
+  }
+  if (replacements.size === 0) return current;
+  const replaceId = (id: string) => replacements.get(id) ?? id;
+  const replacedOldIds = new Set(replacements.values());
+  const previousNodes = previous.canonical.nodes.filter((node) => replacedOldIds.has(node.id));
+  const previousArtifacts = previous.canonical.artifacts.filter((artifact) => replacedOldIds.has(artifact.graphNodeId));
+  const previousEdgeByKey = new Map(previous.canonical.edges.map((edge) => [`${edge.from}\0${edge.alias}\0${edge.to}`, edge]));
+  const previousIncludeByKey = new Map(previous.canonical.includeEdges.map((edge) =>
+    [`${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}`, edge]));
+
+  return canonicalizeGraphLock({
+    ...current,
+    canonical: {
+      ...current.canonical,
+      roots: current.canonical.roots.map((root) => ({ ...root, graphNodeId: replaceId(root.graphNodeId) })),
+      nodes: [
+        ...current.canonical.nodes.filter((node) => !replacements.has(node.id)),
+        ...previousNodes,
+      ],
+      edges: current.canonical.edges.map((edge) => {
+        const mapped = { ...edge, from: replaceId(edge.from), to: replaceId(edge.to) };
+        return previousEdgeByKey.get(`${mapped.from}\0${mapped.alias}\0${mapped.to}`) ?? mapped;
+      }),
+      includeEdges: current.canonical.includeEdges.map((edge) => {
+        const mapped = { ...edge, fromNodeId: replaceId(edge.fromNodeId), toNodeId: replaceId(edge.toNodeId) };
+        return previousIncludeByKey.get(`${mapped.fromNodeId}\0${mapped.alias}\0${mapped.toNodeId}\0${mapped.selector}`) ?? mapped;
+      }),
+      artifacts: [
+        ...current.canonical.artifacts.filter((artifact) => !replacements.has(artifact.graphNodeId)),
+        ...previousArtifacts,
+      ],
+      namespacing: current.canonical.namespacing.map((entry) => ({ ...entry, graphNodeId: replaceId(entry.graphNodeId) })),
+      overrides: current.canonical.overrides.map((entry) => ({
+        ...entry,
+        graphNodeId: replaceId(entry.graphNodeId),
+        overriddenGraphNodeId: replaceId(entry.overriddenGraphNodeId),
+      })),
+      plainNameIncumbents: current.canonical.plainNameIncumbents.map((entry) => ({ ...entry, graphNodeId: replaceId(entry.graphNodeId) })),
+    },
+  });
 }
 
 function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphLock>>, selectors: string[]): Set<string> {

@@ -282,6 +282,7 @@ describe("CLI verb redesign", () => {
     });
     await runCli(["add", root, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "dep-beta");
 
     await updateGitSkill(alpha, "alpha-skill", "alpha-v2");
     await writeSkillPackage(beta, "dep-beta", "beta-v2");
@@ -298,6 +299,7 @@ describe("CLI verb redesign", () => {
     ]);
     await expect(readFile(join(workspace, ".agents", "skills", "alpha-skill", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
     await expect(readFile(join(workspace, ".agents", "skills", "dep-beta", "SKILL.md"), "utf8")).resolves.not.toContain("beta-v2");
+    await expect(lockedPackageSourceHash(workspace, "dep-beta")).resolves.toBe(betaHashBefore);
 
     const betaPreview = await runCli([
       "install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
@@ -911,6 +913,28 @@ async function readCodexManifest(workspace: string): Promise<TestManifest> {
     .sort()[0];
   if (!file) throw new Error("Codex local install manifest not found");
   return JSON.parse(await readFile(join(metadata, file), "utf8")) as TestManifest;
+}
+
+async function lockedPackageSourceHash(workspace: string, packageName: string): Promise<string> {
+  const locksRoot = join(workspace, ".agentwheel", "locks");
+  const lockPath = (await filesBelow(locksRoot)).find((path) => path.endsWith(".graph-lock.json"));
+  if (!lockPath) throw new Error("Graph lock not found");
+  const lock = JSON.parse(await readFile(lockPath, "utf8")) as {
+    canonical: { nodes: Array<{ name: string; sourceHash: string }> };
+  };
+  const node = lock.canonical.nodes.find((candidate) => candidate.name === packageName);
+  if (!node) throw new Error(`Locked package not found: ${packageName}`);
+  return node.sourceHash;
+}
+
+async function filesBelow(root: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await filesBelow(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
 }
 
 function manifestEntry(manifest: TestManifest, path: string): TestManifestEntry {

@@ -140,5 +140,13 @@ Dry-runs print `OVERRIDE` lines, so review those before applying a fleet-wide in
 targets, agentwheel reads the remote install manifest and hashes remote files before planning, so
 drift and conflict detection have the same semantics as local targets.
 
+If a profile source moves to another workspace root without changing an installed artifact, use
+`agentwheel ownership handoff <type/name> --dry-run` and then repeat with the printed
+`--expected-hash` and `--expected-revision`. The apply path is intentionally single-target and
+single-artifact: it checks the exact previous workspace owner and current runtime hash under the
+normal apply lock, then atomically changes only that entry's `workspaceOwner`. Local and named SSH
+targets share this transport-neutral behavior. It never copies, removes, or rewrites the runtime
+artifact.
+
 Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
 those on an SSH target, run the command on the remote host after reviewing the dry-run output.

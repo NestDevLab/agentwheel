@@ -12,7 +12,17 @@
     "strategy": "cherry-pick",
     "stacks": []
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "ownership-handoff",
+      "branch": "branch/ownership-handoff",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": []
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

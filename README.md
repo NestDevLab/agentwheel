@@ -106,12 +106,29 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
+| `agentwheel ownership handoff <type/name>` | Transfer one manifest entry to a different workspace root after exact owner, hash, and revision checks; runtime content is not rewritten. |
 | `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**
 Scoped installs do not remove files owned only by other configured packages; run a full `agentwheel install`
 to reconcile those removals.
+
+When a managed fleet profile moves between workspace roots, preview a single-artifact ownership
+handoff first. The dry-run prints the current artifact hash and manifest revision:
+
+```bash
+agentwheel ownership handoff skills/example-skill \
+  --adapter codex --user --target-root "$HOME" \
+  --from-workspace-root /old/fleet/profile \
+  --to-workspace-root /new/fleet/profile \
+  --dry-run
+```
+
+Apply the same command with the reviewed values added as `--expected-hash <sha256>` and
+`--expected-revision <sha256>`. Agentwheel takes the target apply lock, rejects a pending apply
+journal, rechecks the old owner and the live artifact hash, then atomically updates only the install
+manifest. Run one target at a time; named SSH agents use the same contract through `--agent`.
 
 For a surgical dependency update, start with a dry-run:
 

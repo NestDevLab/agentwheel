@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import { defaultInstallationType, installRootForAdapterInstallationType, installRootForArtifacts, resolveInstallationTypeForArtifacts } from "../model/adapter.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
@@ -26,6 +26,7 @@ import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
+import { workspaceOwnerForRoot } from "./ownership.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -122,7 +123,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType });
   const manifest = await readInstallManifest(installRoot, options.adapter.name, transport, { installationType, stateKey });
   const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport, {
-    workspaceOwner: workspaceOwnerId(workspaceRoot),
+    workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
     installationType,
     stateKey,
     forceDrift: options.forceDrift,
@@ -218,7 +219,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const plan = await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
     baseRevision: manifest?.revision ?? null,
     graphLockDigest,
-    workspaceOwner: workspaceOwnerId(workspaceRoot),
+    workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
     installationType: resolvedInstallationType,
     stateKey,
     forceDrift: options.forceDrift,
@@ -310,10 +311,6 @@ function sanitizePathSegment(value: string): string {
 
 function digestGraphLock(lock: ResolvedGraphBundle["graphLock"]): string {
   return createHash("sha256").update(canonicalGraphLockJson(lock)).digest("hex");
-}
-
-function workspaceOwnerId(workspaceRoot: string): string {
-  return `workspace-root:${resolve(workspaceRoot)}`;
 }
 
 function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedGraph, frozen: boolean, label: string): void {

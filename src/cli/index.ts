@@ -41,6 +41,7 @@ import { findPackageManifestPath } from "../model/package.js";
 import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
+import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../lifecycle/ownership.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -514,6 +515,70 @@ program
     const result = await remember(targetRoot, options.runtime, text);
     console.log(`Remembered in ${result.overlayPath}.`);
     console.log(nextInstallNudge());
+  });
+
+const ownershipCommand = program
+  .command("ownership")
+  .description("inspect and transfer manifest ownership without rewriting runtime artifacts");
+
+ownershipCommand
+  .command("handoff")
+  .description("transfer one managed artifact between Agentwheel workspace roots")
+  .argument("<selector>", "exact artifact selector in type/name form")
+  .requiredOption("--from-workspace-root <path>", "current owning workspace root")
+  .requiredOption("--to-workspace-root <path>", "new owning workspace root")
+  .option("--expected-hash <sha256>", "expected current artifact hash; required when applying")
+  .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--profile <name>", "workspace runtime profile (must resolve to one target)")
+  .option("--dry-run", "validate all preconditions without writing the manifest", false)
+  .action(async (selector, options) => {
+    if (!options.dryRun && (!options.expectedHash || !options.expectedRevision)) {
+      throw new Error("Applying an ownership handoff requires --expected-hash and --expected-revision from a reviewed --dry-run.");
+    }
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalizedOptions);
+    if (targets.length !== 1) {
+      throw new Error(`Ownership handoff requires exactly one runtime target, found ${targets.length}. Select one --agent or adapter target.`);
+    }
+    const [artifactType, artifactName, ...extra] = selector.split("/");
+    if (!artifactType || !artifactName || extra.length > 0) {
+      throw new Error(`Ownership handoff selector must be exactly type/name: ${selector}`);
+    }
+    const target = targets[0];
+    const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
+    const adapter = await resolveAdapterForTarget(target, adapterOptions);
+    const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const request = {
+      ...state,
+      targetRoot: state.installRoot,
+      adapter: adapter.name,
+      artifactType,
+      artifactName,
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      toWorkspaceRoot: normalizeCliPath(options.toWorkspaceRoot),
+      expectedHash: options.expectedHash,
+      expectedRevision: options.expectedRevision,
+      transport: transportForTarget(target),
+    };
+    const result = options.dryRun
+      ? await planArtifactOwnershipHandoff(request)
+      : await applyArtifactOwnershipHandoff(request);
+    console.log(`${options.dryRun ? "Ownership handoff plan" : "Ownership handed off"}: ${result.selector}`);
+    console.log(`Target: ${result.adapter}/${result.installationType ?? "default"} at ${result.targetRoot}`);
+    console.log(`Path: ${result.path}`);
+    console.log(`Hash: ${result.artifactHash}`);
+    console.log(`Manifest revision: ${result.manifestRevision}`);
+    console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
   });
 
 program

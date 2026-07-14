@@ -45,6 +45,7 @@ export interface ResolveGraphOptions {
   runtime?: string;
   includeSuggestions?: boolean;
   suggestionAliases?: string[];
+  dependencyUpdateSelectors?: string[];
 }
 
 export interface ResolvedGraphRoot {
@@ -96,6 +97,7 @@ interface Requirement {
   useLock?: boolean;
   includeSuggestions?: boolean;
   suggestionAliases?: string[];
+  updateClosure?: boolean;
 }
 
 type PackageManifestV2 = Extract<PackageManifest, { schemaVersion: 2 }>;
@@ -135,6 +137,7 @@ interface NodeState {
   fullPackageSelected: boolean;
   includeSuggestions: boolean;
   suggestionAliases: Set<string>;
+  updateClosure: boolean;
 }
 
 const cacheLocks = new Map<string, Promise<void>>();
@@ -150,6 +153,7 @@ export async function resolveDependencyGraph(
   const nodesByKey = new Map<string, NodeState>();
   const rootResults: ResolvedGraphRoot[] = [];
   const edgeMap = new Map<string, GraphLockEdge>();
+  assertDependencyUpdateSelectors(options.previousLock, options.dependencyUpdateSelectors);
   const queue: Requirement[] = roots.map((root, index) => {
     const rootId = root.rootId ?? `root-${index + 1}`;
     return {
@@ -163,6 +167,7 @@ export async function resolveDependencyGraph(
       aliases: root.aliases,
       overrides: root.overrides,
       useLock: root.useLock ?? options.lockedResolution,
+      updateClosure: root.useLock === false,
       depth: 0,
       optional: false,
       chain: [`workspace:${rootId}`],
@@ -326,6 +331,7 @@ async function processRequirement(
         fullPackageSelected: false,
         includeSuggestions: false,
         suggestionAliases: new Set(),
+        updateClosure: false,
       };
       nodesByKey.set(nodeKey, state);
     }
@@ -333,6 +339,7 @@ async function processRequirement(
     state.depth = Math.min(state.depth, requirement.depth);
     state.fullPackageSelected = state.fullPackageSelected || requirement.select === undefined;
     state.includeSuggestions = state.includeSuggestions || requirement.includeSuggestions === true;
+    state.updateClosure = state.updateClosure || requirement.updateClosure === true;
     for (const alias of requirement.suggestionAliases ?? []) state.suggestionAliases.add(alias);
     state.requiredBy.add(requirement.requiredBy);
     for (const selector of selected) addSelectedSelector(state, selector, requirement.selectionReason);
@@ -403,7 +410,7 @@ async function collectDependencyNeeds(
       if (!dependency.select?.length && !(state.fullPackageSelected && dependency.select === undefined)) continue;
       state.processedPackageAliases.add(alias);
       if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
-      requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain, options.lockedResolution === true));
+      requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain, options));
     }
     for (const [alias, suggestion] of suggestionEntries) {
       if (state.processedSuggestions.has(alias)) continue;
@@ -447,7 +454,7 @@ async function collectDependencyNeeds(
             dependency,
             sortedUnique([...(dependency.select ?? []), parsed.selector]),
             chain,
-            options.lockedResolution === true,
+            options,
             parsed.optional || dependency.optional === true,
             `required by ${parentSelector}`,
           ));
@@ -502,7 +509,7 @@ async function collectDependencyNeeds(
           dependency,
           sortedUnique([...(dependency.select ?? []), include.selector]),
           chain,
-          options.lockedResolution === true,
+          options,
           include.optional || dependency.optional === true,
         ));
       }
@@ -521,16 +528,18 @@ function dependencyRequirement(
   dependency: PackageDependency,
   select: string[] | undefined,
   chain: string[],
-  lockByDefault: boolean,
+  options: ResolveGraphOptions,
   optional = dependency.optional ?? false,
   selectionReason?: string,
 ): Requirement {
+  const updateClosure = state.updateClosure || dependencyUpdateEdgeSelected(state.node.id, alias, options);
   return {
     source: dependency.source,
     select,
     mode: dependency.mode ?? "pinned",
     ref: dependency.ref,
-    useLock: lockByDefault || dependency.mode !== "tracking",
+    useLock: dependency.mode !== "tracking" || (options.lockedResolution === true && !updateClosure),
+    updateClosure,
     declaringPackageRoot: fetched.resolved.resolvedPath,
     requiredBy: state.node.id,
     alias,
@@ -564,10 +573,46 @@ function suggestionRequirement(
     suggestion,
     select,
     chain,
-    options.lockedResolution === true,
+    options,
     optional,
     selectionReason,
   );
+}
+
+function assertDependencyUpdateSelectors(lock: GraphLock | undefined, selectors: string[] | undefined): void {
+  for (const selector of sortedUnique(selectors ?? [])) {
+    if (!lock) throw new Error(`Dependency update '${selector}' requires an existing graph lock.`);
+    const matches = matchingDependencyUpdateEdges(lock, selector);
+    const nodeIds = new Set(matches.map((edge) => edge.to));
+    if (nodeIds.size === 0) throw new Error(`Tracking dependency not found in graph lock: ${selector}`);
+    if (nodeIds.size > 1) {
+      throw new Error(`Dependency update selector is ambiguous: ${selector}. Use an exact node id or source.`);
+    }
+  }
+}
+
+function dependencyUpdateEdgeSelected(parentId: string, alias: string, options: ResolveGraphOptions): boolean {
+  const lock = options.previousLock;
+  if (!lock) return false;
+  const selectedNodeIds = new Set((options.dependencyUpdateSelectors ?? []).flatMap((selector) =>
+    matchingDependencyUpdateEdges(lock, selector).map((edge) => edge.to)));
+  return lock.canonical.edges.some((edge) =>
+    edge.from === parentId && edge.alias === alias && selectedNodeIds.has(edge.to));
+}
+
+function matchingDependencyUpdateEdges(lock: GraphLock, selector: string): GraphLockEdge[] {
+  const nodes = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
+  return lock.canonical.edges.filter((edge) => {
+    const node = nodes.get(edge.to);
+    if (!node || node.mode !== "tracking") return false;
+    return selector === edge.alias
+      || selector === edge.source
+      || selector === edge.normalizedSource
+      || selector === node.id
+      || selector === node.name
+      || selector === node.source
+      || selector === node.normalizedSource;
+  });
 }
 
 function dependencyForAlias(

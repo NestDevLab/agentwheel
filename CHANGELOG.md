@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `agentwheel update --dependency <name-or-source>` to advance one locked tracking dependency and its required tracking closure without moving unrelated graph nodes.
+
 ## 0.14.5
 
 - Expanded the README and landing page to explain that the Agentwheel companion skill is optional but strongly recommended for the best Agentwheel experience.

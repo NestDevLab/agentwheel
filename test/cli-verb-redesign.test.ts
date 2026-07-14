@@ -272,6 +272,65 @@ describe("CLI verb redesign", () => {
     expect(update.stdout).toContain("UPDATE");
   });
 
+  it("updates one tracking dependency while unrelated dependencies remain locked", async () => {
+    const workspace = await tempRoot();
+    const alpha = await gitSkillPackageFixture("dep-alpha", "alpha-skill");
+    const beta = await skillPackageFixture("dep-beta", "beta-v1");
+    const root = await metaPackageFixture("scoped-root", {
+      alpha: { source: `git:${alpha}#main`, mode: "tracking", select: ["skills/alpha-skill"] },
+      beta: { source: beta, mode: "tracking", select: ["skills/dep-beta"] },
+    });
+    await runCli(["add", root, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "dep-beta");
+
+    await updateGitSkill(alpha, "alpha-skill", "alpha-v2");
+    await writeSkillPackage(beta, "dep-beta", "beta-v2");
+
+    const preview = await runCli([
+      "update", "--dependency", "dep-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(preview.stdout).toContain("UPDATE");
+    expect(preview.stdout).toContain("alpha-skill");
+    expect(preview.stdout).not.toContain("UPDATE   MANAGED  skills/dep-beta");
+
+    await runCli([
+      "update", "--dependency", "dep-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+    await expect(readFile(join(workspace, ".agents", "skills", "alpha-skill", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
+    await expect(readFile(join(workspace, ".agents", "skills", "dep-beta", "SKILL.md"), "utf8")).resolves.not.toContain("beta-v2");
+    await expect(lockedPackageSourceHash(workspace, "dep-beta")).resolves.toBe(betaHashBefore);
+
+    const betaPreview = await runCli([
+      "install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(betaPreview.stdout).toContain("UPDATE   MANAGED  skills/dep-beta");
+  });
+
+  it("rejects missing and ambiguous dependency update selectors", async () => {
+    const workspace = await tempRoot();
+    const source = await packageFixture("dependency-errors");
+    await runCli(["add", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+
+    await expect(runCli([
+      "update", "--dependency", "missing", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ])).rejects.toMatchObject({ stderr: expect.stringContaining("Tracking dependency not found in graph lock: missing") });
+
+    const first = await gitSkillPackageFixture("duplicate-dependency", "duplicate-one");
+    const second = await gitSkillPackageFixture("duplicate-dependency", "duplicate-two");
+    const ambiguousRoot = await metaPackageFixture("ambiguous-root", {
+      first: { source: `git:${first}#main`, mode: "tracking", select: ["skills/duplicate-one"] },
+      second: { source: `git:${second}#main`, mode: "tracking", select: ["skills/duplicate-two"] },
+    });
+    const ambiguousWorkspace = await tempRoot();
+    await runCli(["add", ambiguousRoot, "--adapter", "codex", "--installation-type", "local", "--target-root", ambiguousWorkspace]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", ambiguousWorkspace, "--yes"]);
+    await expect(runCli([
+      "update", "--dependency", "duplicate-dependency", "--adapter", "codex", "--installation-type", "local", "--target-root", ambiguousWorkspace, "--dry-run",
+    ])).rejects.toMatchObject({ stderr: expect.stringContaining("Dependency update selector is ambiguous") });
+  });
+
   it("scopes install <name> without installing or removing other configured packages", async () => {
     const workspace = await tempRoot();
     const alpha = await skillPackageFixture("scoped-alpha", "alpha-v1");
@@ -822,6 +881,16 @@ async function gitSkillPackageFixture(name: string, skillName: string): Promise<
   return root;
 }
 
+async function updateGitSkill(root: string, skillName: string, content: string): Promise<void> {
+  await writeFile(
+    join(root, "skills", skillName, "SKILL.md"),
+    `---\nname: ${skillName}\ndescription: Fixture skill for tests.\n---\n\n# ${content}\n`,
+    "utf8",
+  );
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", content]);
+}
+
 async function git(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", ["-c", "user.email=test@example.com", "-c", "user.name=Test", ...args], { cwd });
 }
@@ -844,6 +913,28 @@ async function readCodexManifest(workspace: string): Promise<TestManifest> {
     .sort()[0];
   if (!file) throw new Error("Codex local install manifest not found");
   return JSON.parse(await readFile(join(metadata, file), "utf8")) as TestManifest;
+}
+
+async function lockedPackageSourceHash(workspace: string, packageName: string): Promise<string> {
+  const locksRoot = join(workspace, ".agentwheel", "locks");
+  const lockPath = (await filesBelow(locksRoot)).find((path) => path.endsWith(".graph-lock.json"));
+  if (!lockPath) throw new Error("Graph lock not found");
+  const lock = JSON.parse(await readFile(lockPath, "utf8")) as {
+    canonical: { nodes: Array<{ name: string; sourceHash: string }> };
+  };
+  const node = lock.canonical.nodes.find((candidate) => candidate.name === packageName);
+  if (!node) throw new Error(`Locked package not found: ${packageName}`);
+  return node.sourceHash;
+}
+
+async function filesBelow(root: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await filesBelow(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
 }
 
 function manifestEntry(manifest: TestManifest, path: string): TestManifestEntry {

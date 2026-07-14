@@ -86,6 +86,50 @@ describe("OpenPack phase C", () => {
     expect(formatGraphPlan(result)).toContain(`INCLUDE ${rootNode!.id} <- ${coreNode!.id}:fragments/risk.md via core`);
   });
 
+  it("keeps dependency fragments raw until a parent recursively consumes them", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-nested-target-");
+    const app = join(workspace, "app");
+    const overlay = join(workspace, "overlay");
+    const core = join(workspace, "core");
+
+    await writeText(join(app, "skills", "demo", "SKILL.md"), `---\nname: demo\ndescription: Fixture skill for tests.\n---\n\n<!-- openpack:include overlay:fragments/base.md -->\n`);
+    await writeText(join(overlay, "fragments", "base.md"), "Overlay\n<!-- openpack:include core:fragments/base.md -->\n<!-- openpack:include fragments/local.md -->\n");
+    await writeText(join(overlay, "fragments", "local.md"), "Local\n");
+    await writeText(join(core, "fragments", "base.md"), "Core\n<!-- openpack:include fragments/policy.md -->\n");
+    await writeText(join(core, "fragments", "policy.md"), "Policy\n");
+    await writeOpenPack(core, {
+      name: "phase-c/nested-core",
+      provides: [{ type: "fragments", path: "fragments" }],
+    });
+    await writeOpenPack(overlay, {
+      name: "phase-c/nested-overlay",
+      requires: { core: { source: "../core" } },
+      provides: [{ type: "fragments", path: "fragments" }],
+    });
+    await writeOpenPack(app, {
+      name: "phase-c/nested-app",
+      requires: { overlay: { source: "../overlay" } },
+      provides: [{ type: "skills", path: "skills" }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "app", source: app, select: ["skills/demo"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-c-nested",
+      yes: true,
+    });
+    const skill = result.bundle.artifacts.find((artifact) => artifact.type === "skills" && artifact.name === "demo");
+    const content = await readFile(join(skill?.stagedPath ?? "", "SKILL.md"), "utf8");
+
+    expect(content).toContain("Overlay");
+    expect(content).toContain("Local");
+    expect(content).toContain("Core");
+    expect(content).toContain("Policy");
+  });
+
   it("does not fall back from include aliases to local names", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-c-shadow-target-");

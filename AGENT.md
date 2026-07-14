@@ -9,7 +9,7 @@ commands, subagents, MCP, hooks, settings, plugins, or fragments.
 - `add` records desired packages in `.agentwheel/config.json`.
 - `plan` previews what would change.
 - `install` makes the declared state true.
-- `update` refreshes tracking packages, then installs; `update --dependency <name-or-source>` advances one tracking dependency while unrelated graph nodes stay locked.
+- `update` refreshes tracking packages, then installs; a configured package name preserves other roots, while `update --dependency <name-or-source>` advances one tracking dependency and keeps unrelated graph nodes locked.
 - `uninstall` removes managed runtime output and config entries.
 
 Runtime output directories are generated. Do not hand-edit generated skills, runtime config, or

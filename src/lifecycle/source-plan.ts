@@ -333,9 +333,52 @@ function assertFrozenGraph(previousLock: GraphLock | undefined, graph: ResolvedG
       mismatches.push(`${node.id}: sourceHash ${locked.sourceHash} -> ${node.sourceHash}`);
     }
   }
+  const lockedRoots = new Map(previousLock.canonical.roots.map((root) => [root.rootId, root]));
+  const graphRootIds = new Set(graph.roots.map((root) => root.rootId));
+  for (const root of graph.roots) {
+    const locked = lockedRoots.get(root.rootId);
+    if (!locked) {
+      mismatches.push(`${root.rootId}: new graph root`);
+      continue;
+    }
+    if (selectionImportKey(locked.selectionImport) !== selectionImportKey(root.selectionImport)) {
+      mismatches.push(`${root.rootId}: selection import changed`);
+    }
+    if (selectorKey(locked.selected) !== selectorKey(root.selected)) {
+      mismatches.push(`${root.rootId}: selected artifacts changed`);
+    }
+  }
+  for (const root of previousLock.canonical.roots) {
+    if (!graphRootIds.has(root.rootId)) {
+      mismatches.push(`${root.rootId}: removed graph root`);
+    }
+  }
   if (mismatches.length > 0) {
     throw new Error(`${label} would change graph nodes:\n${mismatches.map((item) => `- ${item}`).join("\n")}`);
   }
+}
+
+function selectionImportKey(selection: ResolvedGraph["roots"][number]["selectionImport"] | GraphLock["canonical"]["roots"][number]["selectionImport"]): string {
+  if (!selection) return "";
+  return JSON.stringify({
+    configPath: selection.configPath,
+    configHash: selection.configHash,
+    exportHash: selection.exportHash,
+    exportName: selection.exportName,
+    extends: selection.extends,
+    inherited: sortedUnique(selection.inherited),
+    additions: sortedUnique(selection.additions),
+    exclusions: sortedUnique(selection.exclusions),
+    effective: sortedUnique(selection.effective),
+  });
+}
+
+function sortedUnique(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function selectorKey(selectors: string[]): string {
+  return sortedUnique(selectors).join("\0");
 }
 
 async function assertTrusted(sources: string[], options: GraphSourcePlanOptions): Promise<void> {

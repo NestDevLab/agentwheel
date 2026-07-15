@@ -99,7 +99,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | Command | Meaning |
 |---|---|
 | `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
-| `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing. |
+| `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing; supports `--profile <name>` and `--json`. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
 | `agentwheel update [name]` | Re-resolve tracking packages, then apply. A configured name preserves artifacts owned by other roots; `--dependency <name-or-source>` moves one tracking dependency while unrelated graph nodes stay locked. |
@@ -360,6 +360,85 @@ be deselected:
   "required": true
 }
 ```
+
+### Project-owned selection exports
+
+Workspace configuration `schemaVersion: 2` can export named artifact selections. This is useful
+when a project owns its content and portable local profiles, while a fleet only references the
+project's curated selection for a remote runtime.
+
+```json
+{
+  "schemaVersion": 2,
+  "exports": {
+    "selections": {
+      "default": {
+        "select": ["skills/project-start", "skills/project-checkin"]
+      },
+      "remote": {
+        "extends": "default",
+        "add": ["skills/remote-guard"],
+        "exclude": ["skills/project-checkin"]
+      }
+    }
+  },
+  "packages": [
+    {
+      "name": "project-workspace",
+      "source": ".",
+      "driver": "local",
+      "adapter": "copilot",
+      "mode": "pinned",
+      "selection": { "export": "default" }
+    }
+  ],
+  "agents": {
+    "mac-copilot": { "adapter": "copilot", "root": ".", "installationType": "local" }
+  },
+  "profiles": {
+    "local-mac": { "runtimes": [{ "agent": "mac-copilot" }] }
+  }
+}
+```
+
+The import is data-only: Agentwheel resolves the package first, then reads only
+`exports.selections` from that resolved source's `.agentwheel/config.json`. It never imports the
+source project's agents, profiles, SSH fields, adapter modules, trust policy, or other workspace
+settings. Initial support is intentionally limited to `local` and `git` sources, so a Git import
+uses the same immutable checkout as its artifacts.
+
+A consuming fleet can reuse that selection without inheriting the project's runtime policy:
+
+```json
+{
+  "schemaVersion": 2,
+  "packages": [
+    {
+      "name": "project-workspace",
+      "source": "/workspace/project",
+      "driver": "local",
+      "adapter": "hermes",
+      "mode": "pinned",
+      "selection": {
+        "export": "remote",
+        "add": ["skills/fleet-only-check"],
+        "exclude": ["skills/remote-guard"]
+      }
+    }
+  ]
+}
+```
+
+Resolution order is: exported base selection, each exported `extends` step, importer `add`, then
+importer `exclude`; exclusion wins. Required artifacts remain selected. A package may use either
+`selection` or `select`/legacy `skills`, never both, and CLI `--select`/`--skill` cannot override an
+imported selection.
+
+Plans print `IMPORT` and `SELECT` audit lines with the source, export catalog hash, requested
+export, extension chain, additions, exclusions, and effective selectors. `agentwheel plan --profile
+local-mac`, `agentwheel install --profile local-mac --dry-run`, and `--json` expose the same audit
+data. The export catalog and resolved selection are recorded in graph locks, so `--frozen-lock`
+rejects config-only selection changes.
 
 Package authors can also declare suggested companion packages. Suggestions are not installed by
 default; users opt in with `--with-suggestions` for all suggestions relevant to selected artifacts,

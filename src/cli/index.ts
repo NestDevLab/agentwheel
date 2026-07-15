@@ -15,7 +15,7 @@ import {
 } from "../model/adapter.js";
 import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
-import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan } from "./format.js";
+import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport } from "./format.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -174,6 +174,7 @@ program
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
+  .option("--profile <name>", "workspace runtime profile")
   .option("--mode <mode>", "pinned or tracking")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -190,6 +191,7 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("--json", "print machine-readable graph plan", false)
   .action(async (source, options) => {
     await runInstallCommand(source, { ...options, dryRun: true }, { apply: false });
   });
@@ -228,6 +230,7 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("--json", "print machine-readable graph plan", false)
   .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
   .action(async (source, options) => {
     await runInstallCommand(source, options, { apply: !options.dryRun });
@@ -813,16 +816,32 @@ async function runInstallCommand(
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
+    if (normalizedOptions.json) {
+      console.log(JSON.stringify({
+        profile: options.profile,
+        results: results.map((result) => ({
+          runtime: result.runtime,
+          targetRoot: result.targetRoot,
+          transport: result.transport,
+          packageName: result.packageName,
+          graphPlan: graphPlanReport(result.graphPlan),
+        })),
+      }, null, 2));
+    } else {
+      for (const result of results) {
+        console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        console.log(formatGraphPlan(result.graphPlan));
+      }
+    }
     for (const result of results) {
-      console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
-      console.log(formatPlan(result.plan));
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    if (behavior.apply) console.log("Applied.");
+    if (behavior.apply && !normalizedOptions.json) console.log("Applied.");
     return;
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
+  const jsonReports: unknown[] = [];
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -846,7 +865,8 @@ async function runInstallCommand(
     }
 
     for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage }, { mode: "install" })) {
-      console.log(formatGraphPlan(result));
+      if (normalizedOptions.json) jsonReports.push(graphPlanReport(result));
+      else console.log(formatGraphPlan(result));
       if (behavior.apply) {
         await applyCombinedInstallPlan(result.plan, {
           executePlugins: targetOptions.executePlugins,
@@ -854,7 +874,7 @@ async function runInstallCommand(
           graphLockDigest: result.graphLockDigest,
           graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
         });
-        console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (!normalizedOptions.json) console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
@@ -863,6 +883,9 @@ async function runInstallCommand(
     if (behavior.apply && extraPackage && !targetOptions.onlySource) {
       await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), extraPackage));
     }
+  }
+  if (normalizedOptions.json) {
+    console.log(JSON.stringify(jsonReports.length === 1 ? jsonReports[0] : { results: jsonReports }, null, 2));
   }
 }
 
@@ -1085,6 +1108,7 @@ function targetKeyForTarget(target: RuntimeTarget, adapterName?: string): string
 
 interface GraphCliOptions {
   dryRun?: boolean;
+  json?: boolean;
   executePlugins?: boolean;
   allowAdapterCode?: boolean;
   adapterConfig?: string;
@@ -1209,7 +1233,7 @@ async function buildGraphPlansForTarget(
   }
 
   if (groups.size === 0) {
-    console.log(`No packages configured at ${target.workspaceRoot}.`);
+    if (!options.json) console.log(`No packages configured at ${target.workspaceRoot}.`);
     return [];
   }
 
@@ -1227,12 +1251,16 @@ async function buildGraphPlansForTarget(
           && pkg.mode === "tracking"
           && (!updateScope || updateScope.has(pkg.name) || updateScope.has(pkg.source));
         const packageIsScoped = scopedRootId ? pkg.name === scopedRootId || pkg.source === targetOptions.scope : true;
+        if (pkg.selection && selectedArtifacts && packageIsScoped) {
+          throw new Error(`--select/--skill cannot override imported selection for configured package '${pkg.name}'.`);
+        }
         return {
           rootId: pkg.name,
           source: pkg.source,
           mode: pkg.mode,
           ref: pkg.requestedRef,
-          select: selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
+          select: pkg.selection ? undefined : selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
+          selection: pkg.selection,
           aliases: pkg.aliases,
           overrides: pkg.overrides,
           includeSuggestions: targetOptions.withSuggestions === true || pkg.withSuggestions === true,
@@ -1594,7 +1622,8 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
           source: pkg.source,
           mode: pkg.mode,
           ref: pkg.requestedRef,
-          select: normalizeArtifactSelectors(pkg.select, pkg.skills),
+          select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
+          selection: pkg.selection,
           aliases: pkg.aliases,
           overrides: pkg.overrides,
           includeSuggestions: options.withSuggestions === true || pkg.withSuggestions === true,

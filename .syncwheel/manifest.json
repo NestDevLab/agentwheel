@@ -10,7 +10,9 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "configuration-composition"
+    ]
   },
   "stacks": [
     {
@@ -24,6 +26,18 @@
         "bf3286756f4b04b8f9e9103eb887aa756da8c20b"
       ],
       "meta": {}
+    },
+    {
+      "id": "configuration-composition",
+      "branch": "branch/configuration-composition",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "meta": {
+        "purpose": "Project-owned Agentwheel exported selections and explicit imports"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

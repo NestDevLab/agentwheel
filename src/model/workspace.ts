@@ -6,7 +6,41 @@ import { artifactTypeSchema } from "./artifact.js";
 import { installationTypeSchema } from "./adapter.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
-export const workspacePackageSchema = z.object({
+const artifactSelectorListSchema = z.array(z.string().min(1));
+
+export const workspaceSelectionImportSchema = z.object({
+  export: z.string().min(1),
+  add: artifactSelectorListSchema.optional(),
+  exclude: artifactSelectorListSchema.optional(),
+}).strict();
+
+export const workspaceSelectionExportSchema = z.object({
+  extends: z.string().min(1).optional(),
+  select: artifactSelectorListSchema.optional(),
+  add: artifactSelectorListSchema.optional(),
+  exclude: artifactSelectorListSchema.optional(),
+}).strict().superRefine((selection, ctx) => {
+  if (selection.extends && selection.select) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["select"],
+      message: "Selection exports may use either select or extends, not both.",
+    });
+  }
+  if (!selection.extends && !selection.select) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["select"],
+      message: "Selection exports without extends require select.",
+    });
+  }
+});
+
+export const workspaceExportsSchema = z.object({
+  selections: z.record(z.string().min(1), workspaceSelectionExportSchema).default({}),
+}).strict();
+
+const workspacePackageBaseSchema = z.object({
   name: z.string().min(1),
   source: z.string().min(1),
   driver: z.enum(["local", "git", "skillkit", "vercel-skills", "mcp-registry", "clawhub"]).default("local"),
@@ -23,6 +57,22 @@ export const workspacePackageSchema = z.object({
   suggestions: z.array(z.string().min(1)).optional(),
   aliases: z.record(z.string(), z.string().min(1)).optional(),
   overrides: z.array(z.string().min(1)).optional(),
+});
+
+export const workspacePackageSchema = workspacePackageBaseSchema.extend({
+  selection: workspaceSelectionImportSchema.optional(),
+}).superRefine((pkg, ctx) => {
+  if (pkg.selection && (pkg.select !== undefined || pkg.skills !== undefined)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["selection"],
+      message: "Packages may use either selection or select/skills, not both.",
+    });
+  }
+});
+
+const workspacePackageV1Schema = workspacePackageBaseSchema.extend({
+  selection: z.never().optional(),
 });
 
 export const workspaceProfileRuntimeSchema = z.object({
@@ -73,9 +123,7 @@ export const workspaceAgentSchema = z.object({
   }
 });
 
-export const workspaceConfigSchema = z.object({
-  schemaVersion: z.literal(1),
-  packages: z.array(workspacePackageSchema).default([]),
+const workspaceConfigBaseSchema = z.object({
   bootstrapSkills: z.boolean().optional(),
   registry: workspaceRegistrySchema,
   trust: workspaceTrustSchema,
@@ -83,7 +131,27 @@ export const workspaceConfigSchema = z.object({
   agents: z.record(z.string(), workspaceAgentSchema).default({}),
 });
 
+const workspaceConfigV1Schema = workspaceConfigBaseSchema.extend({
+  schemaVersion: z.literal(1),
+  packages: z.array(workspacePackageV1Schema).default([]),
+  exports: z.never().optional(),
+});
+
+const workspaceConfigV2Schema = workspaceConfigBaseSchema.extend({
+  schemaVersion: z.literal(2),
+  packages: z.array(workspacePackageSchema).default([]),
+  exports: workspaceExportsSchema.default({ selections: {} }),
+});
+
+export const workspaceConfigSchema = z.discriminatedUnion("schemaVersion", [
+  workspaceConfigV1Schema,
+  workspaceConfigV2Schema,
+]);
+
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
+export type WorkspaceSelectionImport = z.infer<typeof workspaceSelectionImportSchema>;
+export type WorkspaceSelectionExport = z.infer<typeof workspaceSelectionExportSchema>;
+export type WorkspaceExports = z.infer<typeof workspaceExportsSchema>;
 export type WorkspaceTrust = z.infer<typeof workspaceTrustSchema>;
 export type WorkspaceConfigInput = z.input<typeof workspaceConfigSchema>;
 export type WorkspaceProfileRuntime = z.infer<typeof workspaceProfileRuntimeSchema>;
@@ -109,7 +177,7 @@ export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePack
   const packages = parsed.packages.filter((candidate) => candidate.name !== entry.name);
   packages.push(entry);
   packages.sort((a, b) => a.name.localeCompare(b.name));
-  return { schemaVersion: 1, packages, bootstrapSkills: parsed.bootstrapSkills, registry: parsed.registry ?? {}, trust: parsed.trust ?? {}, profiles: parsed.profiles ?? {}, agents: parsed.agents ?? {} };
+  return workspaceConfigSchema.parse({ ...parsed, packages });
 }
 
 export interface WorkspaceMergeOptions {
@@ -137,8 +205,14 @@ export async function readMergedWorkspaceConfig(projectRoot: string, options: Wo
 }
 
 export function mergeWorkspaceConfig(global: WorkspaceConfig, project: WorkspaceConfig): WorkspaceConfig {
+  const schemaVersion = global.schemaVersion === 2 || project.schemaVersion === 2 ? 2 : 1;
+  const exports = project.schemaVersion === 2
+    ? project.exports
+    : global.schemaVersion === 2
+      ? global.exports
+      : undefined;
   return workspaceConfigSchema.parse({
-    schemaVersion: 1,
+    schemaVersion,
     packages: project.packages.length > 0 ? project.packages : global.packages,
     bootstrapSkills: project.bootstrapSkills ?? global.bootstrapSkills,
     registry: {
@@ -150,6 +224,7 @@ export function mergeWorkspaceConfig(global: WorkspaceConfig, project: Workspace
     trust: mergeWorkspaceTrust(global.trust, project.trust),
     profiles: { ...global.profiles, ...project.profiles },
     agents: { ...global.agents, ...project.agents },
+    ...(exports ? { exports } : {}),
   });
 }
 

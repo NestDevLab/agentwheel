@@ -29,6 +29,17 @@ export const graphLockRootSchema = z.object({
   selected: z.array(z.string().min(1)),
   aliases: z.record(z.string(), z.string().min(1)).optional(),
   overrides: z.array(z.string().min(1)).optional(),
+  selectionImport: z.object({
+    configPath: z.string().min(1),
+    configHash: z.string().min(16),
+    exportHash: z.string().min(16),
+    exportName: z.string().min(1),
+    extends: z.array(z.string().min(1)),
+    inherited: z.array(z.string().min(1)),
+    additions: z.array(z.string().min(1)),
+    exclusions: z.array(z.string().min(1)),
+    effective: z.array(z.string().min(1)),
+  }).optional(),
 });
 
 export const graphLockEdgeSchema = z.object({
@@ -112,6 +123,7 @@ export const graphLockSchema = z.object({
 });
 
 export type GraphLockNode = z.infer<typeof graphLockNodeSchema>;
+export type GraphLockSelectionImport = NonNullable<z.infer<typeof graphLockRootSchema>["selectionImport"]>;
 export type GraphLockRoot = z.infer<typeof graphLockRootSchema>;
 export type GraphLockEdge = z.infer<typeof graphLockEdgeSchema>;
 export type GraphLockIncludeEdge = z.infer<typeof graphLockIncludeEdgeSchema>;
@@ -152,6 +164,15 @@ export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
           ...root,
           selected: sortedUnique(root.selected),
           overrides: root.overrides ? sortedUnique(root.overrides) : undefined,
+          selectionImport: root.selectionImport
+            ? {
+                ...root.selectionImport,
+                inherited: sortedUnique(root.selectionImport.inherited),
+                additions: sortedUnique(root.selectionImport.additions),
+                exclusions: sortedUnique(root.selectionImport.exclusions),
+                effective: sortedUnique(root.selectionImport.effective),
+              }
+            : undefined,
         }))
         .sort((a, b) => `${a.rootId}:${a.graphNodeId}`.localeCompare(`${b.rootId}:${b.graphNodeId}`)),
       nodes: [...parsed.canonical.nodes]

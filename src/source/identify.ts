@@ -16,7 +16,7 @@ export async function isExplicitSource(source: string): Promise<boolean> {
   if (source.startsWith("github:") || source.startsWith("git:") || source.startsWith("skillkit:") || source.startsWith("vercel:") || source.startsWith("mcp-registry:") || source.startsWith("clawhub:")) {
     return true;
   }
-  if (source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~/")) {
+  if (source === "." || source === ".." || source.startsWith("./") || source.startsWith("../") || source.startsWith("/") || source.startsWith("~/")) {
     return true;
   }
   return pathExists(resolveLocalPath(source));

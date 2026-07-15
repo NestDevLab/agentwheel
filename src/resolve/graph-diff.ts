@@ -1,13 +1,34 @@
-import type { GraphLock, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockOverride } from "../model/graph-lock.js";
+import type { GraphLock, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockNode, GraphLockOverride, GraphLockRoot } from "../model/graph-lock.js";
 
 export function diffGraphLocks(previous: GraphLock | undefined, next: GraphLock): string[] {
   if (!previous) return [];
   return [
+    ...diffRoots(previous.canonical.roots, next.canonical.roots),
     ...diffNodes(previous.canonical.nodes, next.canonical.nodes),
     ...diffIncludeEdges(previous.canonical.includeEdges, next.canonical.includeEdges),
     ...diffNamespacing(previous.canonical.namespacing, next.canonical.namespacing),
     ...diffOverrides(previous.canonical.overrides, next.canonical.overrides),
   ];
+}
+
+function diffRoots(previous: GraphLockRoot[], next: GraphLockRoot[]): string[] {
+  const previousById = new Map(previous.map((root) => [root.rootId, root]));
+  const nextById = new Map(next.map((root) => [root.rootId, root]));
+  const lines: string[] = [];
+  for (const [rootId, root] of nextById) {
+    const old = previousById.get(rootId);
+    if (!old) {
+      lines.push(`ADDED root ${rootId}`);
+      continue;
+    }
+    if (selectionImportKey(old) !== selectionImportKey(root)) {
+      lines.push(`CHANGED selection import ${rootId}: ${formatSelectionImport(old)} -> ${formatSelectionImport(root)}`);
+    }
+  }
+  for (const rootId of previousById.keys()) {
+    if (!nextById.has(rootId)) lines.push(`REMOVED root ${rootId}`);
+  }
+  return lines.sort((a, b) => a.localeCompare(b));
 }
 
 function diffNodes(previous: GraphLockNode[], next: GraphLockNode[]): string[] {
@@ -135,4 +156,26 @@ function formatOverride(decision: GraphLockOverride): string {
 
 function short(hash: string): string {
   return hash.slice(0, 12);
+}
+
+function selectionImportKey(root: GraphLockRoot): string {
+  const selection = root.selectionImport;
+  if (!selection) return "";
+  return JSON.stringify({
+    configPath: selection.configPath,
+    configHash: selection.configHash,
+    exportHash: selection.exportHash,
+    exportName: selection.exportName,
+    extends: selection.extends,
+    inherited: [...selection.inherited].sort(),
+    additions: [...selection.additions].sort(),
+    exclusions: [...selection.exclusions].sort(),
+    effective: [...selection.effective].sort(),
+  });
+}
+
+function formatSelectionImport(root: GraphLockRoot): string {
+  const selection = root.selectionImport;
+  if (!selection) return "<direct selectors>";
+  return `${selection.exportName} sha256:${short(selection.exportHash)} effective=[${selection.effective.join(",")}]`;
 }

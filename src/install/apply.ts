@@ -26,6 +26,7 @@ import {
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
+import { removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
@@ -236,7 +237,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
     : kept;
-  const preserved = [...preservedKept, ...skipped];
+  const preserved = [...preservedKept, ...skipped].filter((operation) => operation.preserveInManifest !== false);
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   const finalManifest = withManifestRevision({
@@ -467,6 +468,12 @@ async function applyOperation(
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
       await removeManagedInstructionBlock(operation.destPath, selector, transport, managedBlockMutationOptions(operation));
+    } else if (operation.mergeStrategy) {
+      if (operation.mergeCreatedDestination) {
+        await transport.rm(operation.destPath);
+      } else if (operation.mergeRemoval) {
+        await removeMergeWithTransport(operation.destPath, operation.mergeStrategy, operation.mergeRemoval, transport);
+      }
     } else {
       await transport.rm(operation.destPath);
     }
@@ -776,6 +783,8 @@ function manifestEntryForOperation(
     semanticPlugin: operation.semanticPlugin,
     executed: values.executed ?? operation.execute,
     mergeStrategy: operation.mergeStrategy,
+    mergeRemoval: operation.mergeRemoval,
+    mergeCreatedDestination: operation.mergeCreatedDestination,
     mode: operation.mode,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,
@@ -856,6 +865,17 @@ async function mergeWithTransport(
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+async function removeMergeWithTransport(destPath: string, strategy: NonNullable<InstallOperation["mergeStrategy"]>, removal: NonNullable<InstallOperation["mergeRemoval"]>, transport: TargetTransport): Promise<void> {
+  if (transport.kind === "local") { await removeMergeContribution(destPath, strategy, removal); return; }
+  const tempRoot = await mkdtemp(join(tmpdir(), "agentwheel-merge-remove-"));
+  const localDest = join(tempRoot, basename(destPath) || "merged");
+  try {
+    await writeFile(localDest, await transport.readFile(destPath), "utf8");
+    await removeMergeContribution(localDest, strategy, removal);
+    await transport.atomicCopy(localDest, destPath, "file");
+  } finally { await rm(tempRoot, { recursive: true, force: true }); }
 }
 
 async function mergeOpenClawJsonWithTransport(

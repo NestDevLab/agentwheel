@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
-import { applyCombinedInstallPlan, createCombinedInstallPlan, readInstallManifest, type DesiredArtifact } from "../src/install/index.js";
+import { applyCombinedInstallPlan, createCombinedInstallPlan, createOwnershipUninstallPlan, readInstallManifest, uninstall, type DesiredArtifact } from "../src/install/index.js";
 import { mergeYamlFile } from "../src/install/yaml-merge.js";
 import { targetMappingSchema, type AdapterConfig } from "../src/model/adapter.js";
 import type { ArtifactType } from "../src/model/artifact.js";
@@ -113,6 +113,42 @@ describe("YAML deep merge", () => {
     expect(entry?.mergeStrategy).toBe("yaml-deep");
     if (!entry) throw new Error("expected manifest entry");
     expect(manifestEntrySchema.parse(entry).mergeStrategy).toBe("yaml-deep");
+  });
+
+  it("uninstalls an owned YAML MCP contribution without deleting the surrounding config", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const sourcePath = join(sourceRoot, "telegram-hermes.yaml");
+    await writeFile(sourcePath, "mcp_servers:\n  telegram:\n    command: telegram-mcp\n", "utf8");
+    await writeFile(join(targetRoot, "config.yaml"), "identity:\n  name: Hermes\ndelegation:\n  enabled: true\nmcp_servers:\n  user_server:\n    command: user-mcp\n", "utf8");
+    const adapter: AdapterConfig = { name: "yaml-mcp-runtime", targets: { mcp: { local: targetMappingSchema.parse({ enabled: true, dest: "config.yaml", merge: "yaml-deep" }) } } };
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([await desiredArtifact("mcp", "telegram-hermes.yaml", sourcePath)], adapter, targetRoot));
+    const manifest = await readInstallManifest(targetRoot, adapter.name);
+    if (!manifest) throw new Error("expected install manifest");
+    const uninstallPlan = await createOwnershipUninstallPlan(manifest, [], adapter);
+    expect(uninstallPlan.operations).toMatchObject([{ action: "remove", mergeStrategy: "yaml-deep", mergeRemoval: { mcp_servers: { telegram: { command: "telegram-mcp" } } } }]);
+    expect(uninstallPlan.operations[0]?.reason).toBe("remove managed merge contribution; preserving merge destination");
+    await uninstall(uninstallPlan);
+    expect(parse(await readFile(join(targetRoot, "config.yaml"), "utf8"))).toEqual({ identity: { name: "Hermes" }, delegation: { enabled: true }, mcp_servers: { user_server: { command: "user-mcp" } } });
+    expect(await readInstallManifest(targetRoot, adapter.name)).toBeUndefined();
+  });
+
+  it("keeps legacy merge destinations when the manifest has no removal metadata", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const sourcePath = join(sourceRoot, "telegram-hermes.yaml");
+    await writeFile(sourcePath, "mcp_servers:\n  telegram:\n    command: telegram-mcp\n", "utf8");
+    await writeFile(join(targetRoot, "config.yaml"), "delegation:\n  enabled: true\n", "utf8");
+    const adapter: AdapterConfig = { name: "yaml-legacy-runtime", targets: { mcp: { local: targetMappingSchema.parse({ enabled: true, dest: "config.yaml", merge: "yaml-deep" }) } } };
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([await desiredArtifact("mcp", "telegram-hermes.yaml", sourcePath)], adapter, targetRoot));
+    const manifest = await readInstallManifest(targetRoot, adapter.name);
+    if (!manifest) throw new Error("expected install manifest");
+    const legacyManifest = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+    delete legacyManifest.entries[0]?.mergeRemoval;
+    const uninstallPlan = await createOwnershipUninstallPlan(legacyManifest, [], adapter);
+    expect(uninstallPlan.operations).toMatchObject([{ action: "keep", reason: "legacy merge ownership is incomplete; preserving destination and releasing management" }]);
+    await uninstall(uninstallPlan);
+    expect(await readFile(join(targetRoot, "config.yaml"), "utf8")).toContain("telegram-mcp");
   });
 
   it("accepts forward-looking plugin and managed-block schema values", () => {

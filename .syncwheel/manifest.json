@@ -38,6 +38,20 @@
       "meta": {
         "purpose": "Project-owned Agentwheel exported selections and explicit imports"
       }
+    },
+    {
+      "id": "security-merge-uninstall",
+      "branch": "pr/security-merge-uninstall",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "41a18b2b9c94e58e6eaa1dc12feb8c2e0a48e824"
+      ],
+      "meta": {
+        "purpose": "Prevent merge uninstall from deleting user configuration"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

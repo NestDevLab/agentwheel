@@ -32,6 +32,7 @@ import {
   type ManagedInstructionBlockMode,
 } from "./instructions-block.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
+import { mergeRemovalForInstall, type MergeRemoval } from "./merge-removal.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
@@ -54,6 +55,8 @@ export interface InstallOperation {
   semanticPlugin?: SemanticPluginSpec;
   execute?: boolean;
   mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
+  mergeRemoval?: MergeRemoval;
+  mergeCreatedDestination?: boolean;
   mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
@@ -236,17 +239,18 @@ async function createPlanFromOperations(
     if (op.mergeStrategy) {
       const existing = manifestByPath.get(op.relativeDestPath);
       const exists = await transport.pathExists(op.destPath);
+      const mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, exists ? await transport.readFile(op.destPath) : undefined);
       if (!exists) {
-        operations.push({ ...op, action: "create", reason: "merge destination missing" });
+        operations.push({ ...op, action: "create", mergeRemoval, mergeCreatedDestination: true, reason: "merge destination missing" });
         continue;
       }
       const currentHash = await transport.hashPath(op.destPath);
       if (existing && existing.sourceHash === op.desiredHash) {
         operations.push(options.forceDrift
-          ? { ...op, action: "update", currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }
-          : { ...op, action: "skip", currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
+          ? { ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing.mergeCreatedDestination, currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }
+          : { ...op, action: "skip", mergeRemoval: existing.mergeRemoval, mergeCreatedDestination: existing.mergeCreatedDestination, currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
-        operations.push({ ...op, action: "update", currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
+        operations.push({ ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing?.mergeCreatedDestination, currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
       }
       continue;
     }
@@ -370,7 +374,7 @@ async function createPlanFromOperations(
         relativeDestPath: entry.path,
         currentHash,
         manifestHash: entry.hash,
-        reason: "artifact removed from source",
+        reason: staleRemovalReason(entry),
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
@@ -773,7 +777,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
 
 function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
 > {
   if ("owners" in entry) {
     return {
@@ -784,6 +788,8 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
       owners: entry.owners,
       workspaceOwner: entry.workspaceOwner,
       graphLockDigest: entry.graphLockDigest,
+      mergeRemoval: entry.mergeRemoval,
+      mergeCreatedDestination: entry.mergeCreatedDestination,
     };
   }
   return {
@@ -829,6 +835,13 @@ function keepForeignManifestEntryOperation(
 
 function normalizeOperationOwners(op: InstallOperation): string[] {
   return normalizeOwners(op.owners ?? [op.packageName ?? op.artifactName]);
+}
+
+function staleRemovalReason(entry: PlanningManifestEntry): string {
+  if (!entry.mergeStrategy) return "artifact removed from source";
+  return "mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true
+    ? "remove entire file created by Agentwheel as merge destination"
+    : "remove managed merge contribution; preserving merge destination";
 }
 
 function isGuardedMergeTarget(type: ArtifactType): boolean {

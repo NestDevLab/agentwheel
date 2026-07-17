@@ -105,7 +105,9 @@ function isBareRegistryName(source: string): boolean {
 }
 
 function isLocalSource(source: string): boolean {
-  return source === "~"
+  return source === "."
+    || source === ".."
+    || source === "~"
     || source.startsWith("~/")
     || source.startsWith("./")
     || source.startsWith("../")

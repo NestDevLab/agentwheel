@@ -3,7 +3,7 @@ import { resolveAdapter } from "../adapters/resolve.js";
 import { defaultInstallationType, installRootForAdapterInstallationType, resolveInstallationTypeForAdapter } from "../model/adapter.js";
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
-import { createGraphSourcePlan } from "./source-plan.js";
+import { createGraphSourcePlan, type GraphSourcePlanResult } from "./source-plan.js";
 import { readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
@@ -46,6 +46,7 @@ export interface ProfileSyncResult {
   transport: TransportKind;
   packageName: string;
   plan: InstallPlan;
+  graphPlan: GraphSourcePlanResult;
 }
 
 export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileSyncResult[]> {
@@ -63,6 +64,10 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   }
 
   const results: ProfileSyncResult[] = [];
+  const selected = normalizeArtifactSelectors(options.select, options.skills);
+  if (selected && packages.some((pkg) => pkg.selection)) {
+    throw new Error("--select/--skill cannot be combined with a package selection import.");
+  }
   for (const runtime of profile.runtimes) {
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType);
     const transport = transportForTarget(target);
@@ -76,14 +81,14 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     });
     const installationType = target.installationType ?? defaultInstallationType;
     resolveInstallationTypeForAdapter(adapter, installationType);
-    const selected = normalizeArtifactSelectors(options.select, options.skills);
     const graphPlan = await createGraphSourcePlan({
       roots: packages.map((pkg) => ({
         rootId: pkg.name,
         source: pkg.source,
         mode: options.mode ?? pkg.mode,
         ref: pkg.requestedRef,
-        select: selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+        select: pkg.selection ? undefined : selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
+        selection: pkg.selection,
         aliases: pkg.aliases,
         overrides: pkg.overrides,
         includeSuggestions: options.includeSuggestions === true || pkg.withSuggestions === true,
@@ -128,6 +133,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         transport: transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
+        graphPlan,
       });
       if (!options.dryRun) {
         await applyCombinedInstallPlan(graphPlan.plan, {

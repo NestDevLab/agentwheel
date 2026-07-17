@@ -14,6 +14,8 @@ import { getSourceDriver } from "../source/index.js";
 import type { ResolvedSource, SourceDriver } from "../source/types.js";
 import { hashPath } from "../utils/fs.js";
 import { artifactSelectorKey, normalizeArtifactSelectors } from "../model/selection.js";
+import type { WorkspaceSelectionImport } from "../model/workspace.js";
+import { resolveSelectionImport, type ResolvedSelectionImport } from "../model/workspace-composition.js";
 import { normalizeDependencySource, type NormalizedDependencySource } from "./identity.js";
 import { satisfiesVersionRange } from "./semver.js";
 
@@ -21,6 +23,7 @@ export interface GraphRootRequest {
   rootId?: string;
   source: string;
   select?: string[];
+  selection?: WorkspaceSelectionImport;
   mode?: "pinned" | "tracking";
   ref?: string;
   aliases?: Record<string, string>;
@@ -55,6 +58,7 @@ export interface ResolvedGraphRoot {
   graphNodeId: GraphNodeId;
   mode: "pinned" | "tracking";
   selected: string[];
+  selectionImport?: ResolvedSelectionImport;
   aliases?: Record<string, string>;
   overrides?: string[];
 }
@@ -79,6 +83,7 @@ export interface ResolvedGraph {
 interface Requirement {
   source: string;
   select?: string[];
+  selection?: WorkspaceSelectionImport;
   mode: "pinned" | "tracking";
   ref?: string;
   declaringPackageRoot: string;
@@ -159,6 +164,7 @@ export async function resolveDependencyGraph(
     return {
       source: root.source,
       select: root.select,
+      selection: root.selection,
       mode: root.mode ?? "pinned",
       ref: root.ref,
       declaringPackageRoot: options.workspaceRoot,
@@ -225,6 +231,7 @@ export function createGraphLock(
     selected: root.selected,
     aliases: root.aliases,
     overrides: root.overrides,
+    selectionImport: root.selectionImport,
   }));
 
   return {
@@ -299,7 +306,16 @@ async function processRequirement(
     }
     const nodeKey = `${normalized.normalizedSource}\0${fetched.name}`;
 
-    const selected = computeSelectedSelectors(fetched.artifacts, requirement.select, requirement.depth === 0, requirement.chain);
+    let selectionImport = requirement.selection
+      ? await resolveSelectionImport(fetched.resolved.resolvedPath, fetched.resolved.driver, requirement.selection)
+      : undefined;
+    const selected = computeSelectedSelectors(
+      fetched.artifacts,
+      selectionImport?.effective ?? requirement.select,
+      requirement.depth === 0,
+      requirement.chain,
+    );
+    if (selectionImport) selectionImport = { ...selectionImport, effective: selected };
     let state = nodesByKey.get(nodeKey);
     if (!state) {
       const id = graphNodeId(fetched.name, fetched.version, normalized.normalizedSource, fetched.resolved.resolvedCommit, fetched.sourceHash);
@@ -337,7 +353,7 @@ async function processRequirement(
     }
 
     state.depth = Math.min(state.depth, requirement.depth);
-    state.fullPackageSelected = state.fullPackageSelected || requirement.select === undefined;
+    state.fullPackageSelected = state.fullPackageSelected || (requirement.select === undefined && !requirement.selection);
     state.includeSuggestions = state.includeSuggestions || requirement.includeSuggestions === true;
     state.updateClosure = state.updateClosure || requirement.updateClosure === true;
     for (const alias of requirement.suggestionAliases ?? []) state.suggestionAliases.add(alias);
@@ -355,6 +371,7 @@ async function processRequirement(
         selected: state.node.selected,
         aliases: requirement.aliases,
         overrides: requirement.overrides,
+        selectionImport,
       });
     }
 
@@ -1066,7 +1083,7 @@ async function withCachePathLock<T>(path: string, fn: () => Promise<T>): Promise
 }
 
 function computeSelectedSelectors(artifacts: Artifact[], select: string[] | undefined, isRoot: boolean, chain: string[]): string[] {
-  if (isRoot && !select?.length) {
+  if (isRoot && select === undefined) {
     return sortedUnique(artifacts.map(artifactSelectorKey));
   }
 

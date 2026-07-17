@@ -70,6 +70,7 @@ function sortedPlanOperations(operations: InstallPlan["operations"]): InstallPla
 export function formatGraphPlan(result: GraphSourcePlanResult): string {
   const lines = [
     ...formatDependencyTree(result.graph),
+    ...formatSelectionImports(result.graph),
     `LOCK    ${result.graphLockPath} (${result.graphLockDigest})`,
   ];
   if (result.recoveredPendingApply) {
@@ -100,6 +101,55 @@ export function formatGraphPlan(result: GraphSourcePlanResult): string {
   return lines.join("\n");
 }
 
+export function graphPlanReport(result: GraphSourcePlanResult) {
+  return {
+    target: {
+      adapter: result.plan.adapter,
+      installationType: result.plan.installationType,
+      targetRoot: result.plan.targetRoot,
+      targetFingerprint: result.targetFingerprint,
+    },
+    lock: {
+      path: result.graphLockPath,
+      digest: result.graphLockDigest,
+    },
+    roots: result.graph.roots.map((root) => ({
+      rootId: root.rootId,
+      source: root.source,
+      normalizedSource: root.normalizedSource,
+      graphNodeId: root.graphNodeId,
+      mode: root.mode,
+      selected: root.selected,
+      selectionImport: root.selectionImport,
+    })),
+    nodes: result.graph.nodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      version: node.version,
+      source: node.normalizedSource,
+      selected: node.selected,
+      requiredBy: node.requiredBy,
+    })),
+    warnings: result.warnings,
+    graphDiff: result.graphDiff,
+    plan: {
+      hasBlockingChanges: result.plan.hasBlockingChanges,
+      summary: summarizePlan(result.plan),
+      operations: sortedPlanOperations(result.plan.operations).map((operation) => ({
+        action: operation.action,
+        channel: operation.channel,
+        artifactType: operation.artifactType,
+        artifactName: operation.artifactName,
+        relativeDestPath: operation.relativeDestPath,
+        logicalSelector: operation.logicalSelector,
+        graphNodeId: operation.graphNodeId,
+        reason: operation.reason,
+        blockedReason: operation.blockedReason,
+      })),
+    },
+  };
+}
+
 export function formatDependencyTree(graph: ResolvedGraph): string[] {
   const lines = ["Dependency graph"];
   for (const raw of graph.rawNodes.sort((a, b) => a.depth - b.depth || a.node.id.localeCompare(b.node.id))) {
@@ -115,6 +165,25 @@ export function formatDependencyTree(graph: ResolvedGraph): string[] {
   return lines;
 }
 
+function formatSelectionImports(graph: ResolvedGraph): string[] {
+  const lines: string[] = [];
+  for (const root of graph.roots) {
+    const selection = root.selectionImport;
+    if (!selection) continue;
+    lines.push(
+      `IMPORT  root=${root.rootId} source=${root.normalizedSource} config=${selection.configPath} `
+      + `configSha256=${selection.configHash} export=${selection.exportName} exportSha256=${selection.exportHash} `
+      + `extends=[${selection.extends.join(",")}]`,
+    );
+    lines.push(
+      `SELECT  root=${root.rootId} inherited=[${selection.inherited.join(",")}] `
+      + `add=[${selection.additions.join(",")}] exclude=[${selection.exclusions.join(",")}] `
+      + `effective=[${selection.effective.join(",")}]`,
+    );
+  }
+  return lines;
+}
+
 export function formatLockDependencyTree(lock: GraphLock): string {
   const depths = lockNodeDepths(lock);
   const lines = ["Dependency graph"];
@@ -123,6 +192,20 @@ export function formatLockDependencyTree(lock: GraphLock): string {
     const selected = node.selected.length > 0 ? formatSelected(node.selected, node.selectionReasons) : "<none>";
     const requiredBy = node.requiredBy.length > 0 ? node.requiredBy.join(",") : "<root>";
     lines.push(`${label.padEnd(7)} ${node.id} source=${node.normalizedSource} selected=[${selected}] requiredBy=[${requiredBy}]`);
+  }
+  for (const root of lock.canonical.roots) {
+    const selection = root.selectionImport;
+    if (!selection) continue;
+    lines.push(
+      `IMPORT  root=${root.rootId} source=${root.normalizedSource} config=${selection.configPath} `
+      + `configSha256=${selection.configHash} export=${selection.exportName} exportSha256=${selection.exportHash} `
+      + `extends=[${selection.extends.join(",")}]`,
+    );
+    lines.push(
+      `SELECT  root=${root.rootId} inherited=[${selection.inherited.join(",")}] `
+      + `add=[${selection.additions.join(",")}] exclude=[${selection.exclusions.join(",")}] `
+      + `effective=[${selection.effective.join(",")}]`,
+    );
   }
   for (const edge of lock.canonical.edges) {
     const selected = edge.selected.length > 0 ? edge.selected.join(",") : "<none>";

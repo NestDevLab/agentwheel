@@ -6,6 +6,35 @@ agentwheel can run as a local control plane for several agent runtimes. Define n
 
 Project config overrides global config by agent or profile name.
 
+## Portable project selections
+
+Keep a project's local runtime profiles in that project when they need to work without a fleet
+control plane. A `schemaVersion: 2` project config can export a named selection under
+`exports.selections`; a fleet package then imports just that data from the already resolved package
+source.
+
+```json
+{
+  "schemaVersion": 2,
+  "packages": [
+    {
+      "name": "project-workspace",
+      "source": "/workspace/project",
+      "driver": "local",
+      "adapter": "hermes",
+      "mode": "pinned",
+      "selection": { "export": "remote" }
+    }
+  ]
+}
+```
+
+This does not merge the project config into the fleet config. Fleet-owned agents, SSH hosts,
+profiles, adapter settings, and trust policy stay fleet-owned; only the source project's validated
+selection export is used. `selection` is supported for `local` and `git` sources and is locked with
+the resolved source snapshot. Use `agentwheel plan --profile <name> --json` or `agentwheel install
+--profile <name> --dry-run` to review the source, export hash, chain, and effective selection.
+
 ## Agents
 
 Local agents write to a local runtime root:

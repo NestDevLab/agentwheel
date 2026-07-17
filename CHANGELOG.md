@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed merge-target uninstall so it removes only the managed JSON, YAML, or TOML contribution and preserves pre-existing runtime configuration files. Legacy manifests without merge ownership metadata now preserve the destination rather than deleting it.
 - Fixed recursive cross-package composition so dependency fragments remain raw until a parent artifact consumes them, and made named package updates preserve operations owned by other configured roots.
 - Added `agentwheel update --dependency <name-or-source>` to advance one locked tracking dependency and its required tracking closure without moving unrelated graph nodes.
 

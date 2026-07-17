@@ -43,6 +43,8 @@ export async function createUninstallPlan(
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
+    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && entry.mergeRemoval !== undefined) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
+      operations.push(legacyMergeKeepOperation(entry, destPath));
     } else {
       operations.push({
         action: "remove",
@@ -54,7 +56,7 @@ export async function createUninstallPlan(
         desiredHash: entry.sourceHash,
         currentHash,
         manifestHash: entry.hash,
-        reason: "uninstall managed artifact",
+        reason: removalReason(entry, "uninstall managed artifact"),
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
@@ -154,6 +156,8 @@ export async function createOwnershipUninstallPlan(
         ...operationMetadataFromEntry(entry),
         graphLockDigest: options.graphLockDigest,
       });
+    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && entry.mergeRemoval !== undefined) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
+      operations.push(legacyMergeKeepOperation(entry, destPath));
     } else {
       operations.push({
         action: "remove",
@@ -165,7 +169,7 @@ export async function createOwnershipUninstallPlan(
         desiredHash: entry.sourceHash,
         currentHash,
         manifestHash: entry.hash,
-        reason: "owner set became empty",
+        reason: removalReason(entry, "owner set became empty"),
         channel: entry.channel,
         packageName: entry.packageName,
         semanticCommand: semanticPlugin?.uninstallCommands[0] ?? entry.semanticCommand,
@@ -202,7 +206,7 @@ async function currentEntryHash(entry: ManifestEntry, destPath: string, transpor
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "graphLockDigest"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
 > {
   if ("owners" in entry) {
     return {
@@ -212,6 +216,8 @@ function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: strin
       dependencyRole: entry.dependencyRole,
       owners: ownersOverride ?? entry.owners,
       graphLockDigest: entry.graphLockDigest,
+      mergeRemoval: entry.mergeRemoval,
+      mergeCreatedDestination: entry.mergeCreatedDestination,
     };
   }
   return {
@@ -220,4 +226,23 @@ function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: strin
     dependencyRole: "root",
     owners: ownersOverride?.length ? ownersOverride : [entry.packageName ?? "legacy"],
   };
+}
+
+function legacyMergeKeepOperation(entry: ManifestEntry, destPath: string): InstallOperation {
+  return {
+    action: "keep", artifactType: entry.artifactType, artifactName: entry.artifactName, kind: entry.kind, destPath,
+    relativeDestPath: entry.path, desiredHash: entry.sourceHash, currentHash: entry.hash, manifestHash: entry.hash,
+    reason: "legacy merge ownership is incomplete; preserving destination and releasing management",
+    channel: entry.channel, packageName: entry.packageName, semanticCommand: entry.semanticCommand,
+    semanticPlugin: "semanticPlugin" in entry ? entry.semanticPlugin : undefined, execute: entry.executed,
+    mergeStrategy: entry.mergeStrategy, mode: entry.mode, composedFrom: entry.composedFrom, preserveInManifest: false,
+    ...operationMetadataFromEntry(entry, []),
+  };
+}
+
+function removalReason(entry: ManifestEntry, fallback: string): string {
+  if (!entry.mergeStrategy) return fallback;
+  return "mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true
+    ? "remove entire file created by Agentwheel as merge destination"
+    : "remove managed merge contribution; preserving merge destination";
 }

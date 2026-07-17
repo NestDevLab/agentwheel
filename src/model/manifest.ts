@@ -2,6 +2,12 @@ import { z } from "zod";
 import { artifactFormatSchema, artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 import { defaultInstallationType, installationTypeSchema } from "./adapter.js";
 
+type MergeValue = null | boolean | number | string | MergeValue[] | { [key: string]: MergeValue };
+const mergeValueSchema: z.ZodType<MergeValue> = z.lazy(() => z.union([
+  z.null(), z.boolean(), z.number(), z.string(), z.array(mergeValueSchema), z.record(z.string(), mergeValueSchema),
+]));
+const mergeRemovalSchema: z.ZodType<Record<string, MergeValue>> = z.record(z.string(), mergeValueSchema);
+
 export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
 export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
 export const legacyUnownedWorkspaceOwner = "legacy:unowned";
@@ -31,6 +37,8 @@ export const manifestEntryV1Schema = z.object({
   semanticPlugin: semanticPluginSpecSchema.optional(),
   executed: z.boolean().optional(),
   mergeStrategy: z.enum(["json-deep", "openclaw-json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  mergeRemoval: mergeRemovalSchema.optional(),
+  mergeCreatedDestination: z.boolean().optional(),
   mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });

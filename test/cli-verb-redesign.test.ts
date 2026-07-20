@@ -345,6 +345,54 @@ describe("CLI verb redesign", () => {
     expect(byNormalizedSource.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
   });
 
+  it("preserves unrelated root and subgraph metadata when a scoped root update re-resolves it", async () => {
+    const workspace = await tempRoot();
+    const selected = await gitSkillPackageFixture("selected-root", "selected-skill");
+    const unrelated = await gitSkillPackageFixture("unrelated-root", "unrelated-skill");
+    await addGitSkill(unrelated, "unrelated-extra", "unrelated-extra-v1");
+    await runCli(["add", `git:${selected}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["add", `git:${unrelated}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+
+    const before = await readTestGraphLock(workspace);
+    const unrelatedNode = before.canonical.nodes.find((node) => node.name === "unrelated-root");
+    if (!unrelatedNode) throw new Error("Unrelated node missing from graph lock");
+    const unrelatedRoot = before.canonical.roots.find((root) => root.graphNodeId === unrelatedNode.id);
+    if (!unrelatedRoot) throw new Error("Unrelated root missing from graph lock");
+    const unrelatedMetadata = graphLockSubgraphMetadata(before, unrelatedNode.id, unrelatedRoot.rootId);
+
+    await updateGitSkill(selected, "selected-skill", "selected-v2");
+    await updateGitSkill(unrelated, "unrelated-skill", "unrelated-v2");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as {
+      packages: Array<{ name: string; select?: string[] }>;
+    };
+    const unrelatedConfig = config.packages.find((pkg) => pkg.name === "unrelated-root");
+    if (!unrelatedConfig) throw new Error("Unrelated package missing from config");
+    unrelatedConfig.select = ["skills/unrelated-skill"];
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    const preview = await runCli([
+      "update", "--dependency", "selected-root", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(preview.stdout).toContain("UPDATE   MANAGED  skills/selected-skill");
+    expect(preview.stdout).not.toMatch(/UPDATE\s+MANAGED\s+skills\/unrelated-/);
+    expect(preview.stdout).toContain("Summary: create 0, update 1");
+    expect(preview.stdout).toMatch(/remove 0, keep \d+, drift 0, conflict 0, plugin 0/);
+    expect(preview.stdout.match(/^MOVED node /gm) ?? []).toHaveLength(1);
+    expect(preview.stdout).not.toMatch(/^MOVED node .*unrelated-root/m);
+
+    await runCli([
+      "update", "--dependency", "selected-root", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+    await expect(readFile(join(workspace, ".agents", "skills", "selected-skill", "SKILL.md"), "utf8")).resolves.toContain("selected-v2");
+
+    const after = await readTestGraphLock(workspace);
+    expect(graphLockSubgraphMetadata(after, unrelatedNode.id, unrelatedRoot.rootId)).toEqual(unrelatedMetadata);
+    expect(after.canonical.nodes.find((node) => node.name === "selected-root")?.sourceHash)
+      .not.toBe(before.canonical.nodes.find((node) => node.name === "selected-root")?.sourceHash);
+  });
+
   it("rejects missing and ambiguous dependency update selectors", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("dependency-errors");
@@ -984,6 +1032,17 @@ async function updateGitSkill(root: string, skillName: string, content: string):
   await git(root, ["commit", "-m", content]);
 }
 
+async function addGitSkill(root: string, skillName: string, content: string): Promise<void> {
+  await mkdir(join(root, "skills", skillName), { recursive: true });
+  await writeFile(
+    join(root, "skills", skillName, "SKILL.md"),
+    `---\nname: ${skillName}\ndescription: Fixture skill for tests.\n---\n\n# ${content}\n`,
+    "utf8",
+  );
+  await git(root, ["add", "."]);
+  await git(root, ["commit", "-m", content]);
+}
+
 async function git(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", ["-c", "user.email=test@example.com", "-c", "user.name=Test", ...args], { cwd });
 }
@@ -1030,6 +1089,39 @@ async function lockedRootNormalizedSource(workspace: string, rootId: string): Pr
   const root = lock.canonical.roots.find((candidate) => candidate.rootId === rootId);
   if (!root) throw new Error(`Locked root not found: ${rootId}`);
   return root.normalizedSource;
+}
+
+type TestGraphLock = {
+  canonical: {
+    roots: Array<Record<string, unknown> & { rootId: string; graphNodeId: string }>;
+    nodes: Array<Record<string, unknown> & { id: string; name: string }>;
+    edges: Array<Record<string, unknown> & { from: string; to: string }>;
+    includeEdges: Array<Record<string, unknown> & { fromNodeId: string; toNodeId: string }>;
+    artifacts: Array<Record<string, unknown> & { graphNodeId: string }>;
+    namespacing: Array<Record<string, unknown> & { graphNodeId: string }>;
+    overrides: Array<Record<string, unknown> & { rootId: string; graphNodeId: string; overriddenGraphNodeId: string }>;
+    plainNameIncumbents: Array<Record<string, unknown> & { graphNodeId: string }>;
+  };
+};
+
+async function readTestGraphLock(workspace: string): Promise<TestGraphLock> {
+  const locksRoot = join(workspace, ".agentwheel", "locks");
+  const lockPath = (await filesBelow(locksRoot)).find((path) => path.endsWith(".graph-lock.json"));
+  if (!lockPath) throw new Error("Graph lock not found");
+  return JSON.parse(await readFile(lockPath, "utf8")) as TestGraphLock;
+}
+
+function graphLockSubgraphMetadata(lock: TestGraphLock, nodeId: string, rootId: string): Record<string, unknown> {
+  return {
+    root: lock.canonical.roots.find((root) => root.rootId === rootId),
+    node: lock.canonical.nodes.find((node) => node.id === nodeId),
+    edges: lock.canonical.edges.filter((edge) => edge.from === nodeId || edge.to === nodeId),
+    includeEdges: lock.canonical.includeEdges.filter((edge) => edge.fromNodeId === nodeId || edge.toNodeId === nodeId),
+    artifacts: lock.canonical.artifacts.filter((artifact) => artifact.graphNodeId === nodeId),
+    namespacing: lock.canonical.namespacing.filter((entry) => entry.graphNodeId === nodeId),
+    overrides: lock.canonical.overrides.filter((entry) => entry.rootId === rootId || entry.graphNodeId === nodeId || entry.overriddenGraphNodeId === nodeId),
+    plainNameIncumbents: lock.canonical.plainNameIncumbents.filter((entry) => entry.graphNodeId === nodeId),
+  };
 }
 
 async function filesBelow(root: string): Promise<string[]> {

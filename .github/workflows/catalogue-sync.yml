@@ -1,0 +1,88 @@
+name: Catalogue sync contract
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Dispatch a registry refresh after an approved merge.
+        required: false
+        default: false
+        type: boolean
+      registry-repository:
+        description: Registry repository receiving the refresh event.
+        required: false
+        default: NestDevLab/agentwheel-registry
+        type: string
+    secrets:
+      APP_ID:
+        required: false
+      PRIVATE_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  catalogue-contract:
+    name: catalogue-contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Validate public skills
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d skills
+          mapfile -t skill_files < <(find skills -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print | sort)
+          test "${#skill_files[@]}" -gt 0
+          printf '%s\n' "${skill_files[@]}" | awk -F/ '
+            $2 == "" { exit 1 }
+            { names[$2]++ }
+            END { for (name in names) if (names[name] != 1) exit 1 }
+          '
+          for file in "${skill_files[@]}"; do
+            name="${file#skills/}"
+            name="${name%/SKILL.md}"
+            case "$name" in
+              *[!a-z0-9-]*|'') echo "Invalid public skill name: $name" >&2; exit 1 ;;
+            esac
+            sed -n '1p' "$file" | grep -qx -- '---'
+            sed -n '2,80p' "$file" | grep -Eq '^description:[[:space:]]*[^[:space:]]'
+          done
+
+  dispatch-registry-refresh:
+    if: inputs.publish
+    needs: catalogue-contract
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require App credentials
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+        run: |
+          test -n "$APP_ID"
+          test -n "$PRIVATE_KEY"
+
+      - name: Mint registry token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          owner: NestDevLab
+          repositories: agentwheel-registry
+
+      - name: Dispatch refresh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REGISTRY_REPOSITORY: ${{ inputs.registry-repository }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          gh api --method POST "repos/${REGISTRY_REPOSITORY}/dispatches" \
+            -f event_type=catalogue-sync \
+            -f "client_payload[source_repository]=${SOURCE_REPOSITORY}" \
+            -f "client_payload[source_sha]=${SOURCE_SHA}"

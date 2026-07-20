@@ -117,6 +117,20 @@
       "meta": {
         "purpose": "Clarify external catalogue source trust"
       }
+    },
+    {
+      "id": "catalogue-contract-caller",
+      "branch": "pr/catalogue-contract-caller",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "7f86e7d7733eae74a6362fa71f2fefd7751ac1b1"
+      ],
+      "meta": {
+        "purpose": "Validate and publish Agentwheel skills to the catalogue"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

@@ -1,0 +1,29 @@
+name: Catalogue contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Dispatch a registry refresh after validation.
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - "skills/**"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+
+permissions:
+  contents: read
+
+jobs:
+  catalogue-contract:
+    uses: NestDevLab/agentwheel/.github/workflows/catalogue-sync.yml@0863a649c84b8db85679ab428eea67a1a015b3de
+    with:
+      publish: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    secrets:
+      APP_ID: ${{ secrets.AGENTWHEEL_CATALOGUE_APP_ID }}
+      PRIVATE_KEY: ${{ secrets.AGENTWHEEL_CATALOGUE_PRIVATE_KEY }}

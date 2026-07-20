@@ -103,6 +103,18 @@
       "meta": {
         "purpose": "Automate and enforce public skill catalogue publication"
       }
+    },
+    {
+      "id": "catalogue-source-disclaimer",
+      "branch": "pr/catalogue-source-disclaimer",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "meta": {
+        "purpose": "Clarify external catalogue source trust"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

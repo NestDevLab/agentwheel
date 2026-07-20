@@ -11,46 +11,81 @@
     "base": "origin/main",
     "strategy": "cherry-pick",
     "stacks": [
-      "configuration-composition"
+      "fleet-observability-step1-plan-json",
+      "fleet-observability-step2-renderers",
+      "fleet-observability-serve",
+      "runtime-plugin-reload",
+      "agentwheel-skill-references"
     ]
   },
   "stacks": [
     {
-      "id": "ownership-handoff",
-      "branch": "branch/ownership-handoff",
+      "id": "fleet-observability-step1-plan-json",
+      "branch": "pr/fleet-observability-step1-plan-json",
       "base": "origin/main",
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "bf3286756f4b04b8f9e9103eb887aa756da8c20b"
+        "5fbcb1861c736db133640a3dbcb9cafe96665500"
       ],
-      "meta": {}
+      "meta": {
+        "purpose": "Add plan/install JSON report"
+      }
     },
     {
-      "id": "configuration-composition",
-      "branch": "branch/configuration-composition",
+      "id": "fleet-observability-step2-renderers",
+      "branch": "pr/fleet-observability-step2-renderers",
+      "base": "pr/fleet-observability-step1-plan-json",
+      "target_remote": "origin",
+      "target_branch": "pr/fleet-observability-step1-plan-json",
+      "integration_branch": "main-integration",
+      "commits": [
+        "4a7500bd52a61f67887ab7bd0aea4c6924e1d308"
+      ],
+      "meta": {
+        "purpose": "Add plan report renderers"
+      }
+    },
+    {
+      "id": "fleet-observability-serve",
+      "branch": "pr/fleet-observability-serve",
+      "base": "pr/fleet-observability-step2-renderers",
+      "target_remote": "origin",
+      "target_branch": "pr/fleet-observability-step2-renderers",
+      "integration_branch": "main-integration",
+      "commits": [
+        "80fa71843f0789dc64330a882bcb20ba6666d650"
+      ],
+      "meta": {
+        "purpose": "Add read-only serve dashboard"
+      }
+    },
+    {
+      "id": "runtime-plugin-reload",
+      "branch": "pr/runtime-plugin-reload",
+      "base": "pr/fleet-observability-serve",
+      "target_remote": "origin",
+      "target_branch": "pr/fleet-observability-serve",
+      "integration_branch": "main-integration",
+      "commits": [
+        "37566490931d4c669ed221ee90d19abe3abad108",
+        "887f8b055298c402bf23dd33d8d8cf54afae5672"
+      ],
+      "meta": {
+        "purpose": "Reload configured runtimes after semantic plugin execution"
+      }
+    },
+    {
+      "id": "agentwheel-skill-references",
+      "branch": "pr/agentwheel-skill-references",
       "base": "origin/main",
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [],
       "meta": {
-        "purpose": "Project-owned Agentwheel exported selections and explicit imports"
-      }
-    },
-    {
-      "id": "security-merge-uninstall",
-      "branch": "pr/security-merge-uninstall",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "41a18b2b9c94e58e6eaa1dc12feb8c2e0a48e824"
-      ],
-      "meta": {
-        "purpose": "Prevent merge uninstall from deleting user configuration"
+        "purpose": "Back-port Hermes Agentwheel skill reference documentation"
       }
     }
   ],

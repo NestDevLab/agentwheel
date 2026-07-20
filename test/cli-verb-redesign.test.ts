@@ -345,38 +345,47 @@ describe("CLI verb redesign", () => {
     expect(byNormalizedSource.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
   });
 
-  it("preserves unrelated root and subgraph metadata when a scoped root update re-resolves it", async () => {
+  it("preserves the entire non-selected graph when a scoped root update re-resolves a composed root", async () => {
     const workspace = await tempRoot();
     const selected = await gitSkillPackageFixture("selected-root", "selected-skill");
-    const unrelated = await gitSkillPackageFixture("unrelated-root", "unrelated-skill");
-    await addGitSkill(unrelated, "unrelated-extra", "unrelated-extra-v1");
+    const shared = await skillPackageFixture("shared-root", "shared-v1");
+    const unrelated = await skillPackageFixture("unrelated-root", "unrelated-v1", {
+      requires: { shared: { source: shared, mode: "tracking", select: ["skills/shared-root"] } },
+    });
+    const companion = await skillPackageFixture("companion-root", "companion-v1", {
+      requires: { shared: { source: shared, mode: "tracking", select: ["skills/shared-root"] } },
+    });
+    await addSkillToPackage(unrelated, "unrelated-extra", "unrelated-extra-v1");
     await runCli(["add", `git:${selected}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
-    await runCli(["add", `git:${unrelated}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
-    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", unrelated, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["add", companion, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
 
     const before = await readTestGraphLock(workspace);
-    const unrelatedNode = before.canonical.nodes.find((node) => node.name === "unrelated-root");
-    if (!unrelatedNode) throw new Error("Unrelated node missing from graph lock");
-    const unrelatedRoot = before.canonical.roots.find((root) => root.graphNodeId === unrelatedNode.id);
-    if (!unrelatedRoot) throw new Error("Unrelated root missing from graph lock");
-    const unrelatedMetadata = graphLockSubgraphMetadata(before, unrelatedNode.id, unrelatedRoot.rootId);
+    const sharedNode = before.canonical.nodes.find((node) => node.name === "shared-root");
+    if (!sharedNode) throw new Error("Shared node missing from graph lock");
+    expect(sharedNode.requiredBy).toHaveLength(2);
+    expect(before.canonical.artifacts.find((artifact) => artifact.graphNodeId === sharedNode.id)?.owners).toHaveLength(2);
+    const beforeNonSelected = nonSelectedCanonicalGraph(before, "selected-root");
 
     await updateGitSkill(selected, "selected-skill", "selected-v2");
-    await updateGitSkill(unrelated, "unrelated-skill", "unrelated-v2");
+    await writeSkillPackage(unrelated, "unrelated-root", "unrelated-v2", {
+      requires: { shared: { source: shared, mode: "tracking", select: ["skills/shared-root"] } },
+    });
     const configPath = join(workspace, ".agentwheel", "config.json");
     const config = JSON.parse(await readFile(configPath, "utf8")) as {
       packages: Array<{ name: string; select?: string[] }>;
     };
     const unrelatedConfig = config.packages.find((pkg) => pkg.name === "unrelated-root");
     if (!unrelatedConfig) throw new Error("Unrelated package missing from config");
-    unrelatedConfig.select = ["skills/unrelated-skill"];
+    unrelatedConfig.select = ["skills/unrelated-root", "skills/unrelated-extra"];
     await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
     const preview = await runCli([
       "update", "--dependency", "selected-root", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
     ]);
     expect(preview.stdout).toContain("UPDATE   MANAGED  skills/selected-skill");
-    expect(preview.stdout).not.toMatch(/UPDATE\s+MANAGED\s+skills\/unrelated-/);
+    expect(preview.stdout).not.toMatch(/UPDATE\s+MANAGED\s+skills\/(?:unrelated|companion|shared)-/);
     expect(preview.stdout).toContain("Summary: create 0, update 1");
     expect(preview.stdout).toMatch(/remove 0, keep \d+, drift 0, conflict 0, plugin 0/);
     expect(preview.stdout.match(/^MOVED node /gm) ?? []).toHaveLength(1);
@@ -388,7 +397,7 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(workspace, ".agents", "skills", "selected-skill", "SKILL.md"), "utf8")).resolves.toContain("selected-v2");
 
     const after = await readTestGraphLock(workspace);
-    expect(graphLockSubgraphMetadata(after, unrelatedNode.id, unrelatedRoot.rootId)).toEqual(unrelatedMetadata);
+    expect(nonSelectedCanonicalGraph(after, "selected-root")).toEqual(beforeNonSelected);
     expect(after.canonical.nodes.find((node) => node.name === "selected-root")?.sourceHash)
       .not.toBe(before.canonical.nodes.find((node) => node.name === "selected-root")?.sourceHash);
   });
@@ -1032,15 +1041,13 @@ async function updateGitSkill(root: string, skillName: string, content: string):
   await git(root, ["commit", "-m", content]);
 }
 
-async function addGitSkill(root: string, skillName: string, content: string): Promise<void> {
+async function addSkillToPackage(root: string, skillName: string, content: string): Promise<void> {
   await mkdir(join(root, "skills", skillName), { recursive: true });
   await writeFile(
     join(root, "skills", skillName, "SKILL.md"),
     `---\nname: ${skillName}\ndescription: Fixture skill for tests.\n---\n\n# ${content}\n`,
     "utf8",
   );
-  await git(root, ["add", "."]);
-  await git(root, ["commit", "-m", content]);
 }
 
 async function git(cwd: string, args: string[]): Promise<void> {
@@ -1093,11 +1100,12 @@ async function lockedRootNormalizedSource(workspace: string, rootId: string): Pr
 
 type TestGraphLock = {
   canonical: {
+    targetFingerprint?: string;
     roots: Array<Record<string, unknown> & { rootId: string; graphNodeId: string }>;
-    nodes: Array<Record<string, unknown> & { id: string; name: string }>;
+    nodes: Array<Record<string, unknown> & { id: string; name: string; requiredBy: string[] }>;
     edges: Array<Record<string, unknown> & { from: string; to: string }>;
     includeEdges: Array<Record<string, unknown> & { fromNodeId: string; toNodeId: string }>;
-    artifacts: Array<Record<string, unknown> & { graphNodeId: string }>;
+    artifacts: Array<Record<string, unknown> & { graphNodeId: string; owners: string[] }>;
     namespacing: Array<Record<string, unknown> & { graphNodeId: string }>;
     overrides: Array<Record<string, unknown> & { rootId: string; graphNodeId: string; overriddenGraphNodeId: string }>;
     plainNameIncumbents: Array<Record<string, unknown> & { graphNodeId: string }>;
@@ -1111,16 +1119,31 @@ async function readTestGraphLock(workspace: string): Promise<TestGraphLock> {
   return JSON.parse(await readFile(lockPath, "utf8")) as TestGraphLock;
 }
 
-function graphLockSubgraphMetadata(lock: TestGraphLock, nodeId: string, rootId: string): Record<string, unknown> {
+function nonSelectedCanonicalGraph(lock: TestGraphLock, selectedRootName: string): Record<string, unknown> {
+  const nodesById = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
+  const selectedRoots = lock.canonical.roots.filter((root) => nodesById.get(root.graphNodeId)?.name === selectedRootName);
+  const selectedRootIds = new Set(selectedRoots.map((root) => root.rootId));
+  const selectedClosureIds = new Set(selectedRoots.map((root) => root.graphNodeId));
+  const queue = [...selectedClosureIds];
+  while (queue.length > 0) {
+    const from = queue.shift()!;
+    for (const edge of lock.canonical.edges) {
+      if (edge.from !== from || selectedClosureIds.has(edge.to)) continue;
+      selectedClosureIds.add(edge.to);
+      queue.push(edge.to);
+    }
+  }
   return {
-    root: lock.canonical.roots.find((root) => root.rootId === rootId),
-    node: lock.canonical.nodes.find((node) => node.id === nodeId),
-    edges: lock.canonical.edges.filter((edge) => edge.from === nodeId || edge.to === nodeId),
-    includeEdges: lock.canonical.includeEdges.filter((edge) => edge.fromNodeId === nodeId || edge.toNodeId === nodeId),
-    artifacts: lock.canonical.artifacts.filter((artifact) => artifact.graphNodeId === nodeId),
-    namespacing: lock.canonical.namespacing.filter((entry) => entry.graphNodeId === nodeId),
-    overrides: lock.canonical.overrides.filter((entry) => entry.rootId === rootId || entry.graphNodeId === nodeId || entry.overriddenGraphNodeId === nodeId),
-    plainNameIncumbents: lock.canonical.plainNameIncumbents.filter((entry) => entry.graphNodeId === nodeId),
+    targetFingerprint: lock.canonical.targetFingerprint,
+    roots: lock.canonical.roots.filter((root) => !selectedRootIds.has(root.rootId) && !selectedClosureIds.has(root.graphNodeId)),
+    nodes: lock.canonical.nodes.filter((node) => !selectedClosureIds.has(node.id)),
+    edges: lock.canonical.edges.filter((edge) => !selectedClosureIds.has(edge.from) && !selectedClosureIds.has(edge.to)),
+    includeEdges: lock.canonical.includeEdges.filter((edge) => !selectedClosureIds.has(edge.fromNodeId) && !selectedClosureIds.has(edge.toNodeId)),
+    artifacts: lock.canonical.artifacts.filter((artifact) => !selectedClosureIds.has(artifact.graphNodeId)),
+    namespacing: lock.canonical.namespacing.filter((entry) => !selectedClosureIds.has(entry.graphNodeId)),
+    overrides: lock.canonical.overrides.filter((entry) => !selectedRootIds.has(entry.rootId)
+      && !selectedClosureIds.has(entry.graphNodeId) && !selectedClosureIds.has(entry.overriddenGraphNodeId)),
+    plainNameIncumbents: lock.canonical.plainNameIncumbents.filter((entry) => !selectedClosureIds.has(entry.graphNodeId)),
   };
 }
 

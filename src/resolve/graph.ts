@@ -599,13 +599,32 @@ function suggestionRequirement(
 function assertDependencyUpdateSelectors(lock: GraphLock | undefined, selectors: string[] | undefined): void {
   for (const selector of sortedUnique(selectors ?? [])) {
     if (!lock) throw new Error(`Dependency update '${selector}' requires an existing graph lock.`);
-    const matches = matchingDependencyUpdateEdges(lock, selector);
-    const nodeIds = new Set(matches.map((edge) => edge.to));
+    const nodeIds = matchingDependencyUpdateNodeIds(lock, selector);
     if (nodeIds.size === 0) throw new Error(`Tracking dependency not found in graph lock: ${selector}`);
     if (nodeIds.size > 1) {
       throw new Error(`Dependency update selector is ambiguous: ${selector}. Use an exact node id or source.`);
     }
   }
+}
+
+function matchingDependencyUpdateNodeIds(lock: GraphLock, selector: string): Set<string> {
+  const nodes = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
+  const nodeIds = new Set(matchingDependencyUpdateEdges(lock, selector).map((edge) => edge.to));
+  for (const root of lock.canonical.roots) {
+    if (root.mode !== "tracking") continue;
+    const node = nodes.get(root.graphNodeId);
+    if (!node) continue;
+    if (selector === root.rootId
+      || selector === root.source
+      || selector === root.normalizedSource
+      || selector === root.graphNodeId
+      || selector === node.name
+      || selector === node.source
+      || selector === node.normalizedSource) {
+      nodeIds.add(root.graphNodeId);
+    }
+  }
+  return nodeIds;
 }
 
 function dependencyUpdateEdgeSelected(parentId: string, alias: string, options: ResolveGraphOptions): boolean {

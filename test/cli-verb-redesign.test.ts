@@ -307,6 +307,44 @@ describe("CLI verb redesign", () => {
     expect(betaPreview.stdout).toContain("UPDATE   MANAGED  skills/dep-beta");
   });
 
+  it("updates a configured tracking root by name or normalized source without moving other roots", async () => {
+    const workspace = await tempRoot();
+    const alpha = await gitSkillPackageFixture("root-alpha", "alpha-root");
+    const beta = await gitSkillPackageFixture("root-beta", "beta-root");
+    await runCli(["add", `git:${alpha}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["add", `git:${beta}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "root-beta");
+    const alphaNormalizedSource = await lockedRootNormalizedSource(workspace, "root-alpha");
+
+    await updateGitSkill(alpha, "alpha-root", "alpha-v2");
+    await updateGitSkill(beta, "beta-root", "beta-v2");
+
+    const byName = await runCli([
+      "update", "--dependency", "root-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(byName.stdout).toContain("UPDATE");
+    expect(byName.stdout).toContain("alpha-root");
+    expect(byName.stdout).not.toMatch(/(?:UPDATE|REMOVE).*beta-root/);
+    expect(byName.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
+
+    await runCli([
+      "update", "--dependency", "root-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+    await expect(readFile(join(workspace, ".agents", "skills", "alpha-root", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
+    await expect(readFile(join(workspace, ".agents", "skills", "beta-root", "SKILL.md"), "utf8")).resolves.not.toContain("beta-v2");
+    await expect(lockedPackageSourceHash(workspace, "root-beta")).resolves.toBe(betaHashBefore);
+
+    await updateGitSkill(alpha, "alpha-root", "alpha-v3");
+    const byNormalizedSource = await runCli([
+      "update", "--dependency", alphaNormalizedSource, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(byNormalizedSource.stdout).toContain("UPDATE");
+    expect(byNormalizedSource.stdout).toContain("alpha-root");
+    expect(byNormalizedSource.stdout).not.toMatch(/(?:UPDATE|REMOVE).*beta-root/);
+    expect(byNormalizedSource.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
+  });
+
   it("rejects missing and ambiguous dependency update selectors", async () => {
     const workspace = await tempRoot();
     const source = await packageFixture("dependency-errors");
@@ -947,6 +985,18 @@ async function lockedPackageSourceHash(workspace: string, packageName: string): 
   const node = lock.canonical.nodes.find((candidate) => candidate.name === packageName);
   if (!node) throw new Error(`Locked package not found: ${packageName}`);
   return node.sourceHash;
+}
+
+async function lockedRootNormalizedSource(workspace: string, rootId: string): Promise<string> {
+  const locksRoot = join(workspace, ".agentwheel", "locks");
+  const lockPath = (await filesBelow(locksRoot)).find((path) => path.endsWith(".graph-lock.json"));
+  if (!lockPath) throw new Error("Graph lock not found");
+  const lock = JSON.parse(await readFile(lockPath, "utf8")) as {
+    canonical: { roots: Array<{ rootId: string; normalizedSource: string }> };
+  };
+  const root = lock.canonical.roots.find((candidate) => candidate.rootId === rootId);
+  if (!root) throw new Error(`Locked root not found: ${rootId}`);
+  return root.normalizedSource;
 }
 
 async function filesBelow(root: string): Promise<string[]> {

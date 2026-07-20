@@ -1244,6 +1244,26 @@ async function buildGraphPlansForTarget(
     const allPackages = [...group.packages, ...group.extraPackages];
     const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);
     if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
+    const dependencyUpdateRootNames = new Set<string>();
+    if (scopedDependencyUpdate) {
+      const graphLockPath = graphLockPathForTarget(
+        group.target.workspaceRoot,
+        targetKeyForTarget(group.target, adapter.name),
+        adapter.name,
+        targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
+      );
+      const previousLock = await (await pathExists(graphLockPath) ? readGraphLock(graphLockPath) : undefined);
+      for (const pkg of group.packages) {
+        const root = previousLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+        if (root?.mode !== "tracking") continue;
+        if (dependencyUpdateSelectors.some((selector) => selector === root.rootId
+          || selector === root.source
+          || selector === root.normalizedSource
+          || selector === root.graphNodeId)) {
+          dependencyUpdateRootNames.add(pkg.name);
+        }
+      }
+    }
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const roots: GraphRootRequest[] = [
       ...allPackages.map((pkg) => {
@@ -1265,7 +1285,11 @@ async function buildGraphPlansForTarget(
           overrides: pkg.overrides,
           includeSuggestions: targetOptions.withSuggestions === true || pkg.withSuggestions === true,
           suggestionAliases: packageSuggestionAliases(pkg, targetOptions),
-          useLock: behavior.mode === "install" || scopedDependencyUpdate ? true : !updateThisPackage,
+          useLock: behavior.mode === "install"
+            ? true
+            : scopedDependencyUpdate
+              ? !dependencyUpdateRootNames.has(pkg.name)
+              : !updateThisPackage,
         };
       }),
       ...group.extraRoots,
@@ -1429,6 +1453,14 @@ function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphL
   const nodes = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
   const names = new Set<string>();
   for (const selector of selectors) {
+    for (const root of lock.canonical.roots) {
+      const node = nodes.get(root.graphNodeId);
+      if (root.mode !== "tracking" || !node) continue;
+      if (selector === root.rootId || selector === root.source || selector === root.normalizedSource
+        || selector === root.graphNodeId || selector === node.name || selector === node.source || selector === node.normalizedSource) {
+        names.add(node.name);
+      }
+    }
     for (const edge of lock.canonical.edges) {
       const node = nodes.get(edge.to);
       if (!node || node.mode !== "tracking") continue;

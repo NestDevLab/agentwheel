@@ -89,6 +89,20 @@
       "meta": {
         "purpose": "Back-port Hermes Agentwheel skill reference documentation"
       }
+    },
+    {
+      "id": "catalogue-automation",
+      "branch": "pr/catalogue-automation",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "8804266ea7c53a9f5c98edcd372dcbecbb16005a"
+      ],
+      "meta": {
+        "purpose": "Automate and enforce public skill catalogue publication"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

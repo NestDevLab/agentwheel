@@ -111,7 +111,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "ad9d51b0192695e2f942a789be7eb4d52625b7ee"
+      ],
       "meta": {
         "purpose": "Clarify external catalogue source trust"
       }

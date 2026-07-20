@@ -98,7 +98,9 @@
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "8804266ea7c53a9f5c98edcd372dcbecbb16005a"
+        "8804266ea7c53a9f5c98edcd372dcbecbb16005a",
+        "3082a50ed326b0c9630a051665333c8928a871ed",
+        "c74d87b9d20bd38af23cfe80bc1b95c2b323dfcd"
       ],
       "meta": {
         "purpose": "Automate and enforce public skill catalogue publication"

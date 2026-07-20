@@ -94,10 +94,6 @@ export function planReport(targets: PlanReportTarget[], warnings: string[] = [])
   };
 }
 
-export function graphPlanReport(result: GraphSourcePlanResult): PlanReportTarget {
-  return installPlanReportTarget(result.plan, result.graphLockDigest);
-}
-
 export function installPlanReportTarget(plan: InstallPlan, graphLockDigest = plan.graphLockDigest): PlanReportTarget {
   return {
     adapter: plan.adapter,

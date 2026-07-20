@@ -198,7 +198,6 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
-  .option("--json", "print machine-readable graph plan", false)
   .action(async (source, options) => {
     await runInstallCommand(source, { ...options, dryRun: true }, { apply: false });
   });
@@ -241,7 +240,6 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
-  .option("--json", "print machine-readable graph plan", false)
   .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
   .action(async (source, options) => {
     await runInstallCommand(source, options, { apply: !options.dryRun });
@@ -1050,7 +1048,7 @@ async function buildPlanReport(
       { mode: "install" },
     );
     for (const result of results) {
-      reportTargets.push(graphPlanReport(result));
+      reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
       reportWarnings.push(...result.warnings);
       await rm(result.bundle.root, { recursive: true, force: true });
     }
@@ -1336,7 +1334,6 @@ interface GraphCliOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
-  json?: boolean;
   format?: string;
   reportFormat?: PlanOutputFormat;
   suppressEmptyMessage?: boolean;

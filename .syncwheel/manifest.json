@@ -97,7 +97,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "8804266ea7c53a9f5c98edcd372dcbecbb16005a"
+      ],
       "meta": {
         "purpose": "Automate and enforce public skill catalogue publication"
       }

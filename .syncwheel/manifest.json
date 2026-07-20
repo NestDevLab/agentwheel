@@ -83,7 +83,9 @@
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
-      "commits": [],
+      "commits": [
+        "f3da1e8a47f36327f63bec46b53002e35e8fc2db"
+      ],
       "meta": {
         "purpose": "Back-port Hermes Agentwheel skill reference documentation"
       }

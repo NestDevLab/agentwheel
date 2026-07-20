@@ -30,7 +30,7 @@ import { createRegistryPublishDraft } from "../registry/publish.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
-import type { GraphRootRequest } from "../resolve/graph.js";
+import { dependencyUpdateSelectorMatchesRoot, type GraphRootRequest } from "../resolve/graph.js";
 import { filterArtifactsBySelection, normalizeArtifactSelectors, splitSelectorList } from "../model/selection.js";
 import { maybeCheckForUpdate } from "./update-check.js";
 import { pathExists } from "../utils/fs.js";
@@ -1256,10 +1256,8 @@ async function buildGraphPlansForTarget(
       for (const pkg of group.packages) {
         const root = previousLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
         if (root?.mode !== "tracking") continue;
-        if (dependencyUpdateSelectors.some((selector) => selector === root.rootId
-          || selector === root.source
-          || selector === root.normalizedSource
-          || selector === root.graphNodeId)) {
+        const node = previousLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId);
+        if (node && dependencyUpdateSelectors.some((selector) => dependencyUpdateSelectorMatchesRoot(root, node, selector))) {
           dependencyUpdateRootNames.add(pkg.name);
         }
       }
@@ -1456,8 +1454,7 @@ function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphL
     for (const root of lock.canonical.roots) {
       const node = nodes.get(root.graphNodeId);
       if (root.mode !== "tracking" || !node) continue;
-      if (selector === root.rootId || selector === root.source || selector === root.normalizedSource
-        || selector === root.graphNodeId || selector === node.name || selector === node.source || selector === node.normalizedSource) {
+      if (dependencyUpdateSelectorMatchesRoot(root, node, selector)) {
         names.add(node.name);
       }
     }

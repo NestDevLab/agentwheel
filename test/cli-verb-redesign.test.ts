@@ -369,6 +369,39 @@ describe("CLI verb redesign", () => {
     ])).rejects.toMatchObject({ stderr: expect.stringContaining("Dependency update selector is ambiguous") });
   });
 
+  it("updates an aliased configured root by node name and normalized source", async () => {
+    const workspace = await tempRoot();
+    const alpha = await gitSkillPackageFixture("metadata-alpha", "alpha-root");
+    const beta = await gitSkillPackageFixture("metadata-beta", "beta-root");
+    await runCli(["add", `git:${alpha}#main`, "--name", "alpha-alias", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["add", `git:${beta}#main`, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "metadata-beta");
+    const alphaNormalizedSource = await lockedRootNormalizedSource(workspace, "alpha-alias");
+
+    await updateGitSkill(alpha, "alpha-root", "alpha-v2");
+    await updateGitSkill(beta, "beta-root", "beta-v2");
+
+    const byNodeName = await runCli([
+      "update", "--dependency", "metadata-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(byNodeName.stdout).toContain("UPDATE   MANAGED  skills/alpha-root");
+    expect(byNodeName.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
+
+    await runCli([
+      "update", "--dependency", "metadata-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+    await expect(readFile(join(workspace, ".agents", "skills", "alpha-root", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
+    await expect(lockedPackageSourceHash(workspace, "metadata-beta")).resolves.toBe(betaHashBefore);
+
+    await updateGitSkill(alpha, "alpha-root", "alpha-v3");
+    const byNormalizedSource = await runCli([
+      "update", "--dependency", alphaNormalizedSource, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(byNormalizedSource.stdout).toContain("UPDATE   MANAGED  skills/alpha-root");
+    expect(byNormalizedSource.stdout).toContain("Summary: create 0, update 1, skip 1, remove 0, keep 0, drift 0, conflict 0, plugin 0");
+  });
+
   it("scopes install <name> without installing or removing other configured packages", async () => {
     const workspace = await tempRoot();
     const alpha = await skillPackageFixture("scoped-alpha", "alpha-v1");

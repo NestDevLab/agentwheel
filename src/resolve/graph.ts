@@ -614,17 +614,21 @@ function matchingDependencyUpdateNodeIds(lock: GraphLock, selector: string): Set
     if (root.mode !== "tracking") continue;
     const node = nodes.get(root.graphNodeId);
     if (!node) continue;
-    if (selector === root.rootId
-      || selector === root.source
-      || selector === root.normalizedSource
-      || selector === root.graphNodeId
-      || selector === node.name
-      || selector === node.source
-      || selector === node.normalizedSource) {
+    if (dependencyUpdateSelectorMatchesRoot(root, node, selector)) {
       nodeIds.add(root.graphNodeId);
     }
   }
   return nodeIds;
+}
+
+export function dependencyUpdateSelectorMatchesRoot(root: GraphLockRoot, node: GraphLockNode, selector: string): boolean {
+  return selector === root.rootId
+    || selector === root.source
+    || selector === root.normalizedSource
+    || selector === root.graphNodeId
+    || selector === node.name
+    || selector === node.source
+    || selector === node.normalizedSource;
 }
 
 function dependencyUpdateEdgeSelected(parentId: string, alias: string, options: ResolveGraphOptions): boolean {

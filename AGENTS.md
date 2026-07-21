@@ -68,7 +68,11 @@ Important current mappings and semantics:
 - For a release, update `package.json`, `openpack.json`, `CHANGELOG.md`, README/site version text,
   and run `pnpm run sync-site-version`.
 - Run `pnpm typecheck`, `pnpm test`, and `pnpm build` before pushing release changes.
-- Commit, push `main`, and push the release tag. Let CI/pipeline publish the npm package.
+- A `package.json` version increase merged to `main` is validated by the auto-release workflow. It
+  creates the annotated tag and dispatches the release pipeline only when all version files and the
+  changelog agree and the tag/npm version do not already exist.
+- Do not push a release tag manually during the normal flow. Use the release workflow's manual
+  dispatch only to recover an existing tag whose publish run did not complete.
 - If npm auth is missing locally, treat that as expected; do not try to re-authenticate or publish
   outside the pipeline unless Giuseppe explicitly asks for a manual emergency publish.
 

@@ -1,0 +1,101 @@
+name: Auto Release Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: auto-release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Validate version bump
+        id: release
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: node scripts/check-release-version.mjs --before "$BEFORE_SHA"
+
+      - name: Reject an existing release version
+        if: steps.release.outputs.release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists"
+            exit 1
+          fi
+          published_version="$(npm view "agentwheel@$RELEASE_VERSION" version 2>/dev/null || true)"
+          if [ "$published_version" = "$RELEASE_VERSION" ]; then
+            echo "::error::agentwheel@$RELEASE_VERSION already exists on npm"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        if: steps.release.outputs.release == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify generated site version
+        if: steps.release.outputs.release == 'true'
+        run: |
+          pnpm run sync-site-version
+          git diff --exit-code -- docs/index.html docs/catalogue.html
+
+      - name: Typecheck
+        if: steps.release.outputs.release == 'true'
+        run: pnpm typecheck
+
+      - name: Build
+        if: steps.release.outputs.release == 'true'
+        run: pnpm build
+
+      - name: Test
+        if: steps.release.outputs.release == 'true'
+        run: pnpm test
+
+      - name: Create annotated tag
+        if: steps.release.outputs.release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$RELEASE_TAG" "$GITHUB_SHA" --message "$RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+
+      - name: Start release workflow
+        if: steps.release.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run release.yml --ref main --field tag="$RELEASE_TAG"
+
+      - name: Summarize
+        if: steps.release.outputs.release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: echo "Created $RELEASE_TAG and dispatched the release workflow." >> "$GITHUB_STEP_SUMMARY"

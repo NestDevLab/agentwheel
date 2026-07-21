@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+## 0.14.13
+
+- Added plan observability, JSON/report renderers, a local dashboard, semantic plugin execution, and explicitly gated runtime reload commands.
+- Added reusable catalogue synchronization and validation contracts, and clarified external catalogue source handling.
+- Preserved unrelated graph-lock metadata during scoped updates and added exact dependency update targeting.
 - Fixed merge-target uninstall so it removes only the managed JSON, YAML, or TOML contribution and preserves pre-existing runtime configuration files. Legacy manifests without merge ownership metadata now preserve the destination rather than deleting it.
 - Fixed recursive cross-package composition so dependency fragments remain raw until a parent artifact consumes them, and made named package updates preserve operations owned by other configured roots.
 - Added `agentwheel update --dependency <name-or-source>` to advance one locked tracking dependency and its required tracking closure without moving unrelated graph nodes.
+- Added automated, validated release tagging for version bumps merged to `main`. This release includes the unpublished 0.14.10 through 0.14.12 changes.
 
 ## 0.14.5
 

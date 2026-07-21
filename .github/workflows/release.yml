@@ -35,11 +35,17 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Validate release version
+        run: node scripts/check-release-version.mjs --tag "$RELEASE_TAG"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
 
       - name: Test
         run: pnpm test

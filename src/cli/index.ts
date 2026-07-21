@@ -15,7 +15,9 @@ import {
 } from "../model/adapter.js";
 import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
-import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport } from "./format.js";
+import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport, installPlanReportTarget, planReport, type PlanReport, type PlanReportTarget } from "./format.js";
+import { renderReport, type ReportFormat } from "./render.js";
+import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from "./serve.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
@@ -27,6 +29,7 @@ import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
+import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveAllDetectedRuntimeTargets, resolveAllRuntimeTargets, resolveProfileRuntimeTargets, resolveRuntimeTarget, type RuntimeTarget } from "../runtime/target.js";
 import { isPendingInstallOperation, type InstallOperation, type InstallPlan } from "../install/plan.js";
 import type { InstallManifest } from "../model/manifest.js";
@@ -46,6 +49,8 @@ import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
 const COMPANION_SKILL_NAME = "agentwheel";
+const planOutputFormats = ["human", "json", "mermaid", "html"] as const;
+type PlanOutputFormat = "human" | ReportFormat;
 
 const program = new Command();
 
@@ -182,6 +187,8 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
+  .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
@@ -191,7 +198,6 @@ program
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
-  .option("--json", "print machine-readable graph plan", false)
   .action(async (source, options) => {
     await runInstallCommand(source, { ...options, dryRun: true }, { apply: false });
   });
@@ -220,20 +226,69 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
+  .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
-  .option("--json", "print machine-readable graph plan", false)
   .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
   .action(async (source, options) => {
     await runInstallCommand(source, options, { apply: !options.dryRun });
+  });
+
+program
+  .command("serve")
+  .description("serve a read-only live dashboard for the resolved install plan")
+  .argument("[name-or-source]", "configured package name/source or package source to preview")
+  .option("--driver <driver>", "source driver")
+  .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+  .option("--local", "shortcut for --installation-type local", false)
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named agent from merged config")
+  .option("--all", "run for every configured agent", false)
+  .option("--all-detected", "run for every runtime directory detected in the target root", false)
+  .option("--profile <name>", "workspace runtime profile")
+  .option("--mode <mode>", "pinned or tracking")
+  .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
+  .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
+  .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
+  .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
+  .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
+  .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+  .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--yes", "trust all new transitive sources", false)
+  .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+  .option("--bind <addr>", "interface to bind", "127.0.0.1")
+  .option("--port <n>", "TCP port (0 selects an ephemeral port)", "8765")
+  .option("--interval <seconds>", "background re-render cadence in seconds", "60")
+  .option("--once", "render once and skip the background re-render loop", false)
+  .action(async (source, options) => {
+    await servePlanDashboard({
+      bind: options.bind,
+      port: parseServePort(options.port),
+      intervalSeconds: parseServeIntervalSeconds(options.interval),
+      once: options.once === true,
+      buildReport: () => buildPlanReport(source, options),
+    });
   });
 
 program
@@ -263,6 +318,8 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -291,6 +348,8 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
+  .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
+  .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -783,7 +842,15 @@ async function runInstallCommand(
   behavior: { apply: boolean },
 ): Promise<void> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
-  if (options.profile) {
+  const outputFormat = effectivePlanOutputFormat(normalizedOptions);
+  if (outputFormat !== "human") {
+    const report = await buildPlanReport(nameOrSource, normalizedOptions);
+    if (report.targets.some((target) => target.hasBlockingChanges)) process.exitCode = 1;
+    process.stdout.write(`${renderReport(report, outputFormat)}\n`);
+    return;
+  }
+
+  if (normalizedOptions.profile) {
     const target = await resolveRuntimeTarget({
       targetRoot: normalizedOptions.targetRoot,
       adapter: normalizedOptions.adapter,
@@ -792,7 +859,7 @@ async function runInstallCommand(
     });
     const results = await syncProfile({
       workspaceRoot: target.workspaceRoot,
-      profile: options.profile,
+      profile: normalizedOptions.profile,
       source: nameOrSource,
       driver: normalizedOptions.driver,
       mode: normalizedOptions.mode,
@@ -800,6 +867,7 @@ async function runInstallCommand(
       installationType: normalizedOptions.installationType,
       dryRun: !behavior.apply,
       executePlugins: normalizedOptions.executePlugins,
+      reloadRuntimes: shouldReloadRuntimes(normalizedOptions),
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
@@ -816,32 +884,19 @@ async function runInstallCommand(
       isTTY: process.stdin.isTTY === true,
       warn: (message) => console.warn(message),
     });
-    if (normalizedOptions.json) {
-      console.log(JSON.stringify({
-        profile: options.profile,
-        results: results.map((result) => ({
-          runtime: result.runtime,
-          targetRoot: result.targetRoot,
-          transport: result.transport,
-          packageName: result.packageName,
-          graphPlan: graphPlanReport(result.graphPlan),
-        })),
-      }, null, 2));
-    } else {
-      for (const result of results) {
-        console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
-        console.log(formatGraphPlan(result.graphPlan));
-      }
-    }
     for (const result of results) {
+      console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+      console.log(formatPlan(result.plan));
+      if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    if (behavior.apply && !normalizedOptions.json) console.log("Applied.");
+    if (behavior.apply) {
+      console.log("Applied.");
+    }
     return;
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
-  const jsonReports: unknown[] = [];
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -864,17 +919,23 @@ async function runInstallCommand(
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage }, { mode: "install" })) {
-      if (normalizedOptions.json) jsonReports.push(graphPlanReport(result));
-      else console.log(formatGraphPlan(result));
+    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
+      console.log(formatGraphPlan(result));
       if (behavior.apply) {
+        const transport = transportForTarget(target);
+        const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
         await applyCombinedInstallPlan(result.plan, {
-          executePlugins: targetOptions.executePlugins,
-          transport: transportForTarget(target),
+          executePlugins,
+          transport,
           graphLockDigest: result.graphLockDigest,
           graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
         });
-        if (!normalizedOptions.json) console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
+          executePlugins,
+        });
+        console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
@@ -884,9 +945,130 @@ async function runInstallCommand(
       await writeWorkspaceConfig(target.workspaceRoot, upsertPackage(await readWorkspaceConfig(target.workspaceRoot), extraPackage));
     }
   }
-  if (normalizedOptions.json) {
-    console.log(JSON.stringify(jsonReports.length === 1 ? jsonReports[0] : { results: jsonReports }, null, 2));
+}
+
+async function buildPlanReport(
+  nameOrSource: string | undefined,
+  options: GraphCliOptions & {
+    profile?: string;
+    targetRoot?: string;
+    agent?: string;
+    all?: boolean;
+    allDetected?: boolean;
+    adapter?: string;
+    installationType?: string;
+    multiAdapterSource?: boolean;
+  },
+): Promise<PlanReport> {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
+  const reportTargets: PlanReportTarget[] = [];
+  const reportWarnings: string[] = [];
+  const collectWarning = (message: string) => {
+    reportWarnings.push(message);
+  };
+
+  if (normalizedOptions.profile) {
+    const target = await resolveRuntimeTarget({
+      targetRoot: normalizedOptions.targetRoot,
+      adapter: normalizedOptions.adapter,
+      installationType: normalizedOptions.installationType,
+      agent: normalizedOptions.agent,
+    });
+    const results = await syncProfile({
+      workspaceRoot: target.workspaceRoot,
+      profile: normalizedOptions.profile,
+      source: nameOrSource,
+      driver: normalizedOptions.driver,
+      mode: normalizedOptions.mode,
+      select: selectedArtifactsFromOptions(normalizedOptions),
+      installationType: normalizedOptions.installationType,
+      dryRun: true,
+      executePlugins: normalizedOptions.executePlugins,
+      allowAdapterCode: normalizedOptions.allowAdapterCode,
+      forceDrift: normalizedOptions.forceDrift,
+      forceConflict: normalizedOptions.forceConflict,
+      replaceConflict: normalizedOptions.replaceConflict,
+      noDeps: noDepsFromOptions(normalizedOptions),
+      includeSuggestions: normalizedOptions.withSuggestions,
+      suggestionAliases: suggestionAliasesFromOptions(normalizedOptions),
+      lockedResolution: true,
+      frozenLock: normalizedOptions.frozenLock,
+      offline: normalizedOptions.offline,
+      yes: normalizedOptions.yes,
+      trustPatterns: normalizedOptions.trust ?? [],
+      readOnly: true,
+      isTTY: false,
+    });
+    for (const result of results) {
+      reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
+      reportWarnings.push(...result.warnings);
+    }
+    return planReport(reportTargets, reportWarnings);
   }
+
+  const targets = await resolveCliTargets(normalizedOptions);
+  for (const target of targets) {
+    const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
+    let source: string | undefined;
+    let scope = configured?.name;
+    let extraPackage: WorkspacePackage | undefined;
+
+    if (nameOrSource && !configured) {
+      try {
+        let entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, {
+          ...targetOptions,
+          adapter: targetOptions.adapter ?? target.adapter,
+          warn: collectWarning,
+        });
+        if (targetOptions.multiAdapterSource) {
+          entry = packageEntryWithAdapterSuffix(entry);
+        }
+        scope = entry.name;
+        source = nameOrSource;
+        extraPackage = entry;
+      } catch (error) {
+        throw teachingInstallError(nameOrSource, error);
+      }
+    }
+
+    const results = await buildGraphPlansForTarget(
+      target,
+      source,
+      {
+        ...targetOptions,
+        scope,
+        extraPackage,
+        dryRun: true,
+        reportFormat: "json",
+        suppressEmptyMessage: true,
+        warn: collectWarning,
+      },
+      { mode: "install" },
+    );
+    for (const result of results) {
+      reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
+      reportWarnings.push(...result.warnings);
+      await rm(result.bundle.root, { recursive: true, force: true });
+    }
+  }
+  return planReport(reportTargets, reportWarnings);
+}
+
+function effectivePlanOutputFormat(options: { json?: boolean; format?: string }): PlanOutputFormat {
+  const format = options.format ?? "human";
+  if (!isPlanOutputFormat(format)) {
+    throw new Error(`Unknown --format value: ${format}. Valid formats: ${planOutputFormats.join(", ")}.`);
+  }
+  if (options.json && format !== "human" && format !== "json") {
+    throw new Error(`--json conflicts with --format ${format}. Use --format json instead.`);
+  }
+  return format !== "human" ? format : options.json ? "json" : "human";
+}
+
+function isPlanOutputFormat(value: string): value is PlanOutputFormat {
+  return (planOutputFormats as readonly string[]).includes(value);
 }
 
 async function packageEntryFromSource(
@@ -911,6 +1093,7 @@ async function packageEntryFromSource(
     frozenLock?: boolean;
     offline?: boolean;
     installationType?: string;
+    warn?: (message: string) => void;
   },
 ): Promise<WorkspacePackage> {
   const lockMode = options.frozenLock === true || options.offline === true;
@@ -925,7 +1108,7 @@ async function packageEntryFromSource(
     adapterModule: options.adapterModule,
     allowAdapterCode: options.allowAdapterCode,
     baseDir: targetRoot,
-    warn: (message) => console.warn(message),
+    warn: options.warn ?? ((message) => console.warn(message)),
   });
   const bundle = await stageSource(driver, resolvedSource, {
     workspaceRoot: targetRoot,
@@ -974,6 +1157,10 @@ function findConfiguredPackageForTarget(
 
 function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boolean {
   return options.noDeps === true || options.deps === false;
+}
+
+function shouldReloadRuntimes(options: { reloadRuntimes?: boolean; restartRuntimes?: boolean }): boolean {
+  return options.reloadRuntimes === true || options.restartRuntimes === true;
 }
 
 function packageEntryWithAdapterSuffix(entry: WorkspacePackage): WorkspacePackage {
@@ -1079,7 +1266,7 @@ function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSour
     : options;
 }
 
-async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }) {
+async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; warn?: (message: string) => void }) {
   const adapterOptions = adapterOptionsForTarget(target, options);
   return resolveAdapter({
     adapter: target.adapter,
@@ -1087,7 +1274,7 @@ async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapter
     adapterModule: adapterOptions.adapterModule,
     allowAdapterCode: adapterOptions.allowAdapterCode,
     baseDir: target.workspaceRoot,
-    warn: (message) => console.warn(message),
+    warn: options.warn ?? ((message) => console.warn(message)),
   });
 }
 
@@ -1110,6 +1297,8 @@ interface GraphCliOptions {
   dryRun?: boolean;
   json?: boolean;
   executePlugins?: boolean;
+  reloadRuntimes?: boolean;
+  restartRuntimes?: boolean;
   allowAdapterCode?: boolean;
   adapterConfig?: string;
   adapterModule?: string;
@@ -1145,6 +1334,10 @@ interface GraphCliOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
+  format?: string;
+  reportFormat?: PlanOutputFormat;
+  suppressEmptyMessage?: boolean;
+  warn?: (message: string) => void;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
 }
@@ -1172,13 +1365,20 @@ async function runConfiguredGraphPackages(
     console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
     console.log(formatGraphPlan(result));
     if (!options.dryRun) {
+      const transport = transportForTarget(target);
+      const executePlugins = target.executePlugins ?? options.executePlugins;
       await applyCombinedInstallPlan(result.plan, {
-        executePlugins: options.executePlugins,
-        transport: transportForTarget(target),
+        executePlugins,
+        transport,
         graphLockDigest: result.graphLockDigest,
         graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
       });
+      const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+        enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
+        executePlugins,
+      });
       console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+      if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
     }
     await rm(result.bundle.root, { recursive: true, force: true });
     if (result.plan.hasBlockingChanges) process.exitCode = 1;
@@ -1233,13 +1433,17 @@ async function buildGraphPlansForTarget(
   }
 
   if (groups.size === 0) {
-    if (!options.json) console.log(`No packages configured at ${target.workspaceRoot}.`);
+    const message = `No packages configured at ${target.workspaceRoot}.`;
+    if (!targetOptions.suppressEmptyMessage) {
+      if (targetOptions.reportFormat && targetOptions.reportFormat !== "human") console.warn(message);
+      else console.log(message);
+    }
     return [];
   }
 
   const results = [];
   for (const group of groups.values()) {
-    const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+    const adapter = await resolveAdapterForTarget(group.target, { ...group.adapterOptions, warn: targetOptions.warn });
     const transport = transportForTarget(group.target);
     const allPackages = [...group.packages, ...group.extraPackages];
     const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);

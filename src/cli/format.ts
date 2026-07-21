@@ -1,4 +1,4 @@
-import type { InstallPlan, PlanAction } from "../install/plan.js";
+import type { InstallOperation, InstallPlan, PlanAction, PlanChannel } from "../install/plan.js";
 import { summarizePlan } from "../install/plan.js";
 import type { GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import type { GraphLock } from "../model/graph-lock.js";
@@ -44,6 +44,105 @@ export function formatPlan(plan: InstallPlan): string {
   return lines.join("\n");
 }
 
+export interface PlanReport {
+  schemaVersion: 1;
+  targets: PlanReportTarget[];
+  warnings: string[];
+}
+
+export interface PlanReportTarget {
+  adapter: string;
+  installationType: string;
+  targetRoot: string;
+  graphLockDigest: string | null;
+  hasBlockingChanges: boolean;
+  summary: PlanReportSummary;
+  operations: PlanReportOperation[];
+}
+
+export interface PlanReportSummary {
+  create: number;
+  update: number;
+  skip: number;
+  remove: number;
+  keep: number;
+  drift: number;
+  conflict: number;
+  plugin: number;
+}
+
+export interface PlanReportOperation {
+  action: PlanAction;
+  channel: PlanChannel;
+  artifactType: InstallOperation["artifactType"];
+  artifactName: string;
+  logicalSelector: string | null;
+  relativeDestPath: string;
+  reason: string;
+  packageName: string | null;
+  owners: string[];
+  graphNodeId: string | null;
+  dependencyRole: InstallOperation["dependencyRole"] | null;
+  blockedReason: string | null;
+}
+
+export function planReport(targets: PlanReportTarget[], warnings: string[] = []): PlanReport {
+  return {
+    schemaVersion: 1,
+    targets: [...targets].sort(comparePlanReportTargets),
+    warnings: [...warnings].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+export function installPlanReportTarget(plan: InstallPlan, graphLockDigest = plan.graphLockDigest): PlanReportTarget {
+  return {
+    adapter: plan.adapter,
+    installationType: plan.installationType,
+    targetRoot: plan.targetRoot,
+    graphLockDigest: graphLockDigest ?? null,
+    hasBlockingChanges: plan.hasBlockingChanges,
+    summary: planReportSummary(plan),
+    operations: sortedPlanOperations(plan.operations).map(planReportOperation),
+  };
+}
+
+function comparePlanReportTargets(a: PlanReportTarget, b: PlanReportTarget): number {
+  return a.adapter.localeCompare(b.adapter)
+    || a.installationType.localeCompare(b.installationType)
+    || a.targetRoot.localeCompare(b.targetRoot);
+}
+
+function planReportSummary(plan: InstallPlan): PlanReportSummary {
+  const summary = summarizePlan(plan);
+  return {
+    create: summary.create,
+    update: summary.update,
+    skip: summary.skip,
+    remove: summary.remove,
+    keep: summary.keep,
+    drift: summary.drift,
+    conflict: summary.conflict,
+    plugin: summary.plugin,
+  };
+}
+
+function planReportOperation(operation: InstallOperation): PlanReportOperation {
+  return {
+    action: operation.action,
+    channel: operation.channel,
+    artifactType: operation.artifactType,
+    artifactName: operation.artifactName,
+    logicalSelector: operation.logicalSelector ?? null,
+    relativeDestPath: operation.relativeDestPath,
+    reason: operation.reason,
+    packageName: operation.packageName ?? null,
+    owners: operation.owners ?? [],
+    graphNodeId: operation.graphNodeId ?? null,
+    dependencyRole: operation.dependencyRole ?? null,
+    blockedReason: operation.blockedReason ?? null,
+  };
+}
+
 function formatSemanticCommandSuffix(operation: InstallPlan["operations"][number]): string {
   const commands = semanticCommandsForOperation(operation);
   return commands.length > 0 ? ` :: ${commands.map((command) => command.join(" ")).join(" && ")}` : "";
@@ -58,7 +157,7 @@ function semanticCommandsForOperation(operation: InstallPlan["operations"][numbe
   return operation.semanticCommand ? [operation.semanticCommand] : [];
 }
 
-function sortedPlanOperations(operations: InstallPlan["operations"]): InstallPlan["operations"] {
+export function sortedPlanOperations(operations: InstallPlan["operations"]): InstallPlan["operations"] {
   return [...operations].sort((a, b) => {
     const destructiveA = a.action === "remove" || a.action === "drift" || a.action === "conflict";
     const destructiveB = b.action === "remove" || b.action === "drift" || b.action === "conflict";

@@ -6,6 +6,7 @@ import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan, type GraphSourcePlanResult } from "./source-plan.js";
 import { readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
+import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { transportForTarget } from "../transport/index.js";
@@ -23,6 +24,7 @@ export interface ProfileSyncOptions {
   installationType?: string;
   dryRun?: boolean;
   executePlugins?: boolean;
+  reloadRuntimes?: boolean;
   allowAdapterCode?: boolean;
   forceDrift?: boolean;
   forceConflict?: boolean;
@@ -47,6 +49,10 @@ export interface ProfileSyncResult {
   packageName: string;
   plan: InstallPlan;
   graphPlan: GraphSourcePlanResult;
+  graphLockDigest: string;
+  warnings: string[];
+  reloaded?: boolean;
+  reloadCommandSummary?: string;
 }
 
 export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileSyncResult[]> {
@@ -127,22 +133,31 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       replaceConflict: options.replaceConflict,
     });
     try {
-      results.push({
+      const result: ProfileSyncResult = {
         runtime: adapter.name,
         targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
         transport: transport.kind,
         packageName: packages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
         graphPlan,
-      });
+        graphLockDigest: graphPlan.graphLockDigest,
+        warnings: graphPlan.warnings,
+      };
       if (!options.dryRun) {
+        const executePlugins = runtime.executePlugins ?? options.executePlugins;
         await applyCombinedInstallPlan(graphPlan.plan, {
-          executePlugins: runtime.executePlugins ?? options.executePlugins,
+          executePlugins,
           transport,
           graphLockDigest: graphPlan.graphLockDigest,
           graphLock: { path: graphPlan.graphLockPath, lock: graphPlan.bundle.graphLock },
         });
+        result.reloaded = await reloadRuntimeAfterPluginChanges(graphPlan.plan, target, transport, {
+          enabled: runtime.reloadRuntimes ?? options.reloadRuntimes,
+          executePlugins,
+        });
+        result.reloadCommandSummary = result.reloaded ? formatReloadCommands(target.reloadCommands) : undefined;
       }
+      results.push(result);
     } finally {
       await rm(graphPlan.bundle.root, { recursive: true, force: true });
     }

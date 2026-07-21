@@ -101,6 +101,34 @@ Profiles group runtimes:
 targets and `user` for documented user-level harness targets. A CLI `--installation-type` overrides
 the configured value for that invocation.
 
+Agents and profile runtimes may declare structured `reloadCommands` for live reload/restart steps
+that should run after semantic plugin changes. Agentwheel never runs these commands by default; pass
+`--reload-runtimes` (or `--restart-runtimes`) on the apply command, or set `reloadRuntimes: true` on
+a profile runtime. Commands are argv arrays, not shell strings:
+
+```jsonc
+{
+  "agents": {
+    "tirrenia": {
+      "adapter": "openclaw",
+      "installationType": "local",
+      "root": "/home/openclaw-tirrenia",
+      "transport": "ssh",
+      "host": "ct110",
+      "user": "openclaw-tirrenia",
+      "reloadCommands": [["systemctl", "restart", "openclaw-gateway-tirrenia.service"]]
+    }
+  },
+  "profiles": {
+    "tirrenia-plugins": {
+      "runtimes": [
+        { "agent": "tirrenia", "executePlugins": true, "reloadRuntimes": true }
+      ]
+    }
+  }
+}
+```
+
 Run a single agent:
 
 ```bash
@@ -119,6 +147,7 @@ Run a profile:
 ```bash
 agentwheel update --profile daily --dry-run
 agentwheel install --profile daily --dry-run
+agentwheel install --profile daily --execute-plugins --reload-runtimes
 agentwheel status --profile daily
 agentwheel update --all   # uses profile "all" when configured
 agentwheel status --all   # uses profile "all" when configured

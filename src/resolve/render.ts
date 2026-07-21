@@ -9,6 +9,7 @@ import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, Gra
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
+import { renderClaudeSubagents } from "../staging/claude-subagents.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
@@ -111,7 +112,8 @@ export async function renderGraphForTarget(
     const runtimeArtifacts = targetContext.adapter
       ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
       : selectedArtifacts;
-    const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
+    const claudeRenderedArtifacts = await renderClaudeSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
+    const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, staged.root, targetContext.adapter);
     const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);
     const runtimeRenderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, staged.root, targetContext.adapter);
 

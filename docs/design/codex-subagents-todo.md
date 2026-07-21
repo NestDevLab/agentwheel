@@ -4,8 +4,23 @@ Agentwheel supports Codex `subagents` as native Codex custom agent files.
 
 Codex and Claude both expose subagent-style workflows, but their file formats differ:
 
-- Claude subagents are Markdown definitions under `.claude/agents/`.
+- Claude subagents are standalone Markdown definitions under `.claude/agents/<name>.md`.
 - Codex subagents are standalone TOML custom agent definitions under `.codex/agents/`.
+
+## Harness Map
+
+```mermaid
+flowchart LR
+  S["Portable source\nsubagents/<role>/AGENTS.md"]
+  S --> C["Codex renderer\n.codex/agents/<role>.toml"]
+  S --> L["Claude renderer\n.claude/agents/<role>.md"]
+  C --> CA["Codex custom agent"]
+  L --> LA["Claude custom agent"]
+```
+
+The source remains portable Markdown. Agentwheel adapts only the installed
+artifact shape required by each harness; it does not prescribe a fleet-wide
+model policy.
 
 ## Installed Targets
 
@@ -58,10 +73,15 @@ Generated fields:
 - `name`: file or directory basename without `.md` or `.toml`.
 - `description`: frontmatter `description`, else first meaningful Markdown heading or line, else stable fallback.
 - `developer_instructions`: Markdown body.
+- `model`: preserved from string frontmatter when present.
+- `model_reasoning_effort`: preserved from string frontmatter when present.
 
-Optional Codex custom agent fields can be added later without changing the OpenPack artifact kind:
-`nickname_candidates`, `model`, `model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, and
-`skills.config`.
+Other optional Codex custom agent fields can be added later without changing the OpenPack artifact
+kind: `nickname_candidates`, `sandbox_mode`, `mcp_servers`, and `skills.config`.
+
+For Claude, Agentwheel flattens `subagents/<name>/AGENTS.md` to
+`.claude/agents/<name>.md` without changing its Markdown or YAML frontmatter. This keeps portable
+role sources compatible with Claude's documented custom-agent discovery path.
 
 ## Coverage
 
@@ -74,7 +94,7 @@ Implemented tests cover:
 - Extensionless selection with `subagents/<name>`.
 - Negative check that Codex does not write `.codex/agents/<name>/AGENTS.md`.
 - Required-field validation for TOML pass-through.
-- Existing Claude subagent behavior remains `.claude/agents/...`.
+- Claude directory sources render to `.claude/agents/<name>.md` with frontmatter preserved.
 
 ## References
 

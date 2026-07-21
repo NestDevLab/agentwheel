@@ -8,6 +8,7 @@ import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../sour
 import { hashPath, isIgnoredGeneratedEntry } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
+import { renderClaudeSubagents } from "./claude-subagents.js";
 import { renderCodexSubagents } from "./codex-subagents.js";
 import { renderCopilotArtifacts } from "./copilot-artifacts.js";
 import { renderOpenClawSubagents } from "./openclaw-subagents.js";
@@ -92,7 +93,8 @@ export async function renderStagedBundle(bundle: RawStagedBundle, options: Stage
   const runtimeArtifacts = options.adapter
     ? filterArtifactsByRuntime(selectedArtifacts, options.adapter.name, runtimeSelectedSet)
     : selectedArtifacts;
-  const codexRenderedArtifacts = await renderCodexSubagents(runtimeArtifacts, root, options.adapter);
+  const claudeRenderedArtifacts = await renderClaudeSubagents(runtimeArtifacts, root, options.adapter);
+  const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, root, options.adapter);
   const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, root, options.adapter);
   const renderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, root, options.adapter);
 

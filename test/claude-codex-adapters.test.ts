@@ -79,7 +79,7 @@ describe("Claude and Codex adapters", () => {
       userOnly: true,
     }, null, 2), "utf8");
 
-    const bundle = await stageSource(new LocalSourceDriver(), source);
+    const bundle = await stageSource(new LocalSourceDriver(), source, { adapter: claudeAdapter });
     const plan = await createInstallPlan(bundle, claudeAdapter, target);
     await applyInstallPlan(plan, bundle.sourceLock);
 
@@ -88,7 +88,7 @@ describe("Claude and Codex adapters", () => {
     await expect(stat(join(target, ".claude", "skills", "demo", "bin", "tool.sh"))).resolves.toBeTruthy();
     expect((await stat(join(target, ".claude", "skills", "demo", "bin", "tool.sh"))).mode & 0o111).toBeTruthy();
     await expect(stat(join(target, ".claude", "commands", "review.md"))).resolves.toBeTruthy();
-    await expect(stat(join(target, ".claude", "agents", "reviewer", "AGENTS.md"))).resolves.toBeTruthy();
+    await expect(stat(join(target, ".claude", "agents", "reviewer.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".claude", "rules", "safe.md"))).resolves.toBeTruthy();
 
     const mcp = JSON.parse(await readFile(join(target, ".mcp.json"), "utf8"));

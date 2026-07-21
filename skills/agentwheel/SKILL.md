@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.14.11"
+  version: "0.14.12"
 ---
 
 # agentwheel
@@ -511,3 +511,16 @@ If npm update checks are noisy:
 agentwheel --no-update-check install --dry-run
 AGENTWHEEL_NO_UPDATE_CHECK=1 agentwheel install --dry-run
 ```
+
+If install fails with `Locked install cache missing or stale for locked graph node`, or a pinned
+dependency snapshot lacks a selected artifact:
+
+```bash
+agentwheel list <source> --select <artifact>
+```
+
+The native fetch refreshes the source cache. If the refreshed content hash matches the lock, stop —
+nothing else is stale. If it differs, regenerate only the affected graph locks (lock-only) and
+leave them uncommitted: lock commits belong to the approved install. `update --dependency` cannot
+recompute an edge whose root node id changed (e.g. after renaming the root package's artifacts);
+regenerate the locks instead.

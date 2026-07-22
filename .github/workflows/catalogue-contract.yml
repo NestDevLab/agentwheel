@@ -9,8 +9,6 @@ on:
         default: false
         type: boolean
   pull_request:
-    paths:
-      - "skills/**"
   push:
     branches: [main]
     paths:

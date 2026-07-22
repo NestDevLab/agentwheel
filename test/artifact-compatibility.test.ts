@@ -423,6 +423,8 @@ describe("artifact compatibility registry", () => {
           await writeSubagentPackage(root, "markdown-reviewer.md", [
             "---",
             "description: Markdown reviewer.",
+            "model: gpt-5.6-sol",
+            "model_reasoning_effort: high",
             "---",
             "# Markdown reviewer",
             "",
@@ -430,7 +432,13 @@ describe("artifact compatibility registry", () => {
             "",
           ].join("\n"));
         },
-        expected: ['name = "markdown-reviewer"', 'description = "Markdown reviewer."', "Review from Markdown."],
+        expected: [
+          'name = "markdown-reviewer"',
+          'description = "Markdown reviewer."',
+          'model = "gpt-5.6-sol"',
+          'model_reasoning_effort = "high"',
+          "Review from Markdown.",
+        ],
       },
       {
         name: "directory-reviewer",
@@ -505,7 +513,7 @@ describe("artifact compatibility registry", () => {
     });
     const claudePlan = await createInstallPlan(claudeBundle, claudeAdapter, claudeTarget, undefined, localTransport, { installationType: "local" });
     await applyCombinedInstallPlan(claudePlan);
-    const claudeAgent = await readFile(join(claudeTarget, ".claude", "agents", "guarded-role", "AGENTS.md"), "utf8");
+    const claudeAgent = await readFile(join(claudeTarget, ".claude", "agents", "guarded-role.md"), "utf8");
     expect(claudeAgent).toContain("name: guarded-role");
     expect(claudeAgent).toContain("disallowedTools: Agent, Task, Skill, mcp__ccd_session__spawn_task, SendMessage");
     expect(claudeAgent).toContain("Do not start, resume, spawn, message");

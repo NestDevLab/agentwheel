@@ -12,7 +12,24 @@
     "strategy": "cherry-pick",
     "stacks": []
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "agentwheel-subagent-model-routing",
+      "branch": "feat/subagent-model-routing",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "69a2248255f84c68c9fb304ff73319ef2c0a37d2",
+        "2d14672256def4d7a1bef280470a3674305c9ee4",
+        "37f0fb730382ecc60578c020f3df57b44269af26"
+      ],
+      "meta": {
+        "purpose": "Public Codex and Claude subagent rendering and documentation"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

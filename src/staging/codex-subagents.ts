@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact } from "../model/artifact.js";
 import { hashPath, pathExists } from "../utils/fs.js";
@@ -93,28 +94,43 @@ function markdownToCodexAgentToml(agentName: string, markdown: string): string {
   const parsed = splitFrontmatter(markdown);
   const description = parsed.description ?? firstMeaningfulMarkdownLine(parsed.body) ?? `Custom Codex subagent ${agentName}.`;
   const developerInstructions = parsed.body.trim().length > 0 ? parsed.body.trimEnd() : description;
-  return [
+  const lines = [
     `name = ${tomlString(agentName)}`,
     `description = ${tomlString(description)}`,
-    `developer_instructions = ${tomlMultilineString(developerInstructions)}`,
-    "",
-  ].join("\n");
+  ];
+  if (parsed.model) lines.push(`model = ${tomlString(parsed.model)}`);
+  if (parsed.modelReasoningEffort) lines.push(`model_reasoning_effort = ${tomlString(parsed.modelReasoningEffort)}`);
+  lines.push(`developer_instructions = ${tomlMultilineString(developerInstructions)}`, "");
+  return lines.join("\n");
 }
 
-function splitFrontmatter(markdown: string): { body: string; description?: string } {
+function splitFrontmatter(markdown: string): {
+  body: string;
+  description?: string;
+  model?: string;
+  modelReasoningEffort?: string;
+} {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(markdown);
   if (!match) return { body: markdown };
 
   const frontmatter = match[1] ?? "";
   const body = markdown.slice(match[0].length);
-  const description = frontmatter
-    .split(/\r?\n/)
-    .map((line) => /^description:\s*(?:"([^"]*)"|'([^']*)'|(.+))\s*$/.exec(line.trim()))
-    .find((item): item is RegExpExecArray => item !== null);
+  const metadata = parseYaml(frontmatter) as Record<string, unknown> | null;
   return {
     body,
-    description: description ? (description[1] ?? description[2] ?? description[3] ?? "").trim() : undefined,
+    description: optionalFrontmatterString(metadata, "description"),
+    model: optionalFrontmatterString(metadata, "model"),
+    modelReasoningEffort: optionalFrontmatterString(metadata, "model_reasoning_effort"),
   };
+}
+
+function optionalFrontmatterString(metadata: Record<string, unknown> | null, key: string): string | undefined {
+  const value = metadata?.[key];
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") {
+    throw new Error(`Codex subagent frontmatter field '${key}' must be a string.`);
+  }
+  return value.trim();
 }
 
 function firstMeaningfulMarkdownLine(markdown: string): string | undefined {

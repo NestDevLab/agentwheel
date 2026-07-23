@@ -40,5 +40,6 @@ describe("catalogue site", () => {
     expect(html).toContain("Share or copy a social-preview link");
     expect(worker).toContain("catalogue-vercel-index.json");
     expect(worker).toContain('resourceId.startsWith("vercel:")');
+    expect(worker).toContain("agentwheelPrettyDetailUrl");
   });
 });

@@ -43,6 +43,7 @@ async function prettyPage(entry, requestUrl) {
   const description = entry.description || "Browse this agentwheel catalogue resource.";
   const metadata = `<meta property="og:type" content="website"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(canonicalUrl)}"><meta name="twitter:card" content="summary"><link rel="canonical" href="${escapeHtml(canonicalUrl)}">`;
   const pathBootstrap = `const params = new URLSearchParams(location.search);\n    if (location.pathname.startsWith(${JSON.stringify(PRETTY_PATH_PREFIX)})) params.set("resource", ${JSON.stringify(entry.id)});`;
+  const clientPatch = `<script>\n    const agentwheelPrettyDetailUrl = (entry) => new URL(${JSON.stringify(PRETTY_PATH_PREFIX)} + encodeURIComponent(entry.id), location.origin).href;\n    window.detailUrl = agentwheelPrettyDetailUrl;\n    window.shareUrl = agentwheelPrettyDetailUrl;\n    window.catalogueUrl = () => new URL("/agentwheel/catalogue.html", location.origin).href;\n  </script>`;
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "cache-control": "public, max-age=300",
@@ -54,7 +55,8 @@ async function prettyPage(entry, requestUrl) {
     .replace(/<meta name="description"[^>]*>/i, `<meta name="description" content="${escapeHtml(description)}">`)
     .replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(title)}</title>${metadata}`)
     .replace("<head>", '<head><base href="/agentwheel/">')
-    .replace(/const params = new URLSearchParams\(location\.search\);/, pathBootstrap);
+    .replace(/const params = new URLSearchParams\(location\.search\);/, pathBootstrap)
+    .replace("</body>", `${clientPatch}</body>`);
 
   return new Response(html, { status: response.status, headers });
 }

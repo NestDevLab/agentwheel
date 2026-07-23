@@ -1,0 +1,8 @@
+name = "nestdev-agentwheel-catalogue-share"
+main = "catalogue-share-worker.js"
+compatibility_date = "2026-07-23"
+account_id = "784045e41f2091e73f0f16ad359a5800"
+
+routes = [
+  { pattern = "www.nestdev.it/agentwheel/share/*", zone_name = "nestdev.it" },
+]

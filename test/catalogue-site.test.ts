@@ -28,5 +28,9 @@ describe("catalogue site", () => {
     expect(html).toContain("relatedOnly");
     expect(html).toContain("titleLink.href = cardHref(entry)");
     expect(html).toContain('params.get("q")');
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain("updateDocumentMetadata");
+    expect(html).toContain("entry.provides.filter(Boolean).map((type) => `${type}/`)");
+    expect(html).toContain("function shareUrl(entry)");
   });
 });

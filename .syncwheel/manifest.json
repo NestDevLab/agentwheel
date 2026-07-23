@@ -28,6 +28,18 @@
       "meta": {
         "purpose": "Public Codex and Claude subagent rendering and documentation"
       }
+    },
+    {
+      "id": "catalogue-social-preview",
+      "branch": "pr/catalogue-social-preview",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "meta": {
+        "purpose": "Fix catalogue artifact visibility, layout, and social previews"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

@@ -1100,6 +1100,16 @@
     const PAGE_SIZE = 60;
     const params = new URLSearchParams(location.search);
 
+    function detailResourceIdFromLocation() {
+      const prefix = "/agentwheel/catalogue/";
+      if (!location.pathname.startsWith(prefix)) return params.get("resource") || "";
+      try {
+        return decodeURIComponent(location.pathname.slice(prefix.length));
+      } catch {
+        return "";
+      }
+    }
+
     function dataUrlFromParam(value) {
       if (!value) return DEFAULT_DATA_URL;
       if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith("//")) return DEFAULT_DATA_URL;
@@ -1124,7 +1134,7 @@
       ecosystem: "all",
       resource: "all",
       sort: "stars",
-      detailResourceId: params.get("resource") || "",
+      detailResourceId: detailResourceIdFromLocation(),
     };
 
     const grid = document.querySelector("#grid");
@@ -1431,25 +1441,18 @@
     }
 
     function detailUrl(entry) {
-      const url = new URL(location.href);
-      url.searchParams.set("resource", entry.id);
-      url.hash = "";
+      const url = new URL(location.origin);
+      url.pathname = `/agentwheel/catalogue/${encodeURIComponent(entry.id)}`;
       return url.href;
     }
 
     function shareUrl(entry) {
-      const url = new URL(location.href);
-      url.pathname = url.pathname.replace(/catalogue\.html$/, `share/${encodeURIComponent(entry.id)}`);
-      url.search = "";
-      url.hash = "";
-      return url.href;
+      return detailUrl(entry);
     }
 
     function catalogueUrl() {
-      const url = new URL(location.href);
-      url.searchParams.delete("resource");
-      url.searchParams.delete("q");
-      url.hash = "";
+      const url = new URL(location.origin);
+      url.pathname = "/agentwheel/catalogue.html";
       return url.href;
     }
 

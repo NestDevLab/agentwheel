@@ -107,8 +107,9 @@ export async function effectiveTrackingRef(
 ): Promise<{ ref?: string; availability?: VersionAvailability }> {
   if (pkg.mode !== "tracking" || !pkg.version) return { ref: pkg.requestedRef };
   const availability = await discoverPackageVersions(pkg, workspaceRoot, options);
+  const driverName = pkg.driver === "local" ? inferSourceDriverName(pkg.source) : pkg.driver;
   return {
-    ref: availability.latestAllowedRef ?? pkg.requestedRef,
+    ref: driverName === "local" ? pkg.requestedRef : availability.latestAllowedRef ?? pkg.requestedRef,
     availability,
   };
 }
@@ -147,7 +148,13 @@ async function discoverVersionsFromSource(pkg: WorkspacePackage, workspaceRoot: 
   if (driverName === "local") {
     const root = resolve(workspaceRoot, pkg.source);
     const manifest = await readPackageManifest(root);
-    return manifest ? [{ version: manifest.version, ref: pkg.requestedRef ?? root }] : [];
+    const current = manifest ? [{ version: manifest.version, ref: pkg.requestedRef ?? root }] : [];
+    try {
+      const { stdout } = await execFileAsync("git", ["-C", root, "remote", "get-url", "origin"]);
+      return uniqueVersions([...await discoverGitTagsFromUrl(stdout.trim()), ...current]);
+    } catch {
+      return current;
+    }
   }
 
   const driver = getSourceDriver(driverName);
@@ -163,7 +170,10 @@ async function discoverVersionsFromSource(pkg: WorkspacePackage, workspaceRoot: 
 }
 
 async function discoverGitTags(source: string): Promise<CachedVersion[]> {
-  const url = gitUrlFromSource(source);
+  return discoverGitTagsFromUrl(gitUrlFromSource(source));
+}
+
+async function discoverGitTagsFromUrl(url: string): Promise<CachedVersion[]> {
   const { stdout } = await execFileAsync("git", ["ls-remote", "--tags", "--refs", url], {
     maxBuffer: 10 * 1024 * 1024,
   });
@@ -176,6 +186,14 @@ async function discoverGitTags(source: string): Promise<CachedVersion[]> {
     const version = tag.replace(/^v/, "");
     const incumbent = byVersion.get(version);
     if (!incumbent || tag.startsWith("v")) byVersion.set(version, { version, ref: tag });
+  }
+  return [...byVersion.values()].sort((a, b) => compareSemverStrings(b.version, a.version));
+}
+
+function uniqueVersions(versions: CachedVersion[]): CachedVersion[] {
+  const byVersion = new Map<string, CachedVersion>();
+  for (const version of versions) {
+    if (!byVersion.has(version.version)) byVersion.set(version.version, version);
   }
   return [...byVersion.values()].sort((a, b) => compareSemverStrings(b.version, a.version));
 }

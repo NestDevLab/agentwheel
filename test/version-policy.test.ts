@@ -32,6 +32,7 @@ describe("root package version policy", () => {
     await runGit(repo, ["add", "."]);
     await runGit(repo, ["commit", "-m", "fixture"]);
     for (const tag of ["v1.2.0", "v1.4.0", "v2.0.0"]) await runGit(repo, ["tag", tag]);
+    await runGit(repo, ["remote", "add", "origin", repo]);
 
     const report = await discoverPackageVersions({
       name: "versioned-pack",
@@ -46,6 +47,17 @@ describe("root package version policy", () => {
     expect(report.latestAllowedRef).toBe("v1.4.0");
     expect(report.latestOverall).toBe("2.0.0");
     expect(report.stale).toBe(false);
+
+    const localReport = await discoverPackageVersions({
+      name: "versioned-pack-local",
+      source: repo,
+      driver: "local",
+      adapter: "codex",
+      mode: "tracking",
+      version: "^1.2.0",
+    }, root, { forceRefresh: true });
+    expect(localReport.latestAllowed).toBe("1.4.0");
+    expect(localReport.latestOverall).toBe("2.0.0");
   });
 });
 

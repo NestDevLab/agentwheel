@@ -46,7 +46,7 @@ import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../lifecycle/ownership.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
-import { compareSemverStrings } from "../resolve/semver.js";
+import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
 import { blocksCompositeApply, worstStatusHealth, type StatusHealth, type StatusPackage, type StatusReport, type StatusTarget } from "../status/report.js";
 import { collectRepositoryStatus } from "../status/repository.js";
@@ -1526,19 +1526,21 @@ async function buildGraphPlansForTarget(
     const allPackages = [...group.packages, ...group.extraPackages];
     const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);
     if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
+    const groupGraphLockPath = graphLockPathForTarget(
+      group.target.workspaceRoot,
+      targetKeyForTarget(group.target, adapter.name),
+      adapter.name,
+      targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
+    );
+    const previousGroupLock = await (await pathExists(groupGraphLockPath)
+      ? readGraphLock(groupGraphLockPath)
+      : undefined);
     const dependencyUpdateRootNames = new Set<string>();
     if (scopedDependencyUpdate) {
-      const graphLockPath = graphLockPathForTarget(
-        group.target.workspaceRoot,
-        targetKeyForTarget(group.target, adapter.name),
-        adapter.name,
-        targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
-      );
-      const previousLock = await (await pathExists(graphLockPath) ? readGraphLock(graphLockPath) : undefined);
       for (const pkg of group.packages) {
-        const root = previousLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+        const root = previousGroupLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
         if (root?.mode !== "tracking") continue;
-        const node = previousLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId);
+        const node = previousGroupLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId);
         if (node && dependencyUpdateSelectors.some((selector) => dependencyUpdateSelectorMatchesRoot(root, node, selector))) {
           dependencyUpdateRootNames.add(pkg.name);
         }
@@ -1546,20 +1548,27 @@ async function buildGraphPlansForTarget(
     }
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const versionSelections = new Map<string, { ref?: string; availability?: VersionAvailability }>();
-    if (behavior.mode === "update") {
-      for (const pkg of allPackages) {
-        if (pkg.mode !== "tracking" || !pkg.version) continue;
+    const versionPolicyUpdateNames = new Set<string>();
+    for (const pkg of allPackages) {
+      if (pkg.mode !== "tracking" || !pkg.version) continue;
+      const previousRoot = previousGroupLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+      const previousNode = previousRoot
+        ? previousGroupLock?.canonical.nodes.find((candidate) => candidate.id === previousRoot.graphNodeId)
+        : undefined;
+      const policyRequiresResolution = !previousNode || !satisfiesVersionRange(previousNode.version, pkg.version);
+      if (behavior.mode === "update" || policyRequiresResolution) {
         const selection = await effectiveTrackingRef(pkg, group.target.workspaceRoot, {
           offline: targetOptions.offline,
           forceRefresh: targetOptions.refresh,
         });
         if (selection.availability?.error || selection.availability?.stale) {
           throw new Error(
-            `Cannot update ${pkg.name} with stale version metadata: `
+            `Cannot resolve ${pkg.name} with stale version metadata: `
             + `${selection.availability?.error ?? "version index TTL expired"}`,
           );
         }
         versionSelections.set(pkg.name, selection);
+        if (policyRequiresResolution) versionPolicyUpdateNames.add(pkg.name);
         if (!selection.availability?.latestAllowed) {
           targetOptions.warn?.(
             `No available version of ${pkg.name} satisfies ${pkg.version}; `
@@ -1593,7 +1602,7 @@ async function buildGraphPlansForTarget(
           includeSuggestions: targetOptions.withSuggestions === true || pkg.withSuggestions === true,
           suggestionAliases: packageSuggestionAliases(pkg, targetOptions),
           useLock: behavior.mode === "install"
-            ? true
+            ? !versionPolicyUpdateNames.has(pkg.name)
             : scopedDependencyUpdate
               ? !dependencyUpdateRootNames.has(pkg.name)
               : !updateThisPackage,

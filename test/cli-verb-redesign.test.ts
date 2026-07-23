@@ -271,6 +271,36 @@ describe("CLI verb redesign", () => {
     expect(update.stdout).toContain("UPDATE");
   });
 
+  it("uses the locked release ref for status when it still satisfies the version policy", async () => {
+    const workspace = await tempRoot();
+    const repo = await gitSkillPackageFixture("locked-version-status", "locked-version-skill");
+    await git(repo, ["tag", "v1.0.0"]);
+    await runCli([
+      "add", `git:${repo}`, "--adapter", "codex", "--installation-type", "local",
+      "--target-root", workspace, "--mode", "tracking",
+    ]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages[0].version = "^1.0.0";
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+
+    const manifestPath = join(repo, "openpack.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.version = "2.0.0";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await git(repo, ["add", "openpack.json"]);
+    await git(repo, ["commit", "-m", "unreleased major"]);
+
+    const status = await runCli([
+      "status", "--adapter", "codex", "--installation-type", "local",
+      "--target-root", workspace, "--json", "--refresh",
+    ]);
+    const report = JSON.parse(status.stdout);
+    expect(report.targets[0].error).toBeUndefined();
+    expect(report.targets[0].packages[0].locked).toBe("1.0.0");
+  });
+
   it("updates one tracking dependency while unrelated dependencies remain locked", async () => {
     const workspace = await tempRoot();
     const alpha = await gitSkillPackageFixture("dep-alpha", "alpha-skill");

@@ -1548,6 +1548,7 @@ async function buildGraphPlansForTarget(
     }
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
     const versionSelections = new Map<string, { ref?: string; availability?: VersionAvailability }>();
+    const lockedVersionRefs = new Map<string, string>();
     const versionPolicyUpdateNames = new Set<string>();
     for (const pkg of allPackages) {
       if (pkg.mode !== "tracking" || !pkg.version) continue;
@@ -1556,6 +1557,9 @@ async function buildGraphPlansForTarget(
         ? previousGroupLock?.canonical.nodes.find((candidate) => candidate.id === previousRoot.graphNodeId)
         : undefined;
       const policyRequiresResolution = !previousNode || !satisfiesVersionRange(previousNode.version, pkg.version);
+      if (!policyRequiresResolution && previousNode?.requestedRef) {
+        lockedVersionRefs.set(pkg.name, previousNode.requestedRef);
+      }
       const packageUpdateSelected = !updateScope || updateScope.has(pkg.name);
       if ((behavior.mode === "update" && packageUpdateSelected)
         || (behavior.mode === "install" && policyRequiresResolution)) {
@@ -1596,7 +1600,7 @@ async function buildGraphPlansForTarget(
           source: pkg.source,
           mode: pkg.mode,
           version: pkg.version,
-          ref: versionSelection?.ref ?? pkg.requestedRef,
+          ref: versionSelection?.ref ?? lockedVersionRefs.get(pkg.name) ?? pkg.requestedRef,
           select: pkg.selection ? undefined : selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
           selection: pkg.selection,
           aliases: pkg.aliases,

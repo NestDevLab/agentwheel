@@ -1370,14 +1370,14 @@
       grid.appendChild(panel);
     }
 
-    function copyText(value, button) {
+    function copyText(value, button, idleLabel = "Copy", successLabel = "✓ Copied") {
       const command = text(value);
       const done = () => {
         button.classList.add("copied");
-        button.textContent = "✓ Copied";
+        button.textContent = successLabel;
         window.setTimeout(() => {
           button.classList.remove("copied");
-          button.textContent = "Copy";
+          button.textContent = idleLabel;
         }, 1500);
       };
 
@@ -1386,6 +1386,19 @@
       } else {
         fallbackCopy(command, done);
       }
+    }
+
+    async function shareResource(entry, button) {
+      const url = shareUrl(entry);
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: `${text(entry.name)} - Catalogue - agentwheel`, text: text(entry.description), url });
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return;
+        }
+      }
+      copyText(url, button, "Share", "✓ Link copied");
     }
 
     function fallbackCopy(value, done) {
@@ -2007,6 +2020,13 @@
       browseSkills.href = catalogueSearchUrl(entry.name);
       browseSkills.textContent = "Search catalogue";
       actions.appendChild(browseSkills);
+      const share = document.createElement("button");
+      share.className = "button secondary";
+      share.type = "button";
+      share.textContent = "Share";
+      share.title = "Share or copy a social-preview link";
+      share.addEventListener("click", () => shareResource(entry, share));
+      actions.appendChild(share);
       detailPanel.appendChild(actions);
 
       const top = document.createElement("div");

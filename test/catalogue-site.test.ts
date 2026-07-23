@@ -32,5 +32,7 @@ describe("catalogue site", () => {
     expect(html).toContain("updateDocumentMetadata");
     expect(html).toContain("entry.provides.filter(Boolean).map((type) => `${type}/`)");
     expect(html).toContain("function shareUrl(entry)");
+    expect(html).toContain("function shareResource(entry, button)");
+    expect(html).toContain("Share or copy a social-preview link");
   });
 });

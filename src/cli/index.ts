@@ -1556,7 +1556,9 @@ async function buildGraphPlansForTarget(
         ? previousGroupLock?.canonical.nodes.find((candidate) => candidate.id === previousRoot.graphNodeId)
         : undefined;
       const policyRequiresResolution = !previousNode || !satisfiesVersionRange(previousNode.version, pkg.version);
-      if (behavior.mode === "update" || policyRequiresResolution) {
+      const packageUpdateSelected = !updateScope || updateScope.has(pkg.name);
+      if ((behavior.mode === "update" && packageUpdateSelected)
+        || (behavior.mode === "install" && policyRequiresResolution)) {
         const selection = await effectiveTrackingRef(pkg, group.target.workspaceRoot, {
           offline: targetOptions.offline,
           forceRefresh: targetOptions.refresh,
@@ -1646,7 +1648,9 @@ async function buildGraphPlansForTarget(
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      results.push(scopeInstallPlanToRoot(result, scopedRootId, manifest));
+      results.push(behavior.mode === "update" && previousGroupLock
+        ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
+        : scopeInstallPlanToRoot(result, scopedRootId, manifest));
     } else if (scopedDependencyUpdate) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
@@ -1895,6 +1899,51 @@ function scopeInstallPlanToRoot(
       hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
     },
   };
+}
+
+function scopeUpdatePlanToRoot(
+  result: GraphSourcePlanResult,
+  rootId: string,
+  previousLock: GraphLock,
+  manifest: InstallManifest | undefined,
+): GraphSourcePlanResult {
+  const scoped = scopeInstallPlanToRoot(result, rootId, manifest);
+  const selectedCurrentNodeIds = graphRootClosure(scoped.bundle.graphLock, rootId);
+  const selectedPreviousNodeIds = graphRootClosure(previousLock, rootId);
+  const graphLock = preserveUnrelatedGraphPackages(
+    scoped.bundle.graphLock,
+    previousLock,
+    selectedCurrentNodeIds,
+    selectedPreviousNodeIds,
+    new Set([rootId]),
+  );
+  const graphLockDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+  return {
+    ...scoped,
+    bundle: { ...scoped.bundle, graphLock },
+    graphLockDigest,
+    graphDiff: diffGraphLocks(previousLock, graphLock),
+    plan: {
+      ...scoped.plan,
+      graphLockDigest,
+    },
+  };
+}
+
+function graphRootClosure(lock: GraphLock, rootId: string): Set<string> {
+  const root = lock.canonical.roots.find((candidate) => candidate.rootId === rootId);
+  if (!root) return new Set();
+  const selected = new Set<string>();
+  const queue = [root.graphNodeId];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (selected.has(nodeId)) continue;
+    selected.add(nodeId);
+    for (const edge of lock.canonical.edges) {
+      if (edge.from === nodeId) queue.push(edge.to);
+    }
+  }
+  return selected;
 }
 
 function transformOutOfScopeOperation(

@@ -491,7 +491,9 @@ describe("CLI verb redesign", () => {
     await runCli(["add", `git:${alpha}#main`, "--name", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
     await runCli(["add", `git:${beta}#main`, "--name", "beta", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
     await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "scoped-update-beta");
     await updateGitSkill(alpha, "alpha-skill", "alpha-v2");
+    await updateGitSkill(beta, "beta-skill", "beta-v2");
     await writeFile(betaDest, "local beta drift\n", "utf8");
 
     const preview = await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run"]);
@@ -502,6 +504,7 @@ describe("CLI verb redesign", () => {
     await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(join(workspace, ".agents", "skills", "alpha-skill", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
     await expect(readFile(betaDest, "utf8")).resolves.toBe("local beta drift\n");
+    await expect(lockedPackageSourceHash(workspace, "scoped-update-beta")).resolves.toBe(betaHashBefore);
   });
 
   it("scoped install converges out-of-scope ownership without touching shared content", async () => {

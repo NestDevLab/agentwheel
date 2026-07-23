@@ -37,7 +37,9 @@
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "b3b8f71b1ced1505801e2b08a7ea73b88e308043"
+        "b3b8f71b1ced1505801e2b08a7ea73b88e308043",
+        "ac457f9bc6307d01d40ce492a72ce268defc82fa",
+        "f966240082042504baf329ba930f7e5e420bbaa9"
       ],
       "meta": {
         "purpose": "Fix catalogue artifact visibility, layout, and social previews"

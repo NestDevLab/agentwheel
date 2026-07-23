@@ -44,6 +44,18 @@ export function semverMajorOrVersion(version: string): string {
   return parsed ? String(parsed.major) : version;
 }
 
+export function compareSemverStrings(a: string, b: string): number {
+  const parsedA = parseSemver(a);
+  const parsedB = parseSemver(b);
+  if (!parsedA || !parsedB) return a.localeCompare(b);
+  return compareSemver(parsedA, parsedB);
+}
+
+export function isSupportedVersionRange(range: string): boolean {
+  const trimmed = range.trim();
+  return trimmed === "*" || parseRange(trimmed) !== undefined;
+}
+
 function parseRange(range: string): Comparator[] | undefined {
   if (range === "*") return [];
   if (range.startsWith("^")) {

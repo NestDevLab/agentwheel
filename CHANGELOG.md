@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added npm-style root package version policies with cached latest-allowed and latest-overall discovery while preserving pinned versus tracking update semantics.
+- Added versioned `status --json` reports for installed, locked, latest allowed, latest overall, drift, conflict, and pending work.
+- Added composite workspace profiles whose local or SSH `members` remain autonomous Agentwheel workspaces while participating in existing status, plan, install, and update flows.
+- Added member status TTL/refresh/offline behavior, protocol compatibility checks, cycle guards, two-phase preflight, revision revalidation, and deterministic fail-fast apply ordering.
+
 ## 0.14.13
 
 - Added plan observability, JSON/report renderers, a local dashboard, semantic plugin execution, and explicitly gated runtime reload commands.

@@ -21,8 +21,8 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource } from "../staging/staging.js";
-import { readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, writeWorkspaceConfig } from "../model/workspace.js";
-import type { WorkspacePackage } from "../model/workspace.js";
+import { findWorkspaceRoot, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, writeWorkspaceConfig } from "../model/workspace.js";
+import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
@@ -45,6 +45,11 @@ import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../lifecycle/ownership.js";
+import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
+import { compareSemverStrings } from "../resolve/semver.js";
+import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
+import { blocksCompositeApply, worstStatusHealth, type StatusHealth, type StatusPackage, type StatusReport, type StatusTarget } from "../status/report.js";
+import { collectRepositoryStatus } from "../status/repository.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -107,6 +112,7 @@ program
   .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("-t, --target-root <path>", "workspace root")
   .option("--mode <mode>", "pinned or tracking", "pinned")
+  .option("--version <range>", "root package version policy (exact, ~, ^, or *)")
   .option("--name <name>", "package alias")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
@@ -196,6 +202,7 @@ program
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
@@ -238,6 +245,7 @@ program
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .addHelpText("after", "\nScoped install never removes files owned only by other configured packages; run a full install to reconcile those removals.\n")
@@ -275,6 +283,7 @@ program
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .option("--bind <addr>", "interface to bind", "127.0.0.1")
@@ -324,6 +333,7 @@ program
   .option("--only-source", "with a source argument, exclude configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (source, options) => {
@@ -359,6 +369,7 @@ program
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
+  .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
@@ -370,6 +381,11 @@ program
       throw new Error("--dependency cannot be combined with --frozen-lock or --offline.");
     }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const composite = await resolveSelectedCompositeProfile(normalizedOptions);
+    if (composite) {
+      await runCompositeUpdate(composite.workspaceRoot, composite.name, composite.profile, name, normalizedOptions);
+      return;
+    }
     const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
     for (const target of targets) {
       await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
@@ -728,9 +744,28 @@ program
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--profile <name>", "workspace runtime profile")
+  .option("--json", "print the versioned status protocol as JSON", false)
+  .option("--offline", "use cached version and member status even when stale", false)
+  .option("--refresh", "refresh package and member status regardless of TTL", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const composite = await resolveSelectedCompositeProfile(normalizedOptions);
+    if (composite) {
+      const report = await collectCompositeStatus(composite.workspaceRoot, composite.name, composite.profile, normalizedOptions);
+      if (options.json) console.log(JSON.stringify(report, null, 2));
+      else printStatusReport(report);
+      if (!["PASS", "WARN"].includes(report.health)) process.exitCode = 1;
+      return;
+    }
     const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
+    if (options.json) {
+      const targetReports = [];
+      for (const target of targets) targetReports.push(await collectTargetStatus(target, normalizedOptions));
+      const report = await statusReport(targets[0]?.workspaceRoot ?? process.cwd(), options.profile ?? null, targetReports);
+      console.log(JSON.stringify(report, null, 2));
+      if (!["PASS", "WARN"].includes(report.health)) process.exitCode = 1;
+      return;
+    }
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
@@ -843,6 +878,21 @@ async function runInstallCommand(
 ): Promise<void> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
   const outputFormat = effectivePlanOutputFormat(normalizedOptions);
+  const composite = await resolveSelectedCompositeProfile(normalizedOptions);
+  if (composite) {
+    if (outputFormat !== "human") {
+      throw new Error("Composite profile plan/install currently requires human output; use status --json for the versioned member protocol.");
+    }
+    await runCompositeInstall(
+      composite.workspaceRoot,
+      composite.name,
+      composite.profile,
+      nameOrSource,
+      normalizedOptions,
+      behavior,
+    );
+    return;
+  }
   if (outputFormat !== "human") {
     const report = await buildPlanReport(nameOrSource, normalizedOptions);
     if (report.targets.some((target) => target.hasBlockingChanges)) process.exitCode = 1;
@@ -1081,6 +1131,7 @@ async function packageEntryFromSource(
     adapterModule?: string;
     allowAdapterCode?: boolean;
     mode?: "pinned" | "tracking";
+    version?: string;
     name?: string;
     select?: string[];
     skill?: string[];
@@ -1110,11 +1161,36 @@ async function packageEntryFromSource(
     baseDir: targetRoot,
     warn: options.warn ?? ((message) => console.warn(message)),
   });
+  const provisionalName = options.name ?? resolvedInput.registryEntry?.name ?? source;
+  const initialVersion = options.mode === "tracking" && options.version
+    ? await effectiveTrackingRef({
+      name: provisionalName,
+      source: resolvedSource,
+      driver: driverName,
+      adapter: adapter.name,
+      installationType: options.installationType,
+      mode: "tracking",
+      version: options.version,
+    }, targetRoot, { offline: options.offline })
+    : undefined;
+  if (initialVersion?.availability?.error || initialVersion?.availability?.stale) {
+    throw new Error(
+      `Cannot select an initial version for ${provisionalName}: `
+      + `${initialVersion.availability?.error ?? "version metadata is stale"}`,
+    );
+  }
+  if (initialVersion?.availability && !initialVersion.availability.latestAllowedRef) {
+    throw new Error(
+      `No available version of ${provisionalName} satisfies ${options.version}; `
+      + `latest overall is ${initialVersion.availability.latestOverall ?? "unknown"}.`,
+    );
+  }
   const bundle = await stageSource(driver, resolvedSource, {
     workspaceRoot: targetRoot,
     adapter,
     cacheRoot: join(targetRoot, ".agentwheel", "cache"),
     mode: options.mode,
+    ref: initialVersion?.ref,
     frozenLock: lockMode,
     select: selectedArtifacts,
   });
@@ -1130,6 +1206,7 @@ async function packageEntryFromSource(
       adapterModule: options.adapterModule,
       adapterCodeHash: adapter.programmatic?.hash,
       mode: options.mode ?? "pinned",
+      version: options.version,
       requestedRef: bundle.source.requestedRef,
       select: selectedArtifacts,
       withSuggestions: options.withSuggestions === true ? true : undefined,
@@ -1327,6 +1404,7 @@ interface GraphCliOptions {
   onlySource?: boolean;
   frozenLock?: boolean;
   offline?: boolean;
+  refresh?: boolean;
   yes?: boolean;
   trust?: string[];
   scope?: string;
@@ -1467,10 +1545,36 @@ async function buildGraphPlansForTarget(
       }
     }
     const updateScope = behavior.mode === "update" ? (scopedPackage ? new Set([scopedPackage.name]) : undefined) : undefined;
+    const versionSelections = new Map<string, { ref?: string; availability?: VersionAvailability }>();
+    if (behavior.mode === "update") {
+      for (const pkg of allPackages) {
+        if (pkg.mode !== "tracking" || !pkg.version) continue;
+        const selection = await effectiveTrackingRef(pkg, group.target.workspaceRoot, {
+          offline: targetOptions.offline,
+          forceRefresh: targetOptions.refresh,
+        });
+        if (selection.availability?.error || selection.availability?.stale) {
+          throw new Error(
+            `Cannot update ${pkg.name} with stale version metadata: `
+            + `${selection.availability?.error ?? "version index TTL expired"}`,
+          );
+        }
+        versionSelections.set(pkg.name, selection);
+        if (!selection.availability?.latestAllowed) {
+          targetOptions.warn?.(
+            `No available version of ${pkg.name} satisfies ${pkg.version}; `
+            + `latest overall is ${selection.availability?.latestOverall ?? "unknown"}.`,
+          );
+        }
+      }
+    }
     const roots: GraphRootRequest[] = [
       ...allPackages.map((pkg) => {
+        const versionSelection = versionSelections.get(pkg.name);
+        const versionAllowsUpdate = !pkg.version || Boolean(versionSelection?.availability?.latestAllowed);
         const updateThisPackage = behavior.mode === "update" && !scopedDependencyUpdate
           && pkg.mode === "tracking"
+          && versionAllowsUpdate
           && (!updateScope || updateScope.has(pkg.name) || updateScope.has(pkg.source));
         const packageIsScoped = scopedRootId ? pkg.name === scopedRootId || pkg.source === targetOptions.scope : true;
         if (pkg.selection && selectedArtifacts && packageIsScoped) {
@@ -1480,7 +1584,8 @@ async function buildGraphPlansForTarget(
           rootId: pkg.name,
           source: pkg.source,
           mode: pkg.mode,
-          ref: pkg.requestedRef,
+          version: pkg.version,
+          ref: versionSelection?.ref ?? pkg.requestedRef,
           select: pkg.selection ? undefined : selectedArtifacts && packageIsScoped ? selectedArtifacts : normalizeArtifactSelectors(pkg.select, pkg.skills),
           selection: pkg.selection,
           aliases: pkg.aliases,
@@ -1909,6 +2014,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
           rootId: pkg.name,
           source: pkg.source,
           mode: pkg.mode,
+          version: pkg.version,
           ref: pkg.requestedRef,
           select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
           selection: pkg.selection,
@@ -2074,31 +2180,409 @@ async function printStatus(
   target: RuntimeTarget,
   options: GraphCliOptions,
 ): Promise<void> {
+  const report = await collectTargetStatus(target, options);
+  printTargetStatus(report);
+}
+
+async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptions): Promise<StatusTarget> {
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
   const adapterOptions = adapterOptionsForTarget(target, options);
-  const adapter = await resolveAdapterForTarget(target, adapterOptions);
+  const adapter = await resolveAdapterForTarget(target, { ...adapterOptions, warn: () => undefined });
   const transport = transportForTarget(target);
   const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
   const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-  console.log(`Status for ${adapter.name}/${installationType} at ${state.installRoot}`);
-  if (config.packages.length === 0) {
-    console.log(`Configured packages: none at ${target.workspaceRoot}`);
-    return;
-  }
-  console.log("Configured packages:");
-  for (const pkg of config.packages) {
-    console.log(`- ${pkg.name} (${pkg.mode}) ${pkg.source}`);
-  }
   const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-  console.log(manifest ? `Install manifest: ${manifest.entries.length} entries, revision ${manifest.revision}` : "Install manifest: missing");
+  let graphLockPath: string | null = null;
+  let graphLock: GraphLock | undefined;
   try {
-    const { path, lock } = await readTargetGraphLock(target, adapterOptions);
-    console.log(`Graph lock: ${path}`);
-    console.log(`Locked graph: ${lock.canonical.roots.length} roots, ${lock.canonical.nodes.length} nodes, ${lock.canonical.artifacts.length} artifacts`);
+    const result = await readTargetGraphLock(target, adapterOptions);
+    graphLockPath = result.path;
+    graphLock = result.lock;
   } catch {
-    console.log("Graph lock: missing");
+    graphLock = undefined;
   }
-  await printPendingInstallWork(target, options);
+
+  const packages: StatusPackage[] = [];
+  for (const pkg of config.packages) {
+    const root = graphLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+    const node = root ? graphLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId) : undefined;
+    const availability = await discoverPackageVersions(pkg, target.workspaceRoot, {
+      forceRefresh: options.refresh,
+      offline: options.offline,
+    });
+    const installed = node && manifest?.entries.some((entry) => "graphNodeId" in entry && entry.graphNodeId === node.id)
+      ? node.version
+      : null;
+    const locked = node?.version ?? null;
+    const baseline = installed ?? locked;
+    packages.push({
+      name: pkg.name,
+      source: pkg.source,
+      mode: pkg.mode,
+      policy: pkg.version ?? "*",
+      installed,
+      locked,
+      latestAllowed: availability.latestAllowed,
+      latestOverall: availability.latestOverall,
+      availability: availability.stale ? "STALE" : availability.checkedAt ? "FRESH" : "UNKNOWN",
+      checkedAt: availability.checkedAt,
+      ...(availability.error ? { error: availability.error } : {}),
+      updateAvailableAllowed: Boolean(
+        baseline
+        && availability.latestAllowed
+        && compareSemverStrings(availability.latestAllowed, baseline) > 0,
+      ),
+      updateAvailableOverall: Boolean(
+        baseline
+        && availability.latestOverall
+        && compareSemverStrings(availability.latestOverall, baseline) > 0,
+      ),
+    });
+  }
+
+  const pending = await collectPendingInstallWork(target, options);
+  const artifacts = (graphLock?.canonical.artifacts ?? []).map((artifact) => {
+    const node = graphLock?.canonical.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
+    const installed = manifest?.entries.some((entry) => {
+      if (!("graphNodeId" in entry) || entry.graphNodeId !== artifact.graphNodeId) return false;
+      if ("logicalSelector" in entry && entry.logicalSelector) return entry.logicalSelector === artifact.logicalSelector;
+      return entry.artifactType === artifact.type && entry.artifactName === artifact.name;
+    }) ?? false;
+    return {
+      selector: artifact.logicalSelector,
+      type: artifact.type,
+      name: artifact.name,
+      installName: artifact.installName,
+      packageName: node?.name ?? null,
+      packageVersion: node?.version ?? null,
+      hash: artifact.hash,
+      installed,
+    };
+  });
+  const health: StatusHealth[] = [];
+  if (!manifest || !graphLock) health.push("FAIL");
+  if (pending.error) health.push("DEGRADED");
+  if (pending.driftCount > 0 || pending.conflictCount > 0) health.push("FAIL");
+  else if (pending.pendingCount > 0) health.push("WARN");
+  if (packages.some((pkg) => pkg.availability === "STALE" || pkg.error)) health.push("DEGRADED");
+  else if (packages.some((pkg) => pkg.updateAvailableAllowed || pkg.updateAvailableOverall)) health.push("WARN");
+
+  return {
+    adapter: adapter.name,
+    installationType,
+    targetRoot: state.installRoot,
+    health: worstStatusHealth(health),
+    manifestRevision: manifest?.revision ?? null,
+    manifestEntryCount: manifest?.entries.length ?? 0,
+    graphLockPath,
+    packageCount: packages.length,
+    artifactCount: graphLock?.canonical.artifacts.length ?? 0,
+    pendingCount: pending.pendingCount,
+    driftCount: pending.driftCount,
+    conflictCount: pending.conflictCount,
+    ...(pending.error ? { error: pending.error } : {}),
+    packages,
+    artifacts,
+  };
+}
+
+async function resolveSelectedCompositeProfile(options: GraphCliOptions): Promise<{
+  workspaceRoot: string;
+  name: string;
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>;
+} | undefined> {
+  const workspaceRoot = await findWorkspaceRoot(options.targetRoot ?? process.cwd());
+  const config = await readMergedWorkspaceConfig(workspaceRoot);
+  const name = options.profile ?? (options.all && config.profiles.all ? "all" : undefined);
+  if (!name) return undefined;
+  const profile = config.profiles[name];
+  if (!profile) throw new Error(`Unknown profile: ${name}`);
+  if (!isCompositeWorkspaceProfile(profile)) return undefined;
+  const chain = parseCompositeChain();
+  assertNoCompositeCycle(workspaceRoot, name, chain);
+  return { workspaceRoot, name, profile };
+}
+
+async function collectCompositeStatus(
+  workspaceRoot: string,
+  profileName: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  options: GraphCliOptions,
+): Promise<StatusReport> {
+  const chain = parseCompositeChain();
+  const members = await collectCompositeMembers({
+    cliVersion: CLI_VERSION,
+    workspaceRoot,
+    profileName,
+    profileTtlSeconds: profile.refreshTtlSeconds,
+    members: profile.members,
+    refresh: options.refresh,
+    offline: options.offline,
+    chain,
+  });
+  const repository = await collectRepositoryStatus(workspaceRoot);
+  const repositoryHealth: StatusHealth = repository.available
+    && repository.ahead === 0
+    && repository.behind === 0
+    && repository.dirtyCount === 0
+    ? "PASS"
+    : "WARN";
+  return {
+    schemaVersion: 1,
+    command: "status",
+    agentwheelVersion: CLI_VERSION,
+    generatedAt: new Date().toISOString(),
+    workspace: workspaceRoot,
+    profile: profileName,
+    health: worstStatusHealth([...members.map((member) => member.health), repositoryHealth]),
+    repository,
+    targets: [],
+    members,
+  };
+}
+
+async function runCompositeUpdate(
+  workspaceRoot: string,
+  profileName: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  packageName: string | undefined,
+  options: GraphCliOptions,
+): Promise<void> {
+  const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
+  printStatusReport(preflight);
+  const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
+  if (blockers.length > 0) {
+    throw new Error(
+      `Composite update blocked before member execution: `
+      + blockers.map((member) => `${member.id}=${member.health}`).join(", "),
+    );
+  }
+
+  const incomingChain = parseCompositeChain();
+  const memberChain = [...incomingChain, compositeKey(workspaceRoot, profileName)];
+  for (const member of profile.members) {
+    if (!options.dryRun) {
+      const before = preflight.members.find((candidate) => candidate.id === member.id);
+      const revalidated = await collectCompositeMembers({
+        cliVersion: CLI_VERSION,
+        workspaceRoot,
+        profileName,
+        profileTtlSeconds: profile.refreshTtlSeconds,
+        members: [member],
+        refresh: true,
+        chain: incomingChain,
+      });
+      const current = revalidated[0]!;
+      if (blocksCompositeApply(current.health)) {
+        throw new Error(`Composite update stopped before ${member.id}: revalidation is ${current.health}.`);
+      }
+      if (statusRevisionSignature(before?.report) !== statusRevisionSignature(current.report)) {
+        throw new Error(`Composite update stopped before ${member.id}: member revision changed after preflight.`);
+      }
+    }
+
+    const args = compositeUpdateArguments(member.profile, packageName, options);
+    console.log(`${options.dryRun ? "Plan" : "Update"} member ${member.id}:`);
+    const result = await runMemberAgentwheel(member, workspaceRoot, args, memberChain);
+    if (result.stdout.trim()) console.log(result.stdout.trimEnd());
+    if (result.stderr.trim()) console.error(result.stderr.trimEnd());
+  }
+}
+
+async function runCompositeInstall(
+  workspaceRoot: string,
+  profileName: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  nameOrSource: string | undefined,
+  options: GraphCliOptions,
+  behavior: { apply: boolean },
+): Promise<void> {
+  const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
+  printStatusReport(preflight);
+  const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
+  if (blockers.length > 0) {
+    throw new Error(
+      `Composite ${behavior.apply ? "install" : "plan"} blocked before member execution: `
+      + blockers.map((member) => `${member.id}=${member.health}`).join(", "),
+    );
+  }
+
+  const incomingChain = parseCompositeChain();
+  const memberChain = [...incomingChain, compositeKey(workspaceRoot, profileName)];
+  for (const member of profile.members) {
+    if (behavior.apply) {
+      const before = preflight.members.find((candidate) => candidate.id === member.id);
+      const revalidated = await collectCompositeMembers({
+        cliVersion: CLI_VERSION,
+        workspaceRoot,
+        profileName,
+        profileTtlSeconds: profile.refreshTtlSeconds,
+        members: [member],
+        refresh: true,
+        chain: incomingChain,
+      });
+      const current = revalidated[0]!;
+      if (blocksCompositeApply(current.health)) {
+        throw new Error(`Composite install stopped before ${member.id}: revalidation is ${current.health}.`);
+      }
+      if (statusRevisionSignature(before?.report) !== statusRevisionSignature(current.report)) {
+        throw new Error(`Composite install stopped before ${member.id}: member revision changed after preflight.`);
+      }
+    }
+
+    const args = compositeInstallArguments(member.profile, nameOrSource, options, behavior.apply);
+    console.log(`${behavior.apply ? "Install" : "Plan"} member ${member.id}:`);
+    const result = await runMemberAgentwheel(member, workspaceRoot, args, memberChain);
+    if (result.stdout.trim()) console.log(result.stdout.trimEnd());
+    if (result.stderr.trim()) console.error(result.stderr.trimEnd());
+  }
+}
+
+function compositeInstallArguments(
+  profile: string,
+  nameOrSource: string | undefined,
+  options: GraphCliOptions,
+  apply: boolean,
+): string[] {
+  const args = [apply ? "install" : "plan"];
+  if (nameOrSource) args.push(nameOrSource);
+  args.push("--profile", profile);
+  if (options.refresh) args.push("--refresh");
+  if (options.forceDrift) args.push("--force-drift");
+  if (options.forceConflict) args.push("--force-conflict");
+  if (options.replaceConflict) args.push("--replace-conflict");
+  if (options.executePlugins) args.push("--execute-plugins");
+  if (shouldReloadRuntimes(options)) args.push("--reload-runtimes");
+  if (options.noDeps) args.push("--no-deps");
+  if (options.frozenLock) args.push("--frozen-lock");
+  if (options.onlySource) args.push("--only-source");
+  for (const selection of options.select ?? []) args.push("--select", selection);
+  for (const skill of options.skill ?? []) args.push("--skill", skill);
+  for (const trust of options.trust ?? []) args.push("--trust", trust);
+  if (options.yes) args.push("--yes");
+  return args;
+}
+
+function compositeUpdateArguments(profile: string, packageName: string | undefined, options: GraphCliOptions): string[] {
+  const args = ["update"];
+  if (packageName) args.push(packageName);
+  args.push("--profile", profile);
+  if (options.dryRun) args.push("--dry-run");
+  if (options.refresh) args.push("--refresh");
+  if (options.forceDrift) args.push("--force-drift");
+  if (options.forceConflict) args.push("--force-conflict");
+  if (options.replaceConflict) args.push("--replace-conflict");
+  if (options.executePlugins) args.push("--execute-plugins");
+  if (shouldReloadRuntimes(options)) args.push("--reload-runtimes");
+  if (options.noDeps) args.push("--no-deps");
+  if (options.frozenLock) args.push("--frozen-lock");
+  for (const dependency of options.dependency ?? []) args.push("--dependency", dependency);
+  for (const trust of options.trust ?? []) args.push("--trust", trust);
+  if (options.yes) args.push("--yes");
+  return args;
+}
+
+function statusRevisionSignature(report: StatusReport | undefined): string {
+  if (!report) return "missing";
+  return JSON.stringify({
+    profile: report.profile,
+    repository: {
+      head: report.repository.head,
+      ahead: report.repository.ahead,
+      behind: report.repository.behind,
+      dirtyCount: report.repository.dirtyCount,
+    },
+    targets: report.targets.map((target) => ({
+      adapter: target.adapter,
+      installationType: target.installationType,
+      targetRoot: target.targetRoot,
+      manifestRevision: target.manifestRevision,
+      graphLockPath: target.graphLockPath,
+      packages: target.packages.map((pkg) => ({
+        name: pkg.name,
+        installed: pkg.installed,
+        locked: pkg.locked,
+        latestAllowed: pkg.latestAllowed,
+        latestOverall: pkg.latestOverall,
+      })),
+    })),
+    members: report.members.map((member) => ({
+      id: member.id,
+      report: statusRevisionSignature(member.report),
+    })),
+  });
+}
+
+async function statusReport(workspace: string, profile: string | null, targets: StatusTarget[]): Promise<StatusReport> {
+  const repository = await collectRepositoryStatus(workspace);
+  const repositoryHealth: StatusHealth = repository.available
+    && repository.ahead === 0
+    && repository.behind === 0
+    && repository.dirtyCount === 0
+    ? "PASS"
+    : "WARN";
+  return {
+    schemaVersion: 1,
+    command: "status",
+    agentwheelVersion: CLI_VERSION,
+    generatedAt: new Date().toISOString(),
+    workspace,
+    profile,
+    health: worstStatusHealth([...targets.map((target) => target.health), repositoryHealth]),
+    repository,
+    targets,
+    members: [],
+  };
+}
+
+function printStatusReport(report: StatusReport): void {
+  console.log(`Status ${report.health} for profile ${report.profile ?? "(direct)"} at ${report.workspace}`);
+  console.log(
+    `Repository: ${report.repository.available ? report.repository.branch ?? "detached" : "unavailable"}`
+    + `; ahead=${report.repository.ahead}; behind=${report.repository.behind}; dirty=${report.repository.dirtyCount}`,
+  );
+  if (report.members.length > 0) {
+    console.log("MEMBER\tTRANSPORT\tPROFILE\tVERSION\tHEALTH\tCACHE");
+    for (const member of report.members) {
+      console.log([
+        member.id,
+        member.transport,
+        member.profile,
+        member.agentwheelVersion ?? "unknown",
+        member.health,
+        member.stale ? "stale" : "fresh",
+      ].join("\t"));
+      if (member.error) console.log(`  ${member.error}`);
+    }
+  }
+  for (const target of report.targets) printTargetStatus(target);
+}
+
+function printTargetStatus(target: StatusTarget): void {
+  console.log(`Status for ${target.adapter}/${target.installationType} at ${target.targetRoot} (health: ${target.health})`);
+  console.log(target.manifestRevision
+    ? `Install manifest: ${target.manifestEntryCount} entries, revision ${target.manifestRevision}`
+    : "Install manifest: missing");
+  console.log(target.graphLockPath
+    ? `Graph lock: ${target.graphLockPath} (${target.artifactCount} artifacts)`
+    : "Graph lock: missing");
+  console.log("PACKAGE\tMODE\tPOLICY\tINSTALLED\tLOCKED\tLATEST ALLOWED\tLATEST OVERALL\tSTATUS");
+  for (const pkg of target.packages) {
+    console.log([
+      pkg.name,
+      pkg.mode,
+      pkg.policy,
+      pkg.installed ?? "-",
+      pkg.locked ?? "-",
+      pkg.latestAllowed ?? "-",
+      pkg.latestOverall ?? "-",
+      pkg.availability,
+    ].join("\t"));
+  }
+  console.log(`Artifacts: ${target.artifactCount} locked, ${target.artifacts.filter((artifact) => artifact.installed).length} installed`);
+  if (target.error) console.log(`Pending install work: unavailable (${target.error})`);
+  else if (target.pendingCount === 0) console.log("Pending install work: none");
+  else console.log(`Pending install work: ${target.pendingCount} (drift=${target.driftCount}, conflict=${target.conflictCount})`);
 }
 
 async function journalStateForTarget(target: RuntimeTarget, options: GraphCliOptions) {
@@ -2111,24 +2595,50 @@ async function journalStateForTarget(target: RuntimeTarget, options: GraphCliOpt
 }
 
 async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliOptions): Promise<void> {
+  const pending = await collectPendingInstallWork(target, options);
+  if (pending.error) {
+    console.log(`Pending install work: unavailable (${pending.error})`);
+    return;
+  }
+  if (pending.pendingCount === 0) {
+    console.log("Pending install work: none");
+    return;
+  }
+  const counts = Object.entries(pending.counts).map(([action, count]) => `${action}=${count}`).join(", ");
+  const blocking = pending.driftCount + pending.conflictCount;
+  console.log(`Pending install work: ${pending.pendingCount} operations (${counts}${blocking ? `; blocking=${blocking}` : ""})`);
+}
+
+async function collectPendingInstallWork(target: RuntimeTarget, options: GraphCliOptions): Promise<{
+  pendingCount: number;
+  driftCount: number;
+  conflictCount: number;
+  counts: Record<string, number>;
+  error?: string;
+}> {
   let results: GraphSourcePlanResult[] = [];
   try {
-    results = await buildGraphPlansForTarget(target, undefined, { ...options, dryRun: true }, { mode: "install" });
+    results = await buildGraphPlansForTarget(
+      target,
+      undefined,
+      { ...options, dryRun: true, warn: options.warn ?? (() => undefined) },
+      { mode: "install" },
+    );
     const operations = results.flatMap((result) => result.plan.operations);
     const pending = operations.filter(isPendingInstallOperation);
-    if (pending.length === 0) {
-      console.log("Pending install work: none");
-      return;
-    }
-    const counts = [...pending.reduce((map, operation) => {
+    const counts = Object.fromEntries([...pending.reduce((map, operation) => {
       map.set(operation.action, (map.get(operation.action) ?? 0) + 1);
       return map;
-    }, new Map<string, number>())].map(([action, count]) => `${action}=${count}`).join(", ");
-    const blocking = pending.filter((operation) => operation.action === "conflict" || operation.action === "drift").length;
-    console.log(`Pending install work: ${pending.length} operations (${counts}${blocking ? `; blocking=${blocking}` : ""})`);
+    }, new Map<string, number>())]);
+    return {
+      pendingCount: pending.length,
+      driftCount: counts.drift ?? 0,
+      conflictCount: counts.conflict ?? 0,
+      counts,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.log(`Pending install work: unavailable (${message})`);
+    return { pendingCount: 0, driftCount: 0, conflictCount: 0, counts: {}, error: message };
   } finally {
     await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }

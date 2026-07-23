@@ -378,6 +378,28 @@ be deselected:
 }
 ```
 
+### Root version policy
+
+Workspace packages can combine source movement with an npm-style release policy:
+
+```jsonc
+{
+  "name": "agent-pack",
+  "source": "github:your-org/agent-pack",
+  "driver": "git",
+  "mode": "tracking",
+  "version": "^1.4.0"
+}
+```
+
+`mode: pinned` never advances automatically. `mode: tracking` may advance to the newest release
+allowed by an exact version, `~`, `^`, comparator range, or `*`. Status always reports installed,
+locked, latest allowed, and latest overall versions, including newer releases outside the selected
+policy. Version discovery uses a 24-hour cache by default; `--refresh` bypasses it and `--offline`
+uses cached metadata marked stale when its TTL has expired. Git packages use semver tags as
+enumerable releases. A branch without tags can report a changed HEAD but cannot select an older
+compatible release; explicit refs and commits remain pins.
+
 ### Project-owned selection exports
 
 Workspace configuration `schemaVersion: 2` can export named artifact selections. This is useful
@@ -662,6 +684,7 @@ Built-in runtime targets:
 - [`llms.txt`](llms.txt) — LLM-oriented map of the public docs.
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
+- [`docs/design/federated-fleet-clusters.md`](docs/design/federated-fleet-clusters.md) — federating autonomous workspaces under one doctor/update control plane.
 - [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md) — artifact/harness compatibility matrix and rule semantics.
 - Resource catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html.
 - [`DESIGN.md`](DESIGN.md) — architecture and module layout.

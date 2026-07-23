@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -12,9 +13,7 @@ let cliHome: string;
 
 beforeAll(async () => {
   cliHome = await mkdtemp(join(tmpdir(), "agentwheel-cli-home-"));
-  if (await cliBuildIsStale()) {
-    await execFileAsync("pnpm", ["build"], { cwd: process.cwd(), maxBuffer: 20 * 1024 * 1024 });
-  }
+  await ensureCliBuild(cli);
 });
 
 afterEach(async () => {
@@ -1279,26 +1278,4 @@ async function removeConfiguredPackage(workspace: string, name: string): Promise
   };
   config.packages = config.packages.filter((pkg) => pkg.name !== name && pkg.source !== name);
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-}
-
-async function cliBuildIsStale(): Promise<boolean> {
-  try {
-    const built = await stat(cli);
-    return built.mtimeMs < await newestTypescriptMtime(join(process.cwd(), "src"));
-  } catch {
-    return true;
-  }
-}
-
-async function newestTypescriptMtime(root: string): Promise<number> {
-  let newest = 0;
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) {
-      newest = Math.max(newest, await newestTypescriptMtime(path));
-    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
-      newest = Math.max(newest, (await stat(path)).mtimeMs);
-    }
-  }
-  return newest;
 }

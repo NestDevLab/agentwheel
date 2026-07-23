@@ -38,9 +38,9 @@ export class GitSourceDriver implements SourceDriver {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
         await rm(resolved.resolvedPath, { recursive: true, force: true });
-        await git(["clone", "--no-tags", parsed.url, resolved.resolvedPath]);
+        await git(["clone", parsed.url, resolved.resolvedPath]);
       } else if (!resolved.frozenLock) {
-        await git(["-C", resolved.resolvedPath, "fetch", "--prune", "origin"]);
+        await git(["-C", resolved.resolvedPath, "fetch", "--tags", "--prune", "origin"]);
       }
 
       const ref = resolved.requestedRef ?? parsed.ref ?? "HEAD";

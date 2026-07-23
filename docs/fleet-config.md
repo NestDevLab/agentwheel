@@ -82,7 +82,7 @@ SSH targets require these commands on the remote host:
 
 ## Profiles
 
-Profiles group runtimes:
+Leaf profiles group runtimes:
 
 ```jsonc
 {
@@ -96,6 +96,50 @@ Profiles group runtimes:
   }
 }
 ```
+
+Composite profiles group autonomous Agentwheel workspaces instead. A member keeps its own config,
+locks, manifests, profiles, and standalone update path; the parent invokes the member's native
+Agentwheel CLI locally or over SSH:
+
+```jsonc
+{
+  "profiles": {
+    "operations": {
+      "refreshTtlSeconds": 86400,
+      "members": [
+        {
+          "id": "control",
+          "transport": "local",
+          "workspace": ".",
+          "profile": "all"
+        },
+        {
+          "id": "selfhost",
+          "transport": "ssh",
+          "host": "selfhost-agent",
+          "workspace": "/srv/selfhost-toolkit",
+          "profile": "standalone",
+          "refreshTtlSeconds": 3600
+        }
+      ]
+    }
+  }
+}
+```
+
+A profile contains either `runtimes` or `members`, never both. Composite profiles may contain
+other composite profiles; cycles and duplicate member IDs fail validation. `status`, `plan`,
+`install`, and `update` use the same `--profile` interface for both profile kinds.
+
+Member status is a versioned JSON protocol. A compatible CLI version mismatch is a warning;
+an incompatible schema blocks plan and apply. Member snapshots use a 24-hour TTL by default.
+TTL expiry or `--refresh` forces a live refresh. `--offline` may show cached data, but labels it
+`STALE`; failed required refreshes are `DEGRADED` and never presented as current.
+
+Composite apply is two-phase: every member must pass preflight before any member is changed, then
+members run in declared order and stop on the first failure. Agentwheel revalidates member
+revisions immediately before apply and uses each member's native locks. It never steals a busy
+lock and does not claim distributed rollback.
 
 `installationType` is optional on agents and profile runtimes. Use `local` for project/workspace
 targets and `user` for documented user-level harness targets. A CLI `--installation-type` overrides

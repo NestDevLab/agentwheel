@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -12,9 +13,7 @@ let cliHome: string;
 
 beforeAll(async () => {
   cliHome = await mkdtemp(join(tmpdir(), "agentwheel-cli-home-"));
-  if (await cliBuildIsStale()) {
-    await execFileAsync("pnpm", ["build"], { cwd: process.cwd(), maxBuffer: 20 * 1024 * 1024 });
-  }
+  await ensureCliBuild(cli);
 });
 
 afterEach(async () => {
@@ -272,6 +271,36 @@ describe("CLI verb redesign", () => {
     expect(update.stdout).toContain("UPDATE");
   });
 
+  it("uses the locked release ref for status when it still satisfies the version policy", async () => {
+    const workspace = await tempRoot();
+    const repo = await gitSkillPackageFixture("locked-version-status", "locked-version-skill");
+    await git(repo, ["tag", "v1.0.0"]);
+    await runCli([
+      "add", `git:${repo}`, "--adapter", "codex", "--installation-type", "local",
+      "--target-root", workspace, "--mode", "tracking",
+    ]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages[0].version = "^1.0.0";
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+
+    const manifestPath = join(repo, "openpack.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.version = "2.0.0";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await git(repo, ["add", "openpack.json"]);
+    await git(repo, ["commit", "-m", "unreleased major"]);
+
+    const status = await runCli([
+      "status", "--adapter", "codex", "--installation-type", "local",
+      "--target-root", workspace, "--json", "--refresh",
+    ]);
+    const report = JSON.parse(status.stdout);
+    expect(report.targets[0].error).toBeUndefined();
+    expect(report.targets[0].packages[0].locked).toBe("1.0.0");
+  });
+
   it("updates one tracking dependency while unrelated dependencies remain locked", async () => {
     const workspace = await tempRoot();
     const alpha = await gitSkillPackageFixture("dep-alpha", "alpha-skill");
@@ -492,7 +521,9 @@ describe("CLI verb redesign", () => {
     await runCli(["add", `git:${alpha}#main`, "--name", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
     await runCli(["add", `git:${beta}#main`, "--name", "beta", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--mode", "tracking"]);
     await runCli(["install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--yes"]);
+    const betaHashBefore = await lockedPackageSourceHash(workspace, "scoped-update-beta");
     await updateGitSkill(alpha, "alpha-skill", "alpha-v2");
+    await updateGitSkill(beta, "beta-skill", "beta-v2");
     await writeFile(betaDest, "local beta drift\n", "utf8");
 
     const preview = await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run"]);
@@ -503,6 +534,7 @@ describe("CLI verb redesign", () => {
     await runCli(["update", "alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
     await expect(readFile(join(workspace, ".agents", "skills", "alpha-skill", "SKILL.md"), "utf8")).resolves.toContain("alpha-v2");
     await expect(readFile(betaDest, "utf8")).resolves.toBe("local beta drift\n");
+    await expect(lockedPackageSourceHash(workspace, "scoped-update-beta")).resolves.toBe(betaHashBefore);
   });
 
   it("scoped install converges out-of-scope ownership without touching shared content", async () => {
@@ -1279,26 +1311,4 @@ async function removeConfiguredPackage(workspace: string, name: string): Promise
   };
   config.packages = config.packages.filter((pkg) => pkg.name !== name && pkg.source !== name);
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-}
-
-async function cliBuildIsStale(): Promise<boolean> {
-  try {
-    const built = await stat(cli);
-    return built.mtimeMs < await newestTypescriptMtime(join(process.cwd(), "src"));
-  } catch {
-    return true;
-  }
-}
-
-async function newestTypescriptMtime(root: string): Promise<number> {
-  let newest = 0;
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) {
-      newest = Math.max(newest, await newestTypescriptMtime(path));
-    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
-      newest = Math.max(newest, (await stat(path)).mtimeMs);
-    }
-  }
-  return newest;
 }

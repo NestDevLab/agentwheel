@@ -1,6 +1,6 @@
 # Unified Artifact Search Implementation Plan
 
-Status: implementation complete; delivery in progress
+Status: implemented and delivered for review
 
 Base: `origin/main` at Agentwheel `0.15.0`
 
@@ -189,10 +189,10 @@ installed artifact, weak matches, repeated suggestions without new evidence, or 
 - [x] Run an independent blocking-only review.
 - [x] Fix blocking findings once and rerun affected checks.
 - [x] Review the scoped diff and confirm no unrelated files.
-- [ ] Commit the implementation without a version bump.
-- [ ] Record the commit range in Syncwheel.
-- [ ] Validate and push the stack.
-- [ ] Open a PR to `main`.
+- [x] Commit the implementation without a version bump.
+- [x] Record the commit range in Syncwheel.
+- [x] Validate and push the stack.
+- [x] Open a PR to `main`.
 
 Validation note: full-catalogue warm-cache search is deterministic and successful, but measures
 about 1.5 seconds wall-clock on the current container rather than the provisional sub-second target.

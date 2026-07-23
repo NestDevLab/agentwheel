@@ -31,7 +31,19 @@ describe("root package version policy", () => {
     await writeFile(join(repo, "AGENTS.md"), "# fixture\n");
     await runGit(repo, ["add", "."]);
     await runGit(repo, ["commit", "-m", "fixture"]);
-    for (const tag of ["v1.2.0", "v1.4.0", "v2.0.0"]) await runGit(repo, ["tag", tag]);
+    await runGit(repo, ["tag", "v1.2.0"]);
+    for (const version of ["1.4.0", "2.0.0"]) {
+      await writeFile(join(repo, "openpack.json"), JSON.stringify({
+        schemaVersion: 2,
+        name: "test/versioned-pack",
+        version,
+        provides: [{ type: "instructions", path: "AGENTS.md" }],
+      }));
+      await runGit(repo, ["add", "openpack.json"]);
+      await runGit(repo, ["commit", "-m", `release ${version}`]);
+      await runGit(repo, ["tag", `v${version}`]);
+    }
+    await runGit(repo, ["tag", "v9.0.0"]);
     await runGit(repo, ["remote", "add", "origin", repo]);
 
     const report = await discoverPackageVersions({

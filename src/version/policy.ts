@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { readPackageManifest } from "../model/package.js";
@@ -141,7 +142,7 @@ function availabilityFromVersions(
 async function discoverVersionsFromSource(pkg: WorkspacePackage, workspaceRoot: string): Promise<CachedVersion[]> {
   const driverName = pkg.driver === "local" ? inferSourceDriverName(pkg.source) : pkg.driver;
   if (driverName === "git") {
-    const tagged = await discoverGitTags(pkg.source);
+    const tagged = await discoverGitTags(pkg.source, pkg.version);
     if (tagged.length > 0) return tagged;
   }
 
@@ -151,7 +152,10 @@ async function discoverVersionsFromSource(pkg: WorkspacePackage, workspaceRoot: 
     const current = manifest ? [{ version: manifest.version, ref: pkg.requestedRef ?? root }] : [];
     try {
       const { stdout } = await execFileAsync("git", ["-C", root, "remote", "get-url", "origin"]);
-      return uniqueVersions([...await discoverGitTagsFromUrl(stdout.trim()), ...current]);
+      return uniqueVersions([
+        ...await discoverGitTagsFromUrl(stdout.trim(), pkg.version, root),
+        ...current,
+      ]);
     } catch {
       return current;
     }
@@ -169,11 +173,17 @@ async function discoverVersionsFromSource(pkg: WorkspacePackage, workspaceRoot: 
   return version ? [{ version, ref: fetched.requestedRef ?? pkg.requestedRef ?? "HEAD" }] : [];
 }
 
-async function discoverGitTags(source: string): Promise<CachedVersion[]> {
-  return discoverGitTagsFromUrl(gitUrlFromSource(source));
+async function discoverGitTags(source: string, policy: string | undefined): Promise<CachedVersion[]> {
+  const url = gitUrlFromSource(source);
+  const localRoot = url.startsWith("/") ? url : undefined;
+  return discoverGitTagsFromUrl(url, policy, localRoot);
 }
 
-async function discoverGitTagsFromUrl(url: string): Promise<CachedVersion[]> {
+async function discoverGitTagsFromUrl(
+  url: string,
+  policy: string | undefined,
+  localRoot?: string,
+): Promise<CachedVersion[]> {
   const { stdout } = await execFileAsync("git", ["ls-remote", "--tags", "--refs", url], {
     maxBuffer: 10 * 1024 * 1024,
   });
@@ -187,7 +197,19 @@ async function discoverGitTagsFromUrl(url: string): Promise<CachedVersion[]> {
     const incumbent = byVersion.get(version);
     if (!incumbent || tag.startsWith("v")) byVersion.set(version, { version, ref: tag });
   }
-  return [...byVersion.values()].sort((a, b) => compareSemverStrings(b.version, a.version));
+  const candidates = [...byVersion.values()].sort((a, b) => compareSemverStrings(b.version, a.version));
+  const valid: CachedVersion[] = [];
+  let foundOverall = false;
+  let foundAllowed = false;
+  for (const candidate of candidates) {
+    const manifestVersion = await manifestVersionAtRef(url, candidate.ref, localRoot);
+    if (manifestVersion !== candidate.version) continue;
+    valid.push(candidate);
+    foundOverall = true;
+    if (satisfiesVersionRange(candidate.version, policy)) foundAllowed = true;
+    if (foundOverall && foundAllowed) break;
+  }
+  return valid;
 }
 
 function uniqueVersions(versions: CachedVersion[]): CachedVersion[] {
@@ -196,6 +218,41 @@ function uniqueVersions(versions: CachedVersion[]): CachedVersion[] {
     if (!byVersion.has(version.version)) byVersion.set(version.version, version);
   }
   return [...byVersion.values()].sort((a, b) => compareSemverStrings(b.version, a.version));
+}
+
+async function manifestVersionAtRef(url: string, ref: string, localRoot?: string): Promise<string | null> {
+  if (localRoot) {
+    for (const name of ["openpack.json", "openpack.jsonc"]) {
+      try {
+        const { stdout } = await execFileAsync("git", ["-C", localRoot, "show", `${ref}:${name}`], {
+          maxBuffer: 1024 * 1024,
+        });
+        const parsed = parseJsonc(stdout) as { version?: unknown } | undefined;
+        if (typeof parsed?.version === "string") return parsed.version.replace(/^v/, "");
+      } catch {
+        // Try the next canonical manifest name.
+      }
+    }
+    return null;
+  }
+
+  const repository = githubRepositoryFromUrl(url);
+  if (!repository) return null;
+  for (const name of ["openpack.json", "openpack.jsonc"]) {
+    const response = await fetch(
+      `https://raw.githubusercontent.com/${repository}/${encodeURIComponent(ref)}/${name}`,
+      { headers: { "user-agent": "agentwheel-version-discovery" } },
+    );
+    if (!response.ok) continue;
+    const parsed = parseJsonc(await response.text()) as { version?: unknown } | undefined;
+    if (typeof parsed?.version === "string") return parsed.version.replace(/^v/, "");
+  }
+  return null;
+}
+
+function githubRepositoryFromUrl(url: string): string | null {
+  const match = /^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+\/[^/#]+?)(?:\.git)?$/.exec(url);
+  return match?.[1] ?? null;
 }
 
 function gitUrlFromSource(source: string): string {

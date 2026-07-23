@@ -1,4 +1,5 @@
 const CATALOGUE_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-data.json";
+const VERCEL_INDEX_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-vercel-index.json";
 const CATALOGUE_ORIGIN_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel/main/docs/catalogue.html";
 const PRETTY_PATH_PREFIX = "/agentwheel/catalogue/";
 
@@ -9,6 +10,16 @@ function escapeHtml(value) {
 }
 
 async function catalogueEntry(resourceId) {
+  if (resourceId.startsWith("vercel:")) {
+    const [owner, repo, skill] = resourceId.slice("vercel:".length).split("/");
+    if (!owner || !repo || !skill) return null;
+    const response = await fetch(VERCEL_INDEX_URL, { cf: { cacheTtl: 3600, cacheEverything: true } });
+    if (!response.ok) throw new Error(`Vercel index returned ${response.status}`);
+    const data = await response.json();
+    const record = (data.entries || []).find((candidate) => candidate.o === owner && candidate.r === repo && candidate.s === skill);
+    return record ? { id: resourceId, name: record.s, description: record.d || "Browse this agentwheel catalogue resource." } : null;
+  }
+
   const response = await fetch(CATALOGUE_URL, { cf: { cacheTtl: 3600, cacheEverything: true } });
   if (!response.ok) throw new Error(`Catalogue data returned ${response.status}`);
   const data = await response.json();

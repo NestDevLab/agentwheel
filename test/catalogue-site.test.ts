@@ -8,6 +8,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 describe("catalogue site", () => {
   it("exposes pretty, shareable detail pages and source links", async () => {
     const html = await readFile(join(repoRoot, "docs", "catalogue.html"), "utf8");
+    const worker = await readFile(join(repoRoot, "cloudflare", "catalogue-share-worker.js"), "utf8");
 
     expect(html).toContain('id="resource-detail"');
     expect(html).toContain('params.get("resource")');
@@ -37,5 +38,7 @@ describe("catalogue site", () => {
     expect(html).toContain('url.pathname = `/agentwheel/catalogue/${encodeURIComponent(entry.id)}`');
     expect(html).toContain("function shareResource(entry, button)");
     expect(html).toContain("Share or copy a social-preview link");
+    expect(worker).toContain("catalogue-vercel-index.json");
+    expect(worker).toContain('resourceId.startsWith("vercel:")');
   });
 });

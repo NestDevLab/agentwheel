@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added one unified `agentwheel search` command across configured registries and the complete enriched/Vercel catalogue, with deterministic ranking, cache/offline support, filters, and versioned JSON output for semantic agent reranking; removed the pre-stable `registry search` command.
+
 ## 0.15.0
 
 - Added npm-style root package version policies with cached latest-allowed and latest-overall discovery while preserving pinned versus tracking update semantics.

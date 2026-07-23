@@ -98,6 +98,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 
 | Command | Meaning |
 |---|---|
+| `agentwheel search <query>` | Search configured registries and the public enriched/Vercel catalogue; supports stable JSON output for agent reranking. |
 | `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing; supports `--profile <name>` and `--json`. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
@@ -151,6 +152,28 @@ agentwheel add github:your-org/agent-pack --adapter openclaw --installation-type
 agentwheel plan
 agentwheel install
 ```
+
+## Artifact Discovery
+
+Search configured registries and the complete public catalogue with one command:
+
+```bash
+agentwheel search "conversation memory"
+agentwheel search "telegram integration" --type skill
+agentwheel search "message recall" --json --limit 10
+```
+
+Use `--scope registry`, `--scope enriched`, or `--scope vercel` to restrict a query. The default
+`--scope all` combines every source, deduplicates equivalent artifacts, and reports every
+provenance plus the safe installation route.
+
+Search is deterministic and lexical. The companion skill adds semantic behavior at the agent
+layer: it can generate a small set of related queries, merge and rerank the JSON results against
+the original request, and suggest at most three artifacts. Search never installs or changes
+configuration by itself.
+
+Registry maintenance remains available through `agentwheel registry update` and
+`agentwheel registry list`. Registry short names continue to resolve during add/install.
 
 ## Source Inputs
 

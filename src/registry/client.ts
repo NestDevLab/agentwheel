@@ -66,16 +66,6 @@ export class RegistryClient {
     return index.entries.find((entry) => entry.name === name);
   }
 
-  async search(query: string, options: { refresh?: boolean } = {}): Promise<RegistryEntry[]> {
-    const q = query.toLowerCase();
-    const index = await this.getIndex(options);
-    return index.entries.filter((entry) =>
-      entry.name.toLowerCase().includes(q)
-      || entry.description.toLowerCase().includes(q)
-      || entry.tags.some((tag) => tag.toLowerCase().includes(q)),
-    );
-  }
-
   async clearCache(): Promise<void> {
     await rm(this.cachePath, { force: true });
   }

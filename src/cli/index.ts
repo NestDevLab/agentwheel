@@ -50,6 +50,18 @@ import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.j
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
 import { blocksCompositeApply, worstStatusHealth, type StatusHealth, type StatusPackage, type StatusReport, type StatusTarget } from "../status/report.js";
 import { collectRepositoryStatus } from "../status/repository.js";
+import { CatalogueClient } from "../catalogue/client.js";
+import { buildSearchEntries, searchEntries } from "../search/index.js";
+import {
+  searchEcosystemSchema,
+  searchScopeSchema,
+  searchTypeSchema,
+  type SearchEcosystem,
+  type SearchResponse,
+  type SearchResult,
+  type SearchScope,
+  type SearchType,
+} from "../model/catalogue.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -145,6 +157,69 @@ program
     for (const artifact of artifacts) {
       console.log(`${artifact.type}\t${artifact.name}\t${artifact.relativePath}`);
     }
+  });
+
+program
+  .command("search")
+  .description("search registry and public catalogue artifacts")
+  .argument("<query>", "search query")
+  .option("--json", "print the versioned search response as JSON", false)
+  .option("--scope <scope>", "search scope: all, registry, enriched, or vercel", "all")
+  .option("--type <type>", "artifact type: package, skill, plugin, mcp, or adapter")
+  .option("--ecosystem <ecosystem>", "ecosystem: official, openpack, mcp-registry, clawhub, skillkit, or vercel")
+  .option("--limit <n>", "maximum number of results (1-100)", "20")
+  .option("--include-archived", "include archived catalogue entries", false)
+  .option("--refresh", "refresh registry and catalogue caches", false)
+  .option("--offline", "use compatible local caches without network access", false)
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .action(async (query: string, options: SearchCliOptions) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      throw new Error("Search query must not be empty.");
+    }
+    const scope = parseSearchScope(options.scope);
+    const type = options.type === undefined ? undefined : parseSearchType(options.type);
+    const ecosystem = options.ecosystem === undefined ? undefined : parseSearchEcosystem(options.ecosystem);
+    const limit = parseSearchLimit(options.limit);
+    if (options.refresh && options.offline) {
+      throw new Error("--refresh cannot be used with --offline.");
+    }
+
+    const warning = (message: string) => console.error(message);
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const registryRequest = scope === "all" || scope === "registry"
+      ? new RegistryClient({ workspaceRoot: targetRoot, offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh })
+      : undefined;
+    const catalogueRequest = scope === "all" || scope === "enriched" || scope === "vercel"
+      ? new CatalogueClient({ offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh })
+      : undefined;
+    const [registryIndex, catalogueIndex] = await Promise.all([registryRequest, catalogueRequest]);
+
+    const entries = buildSearchEntries({
+      registry: registryIndex?.entries,
+      enriched: scope === "all" || scope === "enriched" ? catalogueIndex?.enriched : undefined,
+      vercel: scope === "all" || scope === "vercel" ? catalogueIndex?.vercel : undefined,
+    });
+    const results = searchEntries(entries, trimmedQuery, {
+      type,
+      ecosystem,
+      limit,
+      includeArchived: options.includeArchived,
+    });
+    const loadedIndexes = [registryIndex, catalogueIndex].filter((index) => index !== undefined);
+    const response = {
+      schemaVersion: 1,
+      query: trimmedQuery,
+      scope,
+      fromCache: loadedIndexes.every((index) => index.fromCache),
+      results,
+    } satisfies SearchResponse;
+
+    if (options.json) {
+      console.log(JSON.stringify(response, null, 2));
+      return;
+    }
+    printSearchResults(trimmedQuery, results);
   });
 
 program
@@ -488,16 +563,6 @@ program
       .action(async (options) => {
         const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
         printRegistryEntries((await client.getIndex()).entries);
-      }),
-  )
-  .addCommand(
-    new Command("search")
-      .description("search registry entries")
-      .argument("<query>", "search query")
-      .option("-t, --target-root <path>", "workspace root", process.cwd())
-      .action(async (query, options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
-        printRegistryEntries(await client.search(query));
       }),
   )
   .addCommand(
@@ -3132,6 +3197,67 @@ function printRegistryEntries(entries: Array<{ name: string; type: string; sourc
   for (const entry of entries) {
     const tags = entry.tags?.length ? ` [${entry.tags.join(",")}]` : "";
     console.log(`${entry.name}\t${entry.type}\t${entry.source}\t${entry.description}${tags}`);
+  }
+}
+
+interface SearchCliOptions {
+  json: boolean;
+  scope: string;
+  type?: string;
+  ecosystem?: string;
+  limit: string;
+  includeArchived: boolean;
+  refresh: boolean;
+  offline: boolean;
+  targetRoot: string;
+}
+
+function parseSearchScope(value: string): SearchScope {
+  const parsed = searchScopeSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new Error(`Invalid search scope: ${value}. Expected one of: ${searchScopeSchema.options.join(", ")}.`);
+}
+
+function parseSearchType(value: string): SearchType {
+  const parsed = searchTypeSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new Error(`Invalid artifact type: ${value}. Expected one of: ${searchTypeSchema.options.join(", ")}.`);
+}
+
+function parseSearchEcosystem(value: string): SearchEcosystem {
+  const parsed = searchEcosystemSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new Error(`Invalid ecosystem: ${value}. Expected one of: ${searchEcosystemSchema.options.join(", ")}.`);
+}
+
+function parseSearchLimit(value: string): number {
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new Error(`Invalid search limit: ${value}. Expected an integer from 1 to 100.`);
+  }
+  return limit;
+}
+
+function printSearchResults(query: string, results: SearchResult[]): void {
+  if (results.length === 0) {
+    console.log(`No artifacts found for ${JSON.stringify(query)}.`);
+    return;
+  }
+  for (const [index, result] of results.entries()) {
+    const ecosystem = result.ecosystem ?? "unknown";
+    const provenances = result.provenances.join("+");
+    console.log(
+      `${index + 1}. ${result.name} `
+      + `[type=${result.type}; ecosystem=${ecosystem}; installability=${result.installability}; provenance=${provenances}]`,
+    );
+    console.log(`   ${result.description || "(no description)"}`);
+    if (result.installCommand) {
+      console.log(`   Install: ${result.installCommand}`);
+    } else if (result.source) {
+      console.log(`   Source: ${result.source}`);
+    } else {
+      console.log("   Install: unavailable");
+    }
   }
 }
 

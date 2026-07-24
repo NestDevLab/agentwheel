@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.16.0
+
 - Added one unified `agentwheel search` command across configured registries and the complete enriched/Vercel catalogue, with deterministic ranking, cache/offline support, filters, and versioned JSON output for semantic agent reranking; removed the pre-stable `registry search` command.
 
 ## 0.15.0

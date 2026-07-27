@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Browse agentwheel-installable resources from the official registry, Vercel skills.sh, and SkillKit-compatible repositories.">
+  <meta property="og:title" content="Catalogue - agentwheel">
+  <meta property="og:description" content="Browse agentwheel-installable resources from the official registry, Vercel skills.sh, and SkillKit-compatible repositories.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.nestdev.it/agentwheel/catalogue.html">
+  <meta name="twitter:card" content="summary">
   <title>Catalogue - agentwheel</title>
   <link rel="icon" href="./favicon.png" type="image/png">
   <style>
@@ -350,7 +355,7 @@
     .resource-card {
       display: flex;
       min-width: 0;
-      min-height: 334px;
+      min-height: 300px;
       padding: 18px;
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -455,6 +460,7 @@
       display: -webkit-box;
       min-height: 67px;
       margin: 0 0 14px;
+      margin-top: 12px;
       overflow: hidden;
       color: var(--muted);
       font-size: 15px;
@@ -1094,6 +1100,16 @@
     const PAGE_SIZE = 60;
     const params = new URLSearchParams(location.search);
 
+    function detailResourceIdFromLocation() {
+      const prefix = "/agentwheel/catalogue/";
+      if (!location.pathname.startsWith(prefix)) return params.get("resource") || "";
+      try {
+        return decodeURIComponent(location.pathname.slice(prefix.length));
+      } catch {
+        return "";
+      }
+    }
+
     function dataUrlFromParam(value) {
       if (!value) return DEFAULT_DATA_URL;
       if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith("//")) return DEFAULT_DATA_URL;
@@ -1118,7 +1134,7 @@
       ecosystem: "all",
       resource: "all",
       sort: "stars",
-      detailResourceId: params.get("resource") || "",
+      detailResourceId: detailResourceIdFromLocation(),
     };
 
     const grid = document.querySelector("#grid");
@@ -1364,14 +1380,14 @@
       grid.appendChild(panel);
     }
 
-    function copyText(value, button) {
+    function copyText(value, button, idleLabel = "Copy", successLabel = "✓ Copied") {
       const command = text(value);
       const done = () => {
         button.classList.add("copied");
-        button.textContent = "✓ Copied";
+        button.textContent = successLabel;
         window.setTimeout(() => {
           button.classList.remove("copied");
-          button.textContent = "Copy";
+          button.textContent = idleLabel;
         }, 1500);
       };
 
@@ -1380,6 +1396,19 @@
       } else {
         fallbackCopy(command, done);
       }
+    }
+
+    async function shareResource(entry, button) {
+      const url = shareUrl(entry);
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: `${text(entry.name)} - Catalogue - agentwheel`, text: text(entry.description), url });
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return;
+        }
+      }
+      copyText(url, button, "Share", "✓ Link copied");
     }
 
     function fallbackCopy(value, done) {
@@ -1412,23 +1441,24 @@
     }
 
     function detailUrl(entry) {
-      const url = new URL(location.href);
-      url.searchParams.set("resource", entry.id);
-      url.hash = "";
+      const url = new URL(location.origin);
+      url.pathname = `/agentwheel/catalogue/${encodeURIComponent(entry.id)}`;
       return url.href;
     }
 
+    function shareUrl(entry) {
+      return detailUrl(entry);
+    }
+
     function catalogueUrl() {
-      const url = new URL(location.href);
-      url.searchParams.delete("resource");
-      url.searchParams.delete("q");
-      url.hash = "";
+      const url = new URL(location.origin);
+      url.pathname = "/agentwheel/catalogue.html";
       return url.href;
     }
 
     function cardHref(entry) {
       if (entry.relatedOnly) return entry.sourceUrl || entry.homepageUrl || catalogueSearchUrl(entry.name);
-      return detailUrl(entry);
+      return shareUrl(entry);
     }
 
     function appendResourceLink(parent, href, label) {
@@ -1448,7 +1478,7 @@
       if (options.details !== false && !entry.relatedOnly) {
         const details = document.createElement("a");
         details.className = "resource-link";
-        details.href = detailUrl(entry);
+        details.href = shareUrl(entry);
         details.textContent = "Details";
         parent.appendChild(details);
       }
@@ -1580,7 +1610,21 @@
       const selectors = [];
       if (Array.isArray(entry.select)) selectors.push(...entry.select.filter(Boolean));
       if (Array.isArray(entry.skills)) selectors.push(...entry.skills.filter(Boolean).map((skill) => `skills/${skill}`));
+      if (!selectors.length && Array.isArray(entry.provides)) {
+        selectors.push(...entry.provides.filter(Boolean).map((type) => `${type}/`));
+      }
       return [...new Set(selectors)];
+    }
+
+    function updateDocumentMetadata(entry) {
+      const title = entry ? `${text(entry.name)} - Catalogue - agentwheel` : "Catalogue - agentwheel";
+      const description = entry?.description || "Browse agentwheel-installable resources from the official registry, Vercel skills.sh, and SkillKit-compatible repositories.";
+      const url = entry ? detailUrl(entry) : catalogueUrl();
+      document.title = title;
+      document.querySelector('meta[name="description"]')?.setAttribute("content", description);
+      document.querySelector('meta[property="og:title"]')?.setAttribute("content", title);
+      document.querySelector('meta[property="og:description"]')?.setAttribute("content", description);
+      document.querySelector('meta[property="og:url"]')?.setAttribute("content", url);
     }
 
     function detailSection(title) {
@@ -1938,6 +1982,7 @@
     function renderDetail() {
       if (!state.detailResourceId) {
         detailPanel.hidden = true;
+        updateDocumentMetadata(null);
         return;
       }
 
@@ -1946,6 +1991,7 @@
 
       const entry = state.entries.find((candidate) => candidate.id === state.detailResourceId);
       if (!entry) {
+        updateDocumentMetadata(null);
         const actions = document.createElement("div");
         actions.className = "detail-actions";
         const back = document.createElement("a");
@@ -1963,6 +2009,8 @@
         return;
       }
 
+      updateDocumentMetadata(entry);
+
       const actions = document.createElement("div");
       actions.className = "detail-actions";
       const back = document.createElement("a");
@@ -1975,6 +2023,13 @@
       browseSkills.href = catalogueSearchUrl(entry.name);
       browseSkills.textContent = "Search catalogue";
       actions.appendChild(browseSkills);
+      const share = document.createElement("button");
+      share.className = "button secondary";
+      share.type = "button";
+      share.textContent = "Share";
+      share.title = "Share or copy a social-preview link";
+      share.addEventListener("click", () => shareResource(entry, share));
+      actions.appendChild(share);
       detailPanel.appendChild(actions);
 
       const top = document.createElement("div");

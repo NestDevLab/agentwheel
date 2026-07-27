@@ -10,7 +10,9 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "unified-artifact-search"
+    ]
   },
   "stacks": [
     {
@@ -30,26 +32,18 @@
       }
     },
     {
-      "id": "catalogue-social-preview",
-      "branch": "pr/catalogue-social-preview",
+      "id": "unified-artifact-search",
+      "branch": "feat/unified-artifact-search",
       "base": "origin/main",
       "target_remote": "origin",
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "b3b8f71b1ced1505801e2b08a7ea73b88e308043",
-        "ac457f9bc6307d01d40ce492a72ce268defc82fa",
-        "f966240082042504baf329ba930f7e5e420bbaa9",
-        "0f8bc9c541826cf3002d07f7b5f4d26f99a8f6cf",
-        "69f4bb8678dde69b5dcdaef4cabe79b542ab0cac",
-        "07e5445580c06982b810e27ec186d6259383536c",
-        "b88e7ac0aec62e4ae4b568e52cd7bca15c855931",
-        "b611c401af1f466f94e86a19c7adc1aff5414a6d",
-        "67d0579457a2f1f6ee82afab2123c2416cc83b6b"
+        "3d1ec86e6c3760cd27afb5102a13bc9f81e21a0e",
+        "30de27754ec5cbddd99d002514408d7dc965671f",
+        "2b6465ee682f204eb757558f2c3956b00fd5439f"
       ],
-      "meta": {
-        "purpose": "Fix catalogue artifact visibility, layout, and social previews"
-      }
+      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",

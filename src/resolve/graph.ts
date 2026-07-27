@@ -25,6 +25,7 @@ export interface GraphRootRequest {
   select?: string[];
   selection?: WorkspaceSelectionImport;
   mode?: "pinned" | "tracking";
+  version?: string;
   ref?: string;
   aliases?: Record<string, string>;
   overrides?: string[];
@@ -166,6 +167,7 @@ export async function resolveDependencyGraph(
       select: root.select,
       selection: root.selection,
       mode: root.mode ?? "pinned",
+      version: root.version,
       ref: root.ref,
       declaringPackageRoot: options.workspaceRoot,
       requiredBy: `workspace:${rootId}`,

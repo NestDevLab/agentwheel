@@ -5,6 +5,7 @@ import { z } from "zod";
 import { artifactTypeSchema } from "./artifact.js";
 import { installationTypeSchema } from "./adapter.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
+import { isSupportedVersionRange } from "../resolve/semver.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
 
@@ -50,6 +51,9 @@ const workspacePackageBaseSchema = z.object({
   adapterCodeHash: z.string().min(16).optional(),
   installationType: installationTypeSchema.optional(),
   mode: z.enum(["pinned", "tracking"]).default("pinned"),
+  version: z.string().min(1).refine(isSupportedVersionRange, {
+    message: "Version policy must be an exact semver, ~range, ^range, comparator range, or *",
+  }).optional(),
   requestedRef: z.string().min(1).optional(),
   select: z.array(z.string().min(1)).optional(),
   skills: z.array(z.string().min(1)).optional(),
@@ -90,9 +94,48 @@ export const workspaceProfileRuntimeSchema = z.object({
   reloadCommands: commandListSchema,
 });
 
-export const workspaceProfileSchema = z.object({
-  runtimes: z.array(workspaceProfileRuntimeSchema).min(1),
+export const workspaceProfileMemberSchema = z.object({
+  id: z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i),
+  workspace: z.string().min(1),
+  profile: z.string().min(1),
+  transport: z.enum(["local", "ssh"]).default("local"),
+  host: z.string().min(1).optional(),
+  user: z.string().min(1).optional(),
+  port: z.number().int().positive().optional(),
+  identityFile: z.string().min(1).optional(),
+  refreshTtlSeconds: z.number().int().positive().optional(),
+}).strict().superRefine((member, ctx) => {
+  if (member.transport === "ssh" && !member.host) {
+    ctx.addIssue({ code: "custom", path: ["host"], message: "SSH profile members require host" });
+  }
+  if (member.transport === "ssh" && !member.workspace.startsWith("/")) {
+    ctx.addIssue({ code: "custom", path: ["workspace"], message: "SSH profile member workspaces must be absolute" });
+  }
 });
+
+const workspaceLeafProfileSchema = z.object({
+  runtimes: z.array(workspaceProfileRuntimeSchema).min(1),
+  members: z.never().optional(),
+}).strict();
+
+const workspaceCompositeProfileSchema = z.object({
+  members: z.array(workspaceProfileMemberSchema).min(1),
+  runtimes: z.never().optional(),
+  refreshTtlSeconds: z.number().int().positive().default(86_400),
+}).strict().superRefine((profile, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, member] of profile.members.entries()) {
+    if (seen.has(member.id)) {
+      ctx.addIssue({ code: "custom", path: ["members", index, "id"], message: "Composite profile member ids must be unique" });
+    }
+    seen.add(member.id);
+  }
+});
+
+export const workspaceProfileSchema = z.union([
+  workspaceLeafProfileSchema,
+  workspaceCompositeProfileSchema,
+]);
 
 export const workspaceRegistrySchema = z.object({
   sources: z.array(z.string().min(1)).optional(),
@@ -161,6 +204,8 @@ export type WorkspaceExports = z.infer<typeof workspaceExportsSchema>;
 export type WorkspaceTrust = z.infer<typeof workspaceTrustSchema>;
 export type WorkspaceConfigInput = z.input<typeof workspaceConfigSchema>;
 export type WorkspaceProfileRuntime = z.infer<typeof workspaceProfileRuntimeSchema>;
+export type WorkspaceProfileMember = z.infer<typeof workspaceProfileMemberSchema>;
+export type WorkspaceProfile = z.infer<typeof workspaceProfileSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
@@ -242,6 +287,10 @@ export function resolveConfigPath(path: string, baseRoot: string): string {
 
 function emptyWorkspaceConfig(): WorkspaceConfig {
   return { schemaVersion: 1, packages: [], registry: {}, trust: {}, profiles: {}, agents: {} };
+}
+
+export function isCompositeWorkspaceProfile(profile: WorkspaceProfile): profile is Extract<WorkspaceProfile, { members: WorkspaceProfileMember[] }> {
+  return "members" in profile && Array.isArray(profile.members);
 }
 
 async function readConfigPath(path: string): Promise<WorkspaceConfig> {

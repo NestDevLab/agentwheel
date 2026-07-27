@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.16.1
+
+- Fixed machine-readable install output so `agentwheel install --json` and `--format json` apply the planned changes unless `--dry-run` is set. The report now includes whether changes were applied, while stdout remains valid JSON.
+
+## 0.16.0
+
+- Added one unified `agentwheel search` command across configured registries and the complete enriched/Vercel catalogue, with deterministic ranking, cache/offline support, filters, and versioned JSON output for semantic agent reranking; removed the pre-stable `registry search` command.
+
+## 0.15.0
+
+- Added npm-style root package version policies with cached latest-allowed and latest-overall discovery while preserving pinned versus tracking update semantics.
+- Added versioned `status --json` reports for installed, locked, latest allowed, latest overall, drift, conflict, and pending work.
+- Added composite workspace profiles whose local or SSH `members` remain autonomous Agentwheel workspaces while participating in existing status, plan, install, and update flows.
+- Added member status TTL/refresh/offline behavior, protocol compatibility checks, cycle guards, two-phase preflight, revision revalidation, and deterministic fail-fast apply ordering.
+
 ## 0.14.13
 
 - Added plan observability, JSON/report renderers, a local dashboard, semantic plugin execution, and explicitly gated runtime reload commands.

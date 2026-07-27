@@ -4,7 +4,7 @@ import { defaultInstallationType, installRootForAdapterInstallationType, resolve
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan, type GraphSourcePlanResult } from "./source-plan.js";
-import { readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
+import { isCompositeWorkspaceProfile, readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
@@ -61,6 +61,9 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   if (!profile) {
     throw new Error(`Unknown profile: ${options.profile}`);
   }
+  if (isCompositeWorkspaceProfile(profile)) {
+    throw new Error(`Composite profile '${options.profile}' must be executed through member delegation.`);
+  }
 
   const packages = options.source
     ? [await packageFromSource(options.source, options)]
@@ -92,6 +95,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         rootId: pkg.name,
         source: pkg.source,
         mode: options.mode ?? pkg.mode,
+        version: pkg.version,
         ref: pkg.requestedRef,
         select: pkg.selection ? undefined : selected ?? normalizeArtifactSelectors(pkg.select, pkg.skills),
         selection: pkg.selection,

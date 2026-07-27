@@ -1,5 +1,5 @@
 import { basename, dirname, join, resolve } from "node:path";
-import { findWorkspaceRoot, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig, type WorkspaceProfileRuntime } from "../model/workspace.js";
+import { findWorkspaceRoot, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig, type WorkspaceProfileRuntime } from "../model/workspace.js";
 import type { SshTransportConfig, TransportKind } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
 
@@ -103,6 +103,9 @@ export async function resolveProfileRuntimeTargets(request: RuntimeTargetRequest
   const profile = config.profiles[request.profile];
   if (!profile) {
     throw new Error(`Unknown profile: ${request.profile}`);
+  }
+  if (isCompositeWorkspaceProfile(profile)) {
+    throw new Error(`Profile '${request.profile}' is composite and has no direct runtime targets.`);
   }
 
   return profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, workspaceRoot, request.installationType));

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-23T00:00:00.000Z",
+  "count": 2,
+  "entries": [
+    {
+      "o": "acme",
+      "r": "browser-tools",
+      "s": "browser-runner",
+      "d": "Navigate websites with a chromium page pilot."
+    },
+    {
+      "o": "acme",
+      "r": "writing-tools",
+      "s": "café-writer",
+      "d": "Draft polished release notes."
+    }
+  ]
+}

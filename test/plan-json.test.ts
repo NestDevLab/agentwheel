@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +39,7 @@ describe("plan JSON output", () => {
 
     expect(stderr).toBe("");
     expect(report.schemaVersion).toBe(1);
+    expect(report.applied).toBe(false);
     expect(report.warnings).toEqual([]);
     expect(report.targets).toHaveLength(1);
     expect(report.targets[0]).toMatchObject({
@@ -127,6 +128,63 @@ describe("plan JSON output", () => {
     const format = await runCli([...baseArgs, "--format", "json"]);
 
     expect(format.stdout).toBe(alias.stdout);
+  });
+
+  it("applies install work with clean JSON output unless dry-run is set", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("format-json-apply-skill");
+    const installArgs = (targetRoot: string) => [
+      "install", source, "--adapter", "codex", "--installation-type", "local", "--target-root", targetRoot, "--only-source", "--format", "json",
+    ];
+
+    const { stdout, stderr } = await runCli(installArgs(workspace));
+    const report = parseJsonReport(stdout);
+
+    expect(stderr).toBe("");
+    expect(report.applied).toBe(true);
+    expect(report.targets[0].summary.create).toBe(1);
+    expect(stdout).not.toContain("Applied codex");
+    await expect(readFile(join(workspace, ".agents", "skills", "format-json-apply-skill", "SKILL.md"), "utf8")).resolves.toContain("format-json-apply-skill");
+
+    const dryRunWorkspace = await tempRoot();
+    const { stdout: dryRunStdout } = await runCli([...installArgs(dryRunWorkspace), "--dry-run"]);
+    const dryRunReport = parseJsonReport(dryRunStdout);
+    expect(dryRunReport.applied).toBe(false);
+    await expect(stat(join(dryRunWorkspace, ".agents", "skills", "format-json-apply-skill", "SKILL.md"))).rejects.toThrow();
+  });
+
+  it("applies profile installs with clean JSON output", async () => {
+    const workspace = await tempRoot();
+    const targetRoot = await tempRoot("agentwheel-format-json-profile-target-");
+    const source = await skillPackageFixture("format-json-profile-apply-skill");
+    await writeWorkspace(workspace, {
+      schemaVersion: 1,
+      registry: {},
+      trust: {},
+      packages: [{
+        name: "format-json-profile-apply-skill",
+        source,
+        driver: "local",
+        adapter: "codex",
+        installationType: "local",
+        mode: "pinned",
+      }],
+      agents: {
+        alpha: { adapter: "codex", root: targetRoot, transport: "local", installationType: "local" },
+      },
+      profiles: {
+        matrix: { runtimes: [{ agent: "alpha" }] },
+      },
+    });
+
+    const { stdout, stderr } = await runCli(["install", "--profile", "matrix", "--target-root", workspace, "--format", "json"]);
+    const report = parseJsonReport(stdout);
+
+    expect(stderr).toBe("");
+    expect(report.applied).toBe(true);
+    expect(stdout).not.toContain("Profile matrix");
+    expect(stdout).not.toContain("Applied.");
+    await expect(readFile(join(targetRoot, ".agents", "skills", "format-json-profile-apply-skill", "SKILL.md"), "utf8")).resolves.toContain("format-json-profile-apply-skill");
   });
 
   it("--format mermaid prints deterministic flowchart source", async () => {
@@ -324,6 +382,7 @@ function expectNoExternalResourceRefs(value: string): void {
 
 interface PlanJsonReport {
   schemaVersion: number;
+  applied: boolean;
   targets: PlanJsonTarget[];
   warnings: string[];
 }

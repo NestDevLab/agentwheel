@@ -939,7 +939,7 @@ async function runInstallCommand(
     installationType?: string;
     multiAdapterSource?: boolean;
   },
-  behavior: { apply: boolean },
+  behavior: { apply: boolean; quiet?: boolean },
 ): Promise<void> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
   const outputFormat = effectivePlanOutputFormat(normalizedOptions);
@@ -961,6 +961,14 @@ async function runInstallCommand(
   if (outputFormat !== "human") {
     const report = await buildPlanReport(nameOrSource, normalizedOptions);
     if (report.targets.some((target) => target.hasBlockingChanges)) process.exitCode = 1;
+    if (behavior.apply) {
+      await runInstallCommand(
+        nameOrSource,
+        { ...normalizedOptions, format: "human", json: false },
+        { apply: true, quiet: true },
+      );
+      report.applied = true;
+    }
     process.stdout.write(`${renderReport(report, outputFormat)}\n`);
     return;
   }
@@ -1000,12 +1008,14 @@ async function runInstallCommand(
       warn: (message) => console.warn(message),
     });
     for (const result of results) {
-      console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
-      console.log(formatPlan(result.plan));
-      if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
+      if (!behavior.quiet) {
+        console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        console.log(formatPlan(result.plan));
+        if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
+      }
       if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    if (behavior.apply) {
+    if (behavior.apply && !behavior.quiet) {
       console.log("Applied.");
     }
     return;
@@ -1035,7 +1045,7 @@ async function runInstallCommand(
     }
 
     for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
-      console.log(formatGraphPlan(result));
+      if (!behavior.quiet) console.log(formatGraphPlan(result));
       if (behavior.apply) {
         const transport = transportForTarget(target);
         const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
@@ -1049,8 +1059,10 @@ async function runInstallCommand(
           enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
           executePlugins,
         });
-        console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
-        if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+        if (!behavior.quiet) {
+          console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+          if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+        }
       }
       await rm(result.bundle.root, { recursive: true, force: true });
       if (result.plan.hasBlockingChanges) process.exitCode = 1;

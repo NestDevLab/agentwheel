@@ -46,6 +46,7 @@ export function formatPlan(plan: InstallPlan): string {
 
 export interface PlanReport {
   schemaVersion: 1;
+  applied: boolean;
   targets: PlanReportTarget[];
   warnings: string[];
 }
@@ -86,9 +87,10 @@ export interface PlanReportOperation {
   blockedReason: string | null;
 }
 
-export function planReport(targets: PlanReportTarget[], warnings: string[] = []): PlanReport {
+export function planReport(targets: PlanReportTarget[], warnings: string[] = [], applied = false): PlanReport {
   return {
     schemaVersion: 1,
+    applied,
     targets: [...targets].sort(comparePlanReportTargets),
     warnings: [...warnings].sort((a, b) => a.localeCompare(b)),
   };

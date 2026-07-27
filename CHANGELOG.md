@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.16.1
+
+- Fixed machine-readable install output so `agentwheel install --json` and `--format json` apply the planned changes unless `--dry-run` is set. The report now includes whether changes were applied, while stdout remains valid JSON.
+
 ## 0.16.0
 
 - Added one unified `agentwheel search` command across configured registries and the complete enriched/Vercel catalogue, with deterministic ranking, cache/offline support, filters, and versioned JSON output for semantic agent reranking; removed the pre-stable `registry search` command.

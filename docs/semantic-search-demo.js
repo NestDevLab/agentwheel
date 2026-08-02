@@ -7,6 +7,9 @@ import {
 } from "./semantic-search-core.js";
 
 const DEFAULT_INDEX_URL = "https://raw.githubusercontent.com/NestDevLab/agentwheel-registry/main/catalogue-semantic-index/gte-v1/";
+const INITIAL_RESULT_COUNT = 3;
+const RESULT_PAGE_SIZE = 3;
+const MAX_RESULT_COUNT = 12;
 const demo = document.querySelector("#semantic-demo");
 
 if (demo) {
@@ -79,7 +82,7 @@ if (demo) {
         return;
       }
       const candidates = rerankSemanticCandidates(response.candidates, catalogue.entries, preparedQuery.intent);
-      const grouped = groupSemanticResults(candidates, catalogue.entries, 3);
+      const grouped = groupSemanticResults(candidates, catalogue.entries, MAX_RESULT_COUNT);
       if (!grouped.length) {
         setStatus("The index found candidates, but they are not present in the loaded catalogue snapshot.", "warning");
         return;
@@ -117,33 +120,67 @@ if (demo) {
     results.appendChild(heading);
     const list = document.createElement("div");
     list.className = "semantic-result-list";
-    groups.forEach((group, index) => {
-      const article = document.createElement("article");
-      article.className = "semantic-result";
-      const rank = document.createElement("span");
-      rank.className = "semantic-rank";
-      rank.textContent = String(index + 1);
-      article.appendChild(rank);
-      const copy = document.createElement("div");
-      const title = document.createElement("h4");
-      const link = document.createElement("a");
-      link.href = detailUrl(group.entry.id);
-      link.textContent = group.entry.name;
-      title.appendChild(link);
-      copy.appendChild(title);
-      const description = document.createElement("p");
-      description.textContent = group.entry.description || "No description available.";
-      copy.appendChild(description);
-      const meta = document.createElement("p");
-      meta.className = "semantic-result-meta";
-      const sourceCount = group.alternates.length + 1;
-      meta.textContent = `${ecosystemLabel(group.entry.ecosystem)}${sourceCount > 1 ? ` · ${sourceCount} sources` : ""}`;
-      copy.appendChild(meta);
-      article.appendChild(copy);
-      list.appendChild(article);
+    list.id = "semantic-result-list";
+    let visibleCount = Math.min(INITIAL_RESULT_COUNT, groups.length);
+    groups.slice(0, visibleCount).forEach((group, index) => {
+      list.appendChild(createResultCard(group, index));
     });
     results.appendChild(list);
+
+    if (groups.length > visibleCount) {
+      const actions = document.createElement("div");
+      actions.className = "semantic-result-actions";
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "semantic-more-button";
+      more.setAttribute("aria-controls", list.id);
+      updateMoreButton(more, groups.length - visibleCount);
+      more.addEventListener("click", () => {
+        const nextVisibleCount = Math.min(visibleCount + RESULT_PAGE_SIZE, groups.length);
+        groups.slice(visibleCount, nextVisibleCount).forEach((group, offset) => {
+          list.appendChild(createResultCard(group, visibleCount + offset));
+        });
+        visibleCount = nextVisibleCount;
+        const remaining = groups.length - visibleCount;
+        if (remaining > 0) updateMoreButton(more, remaining);
+        else actions.remove();
+      });
+      actions.appendChild(more);
+      results.appendChild(actions);
+    }
     renderAgentBridge();
+  }
+
+  function createResultCard(group, index) {
+    const article = document.createElement("article");
+    article.className = "semantic-result";
+    const rank = document.createElement("span");
+    rank.className = "semantic-rank";
+    rank.textContent = String(index + 1);
+    article.appendChild(rank);
+    const copy = document.createElement("div");
+    const title = document.createElement("h4");
+    const link = document.createElement("a");
+    link.href = detailUrl(group.entry.id);
+    link.textContent = group.entry.name;
+    title.appendChild(link);
+    copy.appendChild(title);
+    const description = document.createElement("p");
+    description.textContent = group.entry.description || "No description available.";
+    copy.appendChild(description);
+    const meta = document.createElement("p");
+    meta.className = "semantic-result-meta";
+    const sourceCount = group.alternates.length + 1;
+    meta.textContent = `${ecosystemLabel(group.entry.ecosystem)}${sourceCount > 1 ? ` · ${sourceCount} sources` : ""}`;
+    copy.appendChild(meta);
+    article.appendChild(copy);
+    return article;
+  }
+
+  function updateMoreButton(button, remaining) {
+    const nextCount = Math.min(RESULT_PAGE_SIZE, remaining);
+    button.textContent = `Show more matches (${nextCount})`;
+    button.setAttribute("aria-label", `Show ${nextCount} more semantic matches`);
   }
 
   function renderAgentBridge() {

@@ -1259,6 +1259,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="./semantic-search-demo.css">
 </head>
 <body>
   <div class="wrap">
@@ -1313,6 +1314,26 @@
               </svg>
             </a>
           </div>
+          <section class="semantic-demo semantic-demo-home" id="semantic-demo" data-detail-page="./catalogue.html" aria-labelledby="semantic-demo-title">
+            <h2 id="semantic-demo-title">Search by meaning</h2>
+            <form class="semantic-form" id="semantic-form">
+              <label class="sr-only" for="semantic-query">Describe the capability you need</label>
+              <input type="search" id="semantic-query" autocomplete="off" placeholder="e.g. I need an agent that learns while chatting">
+              <button class="button primary" id="semantic-submit" type="submit">Try semantic search</button>
+            </form>
+            <div class="semantic-examples" aria-label="Example searches">
+              <span>Try:</span>
+              <button class="semantic-example" type="button" data-semantic-example="Review a proposed code change for defects">code review</button>
+              <button class="semantic-example" type="button" data-semantic-example="Organize my inbox and identify urgent messages">inbox triage</button>
+              <button class="semantic-example" type="button" data-semantic-example="I need that my agent learns stuff on its own">self-learning agent</button>
+            </div>
+            <div class="semantic-progress-wrap" id="semantic-progress-wrap" hidden>
+              <progress id="semantic-progress" max="100" value="0">0%</progress>
+              <span id="semantic-progress-label">Waiting to start</span>
+            </div>
+            <p class="semantic-status" id="semantic-status" aria-live="polite">Runs locally · first search downloads about 50 MB</p>
+            <div class="semantic-results" id="semantic-results" aria-live="polite"></div>
+          </section>
           <div class="hero-flow" aria-label="One OpenPack source installs into every agent runtime">
             <div class="flow-source">
               <div class="source-chip">
@@ -1415,7 +1436,7 @@ agentwheel init</code></pre>
           <article class="install-method" id="install-panel-skill" role="tabpanel" aria-labelledby="install-tab-skill" data-install-panel="skill">
             <span class="method-label">Skill</span>
             <strong>Install the companion skill</strong>
-            <p>Keep Agentwheel usage, safety rules, and catalogue workflows available inside your current agent runtime.</p>
+            <p>Let your agent search the catalogue, suggest up to three matches, and ask before installing a recommended artifact.</p>
             <div class="code" aria-label="Companion skill install">
               <div class="codebar">
                 <span class="light"></span><span class="light"></span><span class="light"></span>
@@ -1995,5 +2016,6 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
       copyText(copyTextFrom(code), button);
     });
   </script>
+  <script type="module" src="./semantic-catalogue-home.js"></script>
 </body>
 </html>

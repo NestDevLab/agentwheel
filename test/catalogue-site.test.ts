@@ -42,4 +42,46 @@ describe("catalogue site", () => {
     expect(worker).toContain('resourceId.startsWith("vercel:")');
     expect(worker).toContain("agentwheelPrettyDetailUrl");
   });
+
+  it("offers an on-demand, browser-local semantic search demo", async () => {
+    const [html, home, homeLoader, demo, semanticWorker, styles] = await Promise.all([
+      readFile(join(repoRoot, "docs", "catalogue.html"), "utf8"),
+      readFile(join(repoRoot, "docs", "index.html"), "utf8"),
+      readFile(join(repoRoot, "docs", "semantic-catalogue-home.js"), "utf8"),
+      readFile(join(repoRoot, "docs", "semantic-search-demo.js"), "utf8"),
+      readFile(join(repoRoot, "docs", "semantic-search-worker.js"), "utf8"),
+      readFile(join(repoRoot, "docs", "semantic-search-demo.css"), "utf8"),
+    ]);
+
+    expect(html).toContain('id="semantic-demo"');
+    expect(html).toContain('id="semantic-progress"');
+    expect(html).toContain("Runs locally · first search downloads about 50 MB");
+    expect(html).toContain('src="./semantic-search-demo.js"');
+    expect(html).toContain('href="./semantic-search-demo.css"');
+    expect(html).toContain("window.agentwheelCatalogue = { ready: catalogueReady }");
+    expect(home).toContain('id="semantic-demo"');
+    expect(home).toContain('data-detail-page="./catalogue.html"');
+    expect(home).toContain('src="./semantic-catalogue-home.js"');
+    expect(home).toContain('href="./semantic-search-demo.css"');
+    expect(homeLoader).toContain("cataloguePromise ??= loadCatalogue()");
+    expect(homeLoader).toContain('await import("./semantic-search-demo.js")');
+    expect(styles).toContain(".semantic-demo-home");
+    expect(demo).toContain('new Worker(new URL("./semantic-search-worker.js"');
+    expect(demo).toContain("classifyDiscoveryIntent(query)");
+    expect(demo).toContain("rerankSemanticCandidates(response.candidates, catalogue.entries, preparedQuery.intent)");
+    expect(demo).toContain("groupSemanticResults(candidates, catalogue.entries, 3)");
+    expect(demo).toContain('pitch.textContent = "Like this search? Add it to your CLI and agent."');
+    expect(demo).toContain('summary.textContent = "Show me how"');
+    expect(demo).not.toContain('title.textContent = "Your agent with Agentwheel"');
+    expect(demo).toContain("companionSkillSetupCommand(button.dataset.adapter)");
+    expect(styles).toContain(".semantic-agent-bridge");
+    expect(styles).toContain(".semantic-agent-pitch");
+    expect(styles).toContain(".semantic-runtime-tabs");
+    expect(demo).toContain('progressLabel.textContent = "Loading catalogue metadata"');
+    expect(demo).toContain("const detailPage = demo?.dataset.detailPage");
+    expect(semanticWorker).toContain("@huggingface/transformers@4.2.0");
+    expect(semanticWorker).toContain('device: "wasm"');
+    expect(semanticWorker).toContain("progress_callback");
+    expect(semanticWorker).toContain("validateSemanticIndexMetadata");
+  });
 });

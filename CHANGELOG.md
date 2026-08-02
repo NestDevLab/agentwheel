@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.16.2
+
+- Fixed OpenClaw installs so Agentwheel reconciles lifecycle router repositories by name, replacing stale entries and removing duplicates while preserving unrelated repositories.
+
 ## 0.16.1
 
 - Fixed machine-readable install output so `agentwheel install --json` and `--format json` apply the planned changes unless `--dry-run` is set. The report now includes whether changes were applied, while stdout remains valid JSON.

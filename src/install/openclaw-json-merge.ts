@@ -23,6 +23,9 @@ function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] 
   if (path.join(".") === "agents.list" && Array.isArray(base) && Array.isArray(incoming)) {
     return mergeOpenClawAgentsById(base, incoming);
   }
+  if (isAgentwheelSkillRouterRepositoriesPath(path) && Array.isArray(base) && Array.isArray(incoming)) {
+    return mergeOpenClawRecordsByKey(base, incoming, "name");
+  }
   if (Array.isArray(base) && Array.isArray(incoming)) {
     return deepMerge(base, incoming);
   }
@@ -38,6 +41,10 @@ function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] 
 
 function isMcpServerCodexAgentsPath(path: string[]): boolean {
   return path.length === 5 && path[0] === "mcp" && path[1] === "servers" && path[3] === "codex" && path[4] === "agents";
+}
+
+function isAgentwheelSkillRouterRepositoriesPath(path: string[]): boolean {
+  return path.join(".") === "plugins.entries.agentwheel-skill-router.config.repositories";
 }
 
 function expandEnvPlaceholders(value: JsonValue, sourcePath: string): JsonValue {
@@ -97,6 +104,38 @@ function mergeOpenClawAgentsById(base: JsonValue[], incoming: JsonValue[]): Json
       continue;
     }
     out[indexById.get(id)!] = value;
+  }
+  return out;
+}
+
+function mergeOpenClawRecordsByKey(base: JsonValue[], incoming: JsonValue[], key: string): JsonValue[] {
+  const replacements = new Map<string, JsonValue>();
+  for (const value of incoming) {
+    const recordKey = isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
+    if (recordKey) replacements.set(recordKey, value);
+  }
+
+  const out: JsonValue[] = [];
+  const emitted = new Set<string>();
+  for (const value of base) {
+    const recordKey = isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
+    const replacement = recordKey ? replacements.get(recordKey) : undefined;
+    if (!recordKey || !replacement) {
+      out.push(value);
+      continue;
+    }
+    if (!emitted.has(recordKey)) {
+      out.push(replacement);
+      emitted.add(recordKey);
+    }
+  }
+
+  for (const value of incoming) {
+    const recordKey = isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
+    if (!recordKey || !emitted.has(recordKey)) {
+      out.push(value);
+      if (recordKey) emitted.add(recordKey);
+    }
   }
   return out;
 }

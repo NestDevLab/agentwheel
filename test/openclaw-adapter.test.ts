@@ -161,6 +161,76 @@ describe("OpenClaw adapter", () => {
     });
   });
 
+  it("reconciles Agentwheel skill router repositories by name", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const home = await tempRoot("agentwheel-openclaw-home-");
+    await mkdir(join(source, "settings"), { recursive: true });
+    await mkdir(join(home, ".openclaw"), { recursive: true });
+    await writeFakeOpenClaw(home);
+    await writePackage(source, [{ type: "settings", path: "settings/openclaw.json" }]);
+    await writeFile(join(source, "settings", "openclaw.json"), JSON.stringify({
+      plugins: {
+        entries: {
+          "agentwheel-skill-router": {
+            config: {
+              repositories: [{
+                name: "agent-drassil-toolkit-private",
+                sourceRoot: "/root/src/chromiecraft/agent-drassil-toolkit-private",
+                default: true,
+              }],
+            },
+          },
+        },
+      },
+    }, null, 2), "utf8");
+    await writeFile(join(home, ".openclaw", "openclaw.json"), JSON.stringify({
+      plugins: {
+        entries: {
+          "agentwheel-skill-router": {
+            config: {
+              repositories: [
+                {
+                  name: "agent-drassil-toolkit-private",
+                  sourceRoot: "/root/src/nestdevlab/agent-drassil-toolkit-private",
+                  default: true,
+                },
+                {
+                  name: "unrelated-toolkit",
+                  sourceRoot: "/root/src/example/unrelated-toolkit",
+                },
+                {
+                  name: "agent-drassil-toolkit-private",
+                  sourceRoot: "/root/src/chromiecraft/agent-drassil-toolkit-private",
+                  default: true,
+                },
+              ],
+            },
+          },
+        },
+      },
+    }, null, 2), "utf8");
+
+    await withTestHome(home, async () => {
+      const bundle = await stageSource(new LocalSourceDriver(), source);
+      const plan = await createInstallPlan(bundle, openClawAdapter, target, undefined, undefined, { installationType: "user" });
+      await applyInstallPlan(plan, bundle.sourceLock);
+      const config = JSON.parse(await readFile(join(home, ".openclaw", "openclaw.json"), "utf8"));
+      expect(config.plugins.entries["agentwheel-skill-router"].config.repositories).toEqual([
+        {
+          name: "agent-drassil-toolkit-private",
+          sourceRoot: "/root/src/chromiecraft/agent-drassil-toolkit-private",
+          default: true,
+        },
+        {
+          name: "unrelated-toolkit",
+          sourceRoot: "/root/src/example/unrelated-toolkit",
+        },
+      ]);
+      await rm(bundle.root, { recursive: true, force: true });
+    });
+  });
+
   it("installs OpenClaw subagents as workspace AGENTS directories", async () => {
     const source = await tempRoot();
     const target = await tempRoot();

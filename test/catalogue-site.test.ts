@@ -69,7 +69,10 @@ describe("catalogue site", () => {
     expect(demo).toContain('new Worker(new URL("./semantic-search-worker.js"');
     expect(demo).toContain("classifyDiscoveryIntent(query)");
     expect(demo).toContain("rerankSemanticCandidates(response.candidates, catalogue.entries, preparedQuery.intent)");
-    expect(demo).toContain("groupSemanticResults(candidates, catalogue.entries, 3)");
+    expect(demo).toContain("groupSemanticResults(candidates, catalogue.entries, MAX_RESULT_COUNT)");
+    expect(demo).toContain("const MAX_RESULT_COUNT = 12");
+    expect(demo).toContain("Show more matches");
+    expect(styles).toContain(".semantic-more-button");
     expect(demo).toContain('pitch.textContent = "Like this search? Add it to your CLI and agent."');
     expect(demo).toContain('summary.textContent = "Show me how"');
     expect(demo).not.toContain('title.textContent = "Your agent with Agentwheel"');

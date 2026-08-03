@@ -191,25 +191,9 @@ agentwheel install clawhub:@openclaw/whatsapp --adapter openclaw --local
 
 ### Private GitHub sources
 
-OpenPack manifests stay portable and do not contain personal GitHub accounts or tokens. To select a
-local `gh` account for private GitHub sources, create `~/.agentwheel/auth.json`:
-
-```json
-{
-  "profiles": {
-    "github-yehonal": {
-      "provider": "gh",
-      "account": "Yehonal",
-      "repositories": ["github.com/NestDevLab/*"]
-    }
-  }
-}
-```
-
-When Agentwheel clones or fetches a matching repository, it invokes `gh auth token --user Yehonal`
-through a temporary Git credential helper. The token is never written to the manifest, lockfile,
-cache metadata, or logs. The `AGENTWHEEL_AUTH_CONFIG` environment variable can point to a different
-local config file for testing or isolated environments.
+OpenPack manifests stay portable and do not contain personal GitHub accounts or tokens. Configure
+local `gh` accounts through a user-local auth profile; see [Git Authentication](docs/git-authentication.md)
+for the configuration format and runtime behavior.
 
 `mcp-registry:<server-name>` reads the public MCP Registry and stages a generated OpenPack package
 only when the server exposes a safe unauthenticated `streamable-http` remote. Entries that require

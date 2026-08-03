@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { readPackageManifest } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
+import { gitAuthArguments } from "./auth.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "./types.js";
 
@@ -38,9 +39,17 @@ export class GitSourceDriver implements SourceDriver {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
         await rm(resolved.resolvedPath, { recursive: true, force: true });
-        await git(["clone", parsed.url, resolved.resolvedPath]);
+        await git([...(await gitAuthArguments(parsed.url)), "clone", parsed.url, resolved.resolvedPath]);
       } else if (!resolved.frozenLock) {
-        await git(["-C", resolved.resolvedPath, "fetch", "--tags", "--prune", "origin"]);
+        await git([
+          ...(await gitAuthArguments(parsed.url)),
+          "-C",
+          resolved.resolvedPath,
+          "fetch",
+          "--tags",
+          "--prune",
+          "origin",
+        ]);
       }
 
       const ref = resolved.requestedRef ?? parsed.ref ?? "HEAD";

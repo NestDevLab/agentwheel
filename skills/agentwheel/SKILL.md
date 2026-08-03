@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.16.2"
+  version: "0.16.3"
 ---
 
 # agentwheel

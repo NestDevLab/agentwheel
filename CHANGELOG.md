@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.16.3
+
+- Added user-local GitHub authentication profiles for private Git sources without putting personal accounts or tokens in OpenPack manifests.
+
 ## 0.16.2
 
 - Fixed OpenClaw installs so Agentwheel reconciles lifecycle router repositories by name, replacing stale entries and removing duplicates while preserving unrelated repositories.

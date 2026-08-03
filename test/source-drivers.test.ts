@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { getSourceDriver } from "../src/source/index.js";
+import { gitAuthArguments, matchingGitAuthProfile } from "../src/source/auth.js";
 import { ClawHubSourceDriver } from "../src/source/clawhub.js";
 import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
@@ -41,6 +42,61 @@ async function writeSkill(dir: string, name: string, description = "A determinis
     "",
   ].join("\n"), "utf8");
 }
+
+describe("local Git auth profiles", () => {
+  it("matches a repository without putting credentials in the source manifest", async () => {
+    const config = await tempRoot("agentwheel-auth-config-");
+    const configPath = join(config, "auth.json");
+    await writeFile(configPath, JSON.stringify({
+      profiles: {
+        "github-yehonal": {
+          provider: "gh",
+          account: "Yehonal",
+          repositories: ["github.com/NestDevLab/*"],
+        },
+      },
+    }));
+
+    const previousConfig = process.env.AGENTWHEEL_AUTH_CONFIG;
+    process.env.AGENTWHEEL_AUTH_CONFIG = configPath;
+    try {
+      await expect(matchingGitAuthProfile("https://github.com/NestDevLab/agentwheel.git")).resolves.toMatchObject({
+        provider: "gh",
+        account: "Yehonal",
+      });
+      await expect(matchingGitAuthProfile("https://github.com/other-org/agentwheel.git")).resolves.toBeUndefined();
+    } finally {
+      if (previousConfig === undefined) delete process.env.AGENTWHEEL_AUTH_CONFIG;
+      else process.env.AGENTWHEEL_AUTH_CONFIG = previousConfig;
+    }
+  });
+
+  it("builds a scoped credential helper without exposing the token in Git arguments", async () => {
+    const config = await tempRoot("agentwheel-auth-config-");
+    const configPath = join(config, "auth.json");
+    await writeFile(configPath, JSON.stringify({
+      profiles: {
+        "github-yehonal": {
+          provider: "gh",
+          account: "Yehonal",
+          repositories: ["github.com/NestDevLab/*"],
+        },
+      },
+    }));
+
+    const previousConfig = process.env.AGENTWHEEL_AUTH_CONFIG;
+    process.env.AGENTWHEEL_AUTH_CONFIG = configPath;
+    try {
+      const args = await gitAuthArguments("https://github.com/NestDevLab/agentwheel.git");
+      expect(args).toContain("credential.helper=");
+      expect(args.join(" ")).toContain("gh auth token --user 'Yehonal'");
+      expect(args.join(" ")).not.toContain("gho_");
+    } finally {
+      if (previousConfig === undefined) delete process.env.AGENTWHEEL_AUTH_CONFIG;
+      else process.env.AGENTWHEEL_AUTH_CONFIG = previousConfig;
+    }
+  });
+});
 
 describe("v0.3 source drivers", () => {
   it("registers skill ecosystem source drivers", () => {

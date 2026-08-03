@@ -189,6 +189,12 @@ agentwheel install mcp-registry:publisher/server-name --adapter claude --local
 agentwheel install clawhub:@openclaw/whatsapp --adapter openclaw --local
 ```
 
+### Private GitHub sources
+
+OpenPack manifests stay portable and do not contain personal GitHub accounts or tokens. Configure
+local `gh` accounts through a user-local auth profile; see [Git Authentication](docs/git-authentication.md)
+for the configuration format and runtime behavior.
+
 `mcp-registry:<server-name>` reads the public MCP Registry and stages a generated OpenPack package
 only when the server exposes a safe unauthenticated `streamable-http` remote. Entries that require
 secret headers or only publish native package instructions remain discovery-only until they are

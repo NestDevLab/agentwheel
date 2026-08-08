@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "name": "NestDevLab/agentwheel",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "provides": [
     { "type": "skills", "path": "skills" }
   ]

@@ -30,6 +30,7 @@ describe("Agentwheel companion skill", () => {
     expect(description).toContain("capability");
     expect(description).toContain("integration");
     expect(description).toContain("workflow");
+    expect(description).toContain("repeated manual workflow");
   });
 
   it("uses the unified search command only", async () => {
@@ -58,7 +59,9 @@ describe("Agentwheel companion skill", () => {
     expect(content).toContain("Do not infer capabilities absent from result metadata");
     expect(content).toContain("Suggest zero to three distinct artifacts");
     expect(content).toContain("candidates are only weak lexical matches");
-    expect(content).toContain("the same suggestion was already shown without new evidence");
+    expect(content).toContain("search once per distinct capability gap");
+    expect(content).toContain("the same suggestion was declined or shown without new evidence");
+    expect(content).toContain("delegated agents follow the same trigger");
   });
 
   it("keeps search separate from mutations and OpenPack suggestions", async () => {

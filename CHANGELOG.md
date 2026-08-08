@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.16.4
+
+- Broadened the companion skill's automatic discovery trigger to cover missing capabilities, repeated manual workflows, and unavailable integrations, including delegated-agent work, while preserving bounded non-mutating suggestions.
+
 ## 0.16.3
 
 - Added user-local GitHub authentication profiles for private Git sources without putting personal accounts or tokens in OpenPack manifests.

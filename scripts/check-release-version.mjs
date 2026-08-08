@@ -52,6 +52,7 @@ async function writeOutputs(outputs) {
 const packageJson = await json("package.json");
 const openpack = await json("openpack.json");
 const skill = await text("skills/agentwheel/SKILL.md");
+const discoverySkill = await text("skills/agentwheel-discovery/SKILL.md");
 const index = await text("docs/index.html");
 const catalogue = await text("docs/catalogue.html");
 const changelog = await text("CHANGELOG.md");
@@ -67,6 +68,11 @@ if (openpack.version !== version) {
 const skillVersion = skill.match(/^\s*version:\s*["']([^"']+)["']\s*$/m)?.[1];
 if (skillVersion !== version) {
   errors.push(`skills/agentwheel/SKILL.md is ${skillVersion ?? "missing"}, expected ${version}`);
+}
+
+const discoverySkillVersion = discoverySkill.match(/^\s*version:\s*["']([^"']+)["']\s*$/m)?.[1];
+if (discoverySkillVersion !== version) {
+  errors.push(`skills/agentwheel-discovery/SKILL.md is ${discoverySkillVersion ?? "missing"}, expected ${version}`);
 }
 
 const expectedIndexMarkers = [

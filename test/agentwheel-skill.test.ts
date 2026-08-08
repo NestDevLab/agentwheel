@@ -3,13 +3,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 
-const skillPath = join(process.cwd(), "skills", "agentwheel", "SKILL.md");
-
-async function readSkill(): Promise<{
+async function readSkill(name: string): Promise<{
   content: string;
   frontmatter: Record<string, unknown>;
 }> {
-  const content = await readFile(skillPath, "utf8");
+  const content = await readFile(join(process.cwd(), "skills", name, "SKILL.md"), "utf8");
   const match = content.match(/^---\n([\s\S]*?)\n---\n/);
 
   expect(match).not.toBeNull();
@@ -20,70 +18,71 @@ async function readSkill(): Promise<{
   };
 }
 
-describe("Agentwheel companion skill", () => {
-  it("triggers for reusable capability discovery", async () => {
-    const { frontmatter } = await readSkill();
+describe("Agentwheel companion skills", () => {
+  it("keeps management explicit and points to optional proactive discovery", async () => {
+    const { content, frontmatter } = await readSkill("agentwheel");
     const description = String(frontmatter.description);
 
     expect(frontmatter.name).toBe("agentwheel");
-    expect(description).toContain("Discover or manage reusable agent artifacts");
-    expect(description).toContain("capability");
-    expect(description).toContain("integration");
-    expect(description).toContain("workflow");
-    expect(description).toContain("repeated manual workflow");
-    expect(description).toContain("Trigger proactively");
-    expect(description).toContain("semantic discovery");
+    expect(description).toContain("Manage and explicitly inspect");
+    expect(description).toContain("when the user asks");
+    expect(description).toContain("separate agentwheel-discovery skill");
+    expect(description).not.toContain("Trigger proactively");
+    expect(content).toContain("## Explicit Discovery");
+    expect(content).toContain("Install `skills/agentwheel-discovery` separately");
+  });
+
+  it("triggers the optional skill for reusable capability discovery", async () => {
+    const { frontmatter } = await readSkill("agentwheel-discovery");
+    const description = String(frontmatter.description);
+
+    expect(frontmatter.name).toBe("agentwheel-discovery");
+    expect(description).toContain("Proactively discover reusable skills");
+    expect(description).toContain("missing capability");
+    expect(description).toContain("repeated manual work");
+    expect(description).toContain("unavailable integration");
+    expect(description).toContain("semantic search");
+    expect(description).toContain("up to three");
     expect(description).toContain("read-only trial");
+    expect(description).toContain("without installing or changing anything");
   });
 
-  it("uses the unified search command only", async () => {
-    const { content } = await readSkill();
+  it("uses unified semantic search and read-only trial commands", async () => {
+    const { content } = await readSkill("agentwheel-discovery");
+    const prose = content.replace(/\s+/g, " ");
 
-    expect(content).toContain('agentwheel search "<query>"');
-    expect(content).toContain('agentwheel search "<query>" --json --limit 10');
-    expect(content).toContain('agentwheel search "<query>" --scope registry');
     expect(content).toContain('agentwheel search "<query>" --semantic --json --limit 10');
-    expect(content).not.toContain("agentwheel registry search");
-  });
-
-  it("documents the opt-in verified semantic catalogue path", async () => {
-    const { content } = await readSkill();
-    expect(content).toContain("same published catalogue vector index used by the website");
-    expect(content).toContain("validates its checksums against the loaded catalogue");
-    expect(content).toContain("Run at most one semantic search for a distinct capability gap");
     expect(content).toContain("agentwheel try <source> --skill <name> --json");
-    expect(content).toContain("does not add a package, change configuration, write runtime files, or execute code");
-    expect(content).toContain("For a capability gap, run one fast semantic search");
-    expect(content).toContain("Stop after four total searches");
+    expect(content).not.toContain("agentwheel registry search");
+    expect(prose).toContain("same published catalogue vector index used by the website");
+    expect(prose).toContain("validates its checksums against the loaded catalogue");
+    expect(prose).toContain("does not add a package, change configuration, write runtime files, or execute code");
   });
 
-  it("bounds semantic query expansion", async () => {
-    const { content } = await readSkill();
+  it("bounds search expansion and recommendations", async () => {
+    const { content } = await readSkill("agentwheel-discovery");
+    const prose = content.replace(/\s+/g, " ");
 
     expect(content).toContain("up to three short lexical variants");
+    expect(content).toContain("Stop after four total searches");
     expect(content).toContain("do not recursively refine without new user requirements");
     expect(content).toContain("Merge results by stable `id`");
     expect(content).toContain("Treat CLI scores as retrieval signals, not semantic confidence");
-  });
-
-  it("requires evidence-based reranking and bounded suggestions", async () => {
-    const { content } = await readSkill();
-
     expect(content).toContain("Rerank against the original request");
-    expect(content).toContain("Do not infer capabilities absent from result metadata");
-    expect(content).toContain("Suggest zero to three distinct artifacts");
-    expect(content).toContain("candidates are only weak lexical matches");
-    expect(content).toContain("search once per distinct capability gap");
-    expect(content).toContain("the same suggestion was declined or shown without new evidence");
-    expect(content).toContain("delegated agents follow the same trigger");
+    expect(prose).toContain("Do not infer capabilities absent from result metadata");
+    expect(prose).toContain("Suggest zero to three distinct artifacts");
+    expect(content).toContain("Search once per distinct capability gap");
   });
 
-  it("keeps search separate from mutations and OpenPack suggestions", async () => {
-    const { content } = await readSkill();
+  it("suppresses noisy suggestions and keeps every mutation gated", async () => {
+    const { content } = await readSkill("agentwheel-discovery");
+    const prose = content.replace(/\s+/g, " ");
 
-    expect(content).toContain("Search results are proposals, not approval");
-    expect(content).toContain("Never add, install, enable, or change configuration until the user confirms the artifact and target scope");
-    expect(content).toContain("Wait for explicit approval before `add`, `install`, plugin execution, or configuration changes");
-    expect(content).toContain("they do not select OpenPack `suggests`, mutate desired state, or imply installation approval");
+    expect(prose).toContain("candidates are only weak lexical matches");
+    expect(prose).toContain("the same suggestion was declined or shown without new evidence");
+    expect(content).toContain("Delegated agents");
+    expect(content).toContain("Search recommendations are conversational only");
+    expect(prose).toContain("they do not select OpenPack `suggests`, mutate");
+    expect(prose).toContain("Wait for explicit approval before `add`, `install`");
   });
 });

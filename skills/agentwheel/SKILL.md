@@ -1,11 +1,11 @@
 ---
 name: agentwheel
-description: Discover or manage reusable agent artifacts with Agentwheel. Use when a requested agent capability, integration, workflow, policy, or tool may already exist, and when adding, installing, updating, customizing, ejecting, or uninstalling skills, rules, instructions, commands, MCP, hooks, settings, plugins, or subagents across runtimes.
+description: Discover or manage reusable agent artifacts with Agentwheel. Use when substantive work exposes a missing capability, repeated manual workflow, or unavailable integration, when a requested artifact may already exist, and when adding, installing, updating, customizing, ejecting, or uninstalling agent artifacts across runtimes.
 allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.16.3"
+  version: "0.16.4"
 ---
 
 # agentwheel
@@ -82,7 +82,9 @@ agentwheel search "<query>"
 agentwheel search "<query>" --json --limit 10
 ```
 
-When a reusable artifact could satisfy the request:
+Search automatically when substantive work exposes a missing capability, repeated manual workflow, unavailable integration, or explicit request for a reusable artifact. This is a per-turn judgment, not a background monitor; delegated agents follow the same trigger when the skill is available.
+
+Before searching, inspect the installed skill/tool inventory available in the current session. If nothing suitable is already present:
 
 1. Extract the capability and constraints from the complete request.
 2. Generate one to four short lexical queries using capability terms, synonyms, runtime names, and artifact types. Prefer English catalogue terms when the request uses another language.
@@ -92,7 +94,7 @@ When a reusable artifact could satisfy the request:
 6. Suggest zero to three distinct artifacts. For each, give its name or source, one evidence-based match reason, installability, and a safe next command.
 7. Wait for explicit approval before `add`, `install`, plugin execution, or configuration changes.
 
-For automatic suggestions, skip discovery when the user explicitly wants custom implementation, has already selected an artifact, an installed artifact clearly satisfies the request, candidates are only weak lexical matches, or the same suggestion was already shown without new evidence.
+For automatic suggestions, search once per distinct capability gap. Skip discovery when the user explicitly wants custom implementation, has already selected an artifact, an installed artifact clearly satisfies the request, candidates are only weak lexical matches, or the same suggestion was declined or shown without new evidence. Continue useful work while searching when possible; do not interrupt solely to advertise marginal matches.
 
 Search recommendations are conversational only: they do not select OpenPack `suggests`, mutate desired state, or imply installation approval.
 

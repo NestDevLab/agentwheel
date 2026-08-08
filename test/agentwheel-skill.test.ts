@@ -39,7 +39,15 @@ describe("Agentwheel companion skill", () => {
     expect(content).toContain('agentwheel search "<query>"');
     expect(content).toContain('agentwheel search "<query>" --json --limit 10');
     expect(content).toContain('agentwheel search "<query>" --scope registry');
+    expect(content).toContain('agentwheel search "<query>" --semantic --json --limit 10');
     expect(content).not.toContain("agentwheel registry search");
+  });
+
+  it("documents the opt-in verified semantic catalogue path", async () => {
+    const { content } = await readSkill();
+    expect(content).toContain("same published catalogue vector index used by the website");
+    expect(content).toContain("validates its checksums against the loaded catalogue");
+    expect(content).toContain("Run at most one semantic search for a distinct capability gap");
   });
 
   it("bounds semantic query expansion", async () => {

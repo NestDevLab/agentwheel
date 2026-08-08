@@ -105,6 +105,10 @@ export const catalogueCacheSchema = z.object({
   sources: z.tuple([z.string().url(), z.string().url()]),
   enriched: enrichedCatalogueSchema,
   vercel: vercelCatalogueSchema,
+  sourceDigests: z.object({
+    enriched: z.string().regex(/^[a-f0-9]{64}$/),
+    vercel: z.string().regex(/^[a-f0-9]{64}$/),
+  }).optional(),
 });
 
 export const catalogueCacheEnvelopeSchema = z.object({
@@ -112,6 +116,10 @@ export const catalogueCacheEnvelopeSchema = z.object({
   fetchedAt: z.string().datetime(),
   sources: z.tuple([z.string().url(), z.string().url()]),
   contentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  sourceDigests: z.object({
+    enriched: z.string().regex(/^[a-f0-9]{64}$/),
+    vercel: z.string().regex(/^[a-f0-9]{64}$/),
+  }).optional(),
   enriched: z.unknown(),
   vercel: z.unknown(),
 });
@@ -131,6 +139,7 @@ export const searchResultSchema = z.object({
   provenances: z.array(catalogueProvenanceSchema).min(1),
   score: z.number().int().nonnegative(),
   matchedFields: z.array(z.string()),
+  semanticScore: z.number().finite().optional(),
 });
 
 export const searchResponseSchema = z.object({
@@ -138,6 +147,7 @@ export const searchResponseSchema = z.object({
   query: z.string(),
   scope: searchScopeSchema,
   fromCache: z.boolean(),
+  searchMode: z.enum(["lexical", "semantic"]).optional(),
   results: z.array(searchResultSchema),
 });
 

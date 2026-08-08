@@ -34,6 +34,7 @@ describe("search CLI", () => {
     expect(topHelp.stdout).toContain("search [options] <query>");
     expect(searchHelp.stdout).toContain("--scope <scope>");
     expect(searchHelp.stdout).toContain("--include-archived");
+    expect(searchHelp.stdout).toContain("--semantic");
     expect(searchHelp.stdout).toContain("-t, --target-root <path>");
     expect(registryHelp.stdout).not.toContain("search <query>");
     await expect(runCli(["registry", "search", "browser"], home)).rejects.toMatchObject({ code: 1 });
@@ -216,6 +217,7 @@ describe("search CLI", () => {
     [["search", "x", "--limit", "101"], "Invalid search limit"],
     [["search", "x", "--limit", "1.5"], "Invalid search limit"],
     [["search", "x", "--refresh", "--offline"], "--refresh cannot be used with --offline"],
+    [["search", "x", "--scope", "registry", "--semantic"], "--semantic requires a catalogue scope"],
   ])("rejects invalid search options: %j", async (args, message) => {
     const home = await tempRoot("agentwheel-search-home-");
     await expect(runCli(args, home)).rejects.toMatchObject({

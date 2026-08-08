@@ -80,6 +80,7 @@ Search configured registries and public catalogue sources:
 ```bash
 agentwheel search "<query>"
 agentwheel search "<query>" --json --limit 10
+agentwheel search "<query>" --semantic --json --limit 10
 ```
 
 Search automatically when substantive work exposes a missing capability, repeated manual workflow, unavailable integration, or explicit request for a reusable artifact. This is a per-turn judgment, not a background monitor; delegated agents follow the same trigger when the skill is available.
@@ -97,6 +98,16 @@ Before searching, inspect the installed skill/tool inventory available in the cu
 For automatic suggestions, search once per distinct capability gap. Skip discovery when the user explicitly wants custom implementation, has already selected an artifact, an installed artifact clearly satisfies the request, candidates are only weak lexical matches, or the same suggestion was declined or shown without new evidence. Continue useful work while searching when possible; do not interrupt solely to advertise marginal matches.
 
 Search recommendations are conversational only: they do not select OpenPack `suggests`, mutate desired state, or imply installation approval.
+
+### Semantic catalogue search
+
+Use `--semantic` for a capability request whose wording is unlikely to match catalogue labels, or after bounded lexical search returns only weak matches. It queries the same published catalogue vector index used by the website and validates its checksums against the loaded catalogue before ranking. It is opt-in because first use may download the model and index assets.
+
+```bash
+agentwheel search "remember corrections from earlier conversations" --semantic --json --limit 10
+```
+
+Do not use `--semantic` for a registry-only search. Run at most one semantic search for a distinct capability gap, keep the result evidence rules above, and never describe a semantic score as proof that an artifact implements a capability.
 
 Registry maintenance remains explicit:
 

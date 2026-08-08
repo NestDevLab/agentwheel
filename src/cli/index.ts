@@ -52,6 +52,7 @@ import { blocksCompositeApply, worstStatusHealth, type StatusHealth, type Status
 import { collectRepositoryStatus } from "../status/repository.js";
 import { CatalogueClient } from "../catalogue/client.js";
 import { buildSearchEntries, searchEntries } from "../search/index.js";
+import { SemanticSearchClient } from "../semantic/index.js";
 import {
   searchEcosystemSchema,
   searchScopeSchema,
@@ -171,6 +172,7 @@ program
   .option("--include-archived", "include archived catalogue entries", false)
   .option("--refresh", "refresh registry and catalogue caches", false)
   .option("--offline", "use compatible local caches without network access", false)
+  .option("--semantic", "rank published catalogue entries with the verified semantic index", false)
   .option("-t, --target-root <path>", "workspace root", process.cwd())
   .action(async (query: string, options: SearchCliOptions) => {
     const trimmedQuery = query.trim();
@@ -184,6 +186,9 @@ program
     if (options.refresh && options.offline) {
       throw new Error("--refresh cannot be used with --offline.");
     }
+    if (options.semantic && scope === "registry") {
+      throw new Error("--semantic requires a catalogue scope: all, enriched, or vercel.");
+    }
 
     const warning = (message: string) => console.error(message);
     const targetRoot = normalizeTargetRoot(options.targetRoot);
@@ -191,7 +196,7 @@ program
       ? new RegistryClient({ workspaceRoot: targetRoot, offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh })
       : undefined;
     const catalogueRequest = scope === "all" || scope === "enriched" || scope === "vercel"
-      ? new CatalogueClient({ offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh })
+      ? new CatalogueClient({ offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh || (options.semantic && !options.offline) })
       : undefined;
     const [registryIndex, catalogueIndex] = await Promise.all([registryRequest, catalogueRequest]);
 
@@ -200,12 +205,22 @@ program
       enriched: scope === "all" || scope === "enriched" ? catalogueIndex?.enriched : undefined,
       vercel: scope === "all" || scope === "vercel" ? catalogueIndex?.vercel : undefined,
     });
-    const results = searchEntries(entries, trimmedQuery, {
-      type,
-      ecosystem,
-      limit,
-      includeArchived: options.includeArchived,
-    });
+    const results = options.semantic
+      ? await new SemanticSearchClient({ warn: warning }).search({
+        query: trimmedQuery,
+        entries,
+        catalogueDigests: catalogueIndex?.sourceDigests,
+        type,
+        ecosystem,
+        limit,
+        includeArchived: options.includeArchived,
+      })
+      : searchEntries(entries, trimmedQuery, {
+        type,
+        ecosystem,
+        limit,
+        includeArchived: options.includeArchived,
+      });
     const loadedIndexes = [registryIndex, catalogueIndex].filter((index) => index !== undefined);
     const response = {
       schemaVersion: 1,
@@ -213,6 +228,7 @@ program
       scope,
       fromCache: loadedIndexes.every((index) => index.fromCache),
       results,
+      ...(options.semantic ? { searchMode: "semantic" as const } : {}),
     } satisfies SearchResponse;
 
     if (options.json) {
@@ -3221,6 +3237,7 @@ interface SearchCliOptions {
   includeArchived: boolean;
   refresh: boolean;
   offline: boolean;
+  semantic: boolean;
   targetRoot: string;
 }
 
@@ -3263,6 +3280,7 @@ function printSearchResults(query: string, results: SearchResult[]): void {
       + `[type=${result.type}; ecosystem=${ecosystem}; installability=${result.installability}; provenance=${provenances}]`,
     );
     console.log(`   ${result.description || "(no description)"}`);
+    if (result.semanticScore !== undefined) console.log(`   Semantic score: ${result.semanticScore}`);
     if (result.installCommand) {
       console.log(`   Install: ${result.installCommand}`);
     } else if (result.source) {

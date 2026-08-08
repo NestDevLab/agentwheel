@@ -40,6 +40,24 @@ describe("search CLI", () => {
     await expect(runCli(["registry", "search", "browser"], home)).rejects.toMatchObject({ code: 1 });
   });
 
+  it("reads one skill as a read-only trial without creating a runtime install", async () => {
+    const home = await tempRoot("agentwheel-trial-home-");
+    const source = join(process.cwd(), "test", "fixtures", "smoke", "skills-only");
+    const result = await runCli(["try", source, "--skill", "agentwheel-smoke-skill", "--json"], home);
+    const trial = JSON.parse(result.stdout);
+
+    expect(trial).toMatchObject({
+      schemaVersion: 1,
+      mode: "read-only",
+      skill: {
+        name: "agentwheel-smoke-skill",
+        frontmatter: { name: "agentwheel-smoke-skill" },
+      },
+    });
+    expect(trial.skill.content).toContain("Deterministic smoke skill");
+    await expect(import("node:fs/promises").then(({ stat }) => stat(join(home, ".agents", "skills", "agentwheel-smoke-skill")))).rejects.toThrow();
+  });
+
   it("searches a configured registry scope without contacting the public catalogue", async () => {
     const fixture = await registryFixture();
     const result = await runCli([

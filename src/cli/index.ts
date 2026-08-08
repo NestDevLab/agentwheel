@@ -53,6 +53,7 @@ import { collectRepositoryStatus } from "../status/repository.js";
 import { CatalogueClient } from "../catalogue/client.js";
 import { buildSearchEntries, searchEntries } from "../search/index.js";
 import { SemanticSearchClient } from "../semantic/index.js";
+import { createSkillTrial } from "../trial/skill.js";
 import {
   searchEcosystemSchema,
   searchScopeSchema,
@@ -236,6 +237,35 @@ program
       return;
     }
     printSearchResults(trimmedQuery, results);
+  });
+
+program
+  .command("try")
+  .description("read and validate one skill for the current task without installing it")
+  .argument("<source>", "package source")
+  .option("--driver <driver>", "source driver")
+  .option("--json", "print the read-only skill trial as JSON", false)
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--select <type/name>", "select exactly one skill artifact", collectSelectOption, [] as string[])
+  .option("--skill <name>", "select exactly one skill by name", collectSkillOption, [] as string[])
+  .action(async (source: string, options: SkillTrialCliOptions) => {
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const resolvedInput = await resolvePackageSource(source, targetRoot);
+    const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
+    const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, {
+      cacheRoot: join(targetRoot, ".agentwheel", "cache"),
+    }))));
+    const trial = await createSkillTrial(driver, resolved, selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry));
+    if (options.json) {
+      console.log(JSON.stringify(trial, null, 2));
+      return;
+    }
+    console.log(`Read-only skill trial: ${trial.skill.name}`);
+    console.log(`Source: ${trial.source}`);
+    console.log(`Description: ${trial.skill.frontmatter.description}`);
+    console.log("No configuration or runtime files were changed.");
+    console.log("\n--- SKILL.md ---\n");
+    console.log(trial.skill.content);
   });
 
 program
@@ -3239,6 +3269,14 @@ interface SearchCliOptions {
   offline: boolean;
   semantic: boolean;
   targetRoot: string;
+}
+
+interface SkillTrialCliOptions {
+  driver?: string;
+  json: boolean;
+  targetRoot: string;
+  select: string[];
+  skill: string[];
 }
 
 function parseSearchScope(value: string): SearchScope {

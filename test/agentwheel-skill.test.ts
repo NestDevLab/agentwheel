@@ -37,7 +37,9 @@ describe("Agentwheel companion skills", () => {
     const description = String(frontmatter.description);
 
     expect(frontmatter.name).toBe("agentwheel-discovery");
-    expect(description).toContain("Proactively discover reusable skills");
+    expect(description).toContain("MUST use proactively");
+    expect(description).toContain("even if the user did not ask for a skill");
+    expect(description).toContain("before generic brainstorming or workflow advice");
     expect(description).toContain("missing capability");
     expect(description).toContain("repeated manual work");
     expect(description).toContain("unavailable integration");
@@ -45,6 +47,17 @@ describe("Agentwheel companion skills", () => {
     expect(description).toContain("up to three");
     expect(description).toContain("read-only trial");
     expect(description).toContain("without installing or changing anything");
+  });
+
+  it("does not let generic advice suppress operational discovery", async () => {
+    const { content } = await readSkill("agentwheel-discovery");
+    const prose = content.replace(/\s+/g, " ");
+
+    expect(prose).toContain("Use this skill before generic brainstorming, planning, or workflow advice");
+    expect(prose).toContain("The user does not need to mention Agentwheel, skills, discovery, search, or a catalogue");
+    expect(prose).toContain("Run the first semantic search in the same turn");
+    expect(prose).toContain("provides the requested operational capability end to end");
+    expect(prose).toContain("Generic brainstorming, planning, writing, or advisory skills do not count");
   });
 
   it("uses unified semantic search and read-only trial commands", async () => {

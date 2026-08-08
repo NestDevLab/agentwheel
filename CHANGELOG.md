@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Made optional proactive discovery deterministic for repeated manual workflows: it now runs before
+  generic brainstorming or workflow advice, and generic advisory skills no longer suppress a
+  semantic search for an operational capability.
+
 ## 0.16.5
 
 - Split proactive capability recommendations into the optional `agentwheel-discovery` skill, while

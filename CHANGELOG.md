@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.16.5
+
+- Split proactive capability recommendations into the optional `agentwheel-discovery` skill, while
+  keeping explicit search and artifact management in the `agentwheel` skill.
+- Released verified semantic catalogue search and read-only skill trials through the CLI and the
+  dedicated discovery workflow.
+
 ## 0.16.4
 
 - Broadened the companion skill's automatic discovery trigger to cover missing capabilities, repeated manual workflows, and unavailable integrations, including delegated-agent work, while preserving bounded non-mutating suggestions.

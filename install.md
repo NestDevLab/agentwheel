@@ -11,8 +11,9 @@ commands, subagents, MCP, hooks, settings, plugins, and fragments.
 1. Inspect the environment.
 2. Install the `agentwheel` CLI if it is missing or too old.
 3. Verify the CLI.
-4. Install the Agentwheel companion skill into the user's active runtime when requested.
-5. Show the user how to browse or install catalogue resources.
+4. Install the Agentwheel management skill into the user's active runtime when requested.
+5. Offer the separate proactive discovery skill when the user wants automatic capability suggestions.
+6. Show the user how to browse or install catalogue resources.
 
 If the user explicitly asked you to install Agentwheel, you may run the installation commands below.
 Ask before destructive operations, `--force`, remote publishing, local adapter code execution, or
@@ -46,7 +47,7 @@ agentwheel --version
 agentwheel doctor --help
 ```
 
-## Install The Companion Skill
+## Install The Companion Skills
 
 Pick the adapter that matches the active runtime:
 
@@ -68,6 +69,15 @@ For a user-level Claude setup:
 ```bash
 agentwheel doctor --adapter claude --user
 agentwheel install github:NestDevLab/agentwheel --adapter claude --user --skill agentwheel
+```
+
+The `agentwheel` skill is not proactive. If the user wants the agent to notice capability gaps,
+suggest up to three semantic matches, and offer read-only trials, preview and install the separate
+discovery skill:
+
+```bash
+agentwheel install github:NestDevLab/agentwheel --adapter claude --user --skill agentwheel-discovery --dry-run
+agentwheel install github:NestDevLab/agentwheel --adapter claude --user --skill agentwheel-discovery
 ```
 
 If the user wants to preview first, add `--dry-run` to the `install` command.
@@ -115,6 +125,7 @@ npx agentwheel@latest registry publish https://github.com/owner/repo
 
 - `agentwheel --version` works.
 - `agentwheel doctor` runs for the selected adapter.
-- The companion skill is installed if the user requested it.
+- The management skill is installed if the user requested it.
+- The discovery skill is installed only if the user requested proactive suggestions.
 - Any catalogue resource install uses the adapter and installation type the user intended.
 - Catalogue submissions use `agentwheel registry publish` unless the user explicitly wants a manual registry PR.

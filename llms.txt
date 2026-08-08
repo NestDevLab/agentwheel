@@ -1,6 +1,6 @@
 # agentwheel
 
-> One source. Every agent. Agentwheel installs OpenPack resources into AI agent runtimes.
+> One source. Every agent. Agentwheel installs OpenPack resources into AI agent runtimes and can optionally help an agent discover and read-only trial relevant skills before installation.
 
 ## Start Here
 

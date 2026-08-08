@@ -188,7 +188,7 @@ if (demo) {
     bridge.className = "semantic-agent-bridge";
     const pitch = document.createElement("p");
     pitch.className = "semantic-agent-pitch";
-    pitch.textContent = "Like this search? Add it to your CLI and agent.";
+    pitch.textContent = "Give your agent this discovery ability, not another menu to learn.";
     bridge.appendChild(pitch);
 
     const setup = document.createElement("details");
@@ -200,7 +200,7 @@ if (demo) {
     const panel = document.createElement("div");
     panel.className = "semantic-agent-setup-panel";
     const explanation = document.createElement("p");
-    explanation.textContent = "Install the CLI and companion skill once. The CLI searches the catalogue. The skill lets your agent suggest up to three matches while you work.";
+    explanation.textContent = "Install the CLI and optional companion skill once. The companion can notice a capability gap, suggest up to three matches while you work, and offer a read-only skill trial before any installation.";
     panel.appendChild(explanation);
 
     const runtimes = [

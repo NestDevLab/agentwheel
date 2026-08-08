@@ -12,7 +12,7 @@ commands, subagents, MCP, hooks, settings, plugins, and fragments.
 2. Install the `agentwheel` CLI if it is missing or too old.
 3. Verify the CLI.
 4. Install the Agentwheel companion skill into the user's active runtime when requested.
-5. Show the user how to browse or install catalogue resources.
+5. Show the user how to browse, try, or install catalogue resources.
 
 If the user explicitly asked you to install Agentwheel, you may run the installation commands below.
 Ask before destructive operations, `--force`, remote publishing, local adapter code execution, or
@@ -80,6 +80,19 @@ Browse the public catalogue:
 https://nestdevlab.github.io/agentwheel/catalogue.html
 ```
 
+With the optional companion skill installed, an agent may proactively suggest up to three relevant
+skills when it recognizes a capability gap. Suggestions are not installations. Before adding a
+skill, offer a read-only trial that fetches and reads exactly one selected `SKILL.md` without
+changing configuration, writing runtime files, or executing code:
+
+```bash
+agentwheel search "describe the capability you need" --semantic --json --limit 10
+agentwheel try github:owner/agent-pack --skill skill-name --json
+```
+
+Use `try` for instruction skills only; do not represent plugins, MCP servers, hooks, commands, or
+settings as safely trialled.
+
 Install an OpenPack package:
 
 ```bash
@@ -116,5 +129,6 @@ npx agentwheel@latest registry publish https://github.com/owner/repo
 - `agentwheel --version` works.
 - `agentwheel doctor` runs for the selected adapter.
 - The companion skill is installed if the user requested it.
+- Suggested skills are trialled read-only and installed only with the user's explicit approval.
 - Any catalogue resource install uses the adapter and installation type the user intended.
 - Catalogue submissions use `agentwheel registry publish` unless the user explicitly wants a manual registry PR.

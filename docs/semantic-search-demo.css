@@ -24,6 +24,14 @@
   line-height: 1.12;
 }
 
+.semantic-demo-intro {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: #cbd5e1;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
 .semantic-demo .sr-only {
   position: absolute;
   width: 1px;

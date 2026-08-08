@@ -34,6 +34,23 @@ agentwheel install
 No lock-in. No central gatekeeper. Packages live in plain git repos or local folders, customizations
 live in your workspace, and runtimes stay generated output.
 
+## The right skill, before you go looking
+
+Install Agentwheel's optional companion skill and your agent can recognize when a request may be
+better served by a reusable skill, integration, or workflow. It searches Agentwheel's verified
+semantic catalogue by meaning, then suggests up to three concrete matches while you keep working.
+
+**Nothing is installed because it was suggested.** First, ask the agent to run a read-only trial:
+it fetches and reads one selected `SKILL.md` for the task at hand. It does not add a package, change
+configuration, write runtime files, or execute code. Install only the skills that prove useful.
+
+```bash
+agentwheel search "help me remember decisions across projects" --semantic --json --limit 10
+agentwheel try github:owner/agent-pack --skill decision-memory --json
+```
+
+The companion skill is opt-in: install it only in runtimes where you want proactive suggestions.
+
 ## Install Methods
 
 **CLI install**
@@ -98,7 +115,8 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 
 | Command | Meaning |
 |---|---|
-| `agentwheel search <query>` | Search configured registries and the public enriched/Vercel catalogue; supports stable JSON output for agent reranking. |
+| `agentwheel search <query>` | Search configured registries and the public catalogue. Add `--semantic` to rank published catalogue entries by meaning with the verified semantic index. |
+| `agentwheel try <source> --skill <name>` | Read one selected instruction skill in a read-only trial; does not install it or change the runtime. |
 | `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing; supports `--profile <name>` and `--json`. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
@@ -167,10 +185,20 @@ Use `--scope registry`, `--scope enriched`, or `--scope vercel` to restrict a qu
 `--scope all` combines every source, deduplicates equivalent artifacts, and reports every
 provenance plus the safe installation route.
 
-Search is deterministic and lexical. The companion skill adds semantic behavior at the agent
-layer: it can generate a small set of related queries, merge and rerank the JSON results against
-the original request, and suggest at most three artifacts. Search never installs or changes
-configuration by itself.
+For a capability gap, the companion skill can run one verified semantic search against the published
+catalogue index, then suggest at most three evidence-based matches. It can also use bounded lexical
+search when the user supplied a precise name or source. Suggestions never install or change
+configuration by themselves.
+
+Try an instruction skill before deciding whether to install it:
+
+```bash
+agentwheel search "remember corrections from earlier conversations" --semantic --json --limit 10
+agentwheel try github:owner/agent-pack --skill correction-memory --json
+```
+
+`try` is intentionally limited to instruction skills. It reads exactly one `SKILL.md`; plugins,
+MCP servers, hooks, commands, and settings are not executed or trialled this way.
 
 Registry maintenance remains available through `agentwheel registry update` and
 `agentwheel registry list`. Registry short names continue to resolve during add/install.
@@ -244,9 +272,9 @@ stderr warning when an update is available. Disable it with `--no-update-check` 
 ## Companion Skill Doctor
 
 Agentwheel ships its own companion skill in `github:NestDevLab/agentwheel` as `skills/agentwheel`.
-Installing it is optional, but strongly recommended if you want to get the most out of Agentwheel:
-the skill keeps Agentwheel commands, setup guidance, safety rules, and operational patterns available
-inside your agent runtime instead of forcing you to leave the flow and look them up elsewhere.
+Installing it is optional. In addition to keeping Agentwheel commands and safety rules available,
+the companion skill is what enables proactive skill discovery in that runtime: it can notice a
+capability gap, suggest up to three matches, and offer a read-only trial before any installation.
 
 The CLI never installs the companion skill silently into runtime folders. Use `doctor` to check the
 selected runtime and print the exact preview and install commands when a skill is missing:

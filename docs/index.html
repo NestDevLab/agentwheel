@@ -187,6 +187,99 @@
       margin-top: 24px;
     }
 
+    .discovery-spotlight {
+      width: min(920px, 100%);
+      margin: 28px auto 0;
+      padding: clamp(22px, 4vw, 34px);
+      border: 1px solid rgba(103, 232, 249, 0.42);
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 88% 18%, rgba(6, 182, 212, 0.18), transparent 19rem),
+        linear-gradient(135deg, rgba(30, 27, 75, 0.82), rgba(15, 23, 42, 0.96));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+      text-align: left;
+    }
+
+    .discovery-kicker {
+      margin: 0;
+      color: #a5f3fc;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+    }
+
+    .discovery-spotlight h2 {
+      max-width: 760px;
+      margin: 9px 0 10px;
+      font-size: clamp(30px, 4.2vw, 52px);
+      line-height: 1.04;
+      letter-spacing: -0.025em;
+      text-wrap: balance;
+    }
+
+    .discovery-lede {
+      max-width: 720px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: clamp(18px, 2vw, 21px);
+      line-height: 1.5;
+    }
+
+    .discovery-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 0;
+      margin: 24px 0 0;
+      list-style: none;
+    }
+
+    .discovery-step {
+      min-height: 148px;
+      padding: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 12px;
+      background: rgba(2, 6, 23, 0.42);
+    }
+
+    .discovery-step-number {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(6, 182, 212, 0.16);
+      color: #a5f3fc;
+      font-size: 13px;
+      font-weight: 900;
+      place-items: center;
+    }
+
+    .discovery-step strong {
+      display: block;
+      margin-top: 12px;
+      color: #f8fafc;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .discovery-step span:last-child {
+      display: block;
+      margin-top: 5px;
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .discovery-proof {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin: 18px 0 0;
+      color: #bbf7d0;
+      font-size: 14px;
+      font-weight: 750;
+    }
+
     .button {
       display: inline-flex;
       align-items: center;
@@ -1154,6 +1247,10 @@
         grid-template-columns: 1fr;
       }
 
+      .discovery-steps {
+        grid-template-columns: 1fr;
+      }
+
       .install-methods {
         grid-template-columns: 1fr;
       }
@@ -1272,6 +1369,7 @@
         <a href="#install">Install</a>
         <a href="#adapters">Adapters</a>
         <a href="#how">How it works</a>
+        <a href="#discover">Discovery</a>
         <a href="#features">Features</a>
         <a href="#openpack">OpenPack</a>
         <a href="#packages">Packages</a>
@@ -1297,11 +1395,12 @@
       <section class="hero">
         <img class="hero-logo" src="./assets/logo.png" alt="" width="148" height="148">
         <div>
-          <span class="eyebrow"><span class="dot"></span> v0.16.4 - installation types &amp; harness matrix</span>
+          <span class="eyebrow"><span class="dot"></span> New: proactive skill discovery</span>
           <h1><span class="title-line">One source.</span><span class="title-line accent"><span class="accent-cyan">Every</span> agent.</span></h1>
-          <p class="subhead">Install OpenPack packages, skills, plugins, and MCP sources into every agent runtime.</p>
+          <p class="subhead">Now your agent can find the right skill while you work — then let you try it before you install anything.</p>
           <div class="actions">
-            <a class="button primary" href="catalogue.html">Browse catalogue</a>
+            <a class="button primary" href="#discover">See how it works</a>
+            <a class="button secondary" href="catalogue.html">Try semantic search</a>
             <a class="button secondary" href="#install">Install</a>
             <a class="button secondary icon-only" href="https://github.com/NestDevLab/agentwheel" aria-label="agentwheel on GitHub">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1314,12 +1413,41 @@
               </svg>
             </a>
           </div>
+          <section class="discovery-spotlight" id="discover" aria-labelledby="discover-title">
+            <p class="discovery-kicker">SKILLS, BEFORE THE SEARCH</p>
+            <h2 id="discover-title">When a task needs a skill, your agent notices.</h2>
+            <p class="discovery-lede">Install the optional Agentwheel companion skill once. It spots a capability gap, searches the verified semantic catalogue, and brings back two or three useful skills — without installing a thing.</p>
+            <ol class="discovery-steps">
+              <li class="discovery-step">
+                <span class="discovery-step-number">1</span>
+                <strong>It notices the gap</strong>
+                <span>You keep describing the job. Your agent recognizes a reusable capability could help.</span>
+              </li>
+              <li class="discovery-step">
+                <span class="discovery-step-number">2</span>
+                <strong>It suggests the best fits</strong>
+                <span>A semantic search turns your goal into two or three evidence-based skill suggestions.</span>
+              </li>
+              <li class="discovery-step">
+                <span class="discovery-step-number">3</span>
+                <strong>You try before you commit</strong>
+                <span>Read one skill for the task in front of you. Install only if it earns a place in your setup.</span>
+              </li>
+            </ol>
+            <div class="discovery-proof" aria-label="Read-only trial guarantees">
+              <span>✓ no package added</span>
+              <span>✓ no configuration changed</span>
+              <span>✓ no runtime files written</span>
+              <span>✓ no code executed</span>
+            </div>
+          </section>
           <section class="semantic-demo semantic-demo-home" id="semantic-demo" data-detail-page="./catalogue.html" aria-labelledby="semantic-demo-title">
-            <h2 id="semantic-demo-title">Search by meaning</h2>
+            <h2 id="semantic-demo-title">See semantic discovery in action</h2>
+            <p class="semantic-demo-intro">Describe the outcome you need. Search by meaning, not just the words a skill happens to use.</p>
             <form class="semantic-form" id="semantic-form">
               <label class="sr-only" for="semantic-query">Describe the capability you need</label>
               <input type="search" id="semantic-query" autocomplete="off" placeholder="e.g. I need an agent that learns while chatting">
-              <button class="button primary" id="semantic-submit" type="submit">Try semantic search</button>
+              <button class="button primary" id="semantic-submit" type="submit">Find matching skills</button>
             </form>
             <div class="semantic-examples" aria-label="Example searches">
               <span>Try:</span>
@@ -1331,7 +1459,7 @@
               <progress id="semantic-progress" max="100" value="0">0%</progress>
               <span id="semantic-progress-label">Waiting to start</span>
             </div>
-            <p class="semantic-status" id="semantic-status" aria-live="polite">Runs locally · first search downloads about 50 MB</p>
+            <p class="semantic-status" id="semantic-status" aria-live="polite">Runs privately in your browser · first search downloads about 50 MB</p>
             <div class="semantic-results" id="semantic-results" aria-live="polite"></div>
           </section>
           <div class="hero-flow" aria-label="One OpenPack source installs into every agent runtime">
@@ -1436,7 +1564,7 @@ agentwheel init</code></pre>
           <article class="install-method" id="install-panel-skill" role="tabpanel" aria-labelledby="install-tab-skill" data-install-panel="skill">
             <span class="method-label">Skill</span>
             <strong>Install the companion skill</strong>
-            <p>Let your agent search the catalogue, suggest up to three matches, and ask before installing a recommended artifact.</p>
+            <p>Let your agent notice capability gaps, suggest up to three skill matches, and let you try a skill in read-only mode before you install it.</p>
             <div class="code" aria-label="Companion skill install">
               <div class="codebar">
                 <span class="light"></span><span class="light"></span><span class="light"></span>

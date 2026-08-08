@@ -1,6 +1,12 @@
 # Unified Artifact Search Implementation Plan
 
-Status: implemented and delivered for review
+Status: superseded for current behavior by verified semantic search and read-only skill trials.
+
+> This is the historical design for the original lexical search delivery. Current product behavior is
+> documented in the [README](../../README.md) and companion skill: `agentwheel search --semantic`
+> queries the verified published semantic index, and `agentwheel try` reads one instruction skill
+> without installing it. The original lexical retrieval contract below remains applicable when
+> `--semantic` is not requested.
 
 Base: `origin/main` at Agentwheel `0.15.0`
 

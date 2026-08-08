@@ -61,6 +61,11 @@ describe("catalogue site", () => {
     expect(html).toContain("window.agentwheelCatalogue = { ready: catalogueReady }");
     expect(home).toContain('id="semantic-demo"');
     expect(home).toContain('data-detail-page="./catalogue.html"');
+    expect(home).toContain('id="discover"');
+    expect(home).toContain("When a task needs a skill, your agent notices.");
+    expect(home).toContain("no runtime files written");
+    expect(html).toContain("Find the skill behind the task");
+    expect(html).toContain("read-only skill trial before installation");
     expect(home).toContain('src="./semantic-catalogue-home.js"');
     expect(home).toContain('href="./semantic-search-demo.css"');
     expect(homeLoader).toContain("cataloguePromise ??= loadCatalogue()");
@@ -73,7 +78,7 @@ describe("catalogue site", () => {
     expect(demo).toContain("const MAX_RESULT_COUNT = 12");
     expect(demo).toContain("Show more matches");
     expect(styles).toContain(".semantic-more-button");
-    expect(demo).toContain('pitch.textContent = "Like this search? Add it to your CLI and agent."');
+    expect(demo).toContain('pitch.textContent = "Give your agent this discovery ability, not another menu to learn."');
     expect(demo).toContain('summary.textContent = "Show me how"');
     expect(demo).not.toContain('title.textContent = "Your agent with Agentwheel"');
     expect(demo).toContain("companionSkillSetupCommand(button.dataset.adapter)");

@@ -233,10 +233,15 @@ describe("CLI verb redesign", () => {
   });
 
   it("prints a teaching error for install garbage", async () => {
-    await expect(runCli(["install", "not-a-real-package", "--target-root", await tempRoot()])).rejects.toMatchObject({
+    const registryRoot = await tempRoot("agentwheel-empty-registry-");
+    const registryIndex = join(registryRoot, "index.json");
+    await writeFile(registryIndex, `${JSON.stringify({ schemaVersion: 1, entries: [] }, null, 2)}\n`, "utf8");
+    const env = { AGENTWHEEL_REGISTRY: registryIndex };
+
+    await expect(runCli(["install", "not-a-real-package", "--target-root", await tempRoot()], { env })).rejects.toMatchObject({
       stderr: expect.stringContaining("not a configured package and could not be resolved as a source"),
     });
-    await expect(runCli(["install", "totally-bogus-pkg", "--target-root", await tempRoot()])).rejects.toMatchObject({
+    await expect(runCli(["install", "totally-bogus-pkg", "--target-root", await tempRoot()], { env })).rejects.toMatchObject({
       stderr: expect.stringContaining("To add and install a new package:   agentwheel install <source>   (e.g. github:org/pack)"),
     });
   });

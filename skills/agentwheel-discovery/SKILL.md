@@ -1,11 +1,11 @@
 ---
 name: agentwheel-discovery
-description: Proactively discover reusable skills, integrations, and workflows when a user's request exposes a missing capability, repeated manual work, or unavailable integration. Use Agentwheel semantic search to suggest up to three evidence-backed matches and offer a read-only trial without installing or changing anything.
+description: MUST use proactively when a request describes repeated manual work, inconsistent results, lost information, a missing capability, or an unavailable integration—even if the user did not ask for a skill. Run Agentwheel semantic search before generic brainstorming or workflow advice, suggest up to three evidence-backed reusable skills or integrations, and offer a read-only trial without installing or changing anything.
 allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.16.5"
+  version: "0.16.6"
 ---
 
 # Agentwheel Discovery
@@ -25,13 +25,20 @@ This skill is optional: install it only when proactive recommendations are wante
 
 ## When To Search
 
-Search automatically when substantive work exposes a missing capability, repeated manual workflow,
-or unavailable integration. This is a per-turn judgment, not a background monitor. Delegated agents
-follow the same trigger when this skill is available.
+Use this skill before generic brainstorming, planning, or workflow advice whenever the request
+describes repeated manual work, inconsistent outputs, lost information, a missing operational
+capability, or an unavailable integration. The user does not need to mention Agentwheel, skills,
+discovery, search, or a catalogue. Run the first semantic search in the same turn; do not merely
+describe a workflow and defer discovery.
+
+This is a per-turn judgment, not a background monitor. Delegated agents follow the same trigger
+when this skill is available.
 
 Skip discovery when the user explicitly wants a custom implementation, has already selected an
-artifact, an installed artifact clearly satisfies the request, candidates are only weak lexical
-matches, or the same suggestion was declined or shown without new evidence.
+artifact, an installed artifact provides the requested operational capability end to end,
+candidates are only weak lexical matches, or the same suggestion was declined or shown without new
+evidence. Generic brainstorming, planning, writing, or advisory skills do not count as an installed
+operational solution and must not suppress discovery.
 
 ## Discovery Workflow
 

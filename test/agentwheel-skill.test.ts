@@ -31,6 +31,9 @@ describe("Agentwheel companion skill", () => {
     expect(description).toContain("integration");
     expect(description).toContain("workflow");
     expect(description).toContain("repeated manual workflow");
+    expect(description).toContain("Trigger proactively");
+    expect(description).toContain("semantic discovery");
+    expect(description).toContain("read-only trial");
   });
 
   it("uses the unified search command only", async () => {

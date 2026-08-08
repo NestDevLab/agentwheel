@@ -1,6 +1,6 @@
 ---
 name: agentwheel
-description: Discover or manage reusable agent artifacts with Agentwheel. Use when substantive work exposes a missing capability, repeated manual workflow, or unavailable integration, when a requested artifact may already exist, and when adding, installing, updating, customizing, ejecting, or uninstalling agent artifacts across runtimes.
+description: Discover or manage reusable agent artifacts with Agentwheel. Trigger proactively when a user's request may be solved by a reusable skill, integration, or workflow, including a missing capability, repeated manual workflow, or unavailable integration; run semantic discovery and suggest a read-only trial before any installation. Also use when adding, installing, updating, customizing, ejecting, or uninstalling agent artifacts across runtimes.
 allowed-tools: [Bash]
 license: MIT
 metadata:

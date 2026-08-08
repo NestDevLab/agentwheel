@@ -4,48 +4,16 @@
     "canonical_remote": "origin",
     "publication_remote": "origin",
     "base_branch": "main",
-    "base_ref": "origin/main"
+    "base_ref": "origin/main",
+    "integration_membership": "legacy"
   },
   "integration": {
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": [
-      "unified-artifact-search"
-    ]
+    "stacks": []
   },
-  "stacks": [
-    {
-      "id": "agentwheel-subagent-model-routing",
-      "branch": "feat/subagent-model-routing",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "69a2248255f84c68c9fb304ff73319ef2c0a37d2",
-        "2d14672256def4d7a1bef280470a3674305c9ee4",
-        "37f0fb730382ecc60578c020f3df57b44269af26"
-      ],
-      "meta": {
-        "purpose": "Public Codex and Claude subagent rendering and documentation"
-      }
-    },
-    {
-      "id": "unified-artifact-search",
-      "branch": "feat/unified-artifact-search",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "3d1ec86e6c3760cd27afb5102a13bc9f81e21a0e",
-        "30de27754ec5cbddd99d002514408d7dc965671f",
-        "2b6465ee682f204eb757558f2c3956b00fd5439f"
-      ],
-      "meta": {}
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel"
 }

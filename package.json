@@ -49,6 +49,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.2.0",
     "@skillkit/core": "1.24.0",
     "commander": "14.0.2",
     "jsonc-parser": "3.3.1",

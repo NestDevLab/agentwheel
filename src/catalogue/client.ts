@@ -38,6 +38,7 @@ export interface CatalogueIndex {
   fetchedAt: string;
   fromCache: boolean;
   stale: boolean;
+  sourceDigests?: { enriched: string; vercel: string };
 }
 
 type CatalogueCacheFile = CatalogueCache;
@@ -81,10 +82,12 @@ export class CatalogueClient {
     }
 
     try {
-      const [enriched, vercel] = await Promise.all([
+      const [enrichedPayload, vercelPayload] = await Promise.all([
         this.fetchJson(this.sources[0], enrichedCatalogueSchema),
         this.fetchJson(this.sources[1], vercelCatalogueSchema),
       ]);
+      const { value: enriched, digest: enrichedDigest } = enrichedPayload;
+      const { value: vercel, digest: vercelDigest } = vercelPayload;
       const fetchedAt = this.now().toISOString();
       const cache = {
         version: 1,
@@ -92,13 +95,22 @@ export class CatalogueClient {
         sources: this.sources,
         enriched,
         vercel,
+        sourceDigests: { enriched: enrichedDigest, vercel: vercelDigest },
       } satisfies CatalogueCache;
       const cacheFile = {
         ...cache,
         contentHash: catalogueContentHash(enriched, vercel),
       };
       await writeJsonAtomic(this.cachePath, cacheFile);
-      return { enriched, vercel, sources: this.sources, fetchedAt, fromCache: false, stale: false };
+      return {
+        enriched,
+        vercel,
+        sources: this.sources,
+        fetchedAt,
+        fromCache: false,
+        stale: false,
+        sourceDigests: cache.sourceDigests,
+      };
     } catch (error) {
       if (!usableCache) throw error;
       const reason = error instanceof Error ? error.message : String(error);
@@ -144,13 +156,14 @@ export class CatalogueClient {
       fetchedAt: cache.fetchedAt,
       fromCache: true,
       stale,
+      sourceDigests: cache.sourceDigests,
     };
   }
 
   private async fetchJson<T>(
     source: string,
     schema: { parse(value: unknown): T },
-  ): Promise<T> {
+  ): Promise<{ value: T; digest: string }> {
     const response = await this.fetchImpl(source);
     if (!response.ok) {
       throw new Error(`Catalogue source failed (${response.status}): ${source}`);
@@ -169,13 +182,17 @@ export class CatalogueClient {
       throw new Error(`Catalogue payload exceeds 32 MiB limit: ${source}`);
     }
 
+    const bytes = new Uint8Array(payload);
     let value: unknown;
     try {
       value = JSON.parse(new TextDecoder().decode(payload));
     } catch {
       throw new Error(`Catalogue source returned invalid JSON: ${source}`);
     }
-    return schema.parse(value);
+    return {
+      value: schema.parse(value),
+      digest: createHash("sha256").update(bytes).digest("hex"),
+    };
   }
 }
 

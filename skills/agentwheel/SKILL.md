@@ -1,6 +1,6 @@
 ---
 name: agentwheel
-description: Discover or manage reusable agent artifacts with Agentwheel. Use when substantive work exposes a missing capability, repeated manual workflow, or unavailable integration, when a requested artifact may already exist, and when adding, installing, updating, customizing, ejecting, or uninstalling agent artifacts across runtimes.
+description: Discover or manage reusable agent artifacts with Agentwheel. Trigger proactively when a user's request may be solved by a reusable skill, integration, or workflow, including a missing capability, repeated manual workflow, or unavailable integration; run semantic discovery and suggest a read-only trial before any installation. Also use when adding, installing, updating, customizing, ejecting, or uninstalling agent artifacts across runtimes.
 allowed-tools: [Bash]
 license: MIT
 metadata:
@@ -80,6 +80,7 @@ Search configured registries and public catalogue sources:
 ```bash
 agentwheel search "<query>"
 agentwheel search "<query>" --json --limit 10
+agentwheel search "<query>" --semantic --json --limit 10
 ```
 
 Search automatically when substantive work exposes a missing capability, repeated manual workflow, unavailable integration, or explicit request for a reusable artifact. This is a per-turn judgment, not a background monitor; delegated agents follow the same trigger when the skill is available.
@@ -87,16 +88,29 @@ Search automatically when substantive work exposes a missing capability, repeate
 Before searching, inspect the installed skill/tool inventory available in the current session. If nothing suitable is already present:
 
 1. Extract the capability and constraints from the complete request.
-2. Generate one to four short lexical queries using capability terms, synonyms, runtime names, and artifact types. Prefer English catalogue terms when the request uses another language.
-3. Run one `agentwheel search "<query>" --json --limit 10` per variant. Stop after four calls; do not recursively refine without new user requirements.
+2. For a capability gap, run one fast semantic search using the complete capability request: `agentwheel search "<query>" --semantic --json --limit 10`. Use exact lexical search first only when the user already supplied an artifact name, source, or registry identifier.
+3. If the semantic candidates are weak, absent, or need a precise runtime/type constraint, generate up to three short lexical variants using capability terms, synonyms, runtime names, and artifact types. Prefer English catalogue terms when the request uses another language. Stop after four total searches; do not recursively refine without new user requirements.
 4. Merge results by stable `id`. Treat CLI scores as retrieval signals, not semantic confidence.
 5. Rerank against the original request using capabilities, runtime or ecosystem, artifact type, description, tags, `provides`, and installability. Do not infer capabilities absent from result metadata.
-6. Suggest zero to three distinct artifacts. For each, give its name or source, one evidence-based match reason, installability, and a safe next command.
-7. Wait for explicit approval before `add`, `install`, plugin execution, or configuration changes.
+6. Suggest zero to three distinct artifacts. For each, give its name or source, one evidence-based match reason, installability, and a read-only trial command before an installation command.
+7. When the user wants to evaluate a skill before deciding, run `agentwheel try <source> --skill <name> --json`. A trial fetches, scans, and reads exactly one `SKILL.md` for the current task; it does not add a package, change configuration, write runtime files, or execute code.
+8. Wait for explicit approval before `add`, `install`, plugin execution, or configuration changes.
 
 For automatic suggestions, search once per distinct capability gap. Skip discovery when the user explicitly wants custom implementation, has already selected an artifact, an installed artifact clearly satisfies the request, candidates are only weak lexical matches, or the same suggestion was declined or shown without new evidence. Continue useful work while searching when possible; do not interrupt solely to advertise marginal matches.
 
 Search recommendations are conversational only: they do not select OpenPack `suggests`, mutate desired state, or imply installation approval.
+
+### Semantic catalogue search
+
+Use `--semantic` for a capability request whose wording is unlikely to match catalogue labels, or after bounded lexical search returns only weak matches. It queries the same published catalogue vector index used by the website and validates its checksums against the loaded catalogue before ranking. It is opt-in because first use may download the model and index assets.
+
+```bash
+agentwheel search "remember corrections from earlier conversations" --semantic --json --limit 10
+```
+
+Do not use `--semantic` for a registry-only search. Run at most one semantic search for a distinct capability gap, keep the result evidence rules above, and never describe a semantic score as proof that an artifact implements a capability.
+
+Use a trial only for instruction skills. Plugins, MCP servers, hooks, commands, and settings are not trialled because reading them is not equivalent to safely executing them in an isolated runtime.
 
 Registry maintenance remains explicit:
 

@@ -31,6 +31,9 @@ describe("Agentwheel companion skill", () => {
     expect(description).toContain("integration");
     expect(description).toContain("workflow");
     expect(description).toContain("repeated manual workflow");
+    expect(description).toContain("Trigger proactively");
+    expect(description).toContain("semantic discovery");
+    expect(description).toContain("read-only trial");
   });
 
   it("uses the unified search command only", async () => {
@@ -39,14 +42,25 @@ describe("Agentwheel companion skill", () => {
     expect(content).toContain('agentwheel search "<query>"');
     expect(content).toContain('agentwheel search "<query>" --json --limit 10');
     expect(content).toContain('agentwheel search "<query>" --scope registry');
+    expect(content).toContain('agentwheel search "<query>" --semantic --json --limit 10');
     expect(content).not.toContain("agentwheel registry search");
+  });
+
+  it("documents the opt-in verified semantic catalogue path", async () => {
+    const { content } = await readSkill();
+    expect(content).toContain("same published catalogue vector index used by the website");
+    expect(content).toContain("validates its checksums against the loaded catalogue");
+    expect(content).toContain("Run at most one semantic search for a distinct capability gap");
+    expect(content).toContain("agentwheel try <source> --skill <name> --json");
+    expect(content).toContain("does not add a package, change configuration, write runtime files, or execute code");
+    expect(content).toContain("For a capability gap, run one fast semantic search");
+    expect(content).toContain("Stop after four total searches");
   });
 
   it("bounds semantic query expansion", async () => {
     const { content } = await readSkill();
 
-    expect(content).toContain("one to four short lexical queries");
-    expect(content).toContain("Stop after four calls");
+    expect(content).toContain("up to three short lexical variants");
     expect(content).toContain("do not recursively refine without new user requirements");
     expect(content).toContain("Merge results by stable `id`");
     expect(content).toContain("Treat CLI scores as retrieval signals, not semantic confidence");

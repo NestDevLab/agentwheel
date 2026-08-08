@@ -3,6 +3,15 @@
   "name": "NestDevLab/agentwheel",
   "version": "0.16.4",
   "provides": [
-    { "type": "skills", "path": "skills" }
+    { "type": "instructions", "path": "instructions/agentwheel-discovery.md" },
+    {
+      "type": "skills",
+      "path": "skills",
+      "items": {
+        "agentwheel-discovery": {
+          "requires": ["instructions/agentwheel-discovery.md"]
+        }
+      }
+    }
   ]
 }

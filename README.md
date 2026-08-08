@@ -36,7 +36,7 @@ live in your workspace, and runtimes stay generated output.
 
 ## The right skill, before you go looking
 
-Install Agentwheel's optional companion skill and your agent can recognize when a request may be
+Install the optional `agentwheel-discovery` module and your agent can recognize when a request may be
 better served by a reusable skill, integration, or workflow. It searches Agentwheel's verified
 semantic catalogue by meaning, then suggests up to three concrete matches while you keep working.
 
@@ -45,11 +45,13 @@ it fetches and reads one selected `SKILL.md` for the task at hand. It does not a
 configuration, write runtime files, or execute code. Install only the skills that prove useful.
 
 ```bash
-agentwheel search "help me remember decisions across projects" --semantic --json --limit 10
+agentwheel search "help me remember decisions across projects" --semantic --type skill --json --limit 10
 agentwheel try github:owner/agent-pack --skill decision-memory --json
 ```
 
-The companion skill is opt-in: install it only in runtimes where you want proactive suggestions.
+The discovery module is opt-in and separate from the lifecycle-focused `agentwheel` skill. Selecting
+it also installs a small always-loaded preflight, so the agent checks for capability gaps before it
+answers instead of relying on skill-description matching alone.
 
 ## Install Methods
 
@@ -65,19 +67,20 @@ Prefer pnpm? `pnpm add -g agentwheel` works too.
 **AI agent handoff**
 
 Give an agent [`install.md`](install.md) when you want it to install Agentwheel, verify the CLI,
-install the companion skill, and show the right catalogue flow for your runtime.
+install the appropriate companion module, and show the right catalogue flow for your runtime.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NestDevLab/agentwheel/main/install.md
 ```
 
-**Companion skill**
+**Companion skills**
 
-The companion skill keeps Agentwheel commands and safety rules inside the runtime you are using:
+Install lifecycle guidance, proactive discovery, or both:
 
 ```bash
 agentwheel doctor --adapter codex --local
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel-discovery
 ```
 
 > **Status: early (v0.12).** The public CLI vocabulary is package-manager style:
@@ -185,7 +188,7 @@ Use `--scope registry`, `--scope enriched`, or `--scope vercel` to restrict a qu
 `--scope all` combines every source, deduplicates equivalent artifacts, and reports every
 provenance plus the safe installation route.
 
-For a capability gap, the companion skill can run one verified semantic search against the published
+For a capability gap, `agentwheel-discovery` can run one verified semantic search against the published
 catalogue index, then suggest at most three evidence-based matches. It can also use bounded lexical
 search when the user supplied a precise name or source. Suggestions never install or change
 configuration by themselves.
@@ -193,7 +196,7 @@ configuration by themselves.
 Try an instruction skill before deciding whether to install it:
 
 ```bash
-agentwheel search "remember corrections from earlier conversations" --semantic --json --limit 10
+agentwheel search "remember corrections from earlier conversations" --semantic --type skill --json --limit 10
 agentwheel try github:owner/agent-pack --skill correction-memory --json
 ```
 
@@ -271,18 +274,17 @@ stderr warning when an update is available. Disable it with `--no-update-check` 
 
 ## Companion Skill Doctor
 
-Agentwheel ships its own companion skill in `github:NestDevLab/agentwheel` as `skills/agentwheel`.
-Installing it is optional. In addition to keeping Agentwheel commands and safety rules available,
-the companion skill is what enables proactive skill discovery in that runtime: it can notice a
-capability gap, suggest up to three matches, and offer a read-only trial before any installation.
+Agentwheel ships two optional companion skills. `agentwheel` provides lifecycle commands and safety
+rules. `agentwheel-discovery` adds proactive capability-gap detection, semantic suggestions, and
+read-only trials. Selecting the discovery skill automatically includes its always-loaded preflight.
 
-The CLI never installs the companion skill silently into runtime folders. Use `doctor` to check the
+The CLI never installs companion skills silently into runtime folders. Use `doctor` to check the
 selected runtime and print the exact preview and install commands when a skill is missing:
 
 ```bash
 agentwheel doctor --adapter copilot --user
-agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
-agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel
+agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel-discovery --dry-run
+agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel-discovery
 ```
 
 `doctor` also accepts explicit skill checks and machine-readable output. In Syncwheel-managed
@@ -736,7 +738,7 @@ Built-in runtime targets:
 
 ## Docs
 
-- [`install.md`](install.md) — AI-agent handoff for installing Agentwheel and the companion skill.
+- [`install.md`](install.md) — AI-agent handoff for installing Agentwheel and its companion skills.
 - [`AGENT.md`](AGENT.md) — concise operating guide for AI agents using Agentwheel.
 - [`llms.txt`](llms.txt) — LLM-oriented map of the public docs.
 - [`docs/spec/openpack.md`](docs/spec/openpack.md) — OpenPack package spec.

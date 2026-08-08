@@ -201,7 +201,7 @@ export function companionSkillSetupCommand(adapterInput) {
   if (!COMPANION_SKILL_ADAPTERS.has(adapter)) throw new Error("Unsupported Agentwheel adapter.");
   return [
     "npm i -g agentwheel",
-    `agentwheel install github:NestDevLab/agentwheel --adapter ${adapter} --user --skill agentwheel`,
+    `agentwheel install github:NestDevLab/agentwheel --adapter ${adapter} --user --skill agentwheel-discovery`,
   ].join("\n");
 }
 

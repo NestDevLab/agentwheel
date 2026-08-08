@@ -1,6 +1,6 @@
 # agentwheel
 
-> One source. Every agent. Agentwheel installs OpenPack resources into AI agent runtimes and can optionally help an agent discover and read-only trial relevant skills before installation.
+> One source. Every agent. Agentwheel installs OpenPack resources into AI agent runtimes; the opt-in agentwheel-discovery module proactively finds and read-only trials relevant skills before installation.
 
 ## Start Here
 
@@ -24,4 +24,5 @@
 npm i -g agentwheel
 agentwheel doctor --adapter codex --local
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel-discovery
 ```

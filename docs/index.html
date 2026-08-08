@@ -1416,7 +1416,7 @@
           <section class="discovery-spotlight" id="discover" aria-labelledby="discover-title">
             <p class="discovery-kicker">SKILLS, BEFORE THE SEARCH</p>
             <h2 id="discover-title">When a task needs a skill, your agent notices.</h2>
-            <p class="discovery-lede">Install the optional Agentwheel companion skill once. It spots a capability gap, searches the verified semantic catalogue, and brings back two or three useful skills — without installing a thing.</p>
+            <p class="discovery-lede">Install the opt-in Agentwheel Discovery module once. Its always-loaded preflight spots a capability gap, searches the verified semantic catalogue, and brings back two or three useful skills — without installing a thing.</p>
             <ol class="discovery-steps">
               <li class="discovery-step">
                 <span class="discovery-step-number">1</span>
@@ -1525,7 +1525,7 @@
           <span class="section-kicker">00</span>
           <h2 class="section-title">Install methods</h2>
         </div>
-        <p class="section-copy">Start from the CLI, hand the bootstrap markdown to an AI agent, or install the companion skill into the runtime you already use.</p>
+        <p class="section-copy">Start from the CLI, hand the bootstrap markdown to an AI agent, or add lifecycle guidance and opt-in discovery to the runtime you already use.</p>
         <div class="install-tabs" role="tablist" aria-label="Install methods">
           <button class="install-tab" type="button" role="tab" aria-selected="true" aria-controls="install-panel-cli" id="install-tab-cli" data-install-tab="cli">CLI</button>
           <button class="install-tab" type="button" role="tab" aria-selected="false" aria-controls="install-panel-ai" id="install-tab-ai" data-install-tab="ai" tabindex="-1">AI handoff</button>
@@ -1550,7 +1550,7 @@ agentwheel init</code></pre>
           <article class="install-method" id="install-panel-ai" role="tabpanel" aria-labelledby="install-tab-ai" data-install-panel="ai">
             <span class="method-label">AI handoff</span>
             <strong>Give install.md to an agent</strong>
-            <p>The markdown tells an agent how to install Agentwheel, verify it, add the companion skill, and use the catalogue.</p>
+            <p>The markdown tells an agent how to install Agentwheel, verify it, choose companion modules, and use the catalogue.</p>
             <div class="code" aria-label="Agent install markdown">
               <div class="codebar">
                 <span class="light"></span><span class="light"></span><span class="light"></span>
@@ -1563,7 +1563,7 @@ agentwheel init</code></pre>
 
           <article class="install-method" id="install-panel-skill" role="tabpanel" aria-labelledby="install-tab-skill" data-install-panel="skill">
             <span class="method-label">Skill</span>
-            <strong>Install the companion skill</strong>
+            <strong>Install proactive discovery</strong>
             <p>Let your agent notice capability gaps, suggest up to three skill matches, and let you try a skill in read-only mode before you install it.</p>
             <div class="code" aria-label="Companion skill install">
               <div class="codebar">
@@ -1572,7 +1572,7 @@ agentwheel init</code></pre>
                 <button class="copy-button" type="button" data-copy-target="#skill-install-command">Copy</button>
               </div>
               <pre><code id="skill-install-command">agentwheel doctor --adapter codex --local
-agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel</code></pre>
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel-discovery</code></pre>
             </div>
           </article>
         </div>
@@ -1907,16 +1907,16 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
         </div>
         <div class="companion-callout">
           <div>
-            <strong>Recommended first step: install the Agentwheel companion skill.</strong>
-            <p>The companion skill is optional, but strongly recommended for anyone using Agentwheel regularly. Doctor can also check selected skills, including Syncwheel in Syncwheel-managed workspaces, so the CLI and the agent reinforce each other.</p>
+            <strong>Choose lifecycle guidance, proactive discovery, or both.</strong>
+            <p>The <code>agentwheel</code> skill teaches lifecycle commands. The separate <code>agentwheel-discovery</code> module adds the always-loaded capability-gap check, semantic suggestions, and read-only trials only for users who want them.</p>
           </div>
           <div class="code" aria-label="Companion skill setup">
             <div class="codebar">
               <span class="light"></span><span class="light"></span><span class="light"></span>
-              <span>companion skill</span>
+              <span>proactive discovery</span>
             </div>
             <pre><code><span class="prompt">$</span> agentwheel doctor --adapter copilot --user
-<span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel --dry-run
+<span class="prompt">$</span> agentwheel install github:NestDevLab/agentwheel --adapter copilot --user --skill agentwheel-discovery --dry-run
 <span class="prompt">$</span> agentwheel doctor --adapter codex --local --skill syncwheel --json</code></pre>
           </div>
         </div>

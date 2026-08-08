@@ -200,7 +200,7 @@ if (demo) {
     const panel = document.createElement("div");
     panel.className = "semantic-agent-setup-panel";
     const explanation = document.createElement("p");
-    explanation.textContent = "Install the CLI and optional companion skill once. The companion can notice a capability gap, suggest up to three matches while you work, and offer a read-only skill trial before any installation.";
+    explanation.textContent = "Install the CLI and opt-in Agentwheel Discovery module once. Its always-loaded preflight can notice a capability gap, suggest up to three matches while you work, and offer a read-only skill trial before any installation.";
     panel.appendChild(explanation);
 
     const runtimes = [

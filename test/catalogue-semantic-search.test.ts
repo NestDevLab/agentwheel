@@ -89,7 +89,7 @@ describe("catalogue semantic search core", () => {
   it("builds a user-level companion skill setup for supported runtimes", () => {
     expect(core.companionSkillSetupCommand("codex")).toBe([
       "npm i -g agentwheel",
-      "agentwheel install github:NestDevLab/agentwheel --adapter codex --user --skill agentwheel",
+      "agentwheel install github:NestDevLab/agentwheel --adapter codex --user --skill agentwheel-discovery",
     ].join("\n"));
     expect(core.companionSkillSetupCommand("OpenClaw")).toContain("--adapter openclaw --user");
     expect(() => core.companionSkillSetupCommand("unknown")).toThrow(/Unsupported Agentwheel adapter/u);

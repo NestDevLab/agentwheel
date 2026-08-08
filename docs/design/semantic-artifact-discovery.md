@@ -3,7 +3,7 @@
 Status: superseded for current behavior by verified semantic search and read-only skill trials.
 
 > This is the historical design for the original lexical search delivery. Current product behavior is
-> documented in the [README](../../README.md) and companion skill: `agentwheel search --semantic`
+> documented in the [README](../../README.md) and `agentwheel-discovery` module: `agentwheel search --semantic`
 > queries the verified published semantic index, and `agentwheel try` reads one instruction skill
 > without installing it. The original lexical retrieval contract below remains applicable when
 > `--semantic` is not requested.
@@ -131,7 +131,7 @@ Tie-breaking is score, featured status, stars, last-push time, normalized name, 
 
 ## Agent Recommendation Contract
 
-The Agentwheel companion skill may search automatically when a reusable capability, integration,
+The opt-in `agentwheel-discovery` module may search automatically when a reusable capability, integration,
 workflow, policy, or tool could satisfy the request.
 
 1. Extract capability and constraints from the full request.

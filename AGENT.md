@@ -40,12 +40,16 @@ agentwheel install github:owner/agent-pack --adapter openclaw --installation-typ
 
 ## Companion Skills
 
-Install the Agentwheel companion skill when the user wants Agentwheel guidance inside the runtime:
+Install `agentwheel` for lifecycle guidance. Install the separate `agentwheel-discovery` module only
+when the user wants proactive semantic suggestions and read-only skill trials:
 
 ```bash
 agentwheel doctor --adapter codex --local
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
+agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel-discovery
 ```
+
+Selecting `agentwheel-discovery` automatically includes its always-loaded preflight instruction.
 
 In Syncwheel-managed repositories, `doctor` can also check for the Syncwheel skill:
 

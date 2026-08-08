@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agentwheel Discovery"
+  short_description: "Find and trial relevant agent skills before installing."
+  default_prompt: "Discover reusable agent capabilities for this request and offer read-only trials before installation."

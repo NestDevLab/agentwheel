@@ -51,7 +51,8 @@
       "commits": [
         "77b6e73d8561a731fc3d55fdb7bc9f04f38dd0e1",
         "9c5b8bdebd11f12d86c6bcfb52af363adf1fe2ec",
-        "834c6e1d6223fc032bde11a07c9633d383ee2a09"
+        "834c6e1d6223fc032bde11a07c9633d383ee2a09",
+        "b771ee93f6fed8bb6ee9d2f3f7edeeee773b12a0"
       ],
       "state": "published",
       "publication": {
@@ -63,7 +64,8 @@
       "integration_commits": [
         "a909d408a33d017f3393268fc9beaadc68515fc6",
         "d4b88f022cfbb368b0fa5900e12928553000639a",
-        "2cdb5125ae0f3bc6edd2fc638b16dd1a4719e3a2"
+        "2cdb5125ae0f3bc6edd2fc638b16dd1a4719e3a2",
+        "c42fee7687b3bc339c34bcf16fa00a13db883cc7"
       ]
     }
   ],

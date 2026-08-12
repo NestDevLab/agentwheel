@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed OpenPack skill collections so a colocated `README.md` stays package documentation instead of becoming a skill. Skills-only manifests now scan cleanly without requiring an unrelated instructions artifact.
+
 ## 0.16.7
 
 - Fixed locked graph resolution so changing a root package source also refreshes its tracking

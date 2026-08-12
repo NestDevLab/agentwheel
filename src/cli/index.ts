@@ -352,7 +352,7 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -395,7 +395,7 @@ program
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -433,7 +433,7 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -483,7 +483,7 @@ program
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -520,12 +520,15 @@ program
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
+    if (options.onlySource && options.dependency.length > 0) throw new Error("--only-source cannot be combined with --dependency.");
+    if (options.onlySource && !name) throw new Error("--only-source requires a configured package argument.");
     if (name && options.dependency.length > 0) throw new Error("A package argument cannot be combined with --dependency.");
     if (options.dependency.length > 0 && (options.select.length > 0 || options.skill.length > 0)) {
       throw new Error("--dependency cannot be combined with --select or --skill; package selections remain unchanged.");
@@ -544,6 +547,37 @@ program
       await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
     }
   });
+
+program
+  .command("skill")
+  .description("operate on configured skills")
+  .addCommand(
+    new Command("update")
+      .description("reconcile one skill through its configured owning package")
+      .argument("<name>", "configured skill name")
+      .option("--package <name>", "owning configured package when automatic ownership is ambiguous")
+      .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
+      .option("-i, --installation-type <type>", "installation type (for example local or user)")
+      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+      .option("--local", "shortcut for --installation-type local", false)
+      .option("-t, --target-root <path>", "workspace root")
+      .option("--agent <name>", "named agent from merged config")
+      .option("--all", "run for every configured agent", false)
+      .option("--profile <name>", "workspace runtime profile")
+      .option("--dry-run", "show plans without writing", false)
+      .option("--adopt", "replace unmanaged destinations in the owning package closure", false)
+      .option("--force-drift", "replace drifted managed artifacts", false)
+      .option("--allow-adapter-code", "allow loading local adapter code from the owning package", false)
+      .option("--no-deps", "resolve only the owning package and ignore its requires with a warning")
+      .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+      .option("--offline", "resolve strictly from graph locks and local caches", false)
+      .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
+      .option("--yes", "trust all new transitive sources", false)
+      .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+      .action(async (name, options) => {
+        await runSkillUpdateCommand(name, options);
+      }),
+  );
 
 program
   .command("deps")
@@ -1408,6 +1442,82 @@ function findConfiguredPackageForTarget(
   return options.multiAdapterSource ? matches.find((pkg) => pkg.adapter === target.adapter) : matches[0];
 }
 
+async function configuredPackageForSkill(
+  target: RuntimeTarget,
+  packages: WorkspacePackage[],
+  skillName: string,
+  options: GraphCliOptions,
+  explicitPackageName?: string,
+): Promise<WorkspacePackage> {
+  const selector = `skills/${skillName}`;
+  if (explicitPackageName) {
+    const pkg = findConfiguredPackage(packages, explicitPackageName);
+    if (!pkg) throw new Error(`Configured package not found: ${explicitPackageName}`);
+    if (!(await packageSelectsSkillForTarget(target, pkg, selector, options))) {
+      throw new Error(`Configured package '${pkg.name}' does not select ${selector}.`);
+    }
+    return pkg;
+  }
+
+  const adapterPackages = packages.filter((pkg) => pkg.adapter === target.adapter);
+  const candidates = adapterPackages.length > 0 ? adapterPackages : packages;
+  const matches: WorkspacePackage[] = [];
+  for (const pkg of candidates) {
+    if (await packageSelectsSkillForTarget(target, pkg, selector, options)) matches.push(pkg);
+  }
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1) {
+    throw new Error(
+      `Skill '${skillName}' has multiple configured owners: ${matches.map((pkg) => pkg.name).sort().join(", ")}. `
+      + "Pass --package <name>.",
+    );
+  }
+  throw new Error(
+    `No configured owner found for skill '${skillName}'. `
+    + `Add ${selector} to one package selection or pass --package <name>.`,
+  );
+}
+
+async function packageSelectsSkillForTarget(
+  target: RuntimeTarget,
+  pkg: WorkspacePackage,
+  selector: string,
+  options: GraphCliOptions,
+): Promise<boolean> {
+  const explicitSelection = normalizeArtifactSelectors(pkg.select, pkg.skills);
+  if (explicitSelection && !explicitSelection.some((candidate) => candidate === selector)) return false;
+
+  const groups = new Map<string, PackageGraphGroup>();
+  const group = graphGroupForPackage(groups, target, pkg, options);
+  const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+  const graphLockPath = graphLockPathForTarget(
+    group.target.workspaceRoot,
+    targetKeyForTarget(group.target, adapter.name),
+    adapter.name,
+    targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
+  );
+  if (await pathExists(graphLockPath)) {
+    const lock = await readGraphLock(graphLockPath);
+    const root = lock.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+    if (root?.selected.includes(selector)) return true;
+  }
+
+  const results = await buildGraphPlansForTarget(target, undefined, {
+    ...options,
+    scope: pkg.name,
+    onlySource: true,
+    dryRun: true,
+    suppressEmptyMessage: true,
+  }, { mode: "install" });
+  try {
+    return results.some((result) => result.bundle.graphLock.canonical.roots.some(
+      (root) => root.rootId === pkg.name && root.selected.includes(selector),
+    ));
+  } finally {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
+  }
+}
+
 function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boolean {
   return options.noDeps === true || options.deps === false;
 }
@@ -1594,6 +1704,7 @@ interface GraphCliOptions {
   warn?: (message: string) => void;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
+  adopt?: boolean;
 }
 
 interface PackageGraphGroup {
@@ -1607,6 +1718,38 @@ interface PackageGraphGroup {
   packages: WorkspacePackage[];
   extraRoots: GraphRootRequest[];
   extraPackages: WorkspacePackage[];
+}
+
+async function runSkillUpdateCommand(
+  skillName: string,
+  options: GraphCliOptions & { package?: string; adopt?: boolean },
+): Promise<void> {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  const composite = await resolveSelectedCompositeProfile(normalizedOptions);
+  if (composite) {
+    await runCompositeSkillUpdate(
+      composite.workspaceRoot,
+      composite.name,
+      composite.profile,
+      skillName,
+      options.package,
+      normalizedOptions,
+    );
+    return;
+  }
+  const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
+  for (const target of targets) {
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const owner = await configuredPackageForSkill(target, config.packages, skillName, normalizedOptions, options.package);
+    const mode = owner.mode === "tracking" ? "update" : "install";
+    console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
+    await runConfiguredGraphPackages(target, {
+      ...normalizedOptions,
+      scope: owner.name,
+      onlySource: true,
+      replaceConflict: options.adopt === true,
+    }, { mode });
+  }
 }
 
 async function runConfiguredGraphPackages(
@@ -1655,7 +1798,10 @@ async function buildGraphPlansForTarget(
   const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
   if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
 
-  if (!source || !targetOptions.onlySource) {
+  if (scopedPackage && targetOptions.onlySource) {
+    const group = graphGroupForPackage(groups, target, scopedPackage, targetOptions);
+    group.packages.push(scopedPackage);
+  } else if (!source || !targetOptions.onlySource) {
     for (const pkg of config.packages) {
       const group = graphGroupForPackage(groups, target, pkg, targetOptions);
       group.packages.push(pkg);
@@ -1831,7 +1977,7 @@ async function buildGraphPlansForTarget(
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      results.push(behavior.mode === "update" && previousGroupLock
+      results.push(previousGroupLock
         ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
         : scopeInstallPlanToRoot(result, scopedRootId, manifest));
     } else if (scopedDependencyUpdate) {
@@ -2630,6 +2776,55 @@ async function runCompositeUpdate(
   }
 }
 
+async function runCompositeSkillUpdate(
+  workspaceRoot: string,
+  profileName: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  skillName: string,
+  packageName: string | undefined,
+  options: GraphCliOptions,
+): Promise<void> {
+  const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
+  printStatusReport(preflight);
+  const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
+  if (blockers.length > 0) {
+    throw new Error(
+      "Composite skill update blocked before member execution: "
+      + blockers.map((member) => `${member.id}=${member.health}`).join(", "),
+    );
+  }
+
+  const incomingChain = parseCompositeChain();
+  const memberChain = [...incomingChain, compositeKey(workspaceRoot, profileName)];
+  for (const member of profile.members) {
+    if (!options.dryRun) {
+      const before = preflight.members.find((candidate) => candidate.id === member.id);
+      const revalidated = await collectCompositeMembers({
+        cliVersion: CLI_VERSION,
+        workspaceRoot,
+        profileName,
+        profileTtlSeconds: profile.refreshTtlSeconds,
+        members: [member],
+        refresh: true,
+        chain: incomingChain,
+      });
+      const current = revalidated[0]!;
+      if (blocksCompositeApply(current.health)) {
+        throw new Error(`Composite skill update stopped before ${member.id}: revalidation is ${current.health}.`);
+      }
+      if (statusRevisionSignature(before?.report) !== statusRevisionSignature(current.report)) {
+        throw new Error(`Composite skill update stopped before ${member.id}: member revision changed after preflight.`);
+      }
+    }
+
+    const args = compositeSkillUpdateArguments(member.profile, skillName, packageName, options);
+    console.log(`${options.dryRun ? "Plan" : "Update"} member ${member.id}:`);
+    const result = await runMemberAgentwheel(member, workspaceRoot, args, memberChain);
+    if (result.stdout.trim()) console.log(result.stdout.trimEnd());
+    if (result.stderr.trim()) console.error(result.stderr.trimEnd());
+  }
+}
+
 async function runCompositeInstall(
   workspaceRoot: string,
   profileName: string,
@@ -2718,6 +2913,27 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   if (options.noDeps) args.push("--no-deps");
   if (options.frozenLock) args.push("--frozen-lock");
   for (const dependency of options.dependency ?? []) args.push("--dependency", dependency);
+  for (const trust of options.trust ?? []) args.push("--trust", trust);
+  if (options.yes) args.push("--yes");
+  return args;
+}
+
+function compositeSkillUpdateArguments(
+  profile: string,
+  skillName: string,
+  packageName: string | undefined,
+  options: GraphCliOptions,
+): string[] {
+  const args = ["skill", "update", skillName, "--profile", profile];
+  if (packageName) args.push("--package", packageName);
+  if (options.dryRun) args.push("--dry-run");
+  if (options.adopt) args.push("--adopt");
+  if (options.refresh) args.push("--refresh");
+  if (options.forceDrift) args.push("--force-drift");
+  if (options.allowAdapterCode) args.push("--allow-adapter-code");
+  if (options.noDeps) args.push("--no-deps");
+  if (options.frozenLock) args.push("--frozen-lock");
+  if (options.offline) args.push("--offline");
   for (const trust of options.trust ?? []) args.push("--trust", trust);
   if (options.yes) args.push("--yes");
   return args;

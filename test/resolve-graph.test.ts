@@ -361,6 +361,66 @@ describe("dependency graph resolver", () => {
     expect(rewrittenLock.canonical.nodes.some((node) => node.normalizedSource === oldNode.normalizedSource)).toBe(false);
   });
 
+  it("refreshes a tracking dependency closure when a soft locked root source changes", async () => {
+    const workspace = await tempRoot();
+    const oldRoot = join(workspace, "old-root");
+    const newRoot = join(workspace, "new-root");
+    const depRepo = join(workspace, "dep-repo");
+    await writeText(join(depRepo, "rules", "old.md"), "# Old Dependency\n");
+    await writeOpenPack(depRepo, {
+      name: "acme/tracking-dep",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await git(depRepo, ["init", "-b", "main"]);
+    await git(depRepo, ["config", "user.name", "Test"]);
+    await git(depRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v1"]);
+    const commit1 = (await git(depRepo, ["rev-parse", "HEAD"])).trim();
+
+    await writeOpenPack(oldRoot, {
+      name: "acme/root",
+      requires: {
+        dep: { source: `git:${depRepo}#main`, mode: "tracking", select: ["rules/old.md"] },
+      },
+    });
+    await writeOpenPack(newRoot, {
+      name: "acme/root",
+      requires: {
+        dep: { source: `git:${depRepo}#main`, mode: "tracking", select: ["rules/new.md"] },
+      },
+    });
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: oldRoot }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-first"),
+    });
+    const lock = createGraphLock(first);
+    expect(first.nodes.find((node) => node.name === "acme/tracking-dep")?.resolvedCommit).toBe(commit1);
+
+    await writeText(join(depRepo, "rules", "new.md"), "# New Dependency\n");
+    await writeOpenPack(depRepo, {
+      name: "acme/tracking-dep",
+      version: "1.1.0",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v2"]);
+    const commit2 = (await git(depRepo, ["rev-parse", "HEAD"])).trim();
+
+    const fresh = await resolveDependencyGraph([{ rootId: "root", source: newRoot }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+    });
+    const depNode = fresh.nodes.find((node) => node.name === "acme/tracking-dep");
+
+    expect(depNode?.resolvedCommit).toBe(commit2);
+    expect(depNode?.version).toBe("1.1.0");
+    expect(depNode?.selected).toEqual(["rules/new.md"]);
+  });
+
   it("keeps frozen lock behavior when a locked root source changes", async () => {
     const workspace = await tempRoot();
     const oldRoot = join(workspace, "old-root");

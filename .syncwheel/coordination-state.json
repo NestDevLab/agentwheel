@@ -1,12 +1,12 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "0c39d88e50378d10cae184bc9454232239e55dfb"
+    "refs/heads/main-integration": "fa1b32ac9b54041cf542c04369d52d423519698d"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-12T17:42:33+00:00",
+  "created_at": "2026-08-12T17:57:19+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "0c39d88e50378d10cae184bc9454232239e55dfb"
+    "refs/heads/main-integration": "fa1b32ac9b54041cf542c04369d52d423519698d"
   },
   "manifest": {
     "coordination": {
@@ -41,9 +41,9 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": null,
+  "parent_state": "bb4c4c0bd1d9388ee7f411f01a9e700dc6c68332",
   "projection_status": "convergent",
-  "publication_id": "f849df90-2235-459d-a679-cbcc414e2b27",
+  "publication_id": "4ba7a62c-4681-4804-93c1-99b32fe9c180",
   "publication_scope": "full",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",

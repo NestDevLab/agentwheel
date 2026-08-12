@@ -984,7 +984,7 @@ function lockedNodeForRequirement(
   const node = matches[0]!;
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
   };
 }
 
@@ -1026,7 +1026,7 @@ function lockedNodeForRequirementReference(
   }
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
   };
 }
 
@@ -1080,8 +1080,14 @@ function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefin
   const node = matches[0]!;
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
   };
+}
+
+function lockedSourceRef(node: GraphLockNode): string | undefined {
+  return node.driver === "git" || node.driver === "skillkit"
+    ? node.resolvedCommit ?? node.requestedRef
+    : node.requestedRef;
 }
 
 function verifyIntegrity(integrity: string | undefined, sourceHash: string, label: string): void {

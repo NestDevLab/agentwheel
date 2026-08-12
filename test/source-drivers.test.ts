@@ -146,10 +146,13 @@ describe("v0.3 source drivers", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
-  it("materializes each requested SkillKit ref in an isolated cache entry", async () => {
+  it("refreshes named SkillKit branches and keeps refs isolated by resolved commit", async () => {
     const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
     const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
-    const fakeCore = skillKitCoreFor((targetDir, branch) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`), cloneCalls);
+    const fakeCore = skillKitCoreFor(
+      (targetDir, branch, revision) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}-v${revision}`),
+      cloneCalls,
+    );
     const driver = new SkillKitSourceDriver(fakeCore);
     const source = "skillkit:github:example/demo";
 
@@ -157,11 +160,35 @@ describe("v0.3 source drivers", () => {
     const second = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-2" }));
     const repeatedFirst = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-1" }));
 
-    expect(cloneCalls.map((call) => call.branch)).toEqual(["release-1", "release-2"]);
+    expect(cloneCalls.map((call) => call.branch)).toEqual(["release-1", "release-2", "release-1"]);
     expect(first.resolvedPath).not.toBe(second.resolvedPath);
-    expect(repeatedFirst.resolvedPath).toBe(first.resolvedPath);
-    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1");
-    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2");
+    expect(repeatedFirst.resolvedPath).not.toBe(first.resolvedPath);
+    expect(first.resolvedCommit).not.toBe(repeatedFirst.resolvedCommit);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1-v1");
+    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2-v2");
+    await expect(readFile(join(repeatedFirst.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1-v3");
+  });
+
+  it("refreshes the default tracking ref and publishes immutable commit snapshots", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor(
+      (targetDir, branch, revision) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}-v${revision}`),
+      cloneCalls,
+    );
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const first = await driver.fetch(await driver.resolve(source, { cacheRoot }));
+    const second = await driver.fetch(await driver.resolve(source, { cacheRoot, mode: "tracking" }));
+
+    expect(cloneCalls.map((call) => call.branch)).toEqual([undefined, undefined]);
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(first.resolvedCommit).not.toBe(second.resolvedCommit);
+    expect(first.resolvedPath).toContain(first.resolvedCommit);
+    expect(second.resolvedPath).toContain(second.resolvedCommit);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-default-v1");
+    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-default-v2");
   });
 
   it("keeps different SkillKit sources isolated when their readable cache slugs collide", async () => {
@@ -227,8 +254,17 @@ describe("v0.3 source drivers", () => {
     const driver = new SkillKitSourceDriver(fakeCore);
 
     const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/demo", { cacheRoot, ref: requestedCommit }));
+    const cached = await driver.fetch(await driver.resolve("skillkit:github:example/demo", { cacheRoot, ref: requestedCommit }));
+    const frozen = await driver.fetch(await driver.resolve("skillkit:github:example/demo", {
+      cacheRoot,
+      ref: requestedCommit,
+      frozenLock: true,
+    }));
 
     expect(cloneCalls).toEqual([{ branch: undefined }]);
+    expect(cached.resolvedPath).toBe(fetched.resolvedPath);
+    expect(cached.resolvedCommit).toBe(requestedCommit);
+    expect(frozen.resolvedPath).toBe(fetched.resolvedPath);
     await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-first");
   });
 
@@ -430,7 +466,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 function skillKitCoreFor(
-  materialize: (targetDir: string, branch: string | undefined) => Promise<void>,
+  materialize: (targetDir: string, branch: string | undefined, revision: number) => Promise<void>,
   calls: Array<{ targetDir: string; branch?: string }>,
 ) {
   return {
@@ -438,8 +474,9 @@ function skillKitCoreFor(
       return {
         async clone(_source: string, targetDir: string, options?: { branch?: string }) {
           calls.push({ targetDir, branch: options?.branch });
-          await materialize(targetDir, options?.branch);
-          return { success: true, path: targetDir };
+          const revision = calls.length;
+          await materialize(targetDir, options?.branch, revision);
+          return { success: true, path: targetDir, resolvedCommit: revision.toString(16).padStart(40, "0") };
         },
       };
     },

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -8,6 +8,7 @@ import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { getSourceDriver } from "../src/source/index.js";
 import { gitAuthArguments, matchingGitAuthProfile } from "../src/source/auth.js";
+import { pruneGitCache } from "../src/source/cache.js";
 import { ClawHubSourceDriver } from "../src/source/clawhub.js";
 import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
@@ -99,6 +100,27 @@ describe("local Git auth profiles", () => {
 });
 
 describe("v0.3 source drivers", () => {
+  it("prunes old Git snapshots without removing locked commits", async () => {
+    const cacheRoot = await tempRoot("agentwheel-cache-prune-");
+    const checkout = join(cacheRoot, "github.com-example-pack");
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    const snapshots = ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc", "dddddddddddd"].map((commit) => join(cacheRoot, `github.com-example-pack-${commit}`));
+    for (const [index, snapshot] of snapshots.entries()) {
+      await mkdir(snapshot, { recursive: true });
+      const timestamp = new Date(Date.UTC(2020, 0, index + 1));
+      await utimes(snapshot, timestamp, timestamp);
+    }
+    await mkdir(join(cacheRoot, "..", "locks"), { recursive: true });
+    await writeFile(join(cacheRoot, "..", "locks", "keep.graph-lock.json"), JSON.stringify({ canonical: { nodes: [{ resolvedCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }] } }), "utf8");
+
+    const result = await pruneGitCache(cacheRoot, { keepSnapshots: 1, dryRun: true });
+
+    expect(result.removedPaths).toContain(snapshots[1]);
+    expect(result.removedPaths).toContain(snapshots[2]);
+    expect(result.retainedPaths).toContain(snapshots[0]);
+    expect(result.retainedPaths).toContain(snapshots[3]);
+  });
+
   it("registers skill ecosystem source drivers", () => {
     expect(getSourceDriver("skillkit").name).toBe("skillkit");
     expect(getSourceDriver("vercel-skills").name).toBe("vercel-skills");

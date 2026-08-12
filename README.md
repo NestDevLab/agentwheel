@@ -111,6 +111,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
 | `agentwheel ownership handoff <type/name>` | Transfer one manifest entry to a different workspace root after exact owner, hash, and revision checks; runtime content is not rewritten. |
 | `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |
+| `agentwheel cache prune` | Preview old Git source snapshots; add `--apply` to remove them while retaining locked commits. |
 
 Mental model: **`install` = make what is declared true. `update` = move tracking declarations forward,
 then make them true.**

@@ -64,6 +64,7 @@ import {
   type SearchScope,
   type SearchType,
 } from "../model/catalogue.js";
+import { pruneGitCache } from "../source/cache.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -110,6 +111,25 @@ program
     console.log(`Initialized ${workspaceConfigPath(root)}.`);
     if (bootstrapPackage) console.log("Auto-added the agentwheel bootstrap skill for openclaw.");
     console.log(nextInstallNudge());
+  });
+
+const cacheCommand = program
+  .command("cache")
+  .description("inspect and maintain local source caches");
+
+cacheCommand
+  .command("prune")
+  .description("remove old Git source snapshots while preserving locked commits")
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--keep <count>", "newest snapshots to retain per source", parsePositiveInteger, 3)
+  .option("--apply", "delete the selected snapshots; without this flag only preview", false)
+  .action(async (options) => {
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const cacheRoot = join(targetRoot, ".agentwheel", "cache");
+    const result = await pruneGitCache(cacheRoot, { keepSnapshots: options.keep, dryRun: !options.apply });
+    const verb = options.apply ? "Removed" : "Would remove";
+    for (const path of result.removedPaths) console.log(`${verb} ${path}`);
+    console.log(`${options.apply ? "Pruned" : "Preview"}: ${result.removedPaths.length} snapshots; retained ${result.retainedPaths.length}.`);
   });
 
 program
@@ -3016,6 +3036,12 @@ function shellQuoteArg(value: string): string {
 
 function collectSelectOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
+}
+
+function parsePositiveInteger(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`Expected a positive integer, got: ${value}`);
+  return parsed;
 }
 
 function collectSkillOption(value: string, previous: string[]): string[] {

@@ -4,8 +4,9 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { readPackageManifest } from "../model/package.js";
-import { hashPath, pathExists } from "../utils/fs.js";
+import { hashPath, isIgnoredGeneratedEntry, pathExists } from "../utils/fs.js";
 import { gitAuthArguments } from "./auth.js";
+import { pruneGitCache, removeGeneratedEntries } from "./cache.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "./types.js";
 
@@ -66,9 +67,11 @@ export class GitSourceDriver implements SourceDriver {
         }
       }
 
+      await removeGeneratedEntries(resolved.resolvedPath, true);
       const { stdout } = await git(["-C", resolved.resolvedPath, "rev-parse", "HEAD"]);
       const resolvedCommit = stdout.trim();
       const snapshotPath = await snapshotCheckout(resolved.resolvedPath, resolvedCommit);
+      await pruneGitCache(dirname(resolved.resolvedPath), { currentSnapshot: snapshotPath });
       const manifest = await readPackageManifest(snapshotPath);
       return {
         ...resolved,
@@ -135,7 +138,11 @@ async function snapshotCheckout(checkoutPath: string, commit: string): Promise<s
   if (await pathExists(snapshotPath)) return snapshotPath;
   const tempPath = join(dirname(checkoutPath), `${basename(snapshotPath)}.tmp-${process.pid}-${Date.now()}`);
   await rm(tempPath, { recursive: true, force: true });
-  await cp(checkoutPath, tempPath, { recursive: true, dereference: true });
+  await cp(checkoutPath, tempPath, {
+    recursive: true,
+    dereference: true,
+    filter: (path) => !isIgnoredGeneratedEntry(basename(path)),
+  });
   await rm(join(tempPath, ".git"), { recursive: true, force: true });
   try {
     await rename(tempPath, snapshotPath);

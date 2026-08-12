@@ -1,11 +1,16 @@
-import { cp, mkdir, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { cp, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import * as defaultSkillKit from "@skillkit/core";
 import type { Artifact } from "../model/artifact.js";
-import { hashPath, pathExists } from "../utils/fs.js";
+import { hashPath, isAlreadyExists, pathExists, withFilesystemLock } from "../utils/fs.js";
 import { artifactsFromSkillPaths, type SkillPath } from "./skill-artifacts.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver, SourceResolveOptions } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 interface SkillKitSkill {
   name?: string;
@@ -64,11 +69,12 @@ export class SkillKitSourceDriver implements SourceDriver {
     return {
       driver: this.name,
       source,
-      resolvedPath: cachePathFor(spec, options.cacheRoot),
+      resolvedPath: cachePathFor(spec, options.cacheRoot, options.ref),
       packageName: `skillkit/${packageSlug(spec)}`,
       mode: options.mode ?? "tracking",
       requestedRef: options.ref,
       frozenLock: options.frozenLock,
+      cacheLockTimeoutMs: options.cacheLockTimeoutMs,
     };
   }
 
@@ -77,6 +83,7 @@ export class SkillKitSourceDriver implements SourceDriver {
     if (await pathExists(spec)) {
       return resolved;
     }
+    const cachePath = resolved.resolvedPath;
     if (resolved.frozenLock) {
       if (!(await pathExists(resolved.resolvedPath))) {
         throw new Error(`Frozen lock requires cached SkillKit source at ${resolved.resolvedPath}`);
@@ -93,21 +100,46 @@ export class SkillKitSourceDriver implements SourceDriver {
       throw new Error("SkillKit provider API unavailable or cannot resolve source. Expected @skillkit/core detectProvider().clone().");
     }
 
-    await mkdir(dirname(resolved.resolvedPath), { recursive: true });
-    const result = await provider.clone(providerSpec, resolved.resolvedPath, {});
-    if (!result.success || !result.path) {
-      throw new Error(`SkillKit provider failed to fetch ${spec}: ${result.error ?? "unknown error"}`);
-    }
-    if (resolve(result.path) !== resolve(resolved.resolvedPath)) {
-      await rm(resolved.resolvedPath, { recursive: true, force: true });
-      await cp(result.path, resolved.resolvedPath, { recursive: true, dereference: true });
-    }
-    if (result.tempRoot) {
-      await rm(result.tempRoot, { recursive: true, force: true });
-    }
+    const materializedPath = await withFilesystemLock(`${cachePath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
+      if (await pathExists(cachePath)) return cachePath;
+
+      await mkdir(dirname(cachePath), { recursive: true });
+      const candidatePath = `${cachePath}.agentwheel-tmp-${process.pid}-${Date.now()}`;
+      let result: SkillKitCloneResult | undefined;
+      try {
+        const requestedRef = resolved.requestedRef;
+        const requestedCommit = requestedRef !== undefined && isGitCommit(requestedRef);
+        result = await provider.clone(providerSpec, candidatePath, requestedCommit || !requestedRef ? {} : { branch: requestedRef });
+        if (!result.success || !result.path) {
+          throw new Error(`SkillKit provider failed to fetch ${spec}: ${result.error ?? "unknown error"}`);
+        }
+        if (requestedCommit && requestedRef) {
+          if (!result.tempRoot) {
+            throw new Error(`SkillKit provider cannot materialize commit ${requestedRef}: clone result has no git checkout root`);
+          }
+          await checkoutCommit(result.tempRoot, requestedRef);
+        }
+        if (resolve(result.path) !== resolve(candidatePath)) {
+          await cp(result.path, candidatePath, { recursive: true, dereference: true });
+        }
+        try {
+          await rename(candidatePath, cachePath);
+        } catch (error) {
+          if (!isAlreadyExists(error) && !isDirectoryNotEmpty(error)) throw error;
+          await rm(candidatePath, { recursive: true, force: true });
+        }
+        return cachePath;
+      } finally {
+        await rm(candidatePath, { recursive: true, force: true });
+        if (result?.tempRoot) {
+          await rm(result.tempRoot, { recursive: true, force: true });
+        }
+      }
+    });
     return {
       ...resolved,
-      sourceHash: await hashPath(resolved.resolvedPath),
+      resolvedPath: materializedPath,
+      sourceHash: await hashPath(materializedPath),
     };
   }
 
@@ -177,9 +209,10 @@ function normalizeProviderSource(spec: string): string {
   return spec;
 }
 
-function cachePathFor(spec: string, cacheRoot?: string): string {
+function cachePathFor(spec: string, cacheRoot?: string, requestedRef?: string): string {
   const root = cacheRoot ? resolve(cacheRoot) : join(homedir(), ".agentwheel", "cache");
-  return join(root, "skillkit", packageSlug(spec));
+  const suffix = requestedRef ? `-${createHash("sha256").update(requestedRef).digest("hex")}` : "";
+  return join(root, "skillkit", `${packageSlug(spec)}${suffix}`);
 }
 
 function packageSlug(spec: string): string {
@@ -193,4 +226,21 @@ function mapSeverity(severity: string | undefined): ScanFinding["level"] {
   if (severity === "critical" || severity === "high") return "error";
   if (severity === "medium" || severity === "low") return "warning";
   return "info";
+}
+
+function isDirectoryNotEmpty(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ENOTEMPTY";
+}
+
+function isGitCommit(ref: string): boolean {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
+}
+
+async function checkoutCommit(root: string, commit: string): Promise<void> {
+  try {
+    await execFileAsync("git", ["-C", root, "checkout", "--detach", commit]);
+  } catch {
+    await execFileAsync("git", ["-C", root, "fetch", "origin", commit]);
+    await execFileAsync("git", ["-C", root, "checkout", "--detach", commit]);
+  }
 }

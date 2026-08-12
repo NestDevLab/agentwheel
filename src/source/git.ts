@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { readPackageManifest } from "../model/package.js";
-import { hashPath, pathExists } from "../utils/fs.js";
+import { hashPath, isAlreadyExists, pathExists, withFilesystemLock } from "../utils/fs.js";
 import { gitAuthArguments } from "./auth.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "./types.js";
@@ -78,7 +78,7 @@ export class GitSourceDriver implements SourceDriver {
         resolvedCommit,
         sourceHash: await hashPath(snapshotPath),
       };
-    });
+    }, "git cache");
   }
 
   async list(resolved: ResolvedSource) {
@@ -145,31 +145,4 @@ async function snapshotCheckout(checkoutPath: string, commit: string): Promise<s
     return snapshotPath;
   }
   return snapshotPath;
-}
-
-async function withFilesystemLock<T>(lockPath: string, timeoutMs: number, fn: () => Promise<T>): Promise<T> {
-  await mkdir(dirname(lockPath), { recursive: true });
-  const started = Date.now();
-  while (true) {
-    try {
-      await mkdir(lockPath);
-      await writeFile(join(lockPath, "owner.json"), JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), "utf8");
-      break;
-    } catch (error) {
-      if (!isAlreadyExists(error)) throw error;
-      if (Date.now() - started > timeoutMs) {
-        throw new Error(`Timed out waiting for git cache lock at ${lockPath}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-  try {
-    return await fn();
-  } finally {
-    await rm(lockPath, { recursive: true, force: true });
-  }
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "EEXIST";
 }

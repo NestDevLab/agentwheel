@@ -146,6 +146,82 @@ describe("v0.3 source drivers", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
+  it("materializes each requested SkillKit ref in an isolated cache entry", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor((targetDir, branch) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`), cloneCalls);
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const first = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-1" }));
+    const second = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-2" }));
+    const repeatedFirst = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-1" }));
+
+    expect(cloneCalls.map((call) => call.branch)).toEqual(["release-1", "release-2"]);
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(repeatedFirst.resolvedPath).toBe(first.resolvedPath);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1");
+    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2");
+  });
+
+  it("checks out a requested SkillKit commit instead of treating it as a branch", async () => {
+    const repository = await tempRoot("agentwheel-skillkit-repo-");
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    await git(repository, ["init", "-b", "main"]);
+    await git(repository, ["config", "user.name", "Test"]);
+    await git(repository, ["config", "user.email", "test@example.invalid"]);
+    await writeSkill(join(repository, "demo"), "demo-first");
+    await git(repository, ["add", "-A"]);
+    await git(repository, ["commit", "-m", "first"]);
+    const requestedCommit = (await git(repository, ["rev-parse", "HEAD"])).trim();
+    await writeSkill(join(repository, "demo"), "demo-second");
+    await git(repository, ["add", "-A"]);
+    await git(repository, ["commit", "-m", "second"]);
+
+    const cloneCalls: Array<{ branch?: string }> = [];
+    const fakeCore = {
+      detectProvider() {
+        return {
+          async clone(_source: string, _targetDir: string, options?: { branch?: string }) {
+            cloneCalls.push({ branch: options?.branch });
+            const checkout = await tempRoot("agentwheel-skillkit-checkout-");
+            await git(repository, ["clone", repository, checkout]);
+            return { success: true, path: checkout, tempRoot: checkout };
+          },
+        };
+      },
+    };
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/demo", { cacheRoot, ref: requestedCommit }));
+
+    expect(cloneCalls).toEqual([{ branch: undefined }]);
+    await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-first");
+  });
+
+  it("serializes concurrent SkillKit materialization without overwriting other refs", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor(async (targetDir, branch) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`);
+    }, cloneCalls);
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const [first, duplicate, other] = await Promise.all([
+      driver.resolve(source, { cacheRoot, ref: "release-1" }).then((resolved) => driver.fetch(resolved)),
+      driver.resolve(source, { cacheRoot, ref: "release-1" }).then((resolved) => driver.fetch(resolved)),
+      driver.resolve(source, { cacheRoot, ref: "release-2" }).then((resolved) => driver.fetch(resolved)),
+    ]);
+
+    expect(cloneCalls.map((call) => call.branch).sort()).toEqual(["release-1", "release-2"]);
+    expect(duplicate.resolvedPath).toBe(first.resolvedPath);
+    expect(other.resolvedPath).not.toBe(first.resolvedPath);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1");
+    await expect(readFile(join(other.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2");
+  });
+
   it("stages Vercel skills from a local git repo and syncs them to OpenClaw", async () => {
     const repo = await tempRoot("agentwheel-vercel-repo-");
     const target = await tempRoot("agentwheel-vercel-target-");
@@ -318,4 +394,21 @@ describe("v0.3 source drivers", () => {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout;
+}
+
+function skillKitCoreFor(
+  materialize: (targetDir: string, branch: string | undefined) => Promise<void>,
+  calls: Array<{ targetDir: string; branch?: string }>,
+) {
+  return {
+    detectProvider() {
+      return {
+        async clone(_source: string, targetDir: string, options?: { branch?: string }) {
+          calls.push({ targetDir, branch: options?.branch });
+          await materialize(targetDir, options?.branch);
+          return { success: true, path: targetDir };
+        },
+      };
+    },
+  };
 }

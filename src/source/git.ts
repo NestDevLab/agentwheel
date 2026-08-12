@@ -6,7 +6,12 @@ import { promisify } from "node:util";
 import { readPackageManifest } from "../model/package.js";
 import { hashPath, isIgnoredGeneratedEntry, pathExists } from "../utils/fs.js";
 import { gitAuthArguments } from "./auth.js";
-import { pruneGitCache, removeGeneratedEntries } from "./cache.js";
+import {
+  createGitSnapshotLease,
+  pruneGitCache,
+  removeGeneratedEntries,
+  withGitCacheMaintenanceLock,
+} from "./cache.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "./types.js";
 
@@ -70,8 +75,21 @@ export class GitSourceDriver implements SourceDriver {
       await removeGeneratedEntries(resolved.resolvedPath, true);
       const { stdout } = await git(["-C", resolved.resolvedPath, "rev-parse", "HEAD"]);
       const resolvedCommit = stdout.trim();
-      const snapshotPath = await snapshotCheckout(resolved.resolvedPath, resolvedCommit);
-      await pruneGitCache(dirname(resolved.resolvedPath), { currentSnapshot: snapshotPath });
+      const cacheRoot = dirname(resolved.resolvedPath);
+      const snapshot = await withGitCacheMaintenanceLock(
+        cacheRoot,
+        resolved.cacheLockTimeoutMs ?? 30_000,
+        async () => {
+          const path = await snapshotCheckout(resolved.resolvedPath, resolvedCommit);
+          const leasePath = await createGitSnapshotLease(path);
+          await pruneGitCache(cacheRoot, {
+            currentSnapshot: path,
+            maintenanceLockHeld: true,
+          });
+          return { path, leasePath };
+        },
+      );
+      const snapshotPath = snapshot.path;
       const manifest = await readPackageManifest(snapshotPath);
       return {
         ...resolved,
@@ -80,6 +98,7 @@ export class GitSourceDriver implements SourceDriver {
         packageVersion: manifest?.version,
         resolvedCommit,
         sourceHash: await hashPath(snapshotPath),
+        cacheLeasePath: snapshot.leasePath,
       };
     });
   }

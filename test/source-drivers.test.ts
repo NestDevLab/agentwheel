@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -8,8 +8,14 @@ import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyInstallPlan, createInstallPlan } from "../src/install/index.js";
 import { getSourceDriver } from "../src/source/index.js";
 import { gitAuthArguments, matchingGitAuthProfile } from "../src/source/auth.js";
-import { pruneGitCache } from "../src/source/cache.js";
+import {
+  createGitSnapshotLease,
+  pruneGitCache,
+  releaseGitSnapshotLease,
+  withGitCacheMaintenanceLock,
+} from "../src/source/cache.js";
 import { ClawHubSourceDriver } from "../src/source/clawhub.js";
+import { GitSourceDriver } from "../src/source/git.js";
 import { McpRegistrySourceDriver } from "../src/source/mcp-registry.js";
 import { SkillKitSourceDriver } from "../src/source/skillkit.js";
 import { resolveVercelSkillSubpath, VercelSkillsSourceDriver } from "../src/source/vercel-skills.js";
@@ -101,7 +107,7 @@ describe("local Git auth profiles", () => {
 
 describe("v0.3 source drivers", () => {
   it("prunes old Git snapshots without removing locked commits", async () => {
-    const cacheRoot = await tempRoot("agentwheel-cache-prune-");
+    const cacheRoot = join(await tempRoot("agentwheel-cache-prune-"), "cache");
     const checkout = join(cacheRoot, "github.com-example-pack");
     await mkdir(join(checkout, ".git"), { recursive: true });
     const snapshots = ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc", "dddddddddddd"].map((commit) => join(cacheRoot, `github.com-example-pack-${commit}`));
@@ -119,6 +125,125 @@ describe("v0.3 source drivers", () => {
     expect(result.removedPaths).toContain(snapshots[2]);
     expect(result.retainedPaths).toContain(snapshots[0]);
     expect(result.retainedPaths).toContain(snapshots[3]);
+  });
+
+  it("applies snapshot deletion and removes generated cache entries", async () => {
+    const cacheRoot = join(await tempRoot("agentwheel-cache-prune-apply-"), "cache");
+    const checkout = join(cacheRoot, "github.com-example-pack");
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    await mkdir(join(checkout, "node_modules", "dependency"), { recursive: true });
+    const snapshots = ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"].map(
+      (commit) => join(cacheRoot, `github.com-example-pack-${commit}`),
+    );
+    for (const [index, snapshot] of snapshots.entries()) {
+      await mkdir(join(snapshot, "node_modules", "dependency"), { recursive: true });
+      const timestamp = new Date(Date.UTC(2020, 0, index + 1));
+      await utimes(snapshot, timestamp, timestamp);
+    }
+
+    const result = await pruneGitCache(cacheRoot, { keepSnapshots: 1 });
+
+    expect(result.removedPaths.sort()).toEqual([snapshots[0], snapshots[1]].sort());
+    await expect(stat(snapshots[0])).rejects.toThrow();
+    await expect(stat(snapshots[1])).rejects.toThrow();
+    await expect(stat(snapshots[2])).resolves.toBeTruthy();
+    await expect(stat(join(snapshots[2], "node_modules"))).rejects.toThrow();
+    await expect(stat(join(checkout, "node_modules"))).rejects.toThrow();
+    await expect(stat(join(checkout, ".git"))).resolves.toBeTruthy();
+  });
+
+  it("fails closed when a graph lock is malformed", async () => {
+    const cacheRoot = join(await tempRoot("agentwheel-cache-prune-malformed-"), "cache");
+    const checkout = join(cacheRoot, "github.com-example-pack");
+    const oldSnapshot = join(cacheRoot, "github.com-example-pack-aaaaaaaaaaaa");
+    const newSnapshot = join(cacheRoot, "github.com-example-pack-bbbbbbbbbbbb");
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    await mkdir(oldSnapshot, { recursive: true });
+    await mkdir(newSnapshot, { recursive: true });
+    await utimes(oldSnapshot, new Date(0), new Date(0));
+    await mkdir(join(cacheRoot, "..", "locks"), { recursive: true });
+    await writeFile(join(cacheRoot, "..", "locks", "broken.graph-lock.json"), "{not-json", "utf8");
+
+    await expect(pruneGitCache(cacheRoot, { keepSnapshots: 1 })).rejects.toThrow(/cache prune aborted/);
+    await expect(stat(oldSnapshot)).resolves.toBeTruthy();
+    await expect(stat(newSnapshot)).resolves.toBeTruthy();
+  });
+
+  it("retains a snapshot leased by a concurrent resolver", async () => {
+    const cacheRoot = join(await tempRoot("agentwheel-cache-prune-lease-"), "cache");
+    const checkout = join(cacheRoot, "github.com-example-pack");
+    const leasedSnapshot = join(cacheRoot, "github.com-example-pack-aaaaaaaaaaaa");
+    const newSnapshot = join(cacheRoot, "github.com-example-pack-bbbbbbbbbbbb");
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    await mkdir(leasedSnapshot, { recursive: true });
+    await mkdir(newSnapshot, { recursive: true });
+    await utimes(leasedSnapshot, new Date(0), new Date(0));
+    const lease = await createGitSnapshotLease(leasedSnapshot);
+
+    try {
+      const result = await pruneGitCache(cacheRoot, { keepSnapshots: 1 });
+      expect(result.retainedPaths).toContain(leasedSnapshot);
+      await expect(stat(leasedSnapshot)).resolves.toBeTruthy();
+    } finally {
+      await releaseGitSnapshotLease(lease);
+    }
+  });
+
+  it("serializes pruning behind concurrent Git cache maintenance", async () => {
+    const cacheRoot = join(await tempRoot("agentwheel-cache-prune-lock-"), "cache");
+    await mkdir(cacheRoot, { recursive: true });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const holder = withGitCacheMaintenanceLock(cacheRoot, 1_000, () => gate);
+    while (true) {
+      try {
+        await stat(join(cacheRoot, ".maintenance.lock", "owner.json"));
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+
+    let completed = false;
+    const prune = pruneGitCache(cacheRoot, { cacheLockTimeoutMs: 1_000 }).then(() => { completed = true; });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(completed).toBe(false);
+    release();
+    await Promise.all([holder, prune]);
+    expect(completed).toBe(true);
+  });
+
+  it("automatically retains only the newest Git snapshots after fetch", async () => {
+    const repo = await tempRoot("agentwheel-cache-retention-repo-");
+    const cacheRoot = join(await tempRoot("agentwheel-cache-retention-cache-"), "cache");
+    await mkdir(join(repo, "instructions"), { recursive: true });
+    await writeFile(join(repo, "instructions", "AGENTS.md"), "# Retention fixture\n", "utf8");
+    await writeFile(join(repo, "openpack.json"), JSON.stringify({
+      schemaVersion: 2,
+      name: "retention-pack",
+      version: "1.0.0",
+      provides: [{ type: "instructions", path: "instructions/AGENTS.md" }],
+    }), "utf8");
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "initial"]);
+
+    const driver = new GitSourceDriver();
+    for (let index = 0; index < 4; index += 1) {
+      if (index > 0) {
+        await writeFile(join(repo, "revision.txt"), String(index), "utf8");
+        await git(repo, ["add", "-A"]);
+        await git(repo, ["commit", "-m", `revision-${index}`]);
+      }
+      const resolved = await driver.resolve(`git:${repo}#main`, { cacheRoot });
+      const fetched = await driver.fetch(resolved);
+      await releaseGitSnapshotLease(fetched.cacheLeasePath);
+    }
+
+    const snapshots = (await readdir(cacheRoot)).filter((entry) => /-[0-9a-f]{12}$/.test(entry));
+    expect(snapshots).toHaveLength(3);
   });
 
   it("registers skill ecosystem source drivers", () => {

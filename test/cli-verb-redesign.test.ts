@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -27,6 +27,32 @@ afterAll(async () => {
 });
 
 describe("CLI verb redesign", () => {
+  it("previews and applies Git cache pruning", async () => {
+    const workspace = await tempRoot();
+    const cacheRoot = join(workspace, ".agentwheel", "cache");
+    const checkout = join(cacheRoot, "github.com-example-pack");
+    const snapshots = ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"].map(
+      (commit) => join(cacheRoot, `github.com-example-pack-${commit}`),
+    );
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    for (const [index, snapshot] of snapshots.entries()) {
+      await mkdir(snapshot, { recursive: true });
+      const timestamp = new Date(Date.UTC(2020, 0, index + 1));
+      await utimes(snapshot, timestamp, timestamp);
+    }
+
+    const preview = await runCli(["cache", "prune", "--target-root", workspace, "--keep", "1"]);
+    expect(preview.stdout).toContain("Would remove");
+    expect(preview.stdout).toContain("Preview: 2 snapshots; retained 1.");
+    await expect(stat(snapshots[0])).resolves.toBeTruthy();
+
+    const apply = await runCli(["cache", "prune", "--target-root", workspace, "--keep", "1", "--apply"]);
+    expect(apply.stdout).toContain("Removed");
+    expect(apply.stdout).toContain("Pruned: 2 snapshots; retained 1.");
+    await expect(stat(snapshots[0])).rejects.toThrow();
+    await expect(stat(snapshots[2])).resolves.toBeTruthy();
+  });
+
   it("drafts a registry publish submission from a GitHub URL without writing workspace state", async () => {
     const { stdout } = await runCli([
       "registry",

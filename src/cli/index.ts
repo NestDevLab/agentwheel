@@ -20,7 +20,7 @@ import { renderReport, type ReportFormat } from "./render.js";
 import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from "./serve.js";
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
-import { stageSource } from "../staging/staging.js";
+import { stageSource, stageSourceRaw } from "../staging/staging.js";
 import { findWorkspaceRoot, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
@@ -1078,7 +1078,11 @@ async function runInstallCommand(
 
     if (nameOrSource && !configured) {
       try {
-        let entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, { ...targetOptions, adapter: targetOptions.adapter ?? target.adapter });
+        let entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, {
+          ...targetOptions,
+          adapter: targetOptions.adapter ?? target.adapter,
+          deferGraphRendering: true,
+        });
         if (targetOptions.multiAdapterSource) {
           entry = packageEntryWithAdapterSuffix(entry);
         }
@@ -1193,6 +1197,7 @@ async function buildPlanReport(
         let entry = await packageEntryFromSource(nameOrSource, target.workspaceRoot, {
           ...targetOptions,
           adapter: targetOptions.adapter ?? target.adapter,
+          deferGraphRendering: true,
           warn: collectWarning,
         });
         if (targetOptions.multiAdapterSource) {
@@ -1268,6 +1273,7 @@ async function packageEntryFromSource(
     offline?: boolean;
     installationType?: string;
     warn?: (message: string) => void;
+    deferGraphRendering?: boolean;
   },
 ): Promise<WorkspacePackage> {
   const lockMode = options.frozenLock === true || options.offline === true;
@@ -1308,16 +1314,31 @@ async function packageEntryFromSource(
       + `latest overall is ${initialVersion.availability.latestOverall ?? "unknown"}.`,
     );
   }
-  const bundle = await stageSource(driver, resolvedSource, {
-    workspaceRoot: targetRoot,
+  const bundle = options.deferGraphRendering
+    ? await stageSourceRaw(driver, resolvedSource, {
+      cacheRoot: join(targetRoot, ".agentwheel", "cache"),
+      mode: options.mode,
+      ref: initialVersion?.ref,
+      frozenLock: lockMode,
+    })
+    : await stageSource(driver, resolvedSource, {
+      workspaceRoot: targetRoot,
+      adapter,
+      cacheRoot: join(targetRoot, ".agentwheel", "cache"),
+      mode: options.mode,
+      ref: initialVersion?.ref,
+      frozenLock: lockMode,
+      select: selectedArtifacts,
+    });
+  const installationArtifacts = options.deferGraphRendering
+    ? filterArtifactsBySelection(bundle.artifacts, selectedArtifacts)
+      .filter((artifact) => !artifact.runtimes?.length || artifact.runtimes.includes(adapter.name))
+    : bundle.artifacts;
+  const installationType = resolveInstallationTypeForArtifacts(
     adapter,
-    cacheRoot: join(targetRoot, ".agentwheel", "cache"),
-    mode: options.mode,
-    ref: initialVersion?.ref,
-    frozenLock: lockMode,
-    select: selectedArtifacts,
-  });
-  const installationType = resolveInstallationTypeForArtifacts(adapter, bundle.artifacts.map((artifact) => artifact.type), options.installationType);
+    installationArtifacts.map((artifact) => artifact.type),
+    options.installationType,
+  );
   try {
     return {
       name: options.name ?? resolvedInput.registryEntry?.name ?? bundle.source.packageName ?? source,
@@ -1610,7 +1631,10 @@ async function buildGraphPlansForTarget(
   }
 
   if (source) {
-    let entry = targetOptions.extraPackage ?? await packageEntryFromSource(source, target.workspaceRoot, targetOptions);
+    let entry = targetOptions.extraPackage ?? await packageEntryFromSource(source, target.workspaceRoot, {
+      ...targetOptions,
+      deferGraphRendering: true,
+    });
     if (targetOptions.multiAdapterSource) {
       entry = packageEntryWithAdapterSuffix(entry);
     }

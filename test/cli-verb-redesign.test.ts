@@ -880,6 +880,57 @@ describe("CLI verb redesign", () => {
     expect(config.packages.map((pkg: { name: string }) => pkg.name)).toEqual(["agent-core-toolkit-private"]);
   });
 
+  it("installs an only-source skill composed from a dependency fragment", async () => {
+    const workspace = await tempRoot();
+    const packages = await tempRoot("agentwheel-cross-package-cli-");
+    const source = join(packages, "root");
+    const dependency = join(packages, "core");
+
+    await mkdir(join(source, "skills", "app"), { recursive: true });
+    await writeFile(
+      join(source, "skills", "app", "SKILL.md"),
+      "---\nname: app\ndescription: Fixture composed skill.\n---\n\n# App\n\n<!-- openpack:include core:fragments/risk.md -->\n",
+      "utf8",
+    );
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "cli/composed-root",
+      version: "1.0.0",
+      requires: { core: { source: "../core" } },
+      provides: [{ type: "skills", path: "skills" }],
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(dependency, "fragments"), { recursive: true });
+    await writeFile(join(dependency, "fragments", "risk.md"), "Dependency risk rubric\n", "utf8");
+    await writeFile(join(dependency, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "cli/composed-core",
+      version: "1.0.0",
+      provides: [{ type: "fragments", path: "fragments" }],
+    }, null, 2)}\n`, "utf8");
+
+    const { stdout } = await runCli([
+      "install",
+      source,
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--only-source",
+      "--select",
+      "skills/app",
+      "--yes",
+    ]);
+
+    expect(stdout).toContain("CREATE   MANAGED  skills/app");
+    expect(stdout).toContain("INCLUDE cli/composed-root@");
+    expect(stdout).toContain("Applied codex");
+    const installed = await readFile(join(workspace, ".agents", "skills", "app", "SKILL.md"), "utf8");
+    expect(installed).toContain("Dependency risk rubric");
+    expect(installed).toContain("BEGIN openpack:include cli/composed-core@");
+  });
+
   it("installs suggested companions only when requested and persists that choice", async () => {
     const companion = await skillPackageFixture("brainstorming", "Brainstorming");
     const source = await tempRoot("agentwheel-convergent-pack-");

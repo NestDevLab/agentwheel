@@ -289,6 +289,7 @@ async function processRequirement(
         }
         lockedByReference = undefined;
         normalized = declared;
+        requirement.updateClosure = true;
       }
     }
     const frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);

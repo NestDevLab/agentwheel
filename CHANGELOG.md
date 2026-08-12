@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.16.7
+
+- Fixed locked graph resolution so changing a root package source also refreshes its tracking
+  dependency closure instead of combining incompatible lock generations.
+- Fixed explicit-source install and plan preflight for artifacts composed from cross-package
+  fragments by deferring rendering to the resolved dependency graph.
+
 ## 0.16.6
 
 - Made optional proactive discovery deterministic for repeated manual workflows: it now runs before

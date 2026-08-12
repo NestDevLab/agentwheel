@@ -136,7 +136,7 @@ export class LocalSourceDriver implements SourceDriver {
   async scan(resolved: ResolvedSource): Promise<ScanResult> {
     const artifacts = await this.list(resolved);
     const findings: ScanFinding[] = [];
-    if (!artifacts.some((artifact) => artifact.type === "instructions")) {
+    if (!resolved.packageName && !artifacts.some((artifact) => artifact.type === "instructions")) {
       findings.push({ level: "warning" as const, message: "No instructions.md or AGENTS.md found", path: resolved.resolvedPath });
     }
     for (const artifact of artifacts.filter((item) => item.type === "skills" && item.kind === "dir")) {
@@ -212,6 +212,7 @@ async function listFromManifest(root: string, packageName: string): Promise<Arti
         if ((provide.type === "skills" || provide.type === "plugins" || provide.type === "subagents") && entry.isDirectory()) {
           artifacts.push(await artifactForDir(provide.type, entry.name, child, join(provide.path, entry.name), packageName, provide, manifest, entry.name));
         } else if (entry.isFile()) {
+          if (provide.type === "skills" && entry.name.toLowerCase() === "readme.md") continue;
           const name = provide.type === "rules" && entry.name.endsWith(".md") ? entry.name : entry.name;
           artifacts.push(await artifactForFile(provide.type, name, child, join(provide.path, entry.name), packageName, provide, manifest, name));
         }

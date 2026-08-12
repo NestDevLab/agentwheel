@@ -495,6 +495,8 @@ program
   .option("--yes", "trust all new transitive sources", false)
   .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
   .action(async (name, options) => {
+    if (options.onlySource && options.dependency.length > 0) throw new Error("--only-source cannot be combined with --dependency.");
+    if (options.onlySource && !name) throw new Error("--only-source requires a configured package argument.");
     if (name && options.dependency.length > 0) throw new Error("A package argument cannot be combined with --dependency.");
     if (options.dependency.length > 0 && (options.select.length > 0 || options.skill.length > 0)) {
       throw new Error("--dependency cannot be combined with --select or --skill; package selections remain unchanged.");
@@ -1408,26 +1410,30 @@ function findConfiguredPackageForTarget(
   return options.multiAdapterSource ? matches.find((pkg) => pkg.adapter === target.adapter) : matches[0];
 }
 
-function configuredPackageForSkill(
+async function configuredPackageForSkill(
+  target: RuntimeTarget,
   packages: WorkspacePackage[],
   skillName: string,
+  options: GraphCliOptions,
   explicitPackageName?: string,
-): WorkspacePackage {
+): Promise<WorkspacePackage> {
   const selector = `skills/${skillName}`;
   if (explicitPackageName) {
     const pkg = findConfiguredPackage(packages, explicitPackageName);
     if (!pkg) throw new Error(`Configured package not found: ${explicitPackageName}`);
-    const selected = normalizeArtifactSelectors(pkg.select, pkg.skills);
-    if (selected && !selected.some((candidate) => candidate === selector)) {
+    if (!(await packageSelectsSkillForTarget(target, pkg, selector, options))) {
       throw new Error(`Configured package '${pkg.name}' does not select ${selector}.`);
     }
     return pkg;
   }
 
-  const matches = packages.filter((pkg) => normalizeArtifactSelectors(pkg.select, pkg.skills)?.some(
-    (candidate) => candidate === selector,
-  ));
-  if (matches.length === 1) return matches[0];
+  const adapterPackages = packages.filter((pkg) => pkg.adapter === target.adapter);
+  const candidates = adapterPackages.length > 0 ? adapterPackages : packages;
+  const matches: WorkspacePackage[] = [];
+  for (const pkg of candidates) {
+    if (await packageSelectsSkillForTarget(target, pkg, selector, options)) matches.push(pkg);
+  }
+  if (matches.length === 1) return matches[0]!;
   if (matches.length > 1) {
     throw new Error(
       `Skill '${skillName}' has multiple configured owners: ${matches.map((pkg) => pkg.name).sort().join(", ")}. `
@@ -1438,6 +1444,46 @@ function configuredPackageForSkill(
     `No configured owner found for skill '${skillName}'. `
     + `Add ${selector} to one package selection or pass --package <name>.`,
   );
+}
+
+async function packageSelectsSkillForTarget(
+  target: RuntimeTarget,
+  pkg: WorkspacePackage,
+  selector: string,
+  options: GraphCliOptions,
+): Promise<boolean> {
+  const explicitSelection = normalizeArtifactSelectors(pkg.select, pkg.skills);
+  if (explicitSelection && !explicitSelection.some((candidate) => candidate === selector)) return false;
+
+  const groups = new Map<string, PackageGraphGroup>();
+  const group = graphGroupForPackage(groups, target, pkg, options);
+  const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+  const graphLockPath = graphLockPathForTarget(
+    group.target.workspaceRoot,
+    targetKeyForTarget(group.target, adapter.name),
+    adapter.name,
+    targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
+  );
+  if (await pathExists(graphLockPath)) {
+    const lock = await readGraphLock(graphLockPath);
+    const root = lock.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+    if (root?.selected.includes(selector)) return true;
+  }
+
+  const results = await buildGraphPlansForTarget(target, undefined, {
+    ...options,
+    scope: pkg.name,
+    onlySource: true,
+    dryRun: true,
+    suppressEmptyMessage: true,
+  }, { mode: "install" });
+  try {
+    return results.some((result) => result.bundle.graphLock.canonical.roots.some(
+      (root) => root.rootId === pkg.name && root.selected.includes(selector),
+    ));
+  } finally {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
+  }
 }
 
 function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boolean {
@@ -1626,6 +1672,7 @@ interface GraphCliOptions {
   warn?: (message: string) => void;
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
+  adopt?: boolean;
 }
 
 interface PackageGraphGroup {
@@ -1646,10 +1693,22 @@ async function runSkillUpdateCommand(
   options: GraphCliOptions & { package?: string; adopt?: boolean },
 ): Promise<void> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  const composite = await resolveSelectedCompositeProfile(normalizedOptions);
+  if (composite) {
+    await runCompositeSkillUpdate(
+      composite.workspaceRoot,
+      composite.name,
+      composite.profile,
+      skillName,
+      options.package,
+      normalizedOptions,
+    );
+    return;
+  }
   const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
   for (const target of targets) {
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const owner = configuredPackageForSkill(config.packages, skillName, options.package);
+    const owner = await configuredPackageForSkill(target, config.packages, skillName, normalizedOptions, options.package);
     const mode = owner.mode === "tracking" ? "update" : "install";
     console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
     await runConfiguredGraphPackages(target, {
@@ -2685,6 +2744,55 @@ async function runCompositeUpdate(
   }
 }
 
+async function runCompositeSkillUpdate(
+  workspaceRoot: string,
+  profileName: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  skillName: string,
+  packageName: string | undefined,
+  options: GraphCliOptions,
+): Promise<void> {
+  const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
+  printStatusReport(preflight);
+  const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
+  if (blockers.length > 0) {
+    throw new Error(
+      "Composite skill update blocked before member execution: "
+      + blockers.map((member) => `${member.id}=${member.health}`).join(", "),
+    );
+  }
+
+  const incomingChain = parseCompositeChain();
+  const memberChain = [...incomingChain, compositeKey(workspaceRoot, profileName)];
+  for (const member of profile.members) {
+    if (!options.dryRun) {
+      const before = preflight.members.find((candidate) => candidate.id === member.id);
+      const revalidated = await collectCompositeMembers({
+        cliVersion: CLI_VERSION,
+        workspaceRoot,
+        profileName,
+        profileTtlSeconds: profile.refreshTtlSeconds,
+        members: [member],
+        refresh: true,
+        chain: incomingChain,
+      });
+      const current = revalidated[0]!;
+      if (blocksCompositeApply(current.health)) {
+        throw new Error(`Composite skill update stopped before ${member.id}: revalidation is ${current.health}.`);
+      }
+      if (statusRevisionSignature(before?.report) !== statusRevisionSignature(current.report)) {
+        throw new Error(`Composite skill update stopped before ${member.id}: member revision changed after preflight.`);
+      }
+    }
+
+    const args = compositeSkillUpdateArguments(member.profile, skillName, packageName, options);
+    console.log(`${options.dryRun ? "Plan" : "Update"} member ${member.id}:`);
+    const result = await runMemberAgentwheel(member, workspaceRoot, args, memberChain);
+    if (result.stdout.trim()) console.log(result.stdout.trimEnd());
+    if (result.stderr.trim()) console.error(result.stderr.trimEnd());
+  }
+}
+
 async function runCompositeInstall(
   workspaceRoot: string,
   profileName: string,
@@ -2773,6 +2881,27 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   if (options.noDeps) args.push("--no-deps");
   if (options.frozenLock) args.push("--frozen-lock");
   for (const dependency of options.dependency ?? []) args.push("--dependency", dependency);
+  for (const trust of options.trust ?? []) args.push("--trust", trust);
+  if (options.yes) args.push("--yes");
+  return args;
+}
+
+function compositeSkillUpdateArguments(
+  profile: string,
+  skillName: string,
+  packageName: string | undefined,
+  options: GraphCliOptions,
+): string[] {
+  const args = ["skill", "update", skillName, "--profile", profile];
+  if (packageName) args.push("--package", packageName);
+  if (options.dryRun) args.push("--dry-run");
+  if (options.adopt) args.push("--adopt");
+  if (options.refresh) args.push("--refresh");
+  if (options.forceDrift) args.push("--force-drift");
+  if (options.allowAdapterCode) args.push("--allow-adapter-code");
+  if (options.noDeps) args.push("--no-deps");
+  if (options.frozenLock) args.push("--frozen-lock");
+  if (options.offline) args.push("--offline");
   for (const trust of options.trust ?? []) args.push("--trust", trust);
   if (options.yes) args.push("--yes");
   return args;

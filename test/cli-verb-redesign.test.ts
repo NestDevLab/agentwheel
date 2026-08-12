@@ -618,6 +618,57 @@ describe("CLI verb redesign", () => {
     await expect(readFile(destination, "utf8")).resolves.toContain("daily-v2");
   });
 
+  it("resolves an implicitly selected skill owner without evaluating unrelated explicit selections", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("implicit-skill", "implicit-v1");
+    await runCli([
+      "add", source, "--name", "implicit-pack", "--adapter", "codex", "--local", "--target-root", workspace,
+    ]);
+    await appendMissingConfiguredPackage(workspace, "unrelated-broken");
+
+    const result = await runCli([
+      "skill", "update", "implicit-skill", "--adapter", "codex", "--local", "--target-root", workspace,
+    ]);
+
+    expect(result.stdout).toContain("Skill implicit-skill: implicit-pack (install).");
+    await expect(readFile(join(workspace, ".agents", "skills", "implicit-skill", "SKILL.md"), "utf8"))
+      .resolves.toContain("implicit-v1");
+  });
+
+  it("resolves a skill owner through a first-class selection import", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("imported-skill", "imported-v1");
+    await mkdir(join(source, ".agentwheel"), { recursive: true });
+    await writeFile(join(source, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      exports: { selections: { default: { select: ["skills/imported-skill"] } } },
+      packages: [],
+      registry: {},
+      trust: {},
+      profiles: {},
+      agents: {},
+    }, null, 2)}\n`, "utf8");
+    await runCli([
+      "add", source, "--name", "imported-pack", "--adapter", "codex", "--local", "--target-root", workspace,
+    ]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.schemaVersion = 2;
+    config.exports = { selections: {} };
+    delete config.packages[0].select;
+    delete config.packages[0].skills;
+    config.packages[0].selection = { export: "default" };
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    const result = await runCli([
+      "skill", "update", "imported-skill", "--adapter", "codex", "--local", "--target-root", workspace,
+    ]);
+
+    expect(result.stdout).toContain("Skill imported-skill: imported-pack (install).");
+    await expect(readFile(join(workspace, ".agents", "skills", "imported-skill", "SKILL.md"), "utf8"))
+      .resolves.toContain("imported-v1");
+  });
+
   it("re-resolves a tracking package that owns the requested skill", async () => {
     const workspace = await tempRoot();
     const source = await gitSkillPackageFixture("tracking-pack", "tracking-skill");
@@ -691,6 +742,78 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(claudeRoot, ".claude", "skills", "profile-skill", "SKILL.md"), "utf8")).resolves.toContain("profile-v1");
   });
 
+  it("chooses the adapter-specific owner for each target in a multi-adapter profile", async () => {
+    const workspace = await tempRoot();
+    const codexRoot = await tempRoot("agentwheel-skill-owner-codex-");
+    const claudeRoot = await tempRoot("agentwheel-skill-owner-claude-");
+    const codexSource = await skillPackageFixture("shared-profile-skill", "codex-owner");
+    const claudeSource = await skillPackageFixture("shared-profile-skill", "claude-owner");
+    await runCli([
+      "add", codexSource, "--name", "codex-pack", "--adapter", "codex", "--local", "--target-root", workspace,
+      "--skill", "shared-profile-skill",
+    ]);
+    await runCli([
+      "add", claudeSource, "--name", "claude-pack", "--adapter", "claude", "--local", "--target-root", workspace,
+      "--skill", "shared-profile-skill",
+    ]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.agents = {
+      codex: { adapter: "codex", transport: "local", root: codexRoot, installationType: "local" },
+      claude: { adapter: "claude", transport: "local", root: claudeRoot, installationType: "local" },
+    };
+    config.profiles = { delivery: { runtimes: [{ agent: "codex" }, { agent: "claude" }] } };
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    const result = await runCli([
+      "skill", "update", "shared-profile-skill", "--profile", "delivery", "--target-root", workspace,
+    ]);
+
+    expect(result.stdout).toContain("Skill shared-profile-skill: codex-pack (install).");
+    expect(result.stdout).toContain("Skill shared-profile-skill: claude-pack (install).");
+    await expect(readFile(join(codexRoot, ".agents", "skills", "shared-profile-skill", "SKILL.md"), "utf8"))
+      .resolves.toContain("codex-owner");
+    await expect(readFile(join(claudeRoot, ".claude", "skills", "shared-profile-skill", "SKILL.md"), "utf8"))
+      .resolves.toContain("claude-owner");
+  });
+
+  it("delegates skill updates through composite profile preflight", async () => {
+    const workspace = await tempRoot();
+    const member = await tempRoot("agentwheel-composite-skill-member-");
+    const source = await skillPackageFixture("composite-skill", "composite-v1");
+    await runCli([
+      "add", source, "--name", "composite-pack", "--adapter", "codex", "--local", "--target-root", member,
+      "--skill", "composite-skill",
+    ]);
+    const memberConfigPath = join(member, ".agentwheel", "config.json");
+    const memberConfig = JSON.parse(await readFile(memberConfigPath, "utf8"));
+    memberConfig.agents = {
+      codex: { adapter: "codex", transport: "local", root: member, installationType: "local" },
+    };
+    memberConfig.profiles = { delivery: { runtimes: [{ agent: "codex" }] } };
+    await writeFile(memberConfigPath, `${JSON.stringify(memberConfig, null, 2)}\n`, "utf8");
+    await runCli(["install", "--profile", "delivery", "--target-root", member]);
+
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      trust: {},
+      agents: {},
+      profiles: {
+        cluster: { members: [{ id: "leaf", workspace: member, profile: "delivery", transport: "local" }] },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const result = await runCli([
+      "skill", "update", "composite-skill", "--profile", "cluster", "--target-root", workspace, "--dry-run",
+    ]);
+
+    expect(result.stdout).toContain("Plan member leaf:");
+    expect(result.stdout).toContain("Skill composite-skill: composite-pack (install).");
+  }, 60_000);
+
   it("requires an explicit package when a skill has multiple configured owners", async () => {
     const workspace = await tempRoot();
     const first = await skillPackageFixture("shared-skill", "first");
@@ -708,6 +831,21 @@ describe("CLI verb redesign", () => {
       stderr: expect.stringContaining(
         "Skill 'shared-skill' has multiple configured owners: first-pack, second-pack. Pass --package <name>.",
       ),
+    });
+  });
+
+  it("requires package scope for update --only-source and rejects dependency combinations", async () => {
+    const workspace = await tempRoot();
+
+    await expect(runCli([
+      "update", "--only-source", "--adapter", "codex", "--local", "--target-root", workspace,
+    ])).rejects.toMatchObject({
+      stderr: expect.stringContaining("--only-source requires a configured package argument."),
+    });
+    await expect(runCli([
+      "update", "--only-source", "--dependency", "example", "--adapter", "codex", "--local", "--target-root", workspace,
+    ])).rejects.toMatchObject({
+      stderr: expect.stringContaining("--only-source cannot be combined with --dependency."),
     });
   });
 

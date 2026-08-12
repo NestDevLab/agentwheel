@@ -49,6 +49,20 @@ describe("Agentwheel companion skills", () => {
     expect(description).toContain("without installing or changing anything");
   });
 
+  it("evolves source artifacts without hard dependencies on authoring skills", async () => {
+    const { content, frontmatter } = await readSkill("agentwheel-artifact-evolution");
+    const description = String(frontmatter.description);
+
+    expect(frontmatter.name).toBe("agentwheel-artifact-evolution");
+    expect(description).toContain("Generate or evolve OpenPack artifacts");
+    expect(description).toContain("capability gap, correction, or rollout request");
+    expect(content).toContain("`self-improve` and `skill-creator` are optional inspirations");
+    expect(content).toContain("do not require, install, or link to them");
+    expect(content).toContain("Run `agentwheel init package` only when no package exists");
+    expect(content).toContain("Prove the source merge");
+    expect(content).toContain("Never use force, plugin execution, or runtime reload");
+  });
+
   it("does not let generic advice suppress operational discovery", async () => {
     const { content } = await readSkill("agentwheel-discovery");
     const prose = content.replace(/\s+/g, " ");

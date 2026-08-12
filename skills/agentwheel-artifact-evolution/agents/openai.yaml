@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agentwheel Artifact Evolution"
+  short_description: "Generate and evolve OpenPack artifacts"
+  default_prompt: "Use $agentwheel-artifact-evolution to create or evolve an OpenPack artifact and plan its safe rollout."

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added `agentwheel skill update <name>` to resolve a configured skill's owning package and reconcile only its closure. Fixed `--only-source` for configured packages while preserving unrelated graph-lock state.
+- Fixed OpenPack skill collections so a colocated `README.md` stays package documentation instead of becoming a skill. Skills-only manifests now scan cleanly without requiring an unrelated instructions artifact.
 
 ## 0.16.7
 

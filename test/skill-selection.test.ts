@@ -66,6 +66,31 @@ async function createPackage(): Promise<string> {
 }
 
 describe("artifact selection", () => {
+  it("ignores collection readmes without dropping Markdown skills", async () => {
+    const source = await tempRoot();
+    await mkdir(join(source, "skills", "alpha"), { recursive: true });
+    await writeFile(join(source, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Fixture skill for tests.\n---\n\n# Alpha\n", "utf8");
+    await writeFile(join(source, "skills", "standalone.md"), "---\nname: standalone\ndescription: Fixture Markdown skill for tests.\n---\n\n# Standalone\n", "utf8");
+    await writeFile(join(source, "skills", "README.md"), "# Skills\n\nHuman-facing collection index.\n", "utf8");
+    await writeFile(join(source, "openpack.json"), JSON.stringify({
+      schemaVersion: 2,
+      name: "bucketed-skills",
+      version: "1.0.0",
+      provides: [{ type: "skills", path: "skills" }],
+    }, null, 2), "utf8");
+
+    const driver = new LocalSourceDriver();
+    const resolved = await driver.resolve(source);
+    const artifacts = await driver.list(resolved);
+    const scan = await driver.scan(resolved);
+
+    expect(artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual([
+      "skills/alpha",
+      "skills/standalone.md",
+    ]);
+    expect(scan).toEqual({ ok: true, findings: [] });
+  });
+
   it("installs all artifacts by default", async () => {
     const source = await createPackage();
     const target = await tempRoot();

@@ -19,6 +19,7 @@ Mental model:
 - `add` records desired packages.
 - `install` makes the declared state true in the target runtime.
 - `update` re-resolves tracking packages, then applies.
+- `skill update <name>` maps a configured skill to its owning package and reconciles only that package closure.
 - `uninstall` removes configured packages and their managed runtime output.
 
 ## Safety Rules
@@ -394,6 +395,15 @@ agentwheel update team-agent-pack
 ```
 
 Named package updates preserve artifacts owned by other configured roots, including unrelated drift.
+
+For one configured skill, resolve its owner and only that package closure:
+
+```bash
+agentwheel skill update code-review --profile daily --dry-run
+agentwheel skill update code-review --profile daily
+```
+
+Pinned owners use install semantics; tracking owners re-resolve. Unrelated configured packages are not resolved. If ownership is ambiguous, pass `--package <name>`. Use `--adopt` only after explicit approval of the dry-run's unmanaged destinations.
 
 Advance one tracking dependency while unrelated graph nodes remain locked:
 

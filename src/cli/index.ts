@@ -320,7 +320,7 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -363,7 +363,7 @@ program
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -401,7 +401,7 @@ program
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -451,7 +451,7 @@ program
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
-  .option("--only-source", "with a source argument, exclude configured workspace packages", false)
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -488,6 +488,7 @@ program
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
+  .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
   .option("--offline", "resolve strictly from graph locks and local caches", false)
   .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
@@ -512,6 +513,37 @@ program
       await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
     }
   });
+
+program
+  .command("skill")
+  .description("operate on configured skills")
+  .addCommand(
+    new Command("update")
+      .description("reconcile one skill through its configured owning package")
+      .argument("<name>", "configured skill name")
+      .option("--package <name>", "owning configured package when automatic ownership is ambiguous")
+      .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
+      .option("-i, --installation-type <type>", "installation type (for example local or user)")
+      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
+      .option("--local", "shortcut for --installation-type local", false)
+      .option("-t, --target-root <path>", "workspace root")
+      .option("--agent <name>", "named agent from merged config")
+      .option("--all", "run for every configured agent", false)
+      .option("--profile <name>", "workspace runtime profile")
+      .option("--dry-run", "show plans without writing", false)
+      .option("--adopt", "replace unmanaged destinations in the owning package closure", false)
+      .option("--force-drift", "replace drifted managed artifacts", false)
+      .option("--allow-adapter-code", "allow loading local adapter code from the owning package", false)
+      .option("--no-deps", "resolve only the owning package and ignore its requires with a warning")
+      .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
+      .option("--offline", "resolve strictly from graph locks and local caches", false)
+      .option("--refresh", "refresh available package versions even when the version-index TTL is fresh", false)
+      .option("--yes", "trust all new transitive sources", false)
+      .option("--trust <pattern>", "pre-approve a transitive source glob (repeatable)", collectTrustOption, [] as string[])
+      .action(async (name, options) => {
+        await runSkillUpdateCommand(name, options);
+      }),
+  );
 
 program
   .command("deps")
@@ -1376,6 +1408,38 @@ function findConfiguredPackageForTarget(
   return options.multiAdapterSource ? matches.find((pkg) => pkg.adapter === target.adapter) : matches[0];
 }
 
+function configuredPackageForSkill(
+  packages: WorkspacePackage[],
+  skillName: string,
+  explicitPackageName?: string,
+): WorkspacePackage {
+  const selector = `skills/${skillName}`;
+  if (explicitPackageName) {
+    const pkg = findConfiguredPackage(packages, explicitPackageName);
+    if (!pkg) throw new Error(`Configured package not found: ${explicitPackageName}`);
+    const selected = normalizeArtifactSelectors(pkg.select, pkg.skills);
+    if (selected && !selected.some((candidate) => candidate === selector)) {
+      throw new Error(`Configured package '${pkg.name}' does not select ${selector}.`);
+    }
+    return pkg;
+  }
+
+  const matches = packages.filter((pkg) => normalizeArtifactSelectors(pkg.select, pkg.skills)?.some(
+    (candidate) => candidate === selector,
+  ));
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new Error(
+      `Skill '${skillName}' has multiple configured owners: ${matches.map((pkg) => pkg.name).sort().join(", ")}. `
+      + "Pass --package <name>.",
+    );
+  }
+  throw new Error(
+    `No configured owner found for skill '${skillName}'. `
+    + `Add ${selector} to one package selection or pass --package <name>.`,
+  );
+}
+
 function noDepsFromOptions(options: { noDeps?: boolean; deps?: boolean }): boolean {
   return options.noDeps === true || options.deps === false;
 }
@@ -1577,6 +1641,26 @@ interface PackageGraphGroup {
   extraPackages: WorkspacePackage[];
 }
 
+async function runSkillUpdateCommand(
+  skillName: string,
+  options: GraphCliOptions & { package?: string; adopt?: boolean },
+): Promise<void> {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
+  for (const target of targets) {
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const owner = configuredPackageForSkill(config.packages, skillName, options.package);
+    const mode = owner.mode === "tracking" ? "update" : "install";
+    console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
+    await runConfiguredGraphPackages(target, {
+      ...normalizedOptions,
+      scope: owner.name,
+      onlySource: true,
+      replaceConflict: options.adopt === true,
+    }, { mode });
+  }
+}
+
 async function runConfiguredGraphPackages(
   target: RuntimeTarget,
   options: GraphCliOptions,
@@ -1623,7 +1707,10 @@ async function buildGraphPlansForTarget(
   const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
   if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
 
-  if (!source || !targetOptions.onlySource) {
+  if (scopedPackage && targetOptions.onlySource) {
+    const group = graphGroupForPackage(groups, target, scopedPackage, targetOptions);
+    group.packages.push(scopedPackage);
+  } else if (!source || !targetOptions.onlySource) {
     for (const pkg of config.packages) {
       const group = graphGroupForPackage(groups, target, pkg, targetOptions);
       group.packages.push(pkg);
@@ -1799,7 +1886,7 @@ async function buildGraphPlansForTarget(
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      results.push(behavior.mode === "update" && previousGroupLock
+      results.push(previousGroupLock
         ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
         : scopeInstallPlanToRoot(result, scopedRootId, manifest));
     } else if (scopedDependencyUpdate) {

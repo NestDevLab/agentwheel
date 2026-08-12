@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `agentwheel skill update <name>` to resolve a configured skill's owning package and reconcile only its closure. Fixed `--only-source` for configured packages while preserving unrelated graph-lock state.
+
 ## 0.16.7
 
 - Fixed locked graph resolution so changing a root package source also refreshes its tracking

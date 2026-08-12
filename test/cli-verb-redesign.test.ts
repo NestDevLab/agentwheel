@@ -517,6 +517,200 @@ describe("CLI verb redesign", () => {
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
   });
 
+  it("isolates a configured package with --only-source before resolving unrelated packages", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("only-source-owner", "owner-v1");
+    const preserved = await skillPackageFixture("only-source-preserved", "preserved-v1");
+    await runCli([
+      "add",
+      source,
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--select",
+      "skills/only-source-owner",
+    ]);
+    await runCli([
+      "add",
+      preserved,
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--select",
+      "skills/only-source-preserved",
+    ]);
+    await runCli(["install", "--adapter", "codex", "--local", "--target-root", workspace]);
+    await appendMissingConfiguredPackage(workspace, "unrelated-broken");
+
+    const result = await runCli([
+      "install",
+      "only-source-owner",
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--only-source",
+    ]);
+
+    expect(result.stdout).toContain("Applied codex");
+    await expect(readFile(join(workspace, ".agents", "skills", "only-source-owner", "SKILL.md"), "utf8")).resolves.toContain("owner-v1");
+    await expect(readFile(join(workspace, ".agents", "skills", "only-source-preserved", "SKILL.md"), "utf8")).resolves.toContain("preserved-v1");
+    expect((await readTestGraphLock(workspace)).canonical.roots.map((root) => root.rootId).sort()).toEqual([
+      "only-source-owner",
+      "only-source-preserved",
+    ]);
+  });
+
+  it("updates a configured skill through only its owning package", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("daily-skill", "daily-v1");
+    const destination = join(workspace, ".agents", "skills", "daily-skill", "SKILL.md");
+    await runCli([
+      "add",
+      source,
+      "--name",
+      "management-pack",
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--select",
+      "skills/daily-skill",
+    ]);
+    await runCli([
+      "install",
+      "management-pack",
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--only-source",
+    ]);
+    await writeSkillPackage(source, "daily-skill", "daily-v2");
+    await appendMissingConfiguredPackage(workspace, "unrelated-broken");
+
+    const result = await runCli([
+      "skill",
+      "update",
+      "daily-skill",
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+    ]);
+
+    expect(result.stdout).toContain("Skill daily-skill: management-pack (install).");
+    expect(result.stdout).toContain("UPDATE");
+    await expect(readFile(destination, "utf8")).resolves.toContain("daily-v2");
+  });
+
+  it("re-resolves a tracking package that owns the requested skill", async () => {
+    const workspace = await tempRoot();
+    const source = await gitSkillPackageFixture("tracking-pack", "tracking-skill");
+    const destination = join(workspace, ".agents", "skills", "tracking-skill", "SKILL.md");
+    await runCli([
+      "add",
+      `git:${source}#main`,
+      "--name",
+      "tracking-pack",
+      "--adapter",
+      "codex",
+      "--local",
+      "--target-root",
+      workspace,
+      "--mode",
+      "tracking",
+      "--skill",
+      "tracking-skill",
+    ]);
+    await runCli([
+      "install", "tracking-pack", "--adapter", "codex", "--local", "--target-root", workspace, "--only-source",
+    ]);
+    await updateGitSkill(source, "tracking-skill", "tracking-v2");
+    await appendMissingConfiguredPackage(workspace, "unrelated-broken");
+
+    const result = await runCli([
+      "skill", "update", "tracking-skill", "--adapter", "codex", "--local", "--target-root", workspace,
+    ]);
+
+    expect(result.stdout).toContain("Skill tracking-skill: tracking-pack (update).");
+    await expect(readFile(destination, "utf8")).resolves.toContain("tracking-v2");
+  });
+
+  it("updates a configured skill across a runtime profile", async () => {
+    const workspace = await tempRoot();
+    const codexRoot = await tempRoot("agentwheel-skill-profile-codex-");
+    const claudeRoot = await tempRoot("agentwheel-skill-profile-claude-");
+    const source = await skillPackageFixture("profile-skill", "profile-v1");
+    await runCli([
+      "add",
+      source,
+      "--name",
+      "profile-pack",
+      "--adapter",
+      "codex",
+      "--installation-type",
+      "local",
+      "--target-root",
+      workspace,
+      "--skill",
+      "profile-skill",
+    ]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.agents = {
+      codex: { adapter: "codex", transport: "local", root: codexRoot, installationType: "local" },
+      claude: { adapter: "claude", transport: "local", root: claudeRoot, installationType: "local" },
+    };
+    config.profiles = {
+      delivery: { runtimes: [{ agent: "codex" }, { agent: "claude" }] },
+    };
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await appendMissingConfiguredPackage(workspace, "unrelated-broken");
+
+    const result = await runCli([
+      "skill", "update", "profile-skill", "--profile", "delivery", "--target-root", workspace,
+    ]);
+
+    expect(result.stdout.match(/Skill profile-skill: profile-pack \(install\)\./g)).toHaveLength(2);
+    await expect(readFile(join(codexRoot, ".agents", "skills", "profile-skill", "SKILL.md"), "utf8")).resolves.toContain("profile-v1");
+    await expect(readFile(join(claudeRoot, ".claude", "skills", "profile-skill", "SKILL.md"), "utf8")).resolves.toContain("profile-v1");
+  });
+
+  it("requires an explicit package when a skill has multiple configured owners", async () => {
+    const workspace = await tempRoot();
+    const first = await skillPackageFixture("shared-skill", "first");
+    const second = await skillPackageFixture("shared-skill", "second");
+    await runCli([
+      "add", first, "--name", "first-pack", "--adapter", "codex", "--local", "--target-root", workspace, "--skill", "shared-skill",
+    ]);
+    await runCli([
+      "add", second, "--name", "second-pack", "--adapter", "codex", "--local", "--target-root", workspace, "--skill", "shared-skill",
+    ]);
+
+    await expect(runCli([
+      "skill", "update", "shared-skill", "--adapter", "codex", "--local", "--target-root", workspace, "--dry-run",
+    ])).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        "Skill 'shared-skill' has multiple configured owners: first-pack, second-pack. Pass --package <name>.",
+      ),
+    });
+  });
+
   it("scopes update <name> without blocking on unrelated drift", async () => {
     const workspace = await tempRoot();
     const alpha = await gitSkillPackageFixture("scoped-update-alpha", "alpha-skill");
@@ -1066,6 +1260,21 @@ async function cleanCliHomeState(): Promise<void> {
     rm(join(cliHome, ".codex"), { recursive: true, force: true }),
     rm(join(cliHome, ".claude"), { recursive: true, force: true }),
   ]);
+}
+
+async function appendMissingConfiguredPackage(workspace: string, name: string): Promise<void> {
+  const configPath = join(workspace, ".agentwheel", "config.json");
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+  config.packages.push({
+    name,
+    source: join(workspace, `${name}-missing`),
+    driver: "local",
+    adapter: "codex",
+    installationType: "local",
+    mode: "pinned",
+    select: [`skills/${name}`],
+  });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 async function packageFixture(name: string, options: { requires?: unknown } = {}): Promise<string> {

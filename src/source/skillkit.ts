@@ -105,6 +105,7 @@ export class SkillKitSourceDriver implements SourceDriver {
 
       await mkdir(dirname(cachePath), { recursive: true });
       const candidatePath = `${cachePath}.agentwheel-tmp-${process.pid}-${Date.now()}`;
+      const publishPath = `${candidatePath}.publish`;
       let result: SkillKitCloneResult | undefined;
       try {
         const requestedRef = resolved.requestedRef;
@@ -119,18 +120,18 @@ export class SkillKitSourceDriver implements SourceDriver {
           }
           await checkoutCommit(result.tempRoot, requestedRef);
         }
-        if (resolve(result.path) !== resolve(candidatePath)) {
-          await cp(result.path, candidatePath, { recursive: true, dereference: true });
-        }
+        const materializedPath = resolve(result.path) === resolve(candidatePath) ? candidatePath : publishPath;
+        if (materializedPath === publishPath) await cp(result.path, publishPath, { recursive: true, dereference: true });
         try {
-          await rename(candidatePath, cachePath);
+          await rename(materializedPath, cachePath);
         } catch (error) {
           if (!isAlreadyExists(error) && !isDirectoryNotEmpty(error)) throw error;
-          await rm(candidatePath, { recursive: true, force: true });
+          await rm(materializedPath, { recursive: true, force: true });
         }
         return cachePath;
       } finally {
         await rm(candidatePath, { recursive: true, force: true });
+        await rm(publishPath, { recursive: true, force: true });
         if (result?.tempRoot) {
           await rm(result.tempRoot, { recursive: true, force: true });
         }
@@ -211,8 +212,9 @@ function normalizeProviderSource(spec: string): string {
 
 function cachePathFor(spec: string, cacheRoot?: string, requestedRef?: string): string {
   const root = cacheRoot ? resolve(cacheRoot) : join(homedir(), ".agentwheel", "cache");
-  const suffix = requestedRef ? `-${createHash("sha256").update(requestedRef).digest("hex")}` : "";
-  return join(root, "skillkit", `${packageSlug(spec)}${suffix}`);
+  const sourceIdentity = createHash("sha256").update(spec).digest("hex");
+  const refIdentity = requestedRef ? `-${createHash("sha256").update(requestedRef).digest("hex")}` : "";
+  return join(root, "skillkit", `${packageSlug(spec)}-${sourceIdentity}${refIdentity}`);
 }
 
 function packageSlug(spec: string): string {

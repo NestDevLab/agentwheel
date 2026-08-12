@@ -164,6 +164,39 @@ describe("v0.3 source drivers", () => {
     await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2");
   });
 
+  it("keeps different SkillKit sources isolated when their readable cache slugs collide", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor((targetDir, branch) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`), cloneCalls);
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const first = await driver.fetch(await driver.resolve("skillkit:github:example/demo.one", { cacheRoot, ref: "release-1" }));
+    const second = await driver.fetch(await driver.resolve("skillkit:github:example/demo-one", { cacheRoot, ref: "release-1" }));
+
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(cloneCalls).toHaveLength(2);
+  });
+
+  it("publishes a provider subdirectory without copying it into its own candidate path", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const fakeCore = {
+      detectProvider() {
+        return {
+          async clone(_source: string, targetDir: string) {
+            const subdirectory = join(targetDir, "nested");
+            await writeSkill(join(subdirectory, "demo"), "nested-demo");
+            return { success: true, path: subdirectory };
+          },
+        };
+      },
+    };
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/nested", { cacheRoot, ref: "release-1" }));
+
+    await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("nested-demo");
+  });
+
   it("checks out a requested SkillKit commit instead of treating it as a branch", async () => {
     const repository = await tempRoot("agentwheel-skillkit-repo-");
     const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");

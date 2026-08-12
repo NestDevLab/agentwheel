@@ -35,7 +35,11 @@
       },
       "meta": {
         "purpose": "PR #98 \u2014 feat: prune stale Git source snapshots"
-      }
+      },
+      "integration_commits": [
+        "3f23eb8772097eb6b3e286e794457e2d07c03521",
+        "eb64e17ff750df89512a24ee20a9b86fef2c9a13"
+      ]
     },
     {
       "id": "skillkit-cache-safety",
@@ -55,7 +59,12 @@
       },
       "meta": {
         "purpose": "PR #99 \u2014 Fix SkillKit cache ref isolation"
-      }
+      },
+      "integration_commits": [
+        "a909d408a33d017f3393268fc9beaadc68515fc6",
+        "d4b88f022cfbb368b0fa5900e12928553000639a",
+        "2cdb5125ae0f3bc6edd2fc638b16dd1a4719e3a2"
+      ]
     }
   ],
   "syncwheel_tracking": "git-tracked",

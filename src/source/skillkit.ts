@@ -1,11 +1,17 @@
-import { cp, mkdir, readFile, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { cp, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import * as defaultSkillKit from "@skillkit/core";
 import type { Artifact } from "../model/artifact.js";
-import { hashPath, pathExists } from "../utils/fs.js";
+import { normalizeImmutableCacheIdentity } from "../model/cache-identity.js";
+import { hashPath, isAlreadyExists, pathExists, withFilesystemLock } from "../utils/fs.js";
 import { artifactsFromSkillPaths, type SkillPath } from "./skill-artifacts.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver, SourceResolveOptions } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 interface SkillKitSkill {
   name?: string;
@@ -28,6 +34,7 @@ interface SkillKitCloneResult {
   success: boolean;
   path?: string;
   tempRoot?: string;
+  resolvedCommit?: string;
   error?: string;
 }
 
@@ -44,6 +51,7 @@ interface SkillKitCore {
 
 export class SkillKitSourceDriver implements SourceDriver {
   readonly name = "skillkit";
+  private readonly inflightFetches = new Map<string, Promise<ResolvedSource>>();
 
   constructor(private readonly core: SkillKitCore = defaultSkillKit as SkillKitCore) {}
 
@@ -61,14 +69,17 @@ export class SkillKitSourceDriver implements SourceDriver {
       };
     }
 
+    const cacheIdentity = normalizeImmutableCacheIdentity(options.cacheIdentity) ?? immutableCommit(options.ref);
     return {
       driver: this.name,
       source,
-      resolvedPath: cachePathFor(spec, options.cacheRoot),
+      resolvedPath: cachePathFor(spec, options.cacheRoot, cacheIdentity),
       packageName: `skillkit/${packageSlug(spec)}`,
       mode: options.mode ?? "tracking",
       requestedRef: options.ref,
+      cacheIdentity,
       frozenLock: options.frozenLock,
+      cacheLockTimeoutMs: options.cacheLockTimeoutMs,
     };
   }
 
@@ -77,37 +88,117 @@ export class SkillKitSourceDriver implements SourceDriver {
     if (await pathExists(spec)) {
       return resolved;
     }
+    const requestedCommit = immutableCommit(resolved.requestedRef);
+    const immutableCacheIdentity = resolved.cacheIdentity ?? requestedCommit;
     if (resolved.frozenLock) {
+      if (!immutableCacheIdentity) {
+        throw new Error("Frozen lock requires cached SkillKit source identified by an immutable cache identity.");
+      }
       if (!(await pathExists(resolved.resolvedPath))) {
         throw new Error(`Frozen lock requires cached SkillKit source at ${resolved.resolvedPath}`);
       }
       return {
         ...resolved,
+        resolvedCommit: requestedCommit,
+        cacheIdentity: immutableCacheIdentity,
         sourceHash: await hashPath(resolved.resolvedPath),
       };
     }
 
+    if (immutableCacheIdentity && await pathExists(resolved.resolvedPath)) {
+      return {
+        ...resolved,
+        resolvedCommit: requestedCommit,
+        cacheIdentity: immutableCacheIdentity,
+        sourceHash: await hashPath(resolved.resolvedPath),
+      };
+    }
+
+    const specCachePath = cachePathFor(spec, dirname(dirname(resolved.resolvedPath)));
+    const refIdentity = resolved.requestedRef ?? "default";
+    const lockPath = `${specCachePath}.ref-${createHash("sha256").update(refIdentity).digest("hex")}.lock`;
+    const inflightKey = `${lockPath}\0${requestedCommit ?? "movable"}`;
+    const inflight = this.inflightFetches.get(inflightKey);
+    if (inflight) return inflight;
+
+    const fetchPromise = this.materializeRemote(resolved, spec, specCachePath, lockPath, requestedCommit);
+    this.inflightFetches.set(inflightKey, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      if (this.inflightFetches.get(inflightKey) === fetchPromise) this.inflightFetches.delete(inflightKey);
+    }
+  }
+
+  private async materializeRemote(
+    resolved: ResolvedSource,
+    spec: string,
+    specCachePath: string,
+    lockPath: string,
+    requestedCommit: string | undefined,
+  ): Promise<ResolvedSource> {
     const providerSpec = normalizeProviderSource(spec);
     const provider = this.core.detectProvider?.(providerSpec);
     if (!provider?.clone) {
       throw new Error("SkillKit provider API unavailable or cannot resolve source. Expected @skillkit/core detectProvider().clone().");
     }
 
-    await mkdir(dirname(resolved.resolvedPath), { recursive: true });
-    const result = await provider.clone(providerSpec, resolved.resolvedPath, {});
-    if (!result.success || !result.path) {
-      throw new Error(`SkillKit provider failed to fetch ${spec}: ${result.error ?? "unknown error"}`);
-    }
-    if (resolve(result.path) !== resolve(resolved.resolvedPath)) {
-      await rm(resolved.resolvedPath, { recursive: true, force: true });
-      await cp(result.path, resolved.resolvedPath, { recursive: true, dereference: true });
-    }
-    if (result.tempRoot) {
-      await rm(result.tempRoot, { recursive: true, force: true });
-    }
+    const materialized = await withFilesystemLock(lockPath, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
+      const immutablePath = requestedCommit ? cachePathFor(spec, dirname(dirname(specCachePath)), requestedCommit) : undefined;
+      if (immutablePath && await pathExists(immutablePath)) {
+        return { path: immutablePath, commit: requestedCommit, cacheIdentity: requestedCommit };
+      }
+
+      await mkdir(dirname(specCachePath), { recursive: true });
+      const candidatePath = `${specCachePath}.agentwheel-tmp-${process.pid}-${randomUUID()}`;
+      const publishPath = `${candidatePath}.publish`;
+      let result: SkillKitCloneResult | undefined;
+      try {
+        const requestedRef = resolved.requestedRef;
+        result = await provider.clone(providerSpec, candidatePath, requestedCommit || !requestedRef ? {} : { branch: requestedRef });
+        if (!result.success || !result.path) {
+          throw new Error(`SkillKit provider failed to fetch ${spec}: ${result.error ?? "unknown error"}`);
+        }
+        if (requestedCommit && requestedRef) {
+          if (!result.tempRoot) {
+            throw new Error(`SkillKit provider cannot materialize commit ${requestedRef}: clone result has no git checkout root`);
+          }
+          await checkoutCommit(result.tempRoot, requestedRef);
+        }
+        const resolvedIdentity = await resolveCloneIdentity(result);
+        if (requestedCommit && !resolvedIdentity.commit?.startsWith(requestedCommit)) {
+          throw new Error(
+            `SkillKit provider resolved ${resolvedIdentity.commit ?? "non-Git content"} instead of requested commit ${requestedCommit}`,
+          );
+        }
+        const cachePath = cachePathFor(spec, dirname(dirname(specCachePath)), resolvedIdentity.cacheKey);
+        if (await pathExists(cachePath)) {
+          return { path: cachePath, commit: resolvedIdentity.commit, cacheIdentity: resolvedIdentity.cacheKey };
+        }
+
+        const publishCandidate = resolve(result.path) === resolve(candidatePath) ? candidatePath : publishPath;
+        if (publishCandidate === publishPath) await cp(result.path, publishPath, { recursive: true, dereference: true });
+        try {
+          await rename(publishCandidate, cachePath);
+        } catch (error) {
+          if (!isAlreadyExists(error) && !isDirectoryNotEmpty(error)) throw error;
+          await rm(publishCandidate, { recursive: true, force: true });
+        }
+        return { path: cachePath, commit: resolvedIdentity.commit, cacheIdentity: resolvedIdentity.cacheKey };
+      } finally {
+        await rm(candidatePath, { recursive: true, force: true });
+        await rm(publishPath, { recursive: true, force: true });
+        if (result?.tempRoot) {
+          await rm(result.tempRoot, { recursive: true, force: true });
+        }
+      }
+    });
     return {
       ...resolved,
-      sourceHash: await hashPath(resolved.resolvedPath),
+      resolvedPath: materialized.path,
+      resolvedCommit: materialized.commit,
+      cacheIdentity: materialized.cacheIdentity,
+      sourceHash: await hashPath(materialized.path),
     };
   }
 
@@ -177,9 +268,11 @@ function normalizeProviderSource(spec: string): string {
   return spec;
 }
 
-function cachePathFor(spec: string, cacheRoot?: string): string {
+function cachePathFor(spec: string, cacheRoot?: string, immutableIdentity?: string): string {
   const root = cacheRoot ? resolve(cacheRoot) : join(homedir(), ".agentwheel", "cache");
-  return join(root, "skillkit", packageSlug(spec));
+  const sourceIdentity = createHash("sha256").update(spec).digest("hex");
+  const snapshotIdentity = immutableIdentity ? `-${immutableIdentity.toLowerCase()}` : "";
+  return join(root, "skillkit", `${packageSlug(spec)}-${sourceIdentity}${snapshotIdentity}`);
 }
 
 function packageSlug(spec: string): string {
@@ -193,4 +286,40 @@ function mapSeverity(severity: string | undefined): ScanFinding["level"] {
   if (severity === "critical" || severity === "high") return "error";
   if (severity === "medium" || severity === "low") return "warning";
   return "info";
+}
+
+function isDirectoryNotEmpty(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ENOTEMPTY";
+}
+
+function immutableCommit(ref: string | undefined): string | undefined {
+  return ref && /^[0-9a-f]{7,40}$/i.test(ref) ? ref.toLowerCase() : undefined;
+}
+
+async function resolveCloneIdentity(result: SkillKitCloneResult): Promise<{ cacheKey: string; commit?: string }> {
+  if (result.resolvedCommit && /^[0-9a-f]{40}$/i.test(result.resolvedCommit)) {
+    const commit = result.resolvedCommit.toLowerCase();
+    return { cacheKey: commit, commit };
+  }
+  const checkoutRoot = result.tempRoot ?? result.path;
+  if (!checkoutRoot) throw new Error("SkillKit provider clone has no checkout path");
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", checkoutRoot, "rev-parse", "HEAD"]);
+    const commit = stdout.trim().toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`invalid commit '${commit}'`);
+    return { cacheKey: commit, commit };
+  } catch {
+    // Well-known HTTP providers are not Git-backed; content addressing keeps
+    // their refreshed snapshots immutable without inventing a Git commit.
+    return { cacheKey: `content-${await hashPath(result.path!)}` };
+  }
+}
+
+async function checkoutCommit(root: string, commit: string): Promise<void> {
+  try {
+    await execFileAsync("git", ["-C", root, "checkout", "--detach", commit]);
+  } catch {
+    await execFileAsync("git", ["-C", root, "fetch", "origin", commit]);
+    await execFileAsync("git", ["-C", root, "checkout", "--detach", commit]);
+  }
 }

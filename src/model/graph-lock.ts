@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
+import { immutableCacheIdentitySchema } from "./cache-identity.js";
 
 export const graphLockNodeSchema = z.object({
   id: z.string().min(1),
@@ -13,6 +14,7 @@ export const graphLockNodeSchema = z.object({
   driver: z.string().min(1),
   requestedRef: z.string().min(1).optional(),
   resolvedCommit: z.string().min(1).optional(),
+  cacheIdentity: immutableCacheIdentitySchema.optional(),
   sourceHash: z.string().min(16),
   mode: z.enum(["pinned", "tracking"]),
   requiredBy: z.array(z.string().min(1)),

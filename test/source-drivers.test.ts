@@ -293,6 +293,227 @@ describe("v0.3 source drivers", () => {
     await rm(bundle.root, { recursive: true, force: true });
   });
 
+  it("refreshes named SkillKit branches and keeps refs isolated by resolved commit", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor(
+      (targetDir, branch, revision) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}-v${revision}`),
+      cloneCalls,
+    );
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const first = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-1" }));
+    const second = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-2" }));
+    const repeatedFirst = await driver.fetch(await driver.resolve(source, { cacheRoot, ref: "release-1" }));
+
+    expect(cloneCalls.map((call) => call.branch)).toEqual(["release-1", "release-2", "release-1"]);
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(repeatedFirst.resolvedPath).not.toBe(first.resolvedPath);
+    expect(first.resolvedCommit).not.toBe(repeatedFirst.resolvedCommit);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1-v1");
+    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2-v2");
+    await expect(readFile(join(repeatedFirst.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1-v3");
+  });
+
+  it("refreshes the default tracking ref and publishes immutable commit snapshots", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor(
+      (targetDir, branch, revision) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}-v${revision}`),
+      cloneCalls,
+    );
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const first = await driver.fetch(await driver.resolve(source, { cacheRoot }));
+    const second = await driver.fetch(await driver.resolve(source, { cacheRoot, mode: "tracking" }));
+
+    expect(cloneCalls.map((call) => call.branch)).toEqual([undefined, undefined]);
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(first.resolvedCommit).not.toBe(second.resolvedCommit);
+    expect(first.resolvedPath).toContain(first.resolvedCommit);
+    expect(second.resolvedPath).toContain(second.resolvedCommit);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-default-v1");
+    await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-default-v2");
+  });
+
+  it("reopens a skills.sh Git snapshot for frozen and offline use without provider calls", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const source = "skillkit:skills.sh/example/demo";
+    const firstDriver = new SkillKitSourceDriver(skillKitCoreFor(
+      (targetDir) => writeSkill(join(targetDir, "demo"), "skills-sh-demo"),
+      cloneCalls,
+    ));
+    const first = await firstDriver.fetch(await firstDriver.resolve(source, { cacheRoot }));
+    let providerCalls = 0;
+    const coldDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        providerCalls++;
+        throw new Error("provider must not be called for a locked immutable snapshot");
+      },
+    });
+
+    for (const mode of ["frozen", "offline"]) {
+      const cached = await coldDriver.fetch(await coldDriver.resolve(source, {
+        cacheRoot,
+        ref: first.resolvedCommit,
+        cacheIdentity: first.cacheIdentity,
+        frozenLock: true,
+      }));
+
+      expect(cached.resolvedPath, mode).toBe(first.resolvedPath);
+      expect(cached.resolvedCommit, mode).toBe(first.resolvedCommit);
+      expect(cached.cacheIdentity, mode).toBe(first.cacheIdentity);
+    }
+    expect(cloneCalls).toHaveLength(1);
+    expect(providerCalls).toBe(0);
+  });
+
+  it("keeps different SkillKit sources isolated when their readable cache slugs collide", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor((targetDir, branch) => writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`), cloneCalls);
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const first = await driver.fetch(await driver.resolve("skillkit:github:example/demo.one", { cacheRoot, ref: "release-1" }));
+    const second = await driver.fetch(await driver.resolve("skillkit:github:example/demo-one", { cacheRoot, ref: "release-1" }));
+
+    expect(first.resolvedPath).not.toBe(second.resolvedPath);
+    expect(cloneCalls).toHaveLength(2);
+  });
+
+  it("publishes a provider subdirectory without copying it into its own candidate path", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const fakeCore = {
+      detectProvider() {
+        return {
+          async clone(_source: string, targetDir: string) {
+            const subdirectory = join(targetDir, "nested");
+            await writeSkill(join(subdirectory, "demo"), "nested-demo");
+            return { success: true, path: subdirectory };
+          },
+        };
+      },
+    };
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/nested", { cacheRoot, ref: "release-1" }));
+
+    await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("nested-demo");
+  });
+
+  it("reopens a WellKnown non-Git snapshot for frozen and offline use without provider calls", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const source = "skillkit:https://skills.example.test/.well-known/skills";
+    let firstProviderCalls = 0;
+    const firstDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        firstProviderCalls++;
+        return {
+          async clone(_source: string, targetDir: string) {
+            const subdirectory = join(targetDir, "nested");
+            await writeSkill(join(subdirectory, "demo"), "well-known-demo");
+            return { success: true, path: subdirectory };
+          },
+        };
+      },
+    });
+    const first = await firstDriver.fetch(await firstDriver.resolve(source, { cacheRoot }));
+    let coldProviderCalls = 0;
+    const coldDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        coldProviderCalls++;
+        throw new Error("provider must not be called for a locked immutable snapshot");
+      },
+    });
+
+    expect(first.resolvedCommit).toBeUndefined();
+    expect(first.cacheIdentity).toMatch(/^content-[0-9a-f]{64}$/);
+    for (const mode of ["frozen", "offline"]) {
+      const cached = await coldDriver.fetch(await coldDriver.resolve(source, {
+        cacheRoot,
+        cacheIdentity: first.cacheIdentity,
+        frozenLock: true,
+      }));
+
+      expect(cached.resolvedPath, mode).toBe(first.resolvedPath);
+      expect(cached.resolvedCommit, mode).toBeUndefined();
+      expect(cached.cacheIdentity, mode).toBe(first.cacheIdentity);
+      await expect(readFile(join(cached.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("well-known-demo");
+    }
+    expect(firstProviderCalls).toBe(1);
+    expect(coldProviderCalls).toBe(0);
+  });
+
+  it("checks out a requested SkillKit commit instead of treating it as a branch", async () => {
+    const repository = await tempRoot("agentwheel-skillkit-repo-");
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    await git(repository, ["init", "-b", "main"]);
+    await git(repository, ["config", "user.name", "Test"]);
+    await git(repository, ["config", "user.email", "test@example.invalid"]);
+    await writeSkill(join(repository, "demo"), "demo-first");
+    await git(repository, ["add", "-A"]);
+    await git(repository, ["commit", "-m", "first"]);
+    const requestedCommit = (await git(repository, ["rev-parse", "HEAD"])).trim();
+    await writeSkill(join(repository, "demo"), "demo-second");
+    await git(repository, ["add", "-A"]);
+    await git(repository, ["commit", "-m", "second"]);
+
+    const cloneCalls: Array<{ branch?: string }> = [];
+    const fakeCore = {
+      detectProvider() {
+        return {
+          async clone(_source: string, _targetDir: string, options?: { branch?: string }) {
+            cloneCalls.push({ branch: options?.branch });
+            const checkout = await tempRoot("agentwheel-skillkit-checkout-");
+            await git(repository, ["clone", repository, checkout]);
+            return { success: true, path: checkout, tempRoot: checkout };
+          },
+        };
+      },
+    };
+    const driver = new SkillKitSourceDriver(fakeCore);
+
+    const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/demo", { cacheRoot, ref: requestedCommit }));
+    const cached = await driver.fetch(await driver.resolve("skillkit:github:example/demo", { cacheRoot, ref: requestedCommit }));
+    const frozen = await driver.fetch(await driver.resolve("skillkit:github:example/demo", {
+      cacheRoot,
+      ref: requestedCommit,
+      frozenLock: true,
+    }));
+
+    expect(cloneCalls).toEqual([{ branch: undefined }]);
+    expect(cached.resolvedPath).toBe(fetched.resolvedPath);
+    expect(cached.resolvedCommit).toBe(requestedCommit);
+    expect(frozen.resolvedPath).toBe(fetched.resolvedPath);
+    await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-first");
+  });
+
+  it("serializes concurrent SkillKit materialization without overwriting other refs", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const fakeCore = skillKitCoreFor(async (targetDir, branch) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await writeSkill(join(targetDir, "demo"), `demo-${branch ?? "default"}`);
+    }, cloneCalls);
+    const driver = new SkillKitSourceDriver(fakeCore);
+    const source = "skillkit:github:example/demo";
+
+    const [first, duplicate, other] = await Promise.all([
+      driver.resolve(source, { cacheRoot, ref: "release-1" }).then((resolved) => driver.fetch(resolved)),
+      driver.resolve(source, { cacheRoot, ref: "release-1" }).then((resolved) => driver.fetch(resolved)),
+      driver.resolve(source, { cacheRoot, ref: "release-2" }).then((resolved) => driver.fetch(resolved)),
+    ]);
+
+    expect(cloneCalls.map((call) => call.branch).sort()).toEqual(["release-1", "release-2"]);
+    expect(duplicate.resolvedPath).toBe(first.resolvedPath);
+    expect(other.resolvedPath).not.toBe(first.resolvedPath);
+    await expect(readFile(join(first.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-1");
+    await expect(readFile(join(other.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-release-2");
+  });
+
   it("stages Vercel skills from a local git repo and syncs them to OpenClaw", async () => {
     const repo = await tempRoot("agentwheel-vercel-repo-");
     const target = await tempRoot("agentwheel-vercel-target-");
@@ -465,4 +686,22 @@ describe("v0.3 source drivers", () => {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout;
+}
+
+function skillKitCoreFor(
+  materialize: (targetDir: string, branch: string | undefined, revision: number) => Promise<void>,
+  calls: Array<{ targetDir: string; branch?: string }>,
+) {
+  return {
+    detectProvider() {
+      return {
+        async clone(_source: string, targetDir: string, options?: { branch?: string }) {
+          calls.push({ targetDir, branch: options?.branch });
+          const revision = calls.length;
+          await materialize(targetDir, options?.branch, revision);
+          return { success: true, path: targetDir, resolvedCommit: revision.toString(16).padStart(40, "0") };
+        },
+      };
+    },
+  };
 }

@@ -128,6 +128,7 @@ export async function renderStagedBundle(bundle: RawStagedBundle, options: Stage
       mode: resolved.mode ?? "pinned",
       requestedRef: resolved.requestedRef,
       resolvedCommit: resolved.resolvedCommit,
+      cacheIdentity: resolved.cacheIdentity,
       sourceHash: resolved.sourceHash,
       generatedAt,
       artifacts: finalArtifacts.map((artifact) => ({

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { immutableCacheIdentitySchema } from "./cache-identity.js";
 import { artifactFormatSchema, artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 import { defaultInstallationType, installationTypeSchema } from "./adapter.js";
 
@@ -106,6 +107,7 @@ export const sourceLockSchema = z.object({
   mode: z.enum(["pinned", "tracking"]).default("pinned"),
   requestedRef: z.string().min(1).optional(),
   resolvedCommit: z.string().min(1).optional(),
+  cacheIdentity: immutableCacheIdentitySchema.optional(),
   sourceHash: z.string().min(16).optional(),
   generatedAt: z.string().datetime(),
   artifacts: z.array(

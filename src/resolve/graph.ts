@@ -126,6 +126,7 @@ interface FetchedPackage {
 interface FrozenNodeMatch {
   node: GraphLockNode;
   requestedRef?: string;
+  cacheIdentity?: string;
 }
 
 interface NodeState {
@@ -295,7 +296,7 @@ async function processRequirement(
     const frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
     let fetched: FetchedPackage;
     try {
-      fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen?.requestedRef);
+      fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen);
     } catch (error) {
       const usingLockedNode = frozen?.node !== undefined;
       if (!options.frozenLock && !options.offline && !usingLockedNode) throw error;
@@ -332,6 +333,7 @@ async function processRequirement(
           driver: fetched.resolved.driver,
           requestedRef: fetched.resolved.requestedRef,
           resolvedCommit: fetched.resolved.resolvedCommit,
+          cacheIdentity: fetched.resolved.cacheIdentity,
           sourceHash: fetched.sourceHash,
           mode: fetched.resolved.mode ?? requirement.mode,
           requiredBy: [],
@@ -917,10 +919,11 @@ async function fetchPackage(
   mode: "pinned" | "tracking",
   options: ResolveGraphOptions,
   fetchCache: Map<string, Promise<FetchedPackage>>,
-  refOverride?: string,
+  frozen?: FrozenNodeMatch,
 ): Promise<FetchedPackage> {
   const hardLockedCheckout = options.frozenLock === true || options.offline === true;
-  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${hardLockedCheckout ? "hard-locked" : "mutable"}`;
+  const refOverride = frozen?.requestedRef;
+  const key = `${normalized.driver}\0${normalized.normalizedSource}\0${mode}\0${refOverride ?? ""}\0${frozen?.cacheIdentity ?? ""}\0${hardLockedCheckout ? "hard-locked" : "mutable"}`;
   const existing = fetchCache.get(key);
   if (existing) return existing;
 
@@ -930,6 +933,7 @@ async function fetchPackage(
       cacheRoot: options.cacheRoot ?? join(options.workspaceRoot, ".agentwheel", "cache"),
       mode,
       ref: refOverride ?? normalized.requestedRef,
+      cacheIdentity: frozen?.cacheIdentity,
       frozenLock: hardLockedCheckout,
     });
     const fetched = await withCachePathLock(resolved.resolvedPath, () => driver.fetch(resolved));
@@ -984,7 +988,8 @@ function lockedNodeForRequirement(
   const node = matches[0]!;
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
+    cacheIdentity: node.cacheIdentity,
   };
 }
 
@@ -1026,7 +1031,8 @@ function lockedNodeForRequirementReference(
   }
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
+    cacheIdentity: node.cacheIdentity,
   };
 }
 
@@ -1080,8 +1086,15 @@ function lockedNodeForSource(normalizedSource: string, lock: GraphLock | undefin
   const node = matches[0]!;
   return {
     node,
-    requestedRef: node.driver === "git" ? node.resolvedCommit ?? node.requestedRef : node.requestedRef,
+    requestedRef: lockedSourceRef(node),
+    cacheIdentity: node.cacheIdentity,
   };
+}
+
+function lockedSourceRef(node: GraphLockNode): string | undefined {
+  return node.driver === "git" || node.driver === "skillkit"
+    ? node.resolvedCommit ?? node.requestedRef
+    : node.requestedRef;
 }
 
 function verifyIntegrity(integrity: string | undefined, sourceHash: string, label: string): void {

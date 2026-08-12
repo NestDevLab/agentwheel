@@ -5,6 +5,7 @@ import type { Artifact, PackageAsset } from "../model/artifact.js";
 import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
+import { releaseGitSnapshotLease } from "../source/cache.js";
 import { hashPath, isIgnoredGeneratedEntry } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
@@ -40,7 +41,12 @@ export async function stageSource(driver: SourceDriver, source: string, options:
 
 export async function stageSourceRaw(driver: SourceDriver, source: string, options: SourceResolveOptions = {}): Promise<RawStagedBundle> {
   const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(source, options))));
-  return stageResolvedSourceRaw(driver, resolved);
+  try {
+    const staged = await stageResolvedSourceRaw(driver, resolved);
+    return { ...staged, source: { ...staged.source, cacheLeasePath: undefined } };
+  } finally {
+    await releaseGitSnapshotLease(resolved.cacheLeasePath);
+  }
 }
 
 export async function stageResolvedSourceRaw(driver: SourceDriver, resolved: ResolvedSource): Promise<RawStagedBundle> {

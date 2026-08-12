@@ -12,9 +12,63 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "git-cache-prune",
+      "skillkit-cache-safety"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "git-cache-prune",
+      "branch": "pr/git-cache-prune",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "cf81c71580f6dff90c5fe5a1b9b265619e0a8077",
+        "f001124a5ebdeee073e24309014dc008782adfed"
+      ],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "PR #98 \u2014 feat: prune stale Git source snapshots"
+      },
+      "integration_commits": [
+        "3f23eb8772097eb6b3e286e794457e2d07c03521",
+        "eb64e17ff750df89512a24ee20a9b86fef2c9a13"
+      ]
+    },
+    {
+      "id": "skillkit-cache-safety",
+      "branch": "pr/skillkit-cache-safety",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "77b6e73d8561a731fc3d55fdb7bc9f04f38dd0e1",
+        "9c5b8bdebd11f12d86c6bcfb52af363adf1fe2ec",
+        "834c6e1d6223fc032bde11a07c9633d383ee2a09",
+        "b771ee93f6fed8bb6ee9d2f3f7edeeee773b12a0"
+      ],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "PR #99 \u2014 Fix SkillKit cache ref isolation"
+      },
+      "integration_commits": [
+        "a909d408a33d017f3393268fc9beaadc68515fc6",
+        "d4b88f022cfbb368b0fa5900e12928553000639a",
+        "2cdb5125ae0f3bc6edd2fc638b16dd1a4719e3a2",
+        "c42fee7687b3bc339c34bcf16fa00a13db883cc7"
+      ]
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "coordination": {

@@ -64,6 +64,7 @@ import {
   type SearchScope,
   type SearchType,
 } from "../model/catalogue.js";
+import { pruneGitCache, releaseGitSnapshotLease } from "../source/cache.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -112,6 +113,25 @@ program
     console.log(nextInstallNudge());
   });
 
+const cacheCommand = program
+  .command("cache")
+  .description("inspect and maintain local source caches");
+
+cacheCommand
+  .command("prune")
+  .description("remove old Git source snapshots while preserving locked commits")
+  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--keep <count>", "newest snapshots to retain per source", parsePositiveInteger, 3)
+  .option("--apply", "delete the selected snapshots; without this flag only preview", false)
+  .action(async (options) => {
+    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const cacheRoot = join(targetRoot, ".agentwheel", "cache");
+    const result = await pruneGitCache(cacheRoot, { keepSnapshots: options.keep, dryRun: !options.apply });
+    const verb = options.apply ? "Removed" : "Would remove";
+    for (const path of result.removedPaths) console.log(`${verb} ${path}`);
+    console.log(`${options.apply ? "Pruned" : "Preview"}: ${result.removedPaths.length} snapshots; retained ${result.retainedPaths.length}.`);
+  });
+
 program
   .command("add")
   .description("add a package to .agentwheel/config.json without touching runtimes")
@@ -155,9 +175,13 @@ program
     const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
-    const artifacts = filterArtifactsBySelection(await driver.list(resolved), selectedArtifacts);
-    for (const artifact of artifacts) {
-      console.log(`${artifact.type}\t${artifact.name}\t${artifact.relativePath}`);
+    try {
+      const artifacts = filterArtifactsBySelection(await driver.list(resolved), selectedArtifacts);
+      for (const artifact of artifacts) {
+        console.log(`${artifact.type}\t${artifact.name}\t${artifact.relativePath}`);
+      }
+    } finally {
+      await releaseGitSnapshotLease(resolved.cacheLeasePath);
     }
   });
 
@@ -255,17 +279,21 @@ program
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, {
       cacheRoot: join(targetRoot, ".agentwheel", "cache"),
     }))));
-    const trial = await createSkillTrial(driver, resolved, selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry));
-    if (options.json) {
-      console.log(JSON.stringify(trial, null, 2));
-      return;
+    try {
+      const trial = await createSkillTrial(driver, resolved, selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry));
+      if (options.json) {
+        console.log(JSON.stringify(trial, null, 2));
+        return;
+      }
+      console.log(`Read-only skill trial: ${trial.skill.name}`);
+      console.log(`Source: ${trial.source}`);
+      console.log(`Description: ${trial.skill.frontmatter.description}`);
+      console.log("No configuration or runtime files were changed.");
+      console.log("\n--- SKILL.md ---\n");
+      console.log(trial.skill.content);
+    } finally {
+      await releaseGitSnapshotLease(resolved.cacheLeasePath);
     }
-    console.log(`Read-only skill trial: ${trial.skill.name}`);
-    console.log(`Source: ${trial.source}`);
-    console.log(`Description: ${trial.skill.frontmatter.description}`);
-    console.log("No configuration or runtime files were changed.");
-    console.log("\n--- SKILL.md ---\n");
-    console.log(trial.skill.content);
   });
 
 program
@@ -279,15 +307,19 @@ program
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
-    const result = await driver.scan(resolved);
-    if (result.findings.length === 0) {
-      console.log("Scan ok: no findings");
-    } else {
-      for (const finding of result.findings) {
-        console.log(`${finding.level.toUpperCase()}: ${finding.message}${finding.path ? ` (${finding.path})` : ""}`);
+    try {
+      const result = await driver.scan(resolved);
+      if (result.findings.length === 0) {
+        console.log("Scan ok: no findings");
+      } else {
+        for (const finding of result.findings) {
+          console.log(`${finding.level.toUpperCase()}: ${finding.message}${finding.path ? ` (${finding.path})` : ""}`);
+        }
       }
+      if (!result.ok) process.exitCode = 1;
+    } finally {
+      await releaseGitSnapshotLease(resolved.cacheLeasePath);
     }
-    if (!result.ok) process.exitCode = 1;
   });
 
 program
@@ -3232,6 +3264,12 @@ function shellQuoteArg(value: string): string {
 
 function collectSelectOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
+}
+
+function parsePositiveInteger(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`Expected a positive integer, got: ${value}`);
+  return parsed;
 }
 
 function collectSkillOption(value: string, previous: string[]): string[] {

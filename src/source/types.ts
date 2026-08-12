@@ -13,6 +13,7 @@ export interface ResolvedSource {
   sourceHash?: string;
   frozenLock?: boolean;
   cacheLockTimeoutMs?: number;
+  cacheLeasePath?: string;
 }
 
 export interface ScanFinding {

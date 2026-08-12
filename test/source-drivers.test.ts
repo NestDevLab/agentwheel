@@ -191,6 +191,39 @@ describe("v0.3 source drivers", () => {
     await expect(readFile(join(second.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("demo-default-v2");
   });
 
+  it("reopens a skills.sh Git snapshot for frozen and offline use without provider calls", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
+    const source = "skillkit:skills.sh/example/demo";
+    const firstDriver = new SkillKitSourceDriver(skillKitCoreFor(
+      (targetDir) => writeSkill(join(targetDir, "demo"), "skills-sh-demo"),
+      cloneCalls,
+    ));
+    const first = await firstDriver.fetch(await firstDriver.resolve(source, { cacheRoot }));
+    let providerCalls = 0;
+    const coldDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        providerCalls++;
+        throw new Error("provider must not be called for a locked immutable snapshot");
+      },
+    });
+
+    for (const mode of ["frozen", "offline"]) {
+      const cached = await coldDriver.fetch(await coldDriver.resolve(source, {
+        cacheRoot,
+        ref: first.resolvedCommit,
+        cacheIdentity: first.cacheIdentity,
+        frozenLock: true,
+      }));
+
+      expect(cached.resolvedPath, mode).toBe(first.resolvedPath);
+      expect(cached.resolvedCommit, mode).toBe(first.resolvedCommit);
+      expect(cached.cacheIdentity, mode).toBe(first.cacheIdentity);
+    }
+    expect(cloneCalls).toHaveLength(1);
+    expect(providerCalls).toBe(0);
+  });
+
   it("keeps different SkillKit sources isolated when their readable cache slugs collide", async () => {
     const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
     const cloneCalls: Array<{ targetDir: string; branch?: string }> = [];
@@ -222,6 +255,49 @@ describe("v0.3 source drivers", () => {
     const fetched = await driver.fetch(await driver.resolve("skillkit:github:example/nested", { cacheRoot, ref: "release-1" }));
 
     await expect(readFile(join(fetched.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("nested-demo");
+  });
+
+  it("reopens a WellKnown non-Git snapshot for frozen and offline use without provider calls", async () => {
+    const cacheRoot = await tempRoot("agentwheel-skillkit-cache-");
+    const source = "skillkit:https://skills.example.test/.well-known/skills";
+    let firstProviderCalls = 0;
+    const firstDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        firstProviderCalls++;
+        return {
+          async clone(_source: string, targetDir: string) {
+            const subdirectory = join(targetDir, "nested");
+            await writeSkill(join(subdirectory, "demo"), "well-known-demo");
+            return { success: true, path: subdirectory };
+          },
+        };
+      },
+    });
+    const first = await firstDriver.fetch(await firstDriver.resolve(source, { cacheRoot }));
+    let coldProviderCalls = 0;
+    const coldDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        coldProviderCalls++;
+        throw new Error("provider must not be called for a locked immutable snapshot");
+      },
+    });
+
+    expect(first.resolvedCommit).toBeUndefined();
+    expect(first.cacheIdentity).toMatch(/^content-[0-9a-f]{64}$/);
+    for (const mode of ["frozen", "offline"]) {
+      const cached = await coldDriver.fetch(await coldDriver.resolve(source, {
+        cacheRoot,
+        cacheIdentity: first.cacheIdentity,
+        frozenLock: true,
+      }));
+
+      expect(cached.resolvedPath, mode).toBe(first.resolvedPath);
+      expect(cached.resolvedCommit, mode).toBeUndefined();
+      expect(cached.cacheIdentity, mode).toBe(first.cacheIdentity);
+      await expect(readFile(join(cached.resolvedPath, "demo", "SKILL.md"), "utf8")).resolves.toContain("well-known-demo");
+    }
+    expect(firstProviderCalls).toBe(1);
+    expect(coldProviderCalls).toBe(0);
   });
 
   it("checks out a requested SkillKit commit instead of treating it as a branch", async () => {

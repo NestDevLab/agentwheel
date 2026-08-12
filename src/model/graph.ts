@@ -12,6 +12,7 @@ export interface ResolvedNode {
   driver: string;
   requestedRef?: string;
   resolvedCommit?: string;
+  cacheIdentity?: string;
   sourceHash: string;
   mode: "pinned" | "tracking";
   requiredBy: string[];

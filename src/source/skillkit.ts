@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import * as defaultSkillKit from "@skillkit/core";
 import type { Artifact } from "../model/artifact.js";
+import { normalizeImmutableCacheIdentity } from "../model/cache-identity.js";
 import { hashPath, isAlreadyExists, pathExists, withFilesystemLock } from "../utils/fs.js";
 import { artifactsFromSkillPaths, type SkillPath } from "./skill-artifacts.js";
 import type { ResolvedSource, ScanFinding, ScanResult, SourceDriver, SourceResolveOptions } from "./types.js";
@@ -68,13 +69,15 @@ export class SkillKitSourceDriver implements SourceDriver {
       };
     }
 
+    const cacheIdentity = normalizeImmutableCacheIdentity(options.cacheIdentity) ?? immutableCommit(options.ref);
     return {
       driver: this.name,
       source,
-      resolvedPath: cachePathFor(spec, options.cacheRoot, immutableCommit(options.ref)),
+      resolvedPath: cachePathFor(spec, options.cacheRoot, cacheIdentity),
       packageName: `skillkit/${packageSlug(spec)}`,
       mode: options.mode ?? "tracking",
       requestedRef: options.ref,
+      cacheIdentity,
       frozenLock: options.frozenLock,
       cacheLockTimeoutMs: options.cacheLockTimeoutMs,
     };
@@ -86,9 +89,10 @@ export class SkillKitSourceDriver implements SourceDriver {
       return resolved;
     }
     const requestedCommit = immutableCommit(resolved.requestedRef);
+    const immutableCacheIdentity = resolved.cacheIdentity ?? requestedCommit;
     if (resolved.frozenLock) {
-      if (!requestedCommit) {
-        throw new Error("Frozen lock requires cached SkillKit source identified by an immutable commit ref.");
+      if (!immutableCacheIdentity) {
+        throw new Error("Frozen lock requires cached SkillKit source identified by an immutable cache identity.");
       }
       if (!(await pathExists(resolved.resolvedPath))) {
         throw new Error(`Frozen lock requires cached SkillKit source at ${resolved.resolvedPath}`);
@@ -96,14 +100,16 @@ export class SkillKitSourceDriver implements SourceDriver {
       return {
         ...resolved,
         resolvedCommit: requestedCommit,
+        cacheIdentity: immutableCacheIdentity,
         sourceHash: await hashPath(resolved.resolvedPath),
       };
     }
 
-    if (requestedCommit && await pathExists(resolved.resolvedPath)) {
+    if (immutableCacheIdentity && await pathExists(resolved.resolvedPath)) {
       return {
         ...resolved,
         resolvedCommit: requestedCommit,
+        cacheIdentity: immutableCacheIdentity,
         sourceHash: await hashPath(resolved.resolvedPath),
       };
     }
@@ -140,7 +146,7 @@ export class SkillKitSourceDriver implements SourceDriver {
     const materialized = await withFilesystemLock(lockPath, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const immutablePath = requestedCommit ? cachePathFor(spec, dirname(dirname(specCachePath)), requestedCommit) : undefined;
       if (immutablePath && await pathExists(immutablePath)) {
-        return { path: immutablePath, commit: requestedCommit };
+        return { path: immutablePath, commit: requestedCommit, cacheIdentity: requestedCommit };
       }
 
       await mkdir(dirname(specCachePath), { recursive: true });
@@ -166,7 +172,9 @@ export class SkillKitSourceDriver implements SourceDriver {
           );
         }
         const cachePath = cachePathFor(spec, dirname(dirname(specCachePath)), resolvedIdentity.cacheKey);
-        if (await pathExists(cachePath)) return { path: cachePath, commit: resolvedIdentity.commit };
+        if (await pathExists(cachePath)) {
+          return { path: cachePath, commit: resolvedIdentity.commit, cacheIdentity: resolvedIdentity.cacheKey };
+        }
 
         const publishCandidate = resolve(result.path) === resolve(candidatePath) ? candidatePath : publishPath;
         if (publishCandidate === publishPath) await cp(result.path, publishPath, { recursive: true, dereference: true });
@@ -176,7 +184,7 @@ export class SkillKitSourceDriver implements SourceDriver {
           if (!isAlreadyExists(error) && !isDirectoryNotEmpty(error)) throw error;
           await rm(publishCandidate, { recursive: true, force: true });
         }
-        return { path: cachePath, commit: resolvedIdentity.commit };
+        return { path: cachePath, commit: resolvedIdentity.commit, cacheIdentity: resolvedIdentity.cacheKey };
       } finally {
         await rm(candidatePath, { recursive: true, force: true });
         await rm(publishPath, { recursive: true, force: true });
@@ -189,6 +197,7 @@ export class SkillKitSourceDriver implements SourceDriver {
       ...resolved,
       resolvedPath: materialized.path,
       resolvedCommit: materialized.commit,
+      cacheIdentity: materialized.cacheIdentity,
       sourceHash: await hashPath(materialized.path),
     };
   }

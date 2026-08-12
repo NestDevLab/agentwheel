@@ -5,11 +5,12 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { openClawAdapter } from "../src/adapters/openclaw.js";
-import { canonicalGraphLockJson } from "../src/model/graph-lock.js";
+import { canonicalGraphLockJson, type GraphLock } from "../src/model/graph-lock.js";
 import { RegistryClient } from "../src/registry/client.js";
 import { createGraphLock, resolveDependencyGraph } from "../src/resolve/graph.js";
 import { renderGraphForTarget } from "../src/resolve/render.js";
 import { LocalSourceDriver } from "../src/source/local.js";
+import { SkillKitSourceDriver } from "../src/source/skillkit.js";
 import { stageSource } from "../src/staging/staging.js";
 
 const tempRoots: string[] = [];
@@ -45,6 +46,80 @@ async function writeOpenPack(root: string, manifest: Record<string, unknown>): P
 }
 
 describe("dependency graph resolver", () => {
+  it("reuses graph-locked non-Git cache identities in frozen and offline modes", async () => {
+    const workspace = await tempRoot();
+    const cacheRoot = join(workspace, "cache");
+    const source = "skillkit:https://skills.example.test/.well-known/skills";
+    const firstDriver = new SkillKitSourceDriver({
+      detectProvider() {
+        return {
+          async clone(_source: string, targetDir: string) {
+            await writeText(join(targetDir, "rules", "root.md"), "# Root\n");
+            await writeOpenPack(targetDir, {
+              name: "acme/well-known",
+              provides: [{ type: "rules", path: "rules" }],
+            });
+            return { success: true, path: targetDir };
+          },
+        };
+      },
+    });
+    const first = await firstDriver.fetch(await firstDriver.resolve(source, { cacheRoot }));
+    const cacheIdentity = first.cacheIdentity!;
+    const nodeId = "acme/well-known@1.0.0+locked";
+    const lock: GraphLock = {
+      version: 1,
+      canonical: {
+        roots: [{
+          rootId: "root",
+          source,
+          normalizedSource: source,
+          graphNodeId: nodeId,
+          mode: "tracking",
+          selected: [],
+        }],
+        nodes: [{
+          id: nodeId,
+          name: "acme/well-known",
+          version: "1.0.0",
+          source,
+          normalizedSource: source,
+          driver: "skillkit",
+          cacheIdentity,
+          sourceHash: first.sourceHash!,
+          mode: "tracking",
+          requiredBy: ["workspace:root"],
+          selected: [],
+        }],
+        edges: [],
+        includeEdges: [],
+        artifacts: [],
+        namespacing: [],
+        overrides: [],
+        plainNameIncumbents: [],
+      },
+    };
+
+    expect(lock.canonical.nodes[0]?.cacheIdentity).toBe(cacheIdentity);
+    expect(JSON.parse(canonicalGraphLockJson(lock)).nodes[0]?.cacheIdentity).toBe(cacheIdentity);
+    for (const hardMode of [{ frozenLock: true }, { offline: true }]) {
+      const graph = await resolveDependencyGraph([{ rootId: "root", source, mode: "tracking" }], {
+        workspaceRoot: workspace,
+        cacheRoot,
+        previousLock: lock,
+        lockedResolution: true,
+        ...hardMode,
+      });
+
+      expect(graph.nodes[0]?.cacheIdentity).toBe(cacheIdentity);
+      expect(graph.nodes[0]?.resolvedCommit).toBeUndefined();
+      expect(graph.nodes[0]?.sourceHash).toBe(first.sourceHash);
+    }
+
+    lock.canonical.nodes[0]!.cacheIdentity = "../mutable-path";
+    expect(() => canonicalGraphLockJson(lock)).toThrow(/Git commit or content-addressed SHA-256/);
+  });
+
   it("recursively resolves local fixture package requires", async () => {
     const workspace = await tempRoot();
     const root = join(workspace, "root");

@@ -9,6 +9,7 @@ export interface ResolvedSource {
   mode?: "pinned" | "tracking";
   requestedRef?: string;
   resolvedCommit?: string;
+  cacheIdentity?: string;
   sourceHash?: string;
   frozenLock?: boolean;
   cacheLockTimeoutMs?: number;
@@ -39,6 +40,7 @@ export interface SourceResolveOptions {
   cacheRoot?: string;
   mode?: "pinned" | "tracking";
   ref?: string;
+  cacheIdentity?: string;
   frozenLock?: boolean;
   cacheLockTimeoutMs?: number;
 }

@@ -47,6 +47,7 @@ function diffNodes(previous: GraphLockNode[], next: GraphLockNode[]): string[] {
       oldNode.id === newNode.id
       && oldNode.version === newNode.version
       && oldNode.resolvedCommit === newNode.resolvedCommit
+      && oldNode.cacheIdentity === newNode.cacheIdentity
       && oldNode.sourceHash === newNode.sourceHash
     ) {
       continue;
@@ -126,6 +127,7 @@ function nodeChangeDetails(oldNode: GraphLockNode, newNode: GraphLockNode): stri
   const details: string[] = [];
   if (oldNode.version !== newNode.version) details.push(`version ${oldNode.version} -> ${newNode.version}`);
   if (oldNode.resolvedCommit !== newNode.resolvedCommit) details.push(`commit ${oldNode.resolvedCommit ?? "<none>"} -> ${newNode.resolvedCommit ?? "<none>"}`);
+  if (oldNode.cacheIdentity !== newNode.cacheIdentity) details.push(`cache ${short(oldNode.cacheIdentity ?? "none")} -> ${short(newNode.cacheIdentity ?? "none")}`);
   if (oldNode.sourceHash !== newNode.sourceHash) details.push(`sourceHash ${short(oldNode.sourceHash)} -> ${short(newNode.sourceHash)}`);
   return details.length > 0 ? ` (${details.join(", ")})` : "";
 }

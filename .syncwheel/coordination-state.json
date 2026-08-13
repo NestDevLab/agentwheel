@@ -1,12 +1,14 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "fa1b32ac9b54041cf542c04369d52d423519698d"
+    "refs/heads/main-integration": "20c2df9d348e5c5c31375cea6cc55aec7a45f91c",
+    "refs/heads/pr/amf-merge-adoption": "20c2df9d348e5c5c31375cea6cc55aec7a45f91c"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-12T17:57:19+00:00",
+  "created_at": "2026-08-13T12:55:46+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "fa1b32ac9b54041cf542c04369d52d423519698d"
+    "refs/heads/main-integration": "20c2df9d348e5c5c31375cea6cc55aec7a45f91c",
+    "refs/heads/pr/amf-merge-adoption": "20c2df9d348e5c5c31375cea6cc55aec7a45f91c"
   },
   "manifest": {
     "coordination": {
@@ -34,17 +36,34 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "amf-merge-adoption"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/amf-merge-adoption",
+        "commits": [
+          "20c2df9d348e5c5c31375cea6cc55aec7a45f91c"
+        ],
+        "id": "amf-merge-adoption",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "bb4c4c0bd1d9388ee7f411f01a9e700dc6c68332",
-  "projection_status": "convergent",
-  "publication_id": "4ba7a62c-4681-4804-93c1-99b32fe9c180",
-  "publication_scope": "full",
+  "manifest_digest": "635106525f024831ffa6598a08bb7bf7c62cf4a48e9e3ebc36c2ff9f54fb3b96",
+  "parent_state": "c72e202512fbc0837c0e343dbcf1084ba47f9edc",
+  "projection_status": "partial",
+  "publication_id": "9ea52d8b-da31-4422-b2d1-bd0a9b43a4cb",
+  "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",
   "tombstones": []

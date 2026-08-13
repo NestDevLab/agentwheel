@@ -38,6 +38,9 @@ export async function createExactMcpRetirementPlan(
   if (options.expectedFromWorkspaceOwner && !manifest) {
     throw new Error(`Expected managed MCP ownership from ${options.expectedFromWorkspaceOwner}, but no manifest exists.`);
   }
+  if (options.expectedFromWorkspaceOwner === options.workspaceOwner) {
+    throw new Error("Exact MCP retirement ownership handoff requires different old and new workspace owners.");
+  }
 
   const adoption = await createCombinedInstallPlan(
     desiredArtifacts,
@@ -63,6 +66,13 @@ export async function createExactMcpRetirementPlan(
   }
   if (operation.mergeStrategy !== "json-deep" && operation.mergeStrategy !== "codex-toml-mcp") {
     throw new Error(`Exact MCP retirement does not support merge strategy ${operation.mergeStrategy}.`);
+  }
+  const removalKeys = Object.keys(operation.mergeRemoval);
+  const servers = operation.mergeRemoval.mcpServers;
+  if (removalKeys.length !== 1 || removalKeys[0] !== "mcpServers"
+    || !servers || typeof servers !== "object" || Array.isArray(servers)
+    || Object.keys(servers).length !== 1) {
+    throw new Error("Exact MCP retirement requires exactly one MCP server and no non-MCP configuration.");
   }
 
   const entry = manifest?.entries[0];

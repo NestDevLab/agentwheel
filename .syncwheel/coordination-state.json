@@ -1,14 +1,14 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "50af3de66466793ccd0afc05f7356cce904587f5",
-    "refs/heads/pr/amf-merge-adoption": "50af3de66466793ccd0afc05f7356cce904587f5"
+    "refs/heads/main-integration": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-13T13:02:15+00:00",
+  "created_at": "2026-08-13T13:15:55+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "50af3de66466793ccd0afc05f7356cce904587f5",
-    "refs/heads/pr/amf-merge-adoption": "50af3de66466793ccd0afc05f7356cce904587f5"
+    "refs/heads/main-integration": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
   "manifest": {
     "coordination": {
@@ -51,7 +51,8 @@
         "branch": "pr/amf-merge-adoption",
         "commits": [
           "20c2df9d348e5c5c31375cea6cc55aec7a45f91c",
-          "50af3de66466793ccd0afc05f7356cce904587f5"
+          "50af3de66466793ccd0afc05f7356cce904587f5",
+          "502b70a2f74d4318075228a47f432aede3166af1"
         ],
         "id": "amf-merge-adoption",
         "integration_branch": "main-integration",
@@ -60,10 +61,10 @@
     ],
     "version": 2
   },
-  "manifest_digest": "b58b0ac314e087454e60c08b2833c08fc389b0472cbbf628e9a9f0a7028feb49",
-  "parent_state": "4ff65166507e7a2b6e1e7e6e1b6a36365f050a27",
+  "manifest_digest": "f17d2d05872bcb68b4369df3987cb5b92d39be15a9db920abc5d539b17936315",
+  "parent_state": "996caa3e830ac3cf9a50783c26c268b936209881",
   "projection_status": "partial",
-  "publication_id": "daf07a92-0e81-4226-b40d-d9cf44de183f",
+  "publication_id": "4f412677-cdb6-448f-a175-baabe34c3e2b",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",

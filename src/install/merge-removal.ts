@@ -1,15 +1,51 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
+import { mismatchedCodexTomlMcpServers, type JsonRecord } from "./toml-merge.js";
 
 export type MergeValue = null | boolean | number | string | MergeValue[] | { [key: string]: MergeValue };
 export type MergeRemoval = Record<string, MergeValue>;
 
 type MergeStrategy = "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
 
-export async function mergeRemovalForInstall(sourcePath: string, strategy: MergeStrategy, currentContent: string | undefined): Promise<MergeRemoval> {
+export class MergeAdoptionMismatchError extends Error {}
+
+export function combineMergeRemovals(existing: MergeRemoval, incoming: MergeRemoval): MergeRemoval {
+  return combineMergeValues(existing, incoming) as MergeRemoval;
+}
+
+export function hasMergeRemovalContent(removal: MergeRemoval | undefined): boolean {
+  if (!removal) return false;
+  return Object.entries(removal).some(([key, value]) => {
+    return !(key === "mcpServers" && isRecord(value) && Object.keys(value).length === 0);
+  });
+}
+
+export async function mergeRemovalForInstall(
+  sourcePath: string,
+  strategy: MergeStrategy,
+  currentContent: string | undefined,
+  options: { adoptExistingMcp?: boolean } = {},
+): Promise<MergeRemoval> {
   const source = await readMergeSource(sourcePath, strategy);
   if (currentContent === undefined) return source;
+  if (options.adoptExistingMcp) {
+    if (strategy === "codex-toml-mcp") {
+      const mismatched = mismatchedCodexTomlMcpServers(source as JsonRecord, currentContent);
+      if (mismatched.length > 0) {
+        throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: Codex MCP server content differs or is missing for ${mismatched.join(", ")}`);
+      }
+      return source;
+    }
+    if (strategy !== "json-deep") {
+      throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: strategy ${strategy} is not supported for MCP adoption`);
+    }
+    const mismatch = firstMcpContributionMismatch(parseMergeDestination(currentContent, strategy), source);
+    if (mismatch) {
+      throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: destination differs or is missing at ${mismatch}`);
+    }
+    return source;
+  }
   if (strategy === "codex-toml-mcp") {
     const existingServers = codexTomlMcpServerNames(currentContent);
     const servers = isRecord(source.mcpServers) ? source.mcpServers : source;
@@ -58,6 +94,35 @@ function introducedMergeContent(base: MergeRemoval, incoming: MergeRemoval): Mer
   return introduced;
 }
 
+function firstMcpContributionMismatch(current: MergeValue, incoming: MergeValue): string | undefined {
+  if (!isRecord(current) || !isRecord(incoming)) return "$";
+  if (!isRecord(current.mcpServers) || !isRecord(incoming.mcpServers)) return "$.mcpServers";
+  for (const [name, incomingServer] of Object.entries(incoming.mcpServers)) {
+    if (!(name in current.mcpServers) || !sameMcpValue(current.mcpServers[name]!, incomingServer)) {
+      return `$.mcpServers.${name}`;
+    }
+  }
+  for (const [key, incomingValue] of Object.entries(incoming)) {
+    if (key === "mcpServers") continue;
+    if (!(key in current) || !sameMcpValue(current[key]!, incomingValue)) return `$.${key}`;
+  }
+  return undefined;
+}
+
+function combineMergeValues(existing: MergeValue, incoming: MergeValue): MergeValue {
+  if (isRecord(existing) && isRecord(incoming)) {
+    const combined: MergeRemoval = { ...existing };
+    for (const [key, incomingValue] of Object.entries(incoming)) {
+      combined[key] = key in combined ? combineMergeValues(combined[key]!, incomingValue) : incomingValue;
+    }
+    return combined;
+  }
+  if (Array.isArray(existing) && Array.isArray(incoming)) {
+    return [...existing, ...incoming.filter((value) => !existing.some((current) => sameValue(current, value)))];
+  }
+  return incoming;
+}
+
 function removeIntroducedContent(current: MergeRemoval, removal: MergeRemoval): void {
   for (const [key, removalValue] of Object.entries(removal)) {
     if (!(key in current)) continue;
@@ -103,4 +168,20 @@ function normalizeYamlValue(value: unknown): MergeValue {
 function requireRecord(value: MergeValue, label: string): MergeRemoval { if (!isRecord(value)) throw new Error(`${label} must be an object`); return value; }
 function isRecord(value: MergeValue | undefined): value is MergeRemoval { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function sameValue(left: MergeValue, right: MergeValue): boolean { return JSON.stringify(left) === JSON.stringify(right); }
+function sameMcpValue(left: MergeValue, right: MergeValue): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameMcpValue(value, right[index]!));
+  }
+  if (isRecord(left) || isRecord(right)) {
+    if (!isRecord(left) || !isRecord(right)) return false;
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return leftKeys.length === rightKeys.length
+      && leftKeys.every((key, index) => key === rightKeys[index] && sameMcpValue(left[key]!, right[key]!));
+  }
+  return left === right;
+}
 function unquoteTomlKey(key: string): string { if (!key.startsWith("\"")) return key; try { return JSON.parse(key) as string; } catch { return key; } }

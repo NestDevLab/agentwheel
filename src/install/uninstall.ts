@@ -6,6 +6,7 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { DesiredArtifact } from "./desired.js";
 import { managedInstructionBlockMode, managedInstructionSelector, readManagedInstructionBlockState } from "./instructions-block.js";
+import { hasMergeRemovalContent } from "./merge-removal.js";
 import { createCombinedInstallPlan } from "./plan.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 
@@ -43,7 +44,7 @@ export async function createUninstallPlan(
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
-    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && entry.mergeRemoval !== undefined) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
+    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && hasMergeRemovalContent(entry.mergeRemoval)) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
       operations.push(legacyMergeKeepOperation(entry, destPath));
     } else {
       operations.push({
@@ -156,7 +157,7 @@ export async function createOwnershipUninstallPlan(
         ...operationMetadataFromEntry(entry),
         graphLockDigest: options.graphLockDigest,
       });
-    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && entry.mergeRemoval !== undefined) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
+    } else if (entry.mergeStrategy && !("mergeRemoval" in entry && hasMergeRemovalContent(entry.mergeRemoval)) && !("mergeCreatedDestination" in entry && entry.mergeCreatedDestination === true)) {
       operations.push(legacyMergeKeepOperation(entry, destPath));
     } else {
       operations.push({

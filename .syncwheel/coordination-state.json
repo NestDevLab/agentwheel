@@ -1,10 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/main-integration": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
-    "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-13T16:59:37+00:00",
+  "created_at": "2026-08-13T17:05:31+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
@@ -37,35 +34,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "amf-exact-mcp-retirement"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/amf-exact-mcp-retirement",
-        "commits": [
-          "502d2111bcc7c9b0795d534772230634611d1582",
-          "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a"
-        ],
-        "id": "amf-exact-mcp-retirement",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "31e31fcb7ac4b91b66e2f18e51096894ba5f82cd338e37a4c5eb692e1e73ebfe",
-  "parent_state": "789ee6d1ca74190d2d157d74ae4170b55e981e14",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "ad226743bd5347445edfafdcaf801abfb5c6f7ad",
   "projection_status": "partial",
-  "publication_id": "663606bf-dda9-46a3-b45d-bdb5fd156b57",
-  "publication_scope": "partial",
+  "publication_id": "d6aebf7c-51a6-47e0-85bc-1bb16a79e02d",
+  "publication_scope": "close:amf-exact-mcp-retirement",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",
   "tombstones": [
@@ -76,6 +55,14 @@
       "ref": "refs/heads/pr/amf-merge-adoption",
       "remote_tip": "502b70a2f74d4318075228a47f432aede3166af1",
       "stack": "amf-merge-adoption"
+    },
+    {
+      "branch": "pr/amf-exact-mcp-retirement",
+      "closed_at": "2026-08-13T17:05:23+00:00",
+      "reason": "merged",
+      "ref": "refs/heads/pr/amf-exact-mcp-retirement",
+      "remote_tip": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
+      "stack": "amf-exact-mcp-retirement"
     }
   ]
 }

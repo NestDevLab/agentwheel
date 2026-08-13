@@ -217,10 +217,26 @@ describe("exact merged contribution adoption", () => {
       action: "keep",
       reason: "legacy merge ownership is incomplete; preserving destination and releasing management",
     }]);
-    await uninstall(removal);
+
+    const beforeRepair = await readFile(join(targetRoot, "config.json"), "utf8");
+    const repair = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, manifest, localTransport, {
+      forceConflict: true,
+    });
+    expect(repair.operations).toMatchObject([{
+      action: "skip",
+      reason: "force repairing exact incomplete merge ownership",
+      mergeRemoval: JSON.parse(await readFile(legacy.sourcePath, "utf8")),
+    }]);
+    await applyCombinedInstallPlan(repair);
+    expect(await readFile(join(targetRoot, "config.json"), "utf8")).toBe(beforeRepair);
+
+    const repairedManifest = await readInstallManifest(targetRoot, jsonAdapter.name);
+    if (!repairedManifest) throw new Error("expected repaired JSON manifest");
+    expect(repairedManifest.entries[0]?.mergeRemoval).toEqual(JSON.parse(await readFile(legacy.sourcePath, "utf8")));
+    await uninstall(await createOwnershipUninstallPlan(repairedManifest, [], jsonAdapter));
 
     const current = JSON.parse(await readFile(join(targetRoot, "config.json"), "utf8"));
-    expect(current.mcpServers["amf-interactive-recall"].command).toBe("legacy-amf");
+    expect(current.mcpServers).toBeUndefined();
   });
 
   it("adopts and removes an exact pre-existing Codex MCP block while preserving canonical and user config", async () => {
@@ -292,6 +308,48 @@ describe("exact merged contribution adoption", () => {
       action: "conflict",
       reason: "cannot adopt merged contribution: Codex MCP server content differs or is missing for amf-interactive-recall",
     }]);
+  });
+
+  it("repairs incomplete legacy Codex merge ownership without rewriting the TOML", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await writeMcpArtifact(sourceRoot, "legacy.json", "amf-interactive-recall", "legacy-amf");
+    const configPath = join(targetRoot, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, "model = \"gpt-test\"\n", "utf8");
+    await mergeCodexTomlMcp(legacy.sourcePath, configPath);
+
+    const initial = await createCombinedInstallPlan([legacy], codexAdapter, targetRoot, undefined, localTransport, {
+      installationType: "local",
+    });
+    expect(initial.operations).toMatchObject([{ action: "update", mergeRemoval: { mcpServers: {} } }]);
+    await applyCombinedInstallPlan(initial);
+    const incompleteManifest = await readInstallManifest(targetRoot, codexAdapter.name);
+    if (!incompleteManifest) throw new Error("expected incomplete Codex manifest");
+    expect((await createOwnershipUninstallPlan(incompleteManifest, [], codexAdapter)).operations).toMatchObject([{
+      action: "keep",
+      reason: "legacy merge ownership is incomplete; preserving destination and releasing management",
+    }]);
+
+    const beforeRepair = await readFile(configPath, "utf8");
+    const repair = await createCombinedInstallPlan([legacy], codexAdapter, targetRoot, incompleteManifest, localTransport, {
+      forceConflict: true,
+      installationType: "local",
+    });
+    expect(repair.hasBlockingChanges).toBe(false);
+    expect(repair.operations).toMatchObject([{
+      action: "skip",
+      reason: "force repairing exact incomplete merge ownership",
+      mergeRemoval: JSON.parse(await readFile(legacy.sourcePath, "utf8")),
+    }]);
+    await applyCombinedInstallPlan(repair);
+    expect(await readFile(configPath, "utf8")).toBe(beforeRepair);
+
+    const repairedManifest = await readInstallManifest(targetRoot, codexAdapter.name);
+    if (!repairedManifest) throw new Error("expected repaired Codex manifest");
+    expect(repairedManifest.entries[0]?.mergeRemoval).toEqual(JSON.parse(await readFile(legacy.sourcePath, "utf8")));
+    await uninstall(await createOwnershipUninstallPlan(repairedManifest, [], codexAdapter));
+    expect(await readFile(configPath, "utf8")).toBe("model = \"gpt-test\"\n");
   });
 
   it.each([

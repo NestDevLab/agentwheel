@@ -32,7 +32,13 @@ import {
   type ManagedInstructionBlockMode,
 } from "./instructions-block.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
-import { combineMergeRemovals, MergeAdoptionMismatchError, mergeRemovalForInstall, type MergeRemoval } from "./merge-removal.js";
+import {
+  combineMergeRemovals,
+  hasMergeRemovalContent,
+  MergeAdoptionMismatchError,
+  mergeRemovalForInstall,
+  type MergeRemoval,
+} from "./merge-removal.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
@@ -241,8 +247,12 @@ async function createPlanFromOperations(
       const exists = await transport.pathExists(op.destPath);
       const currentContent = exists ? await transport.readFile(op.destPath) : undefined;
       const currentHash = exists ? await transport.hashPath(op.destPath) : undefined;
+      const incompleteMergeOwnership = existing
+        && existing.mergeStrategy
+        && !("mergeCreatedDestination" in existing && existing.mergeCreatedDestination === true)
+        && !("mergeRemoval" in existing && hasMergeRemovalContent(existing.mergeRemoval));
       const adoptExisting = exists
-        && !existing
+        && (!existing || incompleteMergeOwnership)
         && options.forceConflict === true
         && op.artifactType === "mcp"
         && (op.mergeStrategy === "json-deep" || op.mergeStrategy === "codex-toml-mcp");
@@ -268,7 +278,17 @@ async function createPlanFromOperations(
         continue;
       }
       if (adoptExisting) {
-        operations.push({ ...op, action: "skip", mergeRemoval, currentHash, reason: "force adopting exact unmanaged merge contribution" });
+        operations.push({
+          ...op,
+          action: "skip",
+          mergeRemoval,
+          mergeCreatedDestination: existing?.mergeCreatedDestination,
+          currentHash,
+          manifestHash: existing?.hash,
+          reason: existing
+            ? "force repairing exact incomplete merge ownership"
+            : "force adopting exact unmanaged merge contribution",
+        });
         continue;
       }
       if (existing && existing.sourceHash === op.desiredHash) {

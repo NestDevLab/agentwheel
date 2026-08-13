@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { pathExists } from "../utils/fs.js";
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-type JsonRecord = Record<string, JsonValue>;
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonRecord = Record<string, JsonValue>;
 
 export async function mergeCodexTomlMcp(sourcePath: string, destPath: string): Promise<void> {
   const source = JSON.parse(await readFile(sourcePath, "utf8")) as JsonRecord;
@@ -13,6 +13,13 @@ export async function mergeCodexTomlMcp(sourcePath: string, destPath: string): P
   const merged = appendMcpServers(withoutManaged, servers);
   await mkdir(dirname(destPath), { recursive: true });
   await writeFile(destPath, merged, "utf8");
+}
+
+export function mismatchedCodexTomlMcpServers(source: JsonRecord, currentContent: string): string[] {
+  const servers = extractMcpServers(source);
+  return Object.entries(servers)
+    .filter(([name, server]) => extractMcpServerBlock(currentContent, name) !== formatMcpServer(name, server))
+    .map(([name]) => name);
 }
 
 function extractMcpServers(source: JsonRecord): Record<string, JsonRecord> {
@@ -69,6 +76,27 @@ function formatMcpServer(name: string, server: JsonRecord): string {
     }
   }
   return lines.join("\n");
+}
+
+function extractMcpServerBlock(content: string, serverName: string): string | undefined {
+  const lines = content.split(/\r?\n/);
+  const block: string[] = [];
+  let collecting = false;
+
+  for (const line of lines) {
+    const section = line.match(/^\s*\[([^\]]+)]\s*$/)?.[1];
+    if (section) {
+      const match = section.match(/^mcp_servers\.([^\.\]]+)(?:\.|$)/);
+      const name = match?.[1] ? unquoteTomlKey(match[1]) : undefined;
+      if (collecting && name !== serverName) break;
+      collecting = name === serverName;
+    }
+    if (collecting) block.push(line);
+  }
+
+  if (block.length === 0) return undefined;
+  while (block.at(-1)?.trim() === "") block.pop();
+  return block.join("\n");
 }
 
 function formatTomlValue(value: JsonValue): string {

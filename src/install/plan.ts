@@ -32,7 +32,7 @@ import {
   type ManagedInstructionBlockMode,
 } from "./instructions-block.js";
 import { assertOperationContained, assertSafeInstallName } from "./path-safety.js";
-import { mergeRemovalForInstall, type MergeRemoval } from "./merge-removal.js";
+import { combineMergeRemovals, MergeAdoptionMismatchError, mergeRemovalForInstall, type MergeRemoval } from "./merge-removal.js";
 
 export type PlanAction = "create" | "update" | "skip" | "remove" | "keep" | "drift" | "conflict" | "plugin" | "program";
 export type PlanChannel = "managed" | "overlay" | "addition" | "override" | "ejected";
@@ -239,12 +239,38 @@ async function createPlanFromOperations(
     if (op.mergeStrategy) {
       const existing = manifestByPath.get(op.relativeDestPath);
       const exists = await transport.pathExists(op.destPath);
-      const mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, exists ? await transport.readFile(op.destPath) : undefined);
+      const currentContent = exists ? await transport.readFile(op.destPath) : undefined;
+      const currentHash = exists ? await transport.hashPath(op.destPath) : undefined;
+      const adoptExisting = exists
+        && !existing
+        && options.forceConflict === true
+        && op.artifactType === "mcp"
+        && (op.mergeStrategy === "json-deep" || op.mergeStrategy === "codex-toml-mcp");
+      let mergeRemoval: MergeRemoval;
+      try {
+        mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, currentContent, { adoptExistingMcp: adoptExisting });
+      } catch (error) {
+        if (!(error instanceof MergeAdoptionMismatchError)) throw error;
+        operations.push({
+          ...op,
+          action: "conflict",
+          currentHash,
+          reason: error.message,
+          blockedReason: error.message,
+        });
+        continue;
+      }
+      if (existing && "mergeRemoval" in existing && existing.mergeRemoval) {
+        mergeRemoval = combineMergeRemovals(existing.mergeRemoval, mergeRemoval);
+      }
       if (!exists) {
         operations.push({ ...op, action: "create", mergeRemoval, mergeCreatedDestination: true, reason: "merge destination missing" });
         continue;
       }
-      const currentHash = await transport.hashPath(op.destPath);
+      if (adoptExisting) {
+        operations.push({ ...op, action: "skip", mergeRemoval, currentHash, reason: "force adopting exact unmanaged merge contribution" });
+        continue;
+      }
       if (existing && existing.sourceHash === op.desiredHash) {
         operations.push(options.forceDrift
           ? { ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing.mergeCreatedDestination, currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }

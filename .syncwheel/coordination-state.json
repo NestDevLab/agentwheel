@@ -1,10 +1,12 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "bd382bf23849c2e4bb38be36e4d94f56bc23d760"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-13T17:05:31+00:00",
+  "created_at": "2026-08-13T17:06:59+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
+    "refs/heads/main-integration": "bd382bf23849c2e4bb38be36e4d94f56bc23d760",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
@@ -41,10 +43,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "ad226743bd5347445edfafdcaf801abfb5c6f7ad",
+  "parent_state": "0b73d0a766b3ba6ef0406b96b9c42661c26ff811",
   "projection_status": "partial",
-  "publication_id": "d6aebf7c-51a6-47e0-85bc-1bb16a79e02d",
-  "publication_scope": "close:amf-exact-mcp-retirement",
+  "publication_id": "59ea2407-18b0-4d6e-bf1d-f4cb5b186fe5",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",
   "tombstones": [

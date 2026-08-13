@@ -154,6 +154,72 @@ describe("CLI verb redesign", () => {
     expect(help.stdout).not.toContain(" sync ");
   });
 
+  it("previews one exact MCP retirement through an explicit agent state key", async () => {
+    const workspace = await tempRoot("agentwheel-mcp-retire-workspace-");
+    const source = await tempRoot("agentwheel-mcp-retire-source-");
+    await mkdir(join(source, "mcp"), { recursive: true });
+    const legacyServer = {
+      command: "legacy-amf",
+      args: ["--stdio"],
+      env: { HANDOFF_DIR: "/etc/legacy-amf" },
+    };
+    await writeFile(join(source, "mcp", "legacy.json"), `${JSON.stringify({
+      mcpServers: { "amf-interactive-recall": legacyServer },
+    }, null, 2)}\n`, "utf8");
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "fixture/mcp-retirement",
+      version: "1.0.0",
+      provides: [{ type: "mcp", path: "mcp" }],
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [{
+        name: "legacy-mcp",
+        source,
+        driver: "local",
+        adapter: "claude",
+        installationType: "local",
+        mode: "pinned",
+        select: ["mcp/legacy.json"],
+      }],
+      registry: {},
+      profiles: {},
+      agents: {
+        legacy: {
+          adapter: "claude",
+          root: workspace,
+          transport: "local",
+          installationType: "local",
+          stateKey: "claude.local.legacy-fixture",
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+    const configPath = join(workspace, ".mcp.json");
+    await writeFile(configPath, `${JSON.stringify({
+      keep: true,
+      mcpServers: {
+        amf: { command: "canonical-amf" },
+        "amf-interactive-recall": legacyServer,
+      },
+    }, null, 2)}\n`, "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    const { stdout } = await runCli([
+      "mcp", "retire", "legacy-mcp", "--agent", "legacy", "--dry-run", "--json",
+    ], { cwd: workspace });
+    const plan = JSON.parse(stdout);
+    expect(plan).toMatchObject({
+      adapter: "claude",
+      stateKey: "claude.local.legacy-fixture",
+      targetRoot: workspace,
+      hasBlockingChanges: false,
+      operations: [{ action: "remove", artifactName: "legacy.json", exactMergeRemoval: true }],
+    });
+    expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
   it("installs a new source into every detected runtime with --all-detected", async () => {
     const root = await tempRoot();
     const source = await packageFixture("detected");
@@ -1398,10 +1464,10 @@ describe("CLI verb redesign", () => {
   });
 });
 
-async function runCli(args: string[], options: { env?: Record<string, string> } = {}) {
+async function runCli(args: string[], options: { env?: Record<string, string>; cwd?: string } = {}) {
   try {
     return await execFileAsync("node", [cli, "--no-update-check", ...args], {
-      cwd: process.cwd(),
+      cwd: options.cwd ?? process.cwd(),
       env: { ...process.env, ...options.env, HOME: cliHome },
       maxBuffer: 20 * 1024 * 1024,
     });

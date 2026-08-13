@@ -63,6 +63,7 @@ export interface InstallOperation {
   mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
+  exactMergeRemoval?: boolean;
   mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;

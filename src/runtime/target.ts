@@ -8,6 +8,7 @@ export interface RuntimeTarget {
   adapterConfig?: string;
   adapterModule?: string;
   installationType?: string;
+  stateKey?: string;
   targetRoot: string;
   workspaceRoot: string;
   agentName?: string;
@@ -123,6 +124,7 @@ export function resolveProfileRuntimeTarget(
       ...target,
       adapterConfig: runtime.adapterConfig,
       adapterModule: runtime.adapterModule,
+      stateKey: runtime.stateKey ?? target.stateKey,
       executePlugins: runtime.executePlugins,
       reloadRuntimes: runtime.reloadRuntimes,
       reloadCommands: runtime.reloadCommands ?? target.reloadCommands,
@@ -136,6 +138,7 @@ export function resolveProfileRuntimeTarget(
     adapterConfig: runtime.adapterConfig,
     adapterModule: runtime.adapterModule,
     installationType: installationType ?? runtime.installationType,
+    stateKey: runtime.stateKey,
     targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
     workspaceRoot,
     executePlugins: runtime.executePlugins,
@@ -202,6 +205,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
     adapterConfig: agent.adapterConfig,
     adapterModule: agent.adapterModule,
     installationType: installationType ?? agent.installationType,
+    stateKey: agent.stateKey,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
     reloadCommands: agent.reloadCommands,

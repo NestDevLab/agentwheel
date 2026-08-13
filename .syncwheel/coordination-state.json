@@ -1,14 +1,14 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "502d2111bcc7c9b0795d534772230634611d1582",
-    "refs/heads/pr/amf-exact-mcp-retirement": "502d2111bcc7c9b0795d534772230634611d1582"
+    "refs/heads/main-integration": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
+    "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-13T16:51:48+00:00",
+  "created_at": "2026-08-13T16:59:37+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "502d2111bcc7c9b0795d534772230634611d1582",
-    "refs/heads/pr/amf-exact-mcp-retirement": "502d2111bcc7c9b0795d534772230634611d1582",
+    "refs/heads/main-integration": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
+    "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
   "manifest": {
@@ -51,7 +51,8 @@
         },
         "branch": "pr/amf-exact-mcp-retirement",
         "commits": [
-          "502d2111bcc7c9b0795d534772230634611d1582"
+          "502d2111bcc7c9b0795d534772230634611d1582",
+          "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a"
         ],
         "id": "amf-exact-mcp-retirement",
         "integration_branch": "main-integration",
@@ -60,10 +61,10 @@
     ],
     "version": 2
   },
-  "manifest_digest": "41a2a0e728df5b35e6ce2df6b793305a9ef8d79a87dc9362a2dda556ab379e52",
-  "parent_state": "07248769a08ab2c06103091520ba4657a9673700",
+  "manifest_digest": "31e31fcb7ac4b91b66e2f18e51096894ba5f82cd338e37a4c5eb692e1e73ebfe",
+  "parent_state": "789ee6d1ca74190d2d157d74ae4170b55e981e14",
   "projection_status": "partial",
-  "publication_id": "87113acd-9764-4ca9-abc9-a17ed33c94e1",
+  "publication_id": "663606bf-dda9-46a3-b45d-bdb5fd156b57",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",

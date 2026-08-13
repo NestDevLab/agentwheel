@@ -1,10 +1,12 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "2da3d273436ed2316ca64bbe46714fa163ec8b68"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-13T13:47:14+00:00",
+  "created_at": "2026-08-13T13:47:50+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/main-integration": "2da3d273436ed2316ca64bbe46714fa163ec8b68",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
   "manifest": {
@@ -40,10 +42,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "e099bea3805485268faca1c4cde9453a5a5a71d6",
+  "parent_state": "79d228855e8b464d563b57447d127138700dac75",
   "projection_status": "partial",
-  "publication_id": "59915314-0deb-49e6-b93e-2d561d7c4885",
-  "publication_scope": "close:amf-merge-adoption",
+  "publication_id": "74dbaef9-64df-49bc-a7de-18867a0ea81a",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",
   "tombstones": [

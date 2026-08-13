@@ -80,7 +80,8 @@ function formatMcpServer(name: string, server: JsonRecord): string {
 
 function extractMcpServerBlock(content: string, serverName: string): string | undefined {
   const lines = content.split(/\r?\n/);
-  const block: string[] = [];
+  const blocks: string[][] = [];
+  let block: string[] | undefined;
   let collecting = false;
 
   for (const line of lines) {
@@ -88,15 +89,22 @@ function extractMcpServerBlock(content: string, serverName: string): string | un
     if (section) {
       const match = section.match(/^mcp_servers\.([^\.\]]+)(?:\.|$)/);
       const name = match?.[1] ? unquoteTomlKey(match[1]) : undefined;
-      if (collecting && name !== serverName) break;
+      if (collecting && block) {
+        while (block.at(-1)?.trim() === "") block.pop();
+        blocks.push(block);
+      }
       collecting = name === serverName;
+      block = collecting ? [] : undefined;
     }
-    if (collecting) block.push(line);
+    if (collecting) block?.push(line);
   }
 
-  if (block.length === 0) return undefined;
-  while (block.at(-1)?.trim() === "") block.pop();
-  return block.join("\n");
+  if (collecting && block) {
+    while (block.at(-1)?.trim() === "") block.pop();
+    blocks.push(block);
+  }
+  if (blocks.length === 0) return undefined;
+  return blocks.map((lines) => lines.join("\n")).join("\n\n");
 }
 
 function formatTomlValue(value: JsonValue): string {

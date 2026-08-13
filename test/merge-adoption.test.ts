@@ -239,6 +239,107 @@ describe("exact merged contribution adoption", () => {
     expect(current.mcpServers).toBeUndefined();
   });
 
+  it("does not repair incomplete merge ownership across workspace boundaries", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await writeMcpArtifact(sourceRoot, "legacy.json", "amf-interactive-recall", "legacy-amf");
+    await writeFile(join(targetRoot, "config.json"), await readFile(legacy.sourcePath, "utf8"), "utf8");
+
+    const initial = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, undefined, localTransport, {
+      workspaceOwner: "workspace:A",
+    });
+    await applyCombinedInstallPlan(initial);
+    const manifest = await readInstallManifest(targetRoot, jsonAdapter.name);
+    if (!manifest) throw new Error("expected workspace-owned JSON manifest");
+    const entry = manifest.entries[0];
+    if (!entry || !("workspaceOwner" in entry)) throw new Error("expected v2 workspace ownership");
+    expect(entry.workspaceOwner).toBe("workspace:A");
+    expect(entry.mergeRemoval).toEqual({});
+
+    const foreignRepair = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, manifest, localTransport, {
+      forceConflict: true,
+      workspaceOwner: "workspace:B",
+    });
+    expect(foreignRepair.operations).toMatchObject([{
+      action: "keep",
+      reason: "foreign artifact owned by workspace:A; kept outside workspace workspace:B",
+      preserveInManifest: true,
+      workspaceOwner: "workspace:A",
+      mergeRemoval: {},
+    }]);
+  });
+
+  it("fails closed when an incompletely owned contribution drifted before repair", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await writeMcpArtifact(sourceRoot, "legacy.json", "amf-interactive-recall", "expected-command");
+    const configPath = join(targetRoot, "config.json");
+    await writeFile(configPath, await readFile(legacy.sourcePath, "utf8"), "utf8");
+    const initial = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, undefined, localTransport, {
+      workspaceOwner: "workspace:A",
+    });
+    await applyCombinedInstallPlan(initial);
+    const incompleteManifest = await readInstallManifest(targetRoot, jsonAdapter.name);
+    if (!incompleteManifest) throw new Error("expected incomplete JSON manifest");
+
+    const current = JSON.parse(await readFile(configPath, "utf8"));
+    current.mcpServers["amf-interactive-recall"].command = "drifted-command";
+    await writeFile(configPath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+    const before = await readFile(configPath, "utf8");
+    const repair = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, incompleteManifest, localTransport, {
+      forceConflict: true,
+      workspaceOwner: "workspace:A",
+    });
+    expect(repair.hasBlockingChanges).toBe(true);
+    expect(repair.operations).toMatchObject([{
+      action: "conflict",
+      reason: "cannot adopt merged contribution: destination differs or is missing at $.mcpServers.amf-interactive-recall",
+    }]);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    expect((await readInstallManifest(targetRoot, jsonAdapter.name))?.entries[0]?.mergeRemoval).toEqual({});
+  });
+
+  it.each([
+    ["an empty server object", { mcpServers: { empty: {} } }],
+    ["an empty array value", { mcpServers: { empty: { args: [] } } }],
+  ])("treats %s as meaningful removable ownership", async (_label, contribution) => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const sourcePath = join(sourceRoot, "empty.json");
+    await writeFile(sourcePath, `${JSON.stringify(contribution, null, 2)}\n`, "utf8");
+    const desired: DesiredArtifact = {
+      type: "mcp",
+      name: "empty.json",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: "empty.json",
+      kind: "file",
+      hash: await hashPath(sourcePath),
+      channel: "managed",
+      meta: { logicalSelector: "mcp/empty.json", dependencyRole: "root", owners: ["migration"] },
+    };
+    await writeFile(join(targetRoot, "config.json"), `${JSON.stringify({
+      keep: true,
+      mcpServers: { amf: { command: "canonical-amf" }, ...contribution.mcpServers },
+    }, null, 2)}\n`, "utf8");
+
+    const adoption = await createCombinedInstallPlan([desired], jsonAdapter, targetRoot, undefined, localTransport, {
+      forceConflict: true,
+    });
+    expect(adoption.operations).toMatchObject([{ action: "skip", mergeRemoval: contribution }]);
+    await applyCombinedInstallPlan(adoption);
+    const manifest = await readInstallManifest(targetRoot, jsonAdapter.name);
+    if (!manifest) throw new Error("expected empty-container JSON manifest");
+    const removal = await createOwnershipUninstallPlan(manifest, [], jsonAdapter);
+    expect(removal.operations).toMatchObject([{ action: "remove", mergeRemoval: contribution }]);
+    await uninstall(removal);
+
+    expect(JSON.parse(await readFile(join(targetRoot, "config.json"), "utf8"))).toEqual({
+      keep: true,
+      mcpServers: { amf: { command: "canonical-amf" } },
+    });
+  });
+
   it("adopts and removes an exact pre-existing Codex MCP block while preserving canonical and user config", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();
@@ -350,6 +451,81 @@ describe("exact merged contribution adoption", () => {
     expect(repairedManifest.entries[0]?.mergeRemoval).toEqual(JSON.parse(await readFile(legacy.sourcePath, "utf8")));
     await uninstall(await createOwnershipUninstallPlan(repairedManifest, [], codexAdapter));
     expect(await readFile(configPath, "utf8")).toBe("model = \"gpt-test\"\n");
+  });
+
+  it("adopts all exact non-contiguous Codex sections and removes only those sections", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await writeMcpArtifact(sourceRoot, "legacy.json", "amf-interactive-recall", "legacy-amf");
+    const configPath = join(targetRoot, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, [
+      "model = \"gpt-test\"",
+      "",
+      "[mcp_servers.amf-interactive-recall]",
+      "command = \"legacy-amf\"",
+      "args = [\"--stdio\", \"--safe\"]",
+      "",
+      "[user_config]",
+      "keep = true",
+      "",
+      "[mcp_servers.amf-interactive-recall.env]",
+      "HANDOFF_DIR = \"/etc/amf-interactive-recall\"",
+      "",
+    ].join("\n"), "utf8");
+
+    const adoption = await createCombinedInstallPlan([legacy], codexAdapter, targetRoot, undefined, localTransport, {
+      forceConflict: true,
+      installationType: "local",
+    });
+    expect(adoption.hasBlockingChanges).toBe(false);
+    expect(adoption.operations).toMatchObject([{ action: "skip", reason: "force adopting exact unmanaged merge contribution" }]);
+    await applyCombinedInstallPlan(adoption);
+    const manifest = await readInstallManifest(targetRoot, codexAdapter.name);
+    if (!manifest) throw new Error("expected non-contiguous Codex manifest");
+    await uninstall(await createOwnershipUninstallPlan(manifest, [], codexAdapter));
+
+    const current = await readFile(configPath, "utf8");
+    expect(current).toContain("model = \"gpt-test\"");
+    expect(current).toContain("[user_config]\nkeep = true");
+    expect(current).not.toContain("amf-interactive-recall");
+  });
+
+  it("rejects an unclaimed later Codex subtable for the adopted server", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await writeMcpArtifact(sourceRoot, "legacy.json", "amf-interactive-recall", "legacy-amf");
+    const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
+    delete source.mcpServers["amf-interactive-recall"].env;
+    await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
+    const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
+    const configPath = join(targetRoot, ".codex", "config.toml");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, [
+      "[mcp_servers.amf-interactive-recall]",
+      "command = \"legacy-amf\"",
+      "args = [\"--stdio\", \"--safe\"]",
+      "",
+      "[user_config]",
+      "keep = true",
+      "",
+      "[mcp_servers.amf-interactive-recall.env]",
+      "EXTRA = \"unclaimed\"",
+      "",
+    ].join("\n"), "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    const plan = await createCombinedInstallPlan([desired], codexAdapter, targetRoot, undefined, localTransport, {
+      forceConflict: true,
+      installationType: "local",
+    });
+    expect(plan.hasBlockingChanges).toBe(true);
+    expect(plan.operations).toMatchObject([{
+      action: "conflict",
+      reason: "cannot adopt merged contribution: Codex MCP server content differs or is missing for amf-interactive-recall",
+    }]);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    expect(await readInstallManifest(targetRoot, codexAdapter.name)).toBeUndefined();
   });
 
   it.each([

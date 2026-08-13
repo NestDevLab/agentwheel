@@ -16,10 +16,8 @@ export function combineMergeRemovals(existing: MergeRemoval, incoming: MergeRemo
 
 export function hasMergeRemovalContent(removal: MergeRemoval | undefined): boolean {
   if (!removal) return false;
-  return Object.values(removal).some((value) => {
-    if (Array.isArray(value)) return value.length > 0;
-    if (isRecord(value)) return hasMergeRemovalContent(value);
-    return true;
+  return Object.entries(removal).some(([key, value]) => {
+    return !(key === "mcpServers" && isRecord(value) && Object.keys(value).length === 0);
   });
 }
 

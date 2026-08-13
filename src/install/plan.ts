@@ -247,6 +247,12 @@ async function createPlanFromOperations(
       const exists = await transport.pathExists(op.destPath);
       const currentContent = exists ? await transport.readFile(op.destPath) : undefined;
       const currentHash = exists ? await transport.hashPath(op.destPath) : undefined;
+      if (existing && workspaceOwner && !entryOwnedByWorkspace(existing, workspaceOwner)) {
+        if (!(await canAdoptLegacyUnownedEntry(existing, op, transport))) {
+          operations.push(keepForeignManifestEntryOperation(existing, targetRoot, workspaceOwner, op, currentHash));
+          continue;
+        }
+      }
       const incompleteMergeOwnership = existing
         && existing.mergeStrategy
         && !("mergeCreatedDestination" in existing && existing.mergeCreatedDestination === true)

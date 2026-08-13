@@ -1,12 +1,14 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "2da3d273436ed2316ca64bbe46714fa163ec8b68"
+    "refs/heads/main-integration": "502d2111bcc7c9b0795d534772230634611d1582",
+    "refs/heads/pr/amf-exact-mcp-retirement": "502d2111bcc7c9b0795d534772230634611d1582"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-13T13:47:50+00:00",
+  "created_at": "2026-08-13T16:51:48+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "2da3d273436ed2316ca64bbe46714fa163ec8b68",
+    "refs/heads/main-integration": "502d2111bcc7c9b0795d534772230634611d1582",
+    "refs/heads/pr/amf-exact-mcp-retirement": "502d2111bcc7c9b0795d534772230634611d1582",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
   "manifest": {
@@ -35,17 +37,34 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "amf-exact-mcp-retirement"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/amf-exact-mcp-retirement",
+        "commits": [
+          "502d2111bcc7c9b0795d534772230634611d1582"
+        ],
+        "id": "amf-exact-mcp-retirement",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "79d228855e8b464d563b57447d127138700dac75",
+  "manifest_digest": "41a2a0e728df5b35e6ce2df6b793305a9ef8d79a87dc9362a2dda556ab379e52",
+  "parent_state": "07248769a08ab2c06103091520ba4657a9673700",
   "projection_status": "partial",
-  "publication_id": "74dbaef9-64df-49bc-a7de-18867a0ea81a",
-  "publication_scope": "integration",
+  "publication_id": "87113acd-9764-4ca9-abc9-a17ed33c94e1",
+  "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.31.1",
   "tombstones": [

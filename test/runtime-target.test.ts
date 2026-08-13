@@ -157,6 +157,52 @@ describe("runtime target resolution", () => {
     expect(fallback.adapter).toBe("codex");
   });
 
+  it("uses an explicit agent state key instead of deriving install-state identity", async () => {
+    const project = await tempRoot("agentwheel-explicit-state-");
+    const targetRoot = join(project, "runtime");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      profiles: {
+        cutover: {
+          runtimes: [{ agent: "legacy", adapter: "codex", stateKey: "codex.user.legacy-fixture" }],
+        },
+      },
+      agents: {
+        legacy: {
+          adapter: "codex",
+          root: targetRoot,
+          transport: "local",
+          installationType: "user",
+          stateKey: "codex.user.original-fixture",
+        },
+      },
+    });
+
+    const agent = await resolveRuntimeTarget({ cwd: project, agent: "legacy" });
+    expect(agent.stateKey).toBe("codex.user.original-fixture");
+    const config = await readMergedWorkspaceConfig(project);
+    const profile = config.profiles.cutover;
+    const runtimes = profile && "runtimes" in profile ? profile.runtimes : undefined;
+    if (!runtimes) throw new Error("expected leaf profile");
+    const profileTarget = resolveProfileRuntimeTarget(runtimes[0]!, config, project);
+    expect(profileTarget.stateKey).toBe("codex.user.legacy-fixture");
+  });
+
+  it("rejects unsafe explicit install-state keys", async () => {
+    const project = await tempRoot("agentwheel-unsafe-state-");
+    await expect(writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      packages: [],
+      registry: {},
+      profiles: {},
+      agents: {
+        legacy: { adapter: "codex", root: project, transport: "local", stateKey: "../escape" },
+      },
+    })).rejects.toThrow();
+  });
+
   it("resolves all detected runtime directories without configured agents", async () => {
     const root = await tempRoot("agentwheel-detected-");
     await mkdir(join(root, ".claude"), { recursive: true });

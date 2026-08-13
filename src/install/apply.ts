@@ -26,7 +26,7 @@ import {
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
-import { removeMergeContribution } from "./merge-removal.js";
+import { assertExactMcpMergeContribution, removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
@@ -266,6 +266,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, resolvedOptions.lock, scope);
   try {
     await assertBaseRevision(plan, transport);
+    await assertExactMergeRemovalPreconditions(removable, transport);
     const journal: ApplyJournal = {
       version: 1,
       mode: "uninstall",
@@ -472,6 +473,16 @@ async function applyOperation(
       if (operation.mergeCreatedDestination) {
         await transport.rm(operation.destPath);
       } else if (operation.mergeRemoval) {
+        if (operation.exactMergeRemoval) {
+          if (!(await transport.pathExists(operation.destPath))) {
+            throw new Error(`Exact MCP retirement destination is missing: ${operation.relativeDestPath}`);
+          }
+          assertExactMcpMergeContribution(
+            operation.mergeRemoval,
+            operation.mergeStrategy,
+            await transport.readFile(operation.destPath),
+          );
+        }
         await removeMergeWithTransport(operation.destPath, operation.mergeStrategy, operation.mergeRemoval, transport);
       }
     } else {
@@ -799,6 +810,26 @@ async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport)
   const currentRevision = current?.revision ?? null;
   if (currentRevision !== plan.baseRevision) {
     throw new Error(`Install manifest changed since planning for ${plan.adapter}; replan needed`);
+  }
+}
+
+async function assertExactMergeRemovalPreconditions(
+  operations: InstallOperation[],
+  transport: TargetTransport,
+): Promise<void> {
+  for (const operation of operations) {
+    if (!operation.exactMergeRemoval) continue;
+    if (!operation.mergeStrategy || !operation.mergeRemoval) {
+      throw new Error(`Invalid exact MCP retirement operation: ${operation.relativeDestPath}`);
+    }
+    if (!(await transport.pathExists(operation.destPath))) {
+      throw new Error(`Exact MCP retirement destination is missing: ${operation.relativeDestPath}`);
+    }
+    assertExactMcpMergeContribution(
+      operation.mergeRemoval,
+      operation.mergeStrategy,
+      await transport.readFile(operation.destPath),
+    );
   }
 }
 

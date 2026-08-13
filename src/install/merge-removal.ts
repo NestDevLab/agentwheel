@@ -10,6 +10,27 @@ type MergeStrategy = "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-t
 
 export class MergeAdoptionMismatchError extends Error {}
 
+export function assertExactMcpMergeContribution(
+  removal: MergeRemoval,
+  strategy: MergeStrategy,
+  currentContent: string,
+): void {
+  if (strategy === "codex-toml-mcp") {
+    const mismatched = mismatchedCodexTomlMcpServers(removal as JsonRecord, currentContent);
+    if (mismatched.length > 0) {
+      throw new MergeAdoptionMismatchError(`exact MCP retirement precondition failed: Codex MCP server content differs or is missing for ${mismatched.join(", ")}`);
+    }
+    return;
+  }
+  if (strategy !== "json-deep") {
+    throw new MergeAdoptionMismatchError(`exact MCP retirement precondition failed: strategy ${strategy} is not supported`);
+  }
+  const mismatch = firstMcpContributionMismatch(parseMergeDestination(currentContent, strategy), removal);
+  if (mismatch) {
+    throw new MergeAdoptionMismatchError(`exact MCP retirement precondition failed: destination differs or is missing at ${mismatch}`);
+  }
+}
+
 export function combineMergeRemovals(existing: MergeRemoval, incoming: MergeRemoval): MergeRemoval {
   return combineMergeValues(existing, incoming) as MergeRemoval;
 }

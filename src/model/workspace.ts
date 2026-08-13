@@ -81,6 +81,7 @@ const workspacePackageV1Schema = workspacePackageBaseSchema.extend({
 
 const commandSchema = z.array(z.string().min(1)).min(1);
 const commandListSchema = z.array(commandSchema).min(1).optional();
+const installStateKeySchema = z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i);
 
 export const workspaceProfileRuntimeSchema = z.object({
   agent: z.string().min(1).optional(),
@@ -88,6 +89,7 @@ export const workspaceProfileRuntimeSchema = z.object({
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
   installationType: installationTypeSchema.optional(),
+  stateKey: installStateKeySchema.optional(),
   targetRoot: z.string().min(1).optional(),
   executePlugins: z.boolean().optional(),
   reloadRuntimes: z.boolean().optional(),
@@ -155,6 +157,7 @@ export const workspaceAgentSchema = z.object({
   adapterModule: z.string().min(1).optional(),
   root: z.string().min(1),
   installationType: installationTypeSchema.optional(),
+  stateKey: installStateKeySchema.optional(),
   transport: z.enum(["local", "ssh"]).default("local"),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),

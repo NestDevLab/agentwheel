@@ -111,6 +111,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
 | `agentwheel ownership handoff <type/name>` | Transfer one manifest entry to a different workspace root after exact owner, hash, and revision checks; runtime content is not rewritten. |
+| `agentwheel mcp retire <package>` | Preview removal of one exact legacy MCP contribution under an explicitly selected install-state key; add `--apply` only after review. |
 | `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |
 | `agentwheel cache prune` | Preview old Git source snapshots; add `--apply` to remove them while retaining locked commits. |
 
@@ -134,6 +135,22 @@ Apply the same command with the reviewed values added as `--expected-hash <sha25
 `--expected-revision <sha256>`. Agentwheel takes the target apply lock, rejects a pending apply
 journal, rechecks the old owner and the live artifact hash, then atomically updates only the install
 manifest. Run one target at a time; named SSH agents use the same contract through `--agent`.
+
+For a one-time MCP rename, keep the legacy artifact in a dedicated cutover workspace rather than
+the canonical desired-state profile. Set the legacy manifest `stateKey` on its named agent, then
+preview one runtime at a time:
+
+```bash
+agentwheel mcp retire legacy-mcp --agent legacy-codex \
+  --from-workspace-root /old/cutover/workspace --dry-run
+agentwheel mcp retire legacy-mcp --agent legacy-claude --dry-run
+```
+
+The package must render exactly one MCP artifact. The command accepts only an exact JSON MCP server
+object or exact Codex TOML MCP sections, rejects unexpected manifest entries or owners, and
+revalidates the exact contribution under the apply lock. It removes only the selected legacy
+server; sibling servers and user configuration remain. The command previews by default. A later
+runtime approval must use the same command with `--apply` instead of `--dry-run`.
 
 For a surgical dependency update, start with a dry-run:
 

@@ -44,7 +44,7 @@ import { findPackageManifestPath } from "../model/package.js";
 import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
-import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff } from "../lifecycle/ownership.js";
+import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
 import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
@@ -834,6 +834,26 @@ ownershipCommand
     console.log(`Hash: ${result.artifactHash}`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
+  });
+
+const mcpCommand = program
+  .command("mcp")
+  .description("operate on MCP runtime configuration");
+
+mcpCommand
+  .command("retire")
+  .description("remove one exact legacy MCP contribution with explicit state ownership")
+  .argument("<package>", "configured package containing exactly one legacy MCP artifact")
+  .option("--agent <name>", "one named agent from merged config")
+  .option("--profile <name>", "workspace runtime profile resolving to one target")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--from-workspace-root <path>", "required previous owner when managed legacy state exists")
+  .option("--dry-run", "show the retirement plan without writing (default)", false)
+  .option("--apply", "apply the exact reviewed retirement plan", false)
+  .option("--json", "print the install plan as JSON", false)
+  .action(async (packageName, options) => {
+    if (options.apply && options.dryRun) throw new Error("--apply cannot be combined with --dry-run.");
+    await runExactMcpRetirement(packageName, { ...options, dryRun: !options.apply });
   });
 
 program
@@ -1705,6 +1725,46 @@ interface GraphCliOptions {
   extraPackage?: WorkspacePackage;
   multiAdapterSource?: boolean;
   adopt?: boolean;
+  retireExactMcp?: boolean;
+  expectedFromWorkspaceOwner?: string;
+}
+
+async function runExactMcpRetirement(packageName: string, options: GraphCliOptions & { fromWorkspaceRoot?: string }): Promise<void> {
+  const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  const targets = await resolveCliTargets(normalizedOptions);
+  if (targets.length !== 1) {
+    throw new Error(`Exact MCP retirement requires exactly one runtime target, found ${targets.length}.`);
+  }
+  const target = targets[0]!;
+  const expectedFromWorkspaceOwner = options.fromWorkspaceRoot
+    ? workspaceOwnerForRoot(normalizeCliPath(options.fromWorkspaceRoot))
+    : undefined;
+  const results = await buildGraphPlansForTarget(target, undefined, {
+    ...normalizedOptions,
+    scope: packageName,
+    onlySource: true,
+    retireExactMcp: true,
+    expectedFromWorkspaceOwner,
+    dryRun: true,
+  }, { mode: "install" });
+  if (results.length !== 1) {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
+    throw new Error(`Exact MCP retirement requires one package plan, found ${results.length}.`);
+  }
+  const result = results[0]!;
+  try {
+    console.log(options.json ? JSON.stringify(result.plan, null, 2) : formatGraphPlan(result));
+    if (result.plan.hasBlockingChanges) {
+      process.exitCode = 1;
+      return;
+    }
+    if (!options.dryRun) {
+      await uninstall(result.plan, { transport: transportForTarget(target) });
+      console.log(`Retired exact MCP contribution for ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+    }
+  } finally {
+    await rm(result.bundle.root, { recursive: true, force: true });
+  }
 }
 
 interface PackageGraphGroup {
@@ -1959,6 +2019,7 @@ async function buildGraphPlansForTarget(
       targetKey: targetKeyForTarget(group.target, adapter.name),
       targetFingerprintParts: targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
       installationType: group.installationType,
+      stateKey: group.target.stateKey,
       noDeps: noDepsFromOptions(targetOptions),
       includeSuggestions: targetOptions.withSuggestions,
       suggestionAliases: suggestionAliasesFromOptions(targetOptions),
@@ -1973,6 +2034,8 @@ async function buildGraphPlansForTarget(
       forceDrift: targetOptions.forceDrift,
       forceConflict: targetOptions.forceConflict,
       replaceConflict: targetOptions.replaceConflict,
+      retireExactMcp: targetOptions.retireExactMcp,
+      expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
     });
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
@@ -2522,6 +2585,7 @@ function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, o
     targetRoot: target.targetRoot,
     transport: target.transport,
     ssh: target.ssh,
+    stateKey: target.stateKey,
   };
 }
 
@@ -2534,7 +2598,7 @@ function installStateForTarget(
   const targetFingerprint = targetFingerprintDigest(target, adapter, options, installationType);
   return {
     installationType,
-    stateKey: stateKeyFor(adapter.name, { installationType, targetFingerprint }),
+    stateKey: target.stateKey ?? stateKeyFor(adapter.name, { installationType, targetFingerprint }),
     installRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh"),
   };
 }

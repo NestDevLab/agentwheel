@@ -250,5 +250,35 @@ normal apply lock, then atomically changes only that entry's `workspaceOwner`. L
 targets share this transport-neutral behavior. It never copies, removes, or rewrites the runtime
 artifact.
 
+## Exact MCP retirement
+
+Use a separate, temporary Fleet workspace when a renamed MCP server must be removed after its
+canonical replacement is already installed. The cutover workspace must contain exactly one legacy
+MCP artifact per package and one named agent per runtime. An agent may declare an explicit
+`stateKey` to select a pre-existing install manifest without depending on the current workspace
+fingerprint:
+
+```jsonc
+{
+  "agents": {
+    "legacy-codex": {
+      "adapter": "codex",
+      "installationType": "user",
+      "root": "/home/example",
+      "transport": "local",
+      "stateKey": "codex.user.legacy-state"
+    }
+  }
+}
+```
+
+Preview with `agentwheel mcp retire <package> --agent legacy-codex --dry-run`. If the selected
+manifest belongs to an earlier workspace, add `--from-workspace-root <exact-old-root>`; omission or
+an owner mismatch fails closed. Unmanaged legacy state needs no owner flag. The plan is valid only
+when it contains one `REMOVE`, no drift/conflict, the expected target root, and the expected legacy
+server name. Apply is a separate decision using `--apply`; Agentwheel rechecks manifest revision and
+the complete MCP subentry before writing, so changed arguments, environment, ownership, or state
+abort without removing runtime content.
+
 Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
 those on an SSH target, run the command on the remote host after reviewing the dry-run output.

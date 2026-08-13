@@ -27,6 +27,7 @@ import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolic
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
 import { workspaceOwnerForRoot } from "./ownership.js";
+import { createExactMcpRetirementPlan } from "./mcp-retirement.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -83,6 +84,8 @@ export interface GraphSourcePlanOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
+  retireExactMcp?: boolean;
+  expectedFromWorkspaceOwner?: string;
 }
 
 export interface GraphSourcePlanResult {
@@ -216,17 +219,33 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const graphLockDigest = digestGraphLock(bundle.graphLock);
   const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
   const manifest = await readInstallManifest(resolvedInstallRoot, options.adapter.name, transport, { installationType: resolvedInstallationType, stateKey });
-  const plan = await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
-    baseRevision: manifest?.revision ?? null,
-    graphLockDigest,
-    workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
-    installationType: resolvedInstallationType,
-    stateKey,
-    forceDrift: options.forceDrift,
-    forceConflict: options.forceConflict,
-    replaceConflict: options.replaceConflict,
-    warn,
-  });
+  const workspaceOwner = workspaceOwnerForRoot(workspaceRoot);
+  const plan = options.retireExactMcp
+    ? await createExactMcpRetirementPlan(
+        desiredArtifacts,
+        options.adapter,
+        options.targetRoot,
+        manifest,
+        transport,
+        {
+          installationType: resolvedInstallationType,
+          stateKey,
+          workspaceOwner,
+          expectedFromWorkspaceOwner: options.expectedFromWorkspaceOwner,
+          graphLockDigest,
+        },
+      )
+    : await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
+        baseRevision: manifest?.revision ?? null,
+        graphLockDigest,
+        workspaceOwner,
+        installationType: resolvedInstallationType,
+        stateKey,
+        forceDrift: options.forceDrift,
+        forceConflict: options.forceConflict,
+        replaceConflict: options.replaceConflict,
+        warn,
+      });
   return {
     plan,
     graph,

@@ -478,6 +478,18 @@ By default, uninstall keeps drifted managed files. Use `--force` only with expli
 agentwheel uninstall team-agent-pack --force
 ```
 
+For a one-time MCP rename, use a dedicated cutover workspace with one legacy MCP artifact and an
+explicit agent `stateKey`. Preview each runtime separately:
+
+```bash
+agentwheel mcp retire legacy-mcp --agent legacy-codex --from-workspace-root /exact/old/workspace --dry-run
+agentwheel mcp retire legacy-mcp --agent legacy-claude --dry-run
+```
+
+Require exactly one `REMOVE`, the expected target and legacy server, and zero drift/conflict.
+Unexpected owner, manifest contents, arguments, environment, or MCP fields are blockers. Apply only
+after separate runtime approval by replacing `--dry-run` with `--apply`.
+
 ## Package Manifest Reference
 
 An OpenPack package uses `openpack.json` or `openpack.jsonc`:

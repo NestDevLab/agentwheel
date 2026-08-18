@@ -1,16 +1,34 @@
 # Changelog
 
-## Unreleased
+## 0.17.0
 
-- Added `agentwheel skill update <name>` to resolve a configured skill's owning package and reconcile only its closure. Fixed `--only-source` for configured packages while preserving unrelated graph-lock state.
-- Fixed OpenPack skill collections so a colocated `README.md` stays package documentation instead of becoming a skill. Skills-only manifests now scan cleanly without requiring an unrelated instructions artifact.
-
-## 0.16.7
-
-- Fixed locked graph resolution so changing a root package source also refreshes its tracking
-  dependency closure instead of combining incompatible lock generations.
-- Fixed explicit-source install and plan preflight for artifacts composed from cross-package
-  fragments by deferring rendering to the resolved dependency graph.
+- Added `agentwheel cache prune` to preview old Git source snapshots, with `--apply` to
+  remove them while retaining locked commits and `--keep` to retain the newest snapshots
+  per source.
+- Added `agentwheel mcp retire`, a dedicated workflow for removing one exact legacy MCP
+  contribution. It revalidates JSON and Codex MCP content and manifest ownership before
+  removal, and keeps dry-run and apply as separate boundaries. Named Fleet targets now
+  carry explicit install-state keys.
+- Added `agentwheel skill update <name>` to resolve a configured skill's owning package
+  and reconcile only its closure. Fixed `--only-source` for configured packages while
+  preserving unrelated graph-lock state.
+- Added the `agentwheel-artifact-evolution` skill: a source-aware workflow for evolving
+  reusable agent artifacts, with catalogue metadata and validation coverage.
+- Fixed locked graph resolution so changing a root package source also refreshes its
+  tracking dependency closure instead of combining incompatible lock generations.
+- Fixed explicit-source install and plan preflight for artifacts composed from
+  cross-package fragments by deferring rendering to the resolved dependency graph.
+- Fixed SkillKit cache ref isolation: configured refs now materialize into immutable,
+  ref-specific cache paths, named refs are passed to SkillKit, commit refs are checked
+  out explicitly, and an atomic filesystem lock with temporary candidate directories
+  stops concurrent processes from replacing an existing cache.
+- Fixed exact adoption of pre-existing MCP merge contributions under `--force-conflict`,
+  recording complete removal ownership while preserving prior ownership across refreshes,
+  and failing closed for non-exact JSON and Codex TOML server blocks and for empty legacy
+  removal records.
+- Fixed OpenPack skill collections so a colocated `README.md` stays package documentation
+  instead of becoming a skill. Skills-only manifests now scan cleanly without requiring an
+  unrelated instructions artifact.
 
 ## 0.16.6
 

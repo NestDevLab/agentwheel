@@ -1,13 +1,16 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-20T13:29:15+00:00",
+  "created_at": "2026-08-20T13:30:42+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
-    "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
+    "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
   },
   "manifest": {
     "coordination": {
@@ -35,17 +38,35 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "release-0-18-named-fleets"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "release/0.18.0-named-fleets",
+        "commits": [
+          "bc67dc44a8cd8b5db1308c9f070b6490fdbbc838",
+          "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
+        ],
+        "id": "release-0-18-named-fleets",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "7562d0ce36988f403bb725c938bc52839358c9f8",
+  "manifest_digest": "72194260a1047cecf88c00d5232c34948eb0857c969b03ef70190391ea0f330a",
+  "parent_state": "63a7ad50042982e85d24951e8f0625828e2e6fa4",
   "projection_status": "partial",
-  "publication_id": "6ba09d65-7fee-4fc5-a3c2-7a21e83a3ec0",
-  "publication_scope": "close:mgt-0139-named-fleets",
+  "publication_id": "56fa9b6e-dad3-407a-aa2c-342e73840dc1",
+  "publication_scope": "stack:release-0-18-named-fleets",
   "schema_version": 2,
   "syncwheel_version": "0.33.3",
   "tombstones": [

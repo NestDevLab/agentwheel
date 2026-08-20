@@ -2580,8 +2580,13 @@ function mergeFocusedArtifactGraphLock(
   const roots = previous.canonical.roots.map((root) => root.rootId === rootId ? currentRoot : root);
   if (!roots.some((root) => root.rootId === rootId)) roots.push(currentRoot);
   const currentIncludes = usedIncludeEdges(current, currentFocused);
+  const previousFocusedIncludes = new Set(usedIncludeEdges(previous, previousFocused).map(graphIncludeEdgeIdentity));
+  const previousPreservedIncludes = new Set(usedIncludeEdges(previous, previousPreserved).map(graphIncludeEdgeIdentity));
   const previousIncludes = previous.canonical.includeEdges.filter(
-    (edge) => previousNodeIds.has(edge.fromNodeId) && previousNodeIds.has(edge.toNodeId),
+    (edge) => previousNodeIds.has(edge.fromNodeId)
+      && previousNodeIds.has(edge.toNodeId)
+      && (!previousFocusedIncludes.has(graphIncludeEdgeIdentity(edge))
+        || previousPreservedIncludes.has(graphIncludeEdgeIdentity(edge))),
   );
 
   return canonicalizeGraphLock({
@@ -2605,7 +2610,7 @@ function mergeFocusedArtifactGraphLock(
       ),
       includeEdges: uniqueBy(
         [...currentIncludes, ...previousIncludes],
-        (edge) => `${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}\0${edge.sourceHash}`,
+        graphIncludeEdgeIdentity,
       ),
       artifacts: [...currentFocused, ...previousPreserved],
       namespacing: [
@@ -2690,6 +2695,10 @@ function usedIncludeEdges(
 ): GraphLock["canonical"]["includeEdges"] {
   const selectors = new Set(artifacts.flatMap((artifact) => artifact.composedFrom?.map((entry) => entry.selector) ?? []));
   return lock.canonical.includeEdges.filter((edge) => selectors.has(`${edge.toNodeId}:${edge.selector}`));
+}
+
+function graphIncludeEdgeIdentity(edge: GraphLock["canonical"]["includeEdges"][number]): string {
+  return `${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}\0${edge.sourceHash}`;
 }
 
 function graphAncestorPaths(lock: GraphLock, rootNodeId: string, targets: Set<string>): Set<string> {

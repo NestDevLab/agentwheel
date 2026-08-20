@@ -2580,7 +2580,14 @@ function mergeFocusedArtifactGraphLock(
   const roots = previous.canonical.roots.map((root) => root.rootId === rootId ? currentRoot : root);
   if (!roots.some((root) => root.rootId === rootId)) roots.push(currentRoot);
   const currentIncludes = usedIncludeEdges(current, currentFocused);
-  const previousIncludes = usedIncludeEdges(previous, previousPreserved);
+  const previousFocusedIncludes = new Set(usedIncludeEdges(previous, previousFocused).map(graphIncludeEdgeIdentity));
+  const previousPreservedIncludes = new Set(usedIncludeEdges(previous, previousPreserved).map(graphIncludeEdgeIdentity));
+  const previousIncludes = previous.canonical.includeEdges.filter(
+    (edge) => previousNodeIds.has(edge.fromNodeId)
+      && previousNodeIds.has(edge.toNodeId)
+      && (!previousFocusedIncludes.has(graphIncludeEdgeIdentity(edge))
+        || previousPreservedIncludes.has(graphIncludeEdgeIdentity(edge))),
+  );
 
   return canonicalizeGraphLock({
     ...current,
@@ -2603,7 +2610,7 @@ function mergeFocusedArtifactGraphLock(
       ),
       includeEdges: uniqueBy(
         [...currentIncludes, ...previousIncludes],
-        (edge) => `${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}\0${edge.sourceHash}`,
+        graphIncludeEdgeIdentity,
       ),
       artifacts: [...currentFocused, ...previousPreserved],
       namespacing: [
@@ -2643,6 +2650,18 @@ function preservedGraphNodeIds(
   const replacedRoot = lock.canonical.roots.find((root) => root.rootId === replacedRootId);
   if (replacedRoot) {
     const replacedRootClosure = graphRootClosure(lock, replacedRootId);
+    const dependencyQueue = artifacts
+      .map((artifact) => artifact.graphNodeId)
+      .filter((nodeId) => nodeId !== replacedRoot.graphNodeId);
+    while (dependencyQueue.length > 0) {
+      const nodeId = dependencyQueue.shift()!;
+      if (!selected.has(nodeId)) selected.add(nodeId);
+      for (const edge of lock.canonical.edges) {
+        if (edge.from !== nodeId || selected.has(edge.to)) continue;
+        selected.add(edge.to);
+        dependencyQueue.push(edge.to);
+      }
+    }
     for (const artifact of artifacts) {
       if (!replacedRootClosure.has(artifact.graphNodeId)) continue;
       for (const nodeId of graphAncestorPaths(lock, replacedRoot.graphNodeId, new Set([artifact.graphNodeId]))) {
@@ -2676,6 +2695,10 @@ function usedIncludeEdges(
 ): GraphLock["canonical"]["includeEdges"] {
   const selectors = new Set(artifacts.flatMap((artifact) => artifact.composedFrom?.map((entry) => entry.selector) ?? []));
   return lock.canonical.includeEdges.filter((edge) => selectors.has(`${edge.toNodeId}:${edge.selector}`));
+}
+
+function graphIncludeEdgeIdentity(edge: GraphLock["canonical"]["includeEdges"][number]): string {
+  return `${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}\0${edge.sourceHash}`;
 }
 
 function graphAncestorPaths(lock: GraphLock, rootNodeId: string, targets: Set<string>): Set<string> {

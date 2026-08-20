@@ -1,6 +1,6 @@
 ---
 name: agentwheel-discovery
-description: MUST use proactively when a request describes repeated manual work, inconsistent results, lost information, a missing capability, or an unavailable integration—even if the user did not ask for a skill. Run Agentwheel semantic search before generic brainstorming or workflow advice, suggest up to three evidence-backed reusable skills or integrations, and offer a read-only trial without installing or changing anything.
+description: MUST use proactively when a request expresses an operational intent that an existing reusable skill or integration could plausibly fulfill—even if the user did not ask for a skill or describe a capability gap. Inspect installed artifacts, then run Agentwheel semantic search before generic or manual solution design when none already covers the intent. Suggest up to three evidence-backed matches and offer a read-only trial without installing or changing anything.
 allowed-tools: [Bash]
 license: MIT
 metadata:
@@ -25,11 +25,12 @@ This skill is optional: install it only when proactive recommendations are wante
 
 ## When To Search
 
-Use this skill before generic brainstorming, planning, or workflow advice whenever the request
-describes repeated manual work, inconsistent outputs, lost information, a missing operational
-capability, or an unavailable integration. The user does not need to mention Agentwheel, skills,
-discovery, search, or a catalogue. Run the first semantic search in the same turn; do not merely
-describe a workflow and defer discovery.
+Use this skill whenever a request expresses an operational outcome that an existing reusable skill
+or integration could plausibly deliver. This includes repeated manual work, inconsistent outputs,
+lost information, missing capabilities, and unavailable integrations. The user does not need to
+mention Agentwheel, skills, discovery, search, a catalogue, or a capability gap. Search before
+generic brainstorming, planning, manual workflow advice, or an unsolicited custom solution. Run
+the first semantic search in the same turn; do not merely describe a workflow and defer discovery.
 
 This is a per-turn judgment, not a background monitor. Delegated agents follow the same trigger
 when this skill is available.

@@ -1057,6 +1057,109 @@ describe("CLI verb redesign", () => {
     expect(fullPreview.stdout).toMatch(/UPDATE.*skills\/beta/);
   });
 
+  it("preserves dependency-only sibling graph state during a focused skill update", async () => {
+    const workspace = await tempRoot();
+    const packages = await tempRoot("agentwheel-focused-sibling-deps-");
+    const source = join(packages, "root");
+    const reviewCore = join(packages, "review-core");
+    const publicCore = join(packages, "public-core");
+
+    await mkdir(join(publicCore, "fragments"), { recursive: true });
+    await writeFile(join(publicCore, "fragments", "role-communicator.md"), "Communicator contract\n", "utf8");
+    await writeFile(join(publicCore, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "fixture/public-core",
+      version: "1.0.0",
+      provides: [{ type: "fragments", path: "fragments" }],
+    }, null, 2)}\n`, "utf8");
+
+    await mkdir(join(reviewCore, "skills", "review-pr"), { recursive: true });
+    await mkdir(join(reviewCore, "roles", "communicator"), { recursive: true });
+    await writeFile(join(reviewCore, "skills", "review-pr", "SKILL.md"), [
+      "---",
+      "name: review-pr",
+      "description: Review fixture.",
+      "---",
+      "",
+      "# Review",
+      "",
+    ].join("\n"), "utf8");
+    await writeFile(
+      join(reviewCore, "roles", "communicator", "AGENTS.md"),
+      "<!-- openpack:include pub:fragments/role-communicator.md -->\n",
+      "utf8",
+    );
+    await writeFile(join(reviewCore, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "fixture/review-core",
+      version: "1.0.0",
+      requires: {
+        pub: {
+          source: "../public-core",
+          select: ["fragments/role-communicator.md"],
+        },
+      },
+      provides: [
+        { type: "skills", path: "skills" },
+        { type: "instructions", path: "roles/communicator/AGENTS.md" },
+      ],
+    }, null, 2)}\n`, "utf8");
+
+    await writeSkillPackage(source, "alpha", "alpha-v1");
+    await addSkillToPackage(source, "beta", "beta-v1");
+    const rootManifestPath = join(source, "openpack.json");
+    const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8"));
+    rootManifest.requires = {
+      "review-core": {
+        source: "../review-core",
+        select: ["skills/review-pr"],
+      },
+    };
+    rootManifest.provides[0].items = {
+      beta: { requires: ["review-core:skills/review-pr"] },
+    };
+    await writeFile(rootManifestPath, `${JSON.stringify(rootManifest, null, 2)}\n`, "utf8");
+
+    await runCli([
+      "add", source, "--name", "focused-root", "--adapter", "codex", "--target-root", workspace,
+      "--skill", "alpha", "--skill", "beta",
+    ]);
+    await runCli([
+      "install", "focused-root", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes",
+    ]);
+
+    const lockBefore = await readTestGraphLock(workspace);
+    const publicNodeBefore = lockBefore.canonical.nodes.find((node) => node.name === "fixture/public-core");
+    const reviewNodeBefore = lockBefore.canonical.nodes.find((node) => node.name === "fixture/review-core");
+    const dependencyEdgeBefore = lockBefore.canonical.edges.find(
+      (edge) => edge.from === reviewNodeBefore?.id && edge.to === publicNodeBefore?.id,
+    );
+    const includeEdgeBefore = lockBefore.canonical.includeEdges.find(
+      (edge) => edge.fromNodeId === reviewNodeBefore?.id && edge.toNodeId === publicNodeBefore?.id,
+    );
+    expect(publicNodeBefore).toBeDefined();
+    expect(reviewNodeBefore).toBeDefined();
+    expect(dependencyEdgeBefore).toBeDefined();
+    expect(includeEdgeBefore).toBeDefined();
+
+    await addSkillToPackage(source, "alpha", "alpha-v2");
+    await addSkillToPackage(source, "beta", "beta-v2");
+    const update = await runCli([
+      "skill", "update", "alpha", "--adapter", "codex", "--target-root", workspace, "--yes",
+    ]);
+
+    expect(update.stdout).toMatch(/UPDATE.*skills\/alpha/);
+    expect(update.stdout).not.toMatch(/UPDATE.*skills\/beta/);
+    const lockAfter = await readTestGraphLock(workspace);
+    expect(lockAfter.canonical.nodes.find((node) => node.id === publicNodeBefore?.id)).toEqual(publicNodeBefore);
+    expect(lockAfter.canonical.edges.find(
+      (edge) => edge.from === reviewNodeBefore?.id && edge.to === publicNodeBefore?.id,
+    )).toEqual(dependencyEdgeBefore);
+    expect(lockAfter.canonical.includeEdges.find(
+      (edge) => edge.fromNodeId === reviewNodeBefore?.id && edge.toNodeId === publicNodeBefore?.id,
+    )).toEqual(includeEdgeBefore);
+  });
+
   it("updates only the explicitly selected package when aliased packages provide the same skill", async () => {
     const workspace = await tempRoot();
     const first = await namedSkillPackageFixture("fixture/first-owner", "shared-skill", "first-v1");

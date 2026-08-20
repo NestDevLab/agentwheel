@@ -1,16 +1,17 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395"
+    "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T14:09:59+00:00",
+  "created_at": "2026-08-20T14:26:42+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
-    "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
+    "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+    "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
     "coordination": {
@@ -38,19 +39,37 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "site-card-alignment"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/site-card-alignment",
+        "commits": [
+          "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
+        ],
+        "id": "site-card-alignment",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "2c24cb06b1fff7f146177c754ed95ae3f042de31",
+  "manifest_digest": "fe1fb363f24f0c068ac6111e5930d392151fb2f1c2809a60c585b745acfe10d1",
+  "parent_state": "d0cacfff84ffce5ed4def527d09ed4306aebc9ac",
   "projection_status": "partial",
-  "publication_id": "716432f0-0e10-4302-854f-ee618aaaeea6",
-  "publication_scope": "integration",
+  "publication_id": "387e7cb3-c743-4fff-be46-b6e5f8303524",
+  "publication_scope": "partial",
   "schema_version": 2,
-  "syncwheel_version": "0.33.3",
+  "syncwheel_version": "0.33.4",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

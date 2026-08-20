@@ -38,11 +38,11 @@ describe("Agentwheel companion skills", () => {
 
     expect(frontmatter.name).toBe("agentwheel-discovery");
     expect(description).toContain("MUST use proactively");
-    expect(description).toContain("even if the user did not ask for a skill");
-    expect(description).toContain("before generic brainstorming or workflow advice");
-    expect(description).toContain("missing capability");
-    expect(description).toContain("repeated manual work");
-    expect(description).toContain("unavailable integration");
+    expect(description).toContain("operational intent");
+    expect(description).toContain("could plausibly fulfill");
+    expect(description).toContain("even if the user did not ask for a skill or describe a capability gap");
+    expect(description).toContain("Inspect installed artifacts");
+    expect(description).toContain("when none already covers the intent");
     expect(description).toContain("semantic search");
     expect(description).toContain("up to three");
     expect(description).toContain("read-only trial");
@@ -67,8 +67,10 @@ describe("Agentwheel companion skills", () => {
     const { content } = await readSkill("agentwheel-discovery");
     const prose = content.replace(/\s+/g, " ");
 
-    expect(prose).toContain("Use this skill before generic brainstorming, planning, or workflow advice");
-    expect(prose).toContain("The user does not need to mention Agentwheel, skills, discovery, search, or a catalogue");
+    expect(prose).toContain("Use this skill whenever a request expresses an operational outcome");
+    expect(prose).toContain("an existing reusable skill or integration could plausibly deliver");
+    expect(prose).toContain("The user does not need to mention Agentwheel, skills, discovery, search, a catalogue, or a capability gap");
+    expect(prose).toContain("Search before generic brainstorming, planning, manual workflow advice, or an unsolicited custom solution");
     expect(prose).toContain("Run the first semantic search in the same turn");
     expect(prose).toContain("provides the requested operational capability end to end");
     expect(prose).toContain("Generic brainstorming, planning, writing, or advisory skills do not count");

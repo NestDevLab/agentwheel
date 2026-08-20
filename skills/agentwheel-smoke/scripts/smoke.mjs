@@ -20,7 +20,7 @@ if (parsed.error) {
 const config = findConfigs(cwd, home);
 const harness = detectHarness(skillRoot, cwd, home);
 const envHint = detectHarnessFromEnv();
-const agentwheel = inspectAgentwheel(parsed.statusArgs, envHint);
+const agentwheel = inspectAgentwheel(parsed.statusArgs, envHint, harness);
 const manifests = findStateFiles(harness.runtimeRoot ?? projectRootFromConfig(config.projectConfig) ?? cwd);
 const assessment = assess({ harness, agentwheel, manifests, config });
 const report = {
@@ -50,11 +50,11 @@ function parseArgs(args) {
       json = true;
       continue;
     }
-    if (["--all", "--all-detected"].includes(arg)) {
+    if (["--all", "--all-detected", "--user", "--local"].includes(arg)) {
       statusArgs.push(arg);
       continue;
     }
-    if (["--agent", "--profile", "--target-root", "--adapter", "--installation-type"].includes(arg)) {
+    if (["--agent", "--profile", "--target-root", "--adapter", "--installation-type", "--fleet"].includes(arg)) {
       const value = args[index + 1];
       if (!value || value.startsWith("--")) return { error: `${arg} requires a value.` };
       statusArgs.push(arg, value);
@@ -66,12 +66,14 @@ function parseArgs(args) {
   return { json, statusArgs };
 }
 
-function inspectAgentwheel(statusArgs, hint) {
+function inspectAgentwheel(statusArgs, hint, harness) {
   const which = run("command", ["-v", "agentwheel"], { shell: true });
   const version = which.ok ? run("agentwheel", ["--version"]) : { ok: false, code: null, stdout: "", stderr: "agentwheel not found" };
-  let effectiveStatusArgs = statusArgs;
+  let effectiveStatusArgs = hasWorkspaceScope(statusArgs)
+    ? statusArgs
+    : [...defaultWorkspaceScope(harness), ...statusArgs];
   let status = which.ok ? run("agentwheel", ["status", ...effectiveStatusArgs]) : { ok: false, code: null, stdout: "", stderr: "agentwheel not found" };
-  if (!status.ok && statusArgs.length === 0 && /Multiple runtime directories detected/i.test(status.stderr) && hint?.adapter) {
+  if (!status.ok && effectiveStatusArgs.length === 0 && /Multiple runtime directories detected/i.test(status.stderr) && hint?.adapter) {
     effectiveStatusArgs = ["--adapter", hint.adapter, "--installation-type", hint.installationType ?? "local"];
     status = run("agentwheel", ["status", ...effectiveStatusArgs]);
   }
@@ -88,6 +90,16 @@ function inspectAgentwheel(statusArgs, hint) {
       summary: summarizeStatus(status.stdout, status.stderr),
     },
   };
+}
+
+function hasWorkspaceScope(args) {
+  return args.some((arg) => ["--user", "--local", "--fleet", "--target-root"].includes(arg));
+}
+
+function defaultWorkspaceScope(harness) {
+  if (harness?.installationType === "user") return ["--user"];
+  if (harness?.installationType === "local") return ["--local"];
+  return [];
 }
 
 function run(command, args, options = {}) {

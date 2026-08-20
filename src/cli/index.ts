@@ -21,7 +21,7 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, stageSourceRaw } from "../staging/staging.js";
-import { findWorkspaceRoot, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, writeWorkspaceConfig } from "../model/workspace.js";
+import { CURRENT_WORKSPACE_SCHEMA_VERSION, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
@@ -40,7 +40,7 @@ import { pathExists } from "../utils/fs.js";
 import { transportForTarget } from "../transport/index.js";
 import { validatePackage } from "../model/package-validate.js";
 import { migratePackageManifest } from "../model/package-migrate.js";
-import { findPackageManifestPath } from "../model/package.js";
+import { CURRENT_OPENPACK_SCHEMA_VERSION, findPackageManifestPath } from "../model/package.js";
 import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
@@ -65,6 +65,8 @@ import {
   type SearchType,
 } from "../model/catalogue.js";
 import { pruneGitCache, releaseGitSnapshotLease } from "../source/cache.js";
+import { listRegisteredFleets, registerFleet, resolveWorkspaceScope, showRegisteredFleet } from "../model/fleet.js";
+import { applyFleetNormalization, planFleetNormalization, recoverFleetNormalization, type FleetNormalizationSource } from "../lifecycle/fleet-normalize.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -104,7 +106,9 @@ program
     if (kind !== "workspace") {
       throw new Error(`Unknown init kind: ${kind}`);
     }
-    const config = await readWorkspaceConfig(root);
+    const config = await pathExists(workspaceConfigPath(root))
+      ? await readWorkspaceConfig(root)
+      : workspaceConfigSchema.parse({ schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION });
     const bootstrapPackage = config.bootstrapSkills === false ? undefined : await defaultBootstrapPackage(root);
     const withBootstrap = bootstrapPackage ? upsertPackage(config, bootstrapPackage) : config;
     await writeWorkspaceConfig(root, options.fleetExample ? withFleetExample(withBootstrap) : withBootstrap);
@@ -117,14 +121,80 @@ const cacheCommand = program
   .command("cache")
   .description("inspect and maintain local source caches");
 
+const fleetCommand = program
+  .command("fleet")
+  .description("register, inspect, and normalize isolated named fleets");
+
+fleetCommand
+  .command("register")
+  .description("register an existing schema-v3 fleet in the user config")
+  .argument("<id>", "fleet id")
+  .requiredOption("--root <path>", "absolute canonical fleet root")
+  .requiredOption("--required-package <name>", "required package (repeatable)", collectValueOption, [] as string[])
+  .action(async (id, options) => {
+    const registered = await registerFleet({ id, root: options.root, requiredPackages: options.requiredPackage });
+    console.log(`Registered fleet '${registered.id}' at ${registered.root}.`);
+  });
+
+fleetCommand
+  .command("list")
+  .description("list registered fleets")
+  .option("--json", "print registrations as JSON", false)
+  .action(async (options) => {
+    const fleets = await listRegisteredFleets();
+    if (options.json) return console.log(JSON.stringify(fleets, null, 2));
+    if (fleets.length === 0) return console.log("No named fleets registered.");
+    for (const fleet of fleets) console.log(`${fleet.id}\t${fleet.root}\t${fleet.requiredPackages.join(",")}`);
+  });
+
+fleetCommand
+  .command("show")
+  .description("show one registered fleet")
+  .argument("<id>", "fleet id")
+  .option("--json", "print registration as JSON", false)
+  .action(async (id, options) => {
+    const fleet = await showRegisteredFleet(id);
+    console.log(options.json ? JSON.stringify(fleet, null, 2) : `${fleet.id}\nRoot: ${fleet.root}\nRequired packages: ${fleet.requiredPackages.join(", ")}`);
+  });
+
+fleetCommand
+  .command("normalize")
+  .description("plan or apply duplicate desired-state ownership normalization")
+  .argument("<destinationFleet>", "destination fleet id")
+  .requiredOption("--from <scope>", "user or fleet:<sourceFleet>")
+  .option("--package <name>", "limit to one duplicate package (repeatable)", collectValueOption, [] as string[])
+  .option("--apply", "apply a reviewed plan", false)
+  .option("--recover", "restore source state from a pending normalization journal", false)
+  .option("--plan-digest <sha256>", "exact digest from the reviewed dry-run")
+  .option("--json", "print the plan or result as JSON", false)
+  .action(async (destinationFleet, options) => {
+    const request = {
+      destinationFleet,
+      from: options.from as FleetNormalizationSource,
+      ...(options.package.length > 0 ? { packages: options.package } : {}),
+    };
+    if (options.recover && (options.apply || options.planDigest || options.package.length > 0)) {
+      throw new Error("--recover cannot be combined with --apply, --plan-digest, or --package.");
+    }
+    const result = options.recover
+      ? await recoverFleetNormalization(request)
+      : options.apply
+        ? await applyFleetNormalization({ ...request, apply: true, planDigest: options.planDigest })
+        : await planFleetNormalization(request);
+    console.log(options.json ? JSON.stringify(result, null, 2) : formatFleetNormalization(result));
+  });
+
 cacheCommand
   .command("prune")
   .description("remove old Git source snapshots while preserving locked commits")
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .option("--keep <count>", "newest snapshots to retain per source", parsePositiveInteger, 3)
   .option("--apply", "delete the selected snapshots; without this flag only preview", false)
   .action(async (options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
     const cacheRoot = join(targetRoot, ".agentwheel", "cache");
     const result = await pruneGitCache(cacheRoot, { keepSnapshots: options.keep, dryRun: !options.apply });
     const verb = options.apply ? "Removed" : "Would remove";
@@ -139,8 +209,9 @@ program
   .option("--driver <driver>", "source driver (local, git, skillkit, vercel-skills, mcp-registry, or clawhub)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -155,7 +226,7 @@ program
   .option("--override <source-or-package::type/name>", "allow this package to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .action(async (source, options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const targetRoot = normalizeTargetRoot(normalizedOptions.targetRoot ?? process.cwd());
+    const targetRoot = await workspaceRootFromOptions(normalizedOptions);
     const entry = await packageEntryFromSource(source, targetRoot, normalizedOptions);
     await writeWorkspaceConfig(targetRoot, upsertPackage(await readWorkspaceConfig(targetRoot), entry));
     console.log(`Added ${entry.name}. Preview: agentwheel plan - Apply: agentwheel install`);
@@ -166,11 +237,14 @@ program
   .description("list artifacts exposed by a package source")
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .action(async (source, options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const selectedArtifacts = selectedArtifactsFromOptionsOrRegistry(options, resolvedInput.registryEntry);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
@@ -198,7 +272,10 @@ program
   .option("--refresh", "refresh registry and catalogue caches", false)
   .option("--offline", "use compatible local caches without network access", false)
   .option("--semantic", "rank published catalogue entries with the verified semantic index", false)
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .action(async (query: string, options: SearchCliOptions) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
@@ -216,7 +293,7 @@ program
     }
 
     const warning = (message: string) => console.error(message);
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
     const registryRequest = scope === "all" || scope === "registry"
       ? new RegistryClient({ workspaceRoot: targetRoot, offline: options.offline, warn: warning }).getIndex({ refresh: options.refresh })
       : undefined;
@@ -269,11 +346,14 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
   .option("--json", "print the read-only skill trial as JSON", false)
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .option("--select <type/name>", "select exactly one skill artifact", collectSelectOption, [] as string[])
   .option("--skill <name>", "select exactly one skill by name", collectSkillOption, [] as string[])
   .action(async (source: string, options: SkillTrialCliOptions) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, {
@@ -301,9 +381,12 @@ program
   .description("scan a package source for validation findings")
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver")
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .action(async (source, options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
     const resolvedInput = await resolvePackageSource(source, targetRoot);
     const driver = getSourceDriver(options.driver ?? inferSourceDriverName(resolvedInput.source));
     const resolved = await driver.export(await driver.translate(await driver.fetch(await driver.resolve(resolvedInput.source, { cacheRoot: join(targetRoot, ".agentwheel", "cache") }))));
@@ -329,8 +412,9 @@ program
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -349,6 +433,7 @@ program
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
@@ -369,8 +454,9 @@ program
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -389,6 +475,7 @@ program
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -413,8 +500,9 @@ program
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -430,6 +518,7 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
@@ -459,8 +548,9 @@ program
   .option("--driver <driver>", "source driver")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -477,6 +567,7 @@ program
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -500,14 +591,16 @@ program
   .argument("[name]", "configured package name or source to update")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("-t, --target-root <path>", "workspace root")
   .option("--agent <name>", "named agent from merged config")
   .option("--all", "run for every configured agent", false)
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plans without writing", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -558,8 +651,9 @@ program
       .option("--package <name>", "owning configured package when automatic ownership is ambiguous")
       .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
       .option("-i, --installation-type <type>", "installation type (for example local or user)")
-      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-      .option("--local", "shortcut for --installation-type local", false)
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
       .option("-t, --target-root <path>", "workspace root")
       .option("--agent <name>", "named agent from merged config")
       .option("--all", "run for every configured agent", false)
@@ -567,6 +661,7 @@ program
       .option("--dry-run", "show plans without writing", false)
       .option("--adopt", "replace unmanaged destinations in the owning package closure", false)
       .option("--force-drift", "replace drifted managed artifacts", false)
+      .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
       .option("--allow-adapter-code", "allow loading local adapter code from the owning package", false)
       .option("--no-deps", "resolve only the owning package and ignore its requires with a warning")
       .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -588,8 +683,9 @@ program
       .argument("[source]", "optional package source to resolve")
       .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
       .option("-i, --installation-type <type>", "installation type (for example local or user)")
-      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-      .option("--local", "shortcut for --installation-type local", false)
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
       .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -634,8 +730,9 @@ program
       .argument("<selector>", "installed path, type/installName, or graphNodeId:type/name")
       .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
       .option("-i, --installation-type <type>", "installation type (for example local or user)")
-      .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-      .option("--local", "shortcut for --installation-type local", false)
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
       .option("--adapter-config <path>", "adapter JSON/JSONC file")
       .option("--adapter-module <path>", "local programmatic adapter module")
       .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -661,9 +758,13 @@ program
   .addCommand(
     new Command("update")
       .description("refresh the local registry cache")
-      .option("-t, --target-root <path>", "workspace root", process.cwd())
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
+      .option("-t, --target-root <path>", "explicit workspace root")
       .action(async (options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
+        const workspaceRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
+        const client = new RegistryClient({ workspaceRoot, warn: (message) => console.warn(message) });
         const index = await client.getIndex({ refresh: true });
         console.log(`Registry refreshed: ${index.entries.length} entries from ${index.sources.join(", ")}`);
       }),
@@ -671,9 +772,13 @@ program
   .addCommand(
     new Command("list")
       .description("list available registry entries")
-      .option("-t, --target-root <path>", "workspace root", process.cwd())
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
+      .option("-t, --target-root <path>", "explicit workspace root")
       .action(async (options) => {
-        const client = new RegistryClient({ workspaceRoot: normalizeTargetRoot(options.targetRoot), warn: (message) => console.warn(message) });
+        const workspaceRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
+        const client = new RegistryClient({ workspaceRoot, warn: (message) => console.warn(message) });
         printRegistryEntries((await client.getIndex()).entries);
       }),
   )
@@ -719,9 +824,13 @@ program
     new Command("forget")
       .description("forget a persisted trusted source pattern")
       .argument("<pattern>", "trusted source glob to revoke")
-      .option("-t, --target-root <path>", "workspace root", process.cwd())
+      .option("--user", "use the user workspace", false)
+      .option("--local", "use the nearest local workspace", false)
+      .option("--fleet <id>", "use one registered named fleet")
+      .option("-t, --target-root <path>", "explicit workspace root")
       .action(async (pattern, options) => {
-        const removed = await forgetTrustedSources(normalizeTargetRoot(options.targetRoot), pattern);
+        const normalized = normalizeRuntimeScopeOptions(options);
+        const removed = await forgetTrustedSources(await workspaceRootFromOptions(normalized), pattern);
         if (removed.length === 0) {
           console.log(`No persisted trust matched ${pattern}.`);
           return;
@@ -763,10 +872,13 @@ program
   .command("remember")
   .description("append text to the local instructions overlay")
   .requiredOption("--runtime <runtime>", "runtime/adapter name")
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .argument("<text>", "text to append to the local instructions overlay")
   .action(async (text, options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceRootFromOptions(normalizeRuntimeScopeOptions(options));
     const result = await remember(targetRoot, options.runtime, text);
     console.log(`Remembered in ${result.overlayPath}.`);
     console.log(nextInstallNudge());
@@ -786,8 +898,9 @@ ownershipCommand
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -844,6 +957,10 @@ mcpCommand
   .command("retire")
   .description("remove one exact legacy MCP contribution with explicit state ownership")
   .argument("<package>", "configured package containing exactly one legacy MCP artifact")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit runtime/project root")
   .option("--agent <name>", "one named agent from merged config")
   .option("--profile <name>", "workspace runtime profile resolving to one target")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
@@ -860,9 +977,12 @@ program
   .command("eject")
   .description("copy a managed artifact into local ownership")
   .argument("<item>", "package/type/name")
-  .option("-t, --target-root <path>", "workspace root", process.cwd())
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
   .action(async (item, options) => {
-    const targetRoot = normalizeTargetRoot(options.targetRoot);
+    const targetRoot = await workspaceRootFromOptions(normalizeRuntimeScopeOptions(options));
     const result = await ejectArtifact(targetRoot, item);
     console.log(`Ejected ${item} to ${result.ejectedPath}.`);
     console.log(nextInstallNudge());
@@ -874,8 +994,9 @@ program
   .argument("[package]", "configured package name or source to remove from the ownership graph")
   .option("--adapter <adapter>", "adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
   .option("-t, --target-root <path>", "runtime/project root")
@@ -904,10 +1025,11 @@ program
       if (normalizedOptions.keepFiles) {
         throw new Error("--keep-files requires a configured package name or source.");
       }
-      const adapter = await resolveAdapterForTarget(target, normalizedOptions);
+      const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
+      const adapter = await resolveAdapterForTarget(target, adapterOptions);
       const transport = transportForTarget(target);
       const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-      const state = installStateForTarget(target, adapter, normalizedOptions, installationType);
+      const state = installStateForTarget(target, adapter, adapterOptions, installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
       if (!manifest) {
         console.log(`No install manifest for ${adapter.name}/${installationType} at ${state.installRoot}`);
@@ -932,8 +1054,9 @@ program
   .description("show configured packages and runtime install state")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -977,8 +1100,9 @@ journalCommand
   .description("show pending apply journals for resolved runtime targets")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -1010,8 +1134,9 @@ journalCommand
   .description("archive pending apply journals without touching runtime files")
   .option("--adapter <adapter>", "built-in adapter or comma-separated adapters")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
@@ -1038,8 +1163,9 @@ program
   .description("check agentwheel runtime setup and companion skill guidance")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
-  .option("--user", "shortcut for --installation-type user and home-scoped state", false)
-  .option("--local", "shortcut for --installation-type local", false)
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
   .option("-t, --target-root <path>", "runtime/project root")
   .option("--agent <name>", "named agent from merged config")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
@@ -1050,13 +1176,9 @@ program
   .option("--json", "print machine-readable doctor report", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const target = await resolveRuntimeTarget({
-      targetRoot: normalizedOptions.targetRoot,
-      adapter: normalizedOptions.adapter,
-      installationType: normalizedOptions.installationType,
-      agent: normalizedOptions.agent,
-    });
-    await printDoctor(target, normalizedOptions);
+    const targets = await resolveCliTargets(normalizedOptions);
+    if (targets.length !== 1) throw new Error(`Doctor requires exactly one runtime target, found ${targets.length}.`);
+    await printDoctor(targets[0]!, normalizedOptions);
   });
 
 async function runInstallCommand(
@@ -1106,14 +1228,11 @@ async function runInstallCommand(
   }
 
   if (normalizedOptions.profile) {
-    const target = await resolveRuntimeTarget({
-      targetRoot: normalizedOptions.targetRoot,
-      adapter: normalizedOptions.adapter,
-      installationType: normalizedOptions.installationType,
-      agent: normalizedOptions.agent,
-    });
+    const profileScope = await resolveCliWorkspaceScope(normalizedOptions);
+    const workspaceRoot = profileScope.root;
     const results = await syncProfile({
-      workspaceRoot: target.workspaceRoot,
+      workspaceRoot,
+      fleetId: profileScope?.fleetId,
       profile: normalizedOptions.profile,
       source: nameOrSource,
       driver: normalizedOptions.driver,
@@ -1126,6 +1245,7 @@ async function runInstallCommand(
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
+      forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
@@ -1231,14 +1351,11 @@ async function buildPlanReport(
   };
 
   if (normalizedOptions.profile) {
-    const target = await resolveRuntimeTarget({
-      targetRoot: normalizedOptions.targetRoot,
-      adapter: normalizedOptions.adapter,
-      installationType: normalizedOptions.installationType,
-      agent: normalizedOptions.agent,
-    });
+    const profileScope = await resolveCliWorkspaceScope(normalizedOptions);
+    const workspaceRoot = profileScope.root;
     const results = await syncProfile({
-      workspaceRoot: target.workspaceRoot,
+      workspaceRoot,
+      fleetId: profileScope?.fleetId,
       profile: normalizedOptions.profile,
       source: nameOrSource,
       driver: normalizedOptions.driver,
@@ -1250,6 +1367,7 @@ async function buildPlanReport(
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
+      forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
@@ -1566,10 +1684,12 @@ function nextInstallNudge(): string {
 }
 
 async function resolveCliTargets(
-  options: { targetRoot?: string; adapter?: string; installationType?: string; agent?: string; profile?: string; all?: boolean; allDetected?: boolean },
+  options: { targetRoot?: string; adapter?: string; installationType?: string; user?: boolean; local?: boolean; fleet?: string; agent?: string; profile?: string; all?: boolean; allDetected?: boolean },
   behavior: { preferAllProfile?: boolean } = {},
 ): Promise<RuntimeTarget[]> {
   const normalizedOptions = normalizeRuntimeScopeOptions(options);
+  const scope = await resolveCliWorkspaceScope(normalizedOptions);
+  const scopeRoot = scope.root;
   if (normalizedOptions.all && normalizedOptions.allDetected) {
     throw new Error("Choose either --all for configured agents or --all-detected for detected runtime directories.");
   }
@@ -1584,57 +1704,67 @@ async function resolveCliTargets(
     const targets = [];
     for (const adapter of adapters) {
       targets.push(await resolveRuntimeTarget({
+        cwd: scopeRoot,
         targetRoot: normalizedOptions.targetRoot,
         adapter,
         installationType: normalizedOptions.installationType,
+        fleetId: scope?.fleetId,
       }));
     }
     return targets;
   }
   if (normalizedOptions.profile) {
     return resolveProfileRuntimeTargets({
-      cwd: process.cwd(),
+      cwd: scopeRoot ?? process.cwd(),
       targetRoot: normalizedOptions.targetRoot,
       installationType: normalizedOptions.installationType,
+      fleetId: scope?.fleetId,
       profile: normalizedOptions.profile,
     });
   }
   if (normalizedOptions.all) {
     if (behavior.preferAllProfile && !normalizedOptions.agent) {
-      const profileTargets = await tryResolveProfileAllRuntimeTargets(normalizedOptions);
+      const profileTargets = await tryResolveProfileAllRuntimeTargets(normalizedOptions, scopeRoot, scope?.fleetId);
       if (profileTargets) return profileTargets;
     }
     return resolveAllRuntimeTargets({
+      cwd: scopeRoot,
       targetRoot: normalizedOptions.targetRoot,
       adapter: normalizedOptions.adapter,
       installationType: normalizedOptions.installationType,
       agent: normalizedOptions.agent,
       all: normalizedOptions.all,
+      fleetId: scope?.fleetId,
     });
   }
   if (normalizedOptions.allDetected) {
     return resolveAllDetectedRuntimeTargets({
+      cwd: scopeRoot,
       targetRoot: normalizedOptions.targetRoot,
       adapter: normalizedOptions.adapter,
       installationType: normalizedOptions.installationType,
       agent: normalizedOptions.agent,
       allDetected: normalizedOptions.allDetected,
+      fleetId: scope?.fleetId,
     });
   }
   return [await resolveRuntimeTarget({
+    cwd: scopeRoot,
     targetRoot: normalizedOptions.targetRoot,
     adapter: normalizedOptions.adapter,
     installationType: normalizedOptions.installationType,
     agent: normalizedOptions.agent,
+    fleetId: scope?.fleetId,
   })];
 }
 
-async function tryResolveProfileAllRuntimeTargets(options: { targetRoot?: string; installationType?: string }): Promise<RuntimeTarget[] | undefined> {
+async function tryResolveProfileAllRuntimeTargets(options: { targetRoot?: string; installationType?: string }, scopeRoot?: string, fleetId?: string): Promise<RuntimeTarget[] | undefined> {
   try {
     return await resolveProfileRuntimeTargets({
-      cwd: process.cwd(),
+      cwd: scopeRoot ?? process.cwd(),
       targetRoot: options.targetRoot,
       installationType: options.installationType,
+      fleetId,
       profile: "all",
     });
   } catch (error) {
@@ -1689,6 +1819,7 @@ interface GraphCliOptions {
   installationType?: string;
   user?: boolean;
   local?: boolean;
+  fleet?: string;
   targetRoot?: string;
   agent?: string;
   all?: boolean;
@@ -1717,6 +1848,7 @@ interface GraphCliOptions {
   keepFiles?: boolean;
   forceDrift?: boolean;
   forceConflict?: boolean;
+  forceForeignState?: boolean;
   replaceConflict?: boolean;
   format?: string;
   reportFormat?: PlanOutputFormat;
@@ -1727,6 +1859,7 @@ interface GraphCliOptions {
   adopt?: boolean;
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
+  focusedArtifact?: { type: "skills"; name: string };
 }
 
 async function runExactMcpRetirement(packageName: string, options: GraphCliOptions & { fromWorkspaceRoot?: string }): Promise<void> {
@@ -1807,6 +1940,7 @@ async function runSkillUpdateCommand(
       ...normalizedOptions,
       scope: owner.name,
       onlySource: true,
+      focusedArtifact: { type: "skills", name: skillName },
       replaceConflict: options.adopt === true,
     }, { mode });
   }
@@ -2014,6 +2148,7 @@ async function buildGraphPlansForTarget(
       roots,
       targetRoot: group.target.targetRoot,
       workspaceRoot: group.target.workspaceRoot,
+      fleetId: group.target.fleetId,
       adapter,
       transport,
       targetKey: targetKeyForTarget(group.target, adapter.name),
@@ -2033,6 +2168,7 @@ async function buildGraphPlansForTarget(
       isTTY: process.stdin.isTTY === true,
       forceDrift: targetOptions.forceDrift,
       forceConflict: targetOptions.forceConflict,
+      forceForeignState: targetOptions.forceForeignState,
       replaceConflict: targetOptions.replaceConflict,
       retireExactMcp: targetOptions.retireExactMcp,
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
@@ -2040,9 +2176,13 @@ async function buildGraphPlansForTarget(
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      results.push(previousGroupLock
-        ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
-        : scopeInstallPlanToRoot(result, scopedRootId, manifest));
+      results.push(targetOptions.focusedArtifact
+        ? previousGroupLock
+          ? scopeUpdatePlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, previousGroupLock, manifest)
+          : scopeInstallPlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, manifest)
+        : previousGroupLock
+          ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
+          : scopeInstallPlanToRoot(result, scopedRootId, manifest));
     } else if (scopedDependencyUpdate) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
@@ -2248,6 +2388,335 @@ function operationBelongsToDependencyUpdate(
   if (operation.owners?.some((owner) => allowedNodeIds.has(owner))) return true;
   return operation.composedFrom?.some((entry) =>
     [...allowedNames].some((name) => entry.selector.startsWith(`${name}@`) || entry.selector.startsWith(`${name}:`))) === true;
+}
+
+type FocusedArtifact = NonNullable<GraphCliOptions["focusedArtifact"]>;
+
+function scopeInstallPlanToArtifact(
+  result: GraphSourcePlanResult,
+  rootId: string,
+  focused: FocusedArtifact,
+  manifest: InstallManifest | undefined,
+): GraphSourcePlanResult {
+  const scoped = scopePlanOperationsToArtifact(result, rootId, focused, manifest);
+  const graphLock = focusedGraphLockForInstall(scoped.bundle.graphLock, rootId, focused);
+  const graphLockDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+  return {
+    ...scoped,
+    bundle: { ...scoped.bundle, graphLock },
+    graphLockDigest,
+    plan: { ...scoped.plan, graphLockDigest },
+  };
+}
+
+function scopeUpdatePlanToArtifact(
+  result: GraphSourcePlanResult,
+  rootId: string,
+  focused: FocusedArtifact,
+  previousLock: GraphLock,
+  manifest: InstallManifest | undefined,
+): GraphSourcePlanResult {
+  const scoped = scopePlanOperationsToArtifact(result, rootId, focused, manifest, previousLock);
+  const graphLock = mergeFocusedArtifactGraphLock(scoped.bundle.graphLock, previousLock, rootId, focused);
+  const graphLockDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+  return {
+    ...scoped,
+    bundle: { ...scoped.bundle, graphLock },
+    graphLockDigest,
+    graphDiff: diffGraphLocks(previousLock, graphLock),
+    plan: { ...scoped.plan, graphLockDigest },
+  };
+}
+
+function scopePlanOperationsToArtifact(
+  result: GraphSourcePlanResult,
+  rootId: string,
+  focused: FocusedArtifact,
+  manifest: InstallManifest | undefined,
+  previousLock?: GraphLock,
+): GraphSourcePlanResult {
+  const currentArtifacts = focusedArtifactsForRoot(result.bundle.graphLock, rootId, focused);
+  const previousArtifacts = previousLock ? focusedArtifactsForRoot(previousLock, rootId, focused) : [];
+  const focusedOwnerKeys = new Set([
+    `workspace:${rootId}`,
+    ...currentArtifacts.map((artifact) => artifact.graphNodeId),
+    ...previousArtifacts.map((artifact) => artifact.graphNodeId),
+  ]);
+  const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
+  const plannedPaths = new Set<string>();
+  const preservedPaths = new Set<string>();
+  const operations: InstallOperation[] = [];
+
+  for (const operation of result.plan.operations) {
+    plannedPaths.add(operation.relativeDestPath);
+    if (operationMatchesFocusedArtifact(operation, focused, focusedOwnerKeys)) {
+      operations.push(operation);
+      continue;
+    }
+    const entry = manifestByPath.get(operation.relativeDestPath);
+    if (!entry || preservedPaths.has(entry.path)) continue;
+    preservedPaths.add(entry.path);
+    operations.push(keepManifestEntryOperation(
+      entry,
+      result.plan.targetRoot,
+      `focused ${focused.type}/${focused.name} update`,
+    ));
+  }
+
+  for (const entry of manifest?.entries ?? []) {
+    if (plannedPaths.has(entry.path) || preservedPaths.has(entry.path)
+      || manifestEntryMatchesFocusedArtifact(entry, focused, focusedOwnerKeys)) continue;
+    preservedPaths.add(entry.path);
+    operations.push(keepManifestEntryOperation(
+      entry,
+      result.plan.targetRoot,
+      `focused ${focused.type}/${focused.name} update`,
+    ));
+  }
+
+  return {
+    ...result,
+    plan: {
+      ...result.plan,
+      operations,
+      hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
+    },
+  };
+}
+
+function operationMatchesFocusedArtifact(
+  operation: InstallOperation,
+  focused: FocusedArtifact,
+  ownerKeys: Set<string>,
+): boolean {
+  if (!matchesCanonicalFocusedArtifact(operation.artifactType, operation.artifactName, focused)) {
+    return false;
+  }
+  if (operation.graphNodeId && ownerKeys.has(operation.graphNodeId)) return true;
+  return operation.owners?.some((owner) => ownerKeys.has(owner)) === true;
+}
+
+function manifestEntryMatchesFocusedArtifact(
+  entry: NonNullable<InstallManifest>["entries"][number],
+  focused: FocusedArtifact,
+  ownerKeys: Set<string>,
+): boolean {
+  if (!matchesCanonicalFocusedArtifact(entry.artifactType, entry.artifactName, focused)) {
+    return false;
+  }
+  if ("graphNodeId" in entry && entry.graphNodeId && ownerKeys.has(entry.graphNodeId)) return true;
+  const owners = "owners" in entry ? entry.owners : [entry.packageName ?? "legacy"];
+  return owners.some((owner) => ownerKeys.has(owner));
+}
+
+function graphArtifactMatchesFocus(
+  artifact: GraphLock["canonical"]["artifacts"][number],
+  focused: FocusedArtifact,
+): boolean {
+  return matchesCanonicalFocusedArtifact(artifact.type, artifact.name, focused);
+}
+
+function matchesCanonicalFocusedArtifact(
+  artifactType: string | undefined,
+  artifactName: string | undefined,
+  focused: FocusedArtifact,
+): boolean {
+  return artifactType === focused.type && artifactName === focused.name;
+}
+
+function focusedArtifactsForRoot(
+  lock: GraphLock,
+  rootId: string,
+  focused: FocusedArtifact,
+): GraphLock["canonical"]["artifacts"] {
+  const rootNodeIds = graphRootClosure(lock, rootId);
+  return lock.canonical.artifacts.filter(
+    (artifact) => rootNodeIds.has(artifact.graphNodeId) && graphArtifactMatchesFocus(artifact, focused),
+  );
+}
+
+function focusedGraphLockForInstall(current: GraphLock, rootId: string, focused: FocusedArtifact): GraphLock {
+  const artifacts = focusedArtifactsForRoot(current, rootId, focused);
+  if (artifacts.length === 0) {
+    throw new Error(`Resolved graph does not contain focused artifact ${focused.type}/${focused.name} for ${rootId}.`);
+  }
+  const nodeIds = focusedGraphNodeIds(current, rootId, artifacts);
+  return canonicalizeGraphLock({
+    ...current,
+    canonical: {
+      ...current.canonical,
+      nodes: current.canonical.nodes.filter((node) => nodeIds.has(node.id)),
+      edges: current.canonical.edges.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to)),
+      includeEdges: usedIncludeEdges(current, artifacts).filter(
+        (edge) => nodeIds.has(edge.fromNodeId) && nodeIds.has(edge.toNodeId),
+      ),
+      artifacts,
+      namespacing: current.canonical.namespacing.filter((entry) => decisionMatchesFocusedArtifacts(entry, artifacts)),
+      overrides: current.canonical.overrides.filter((entry) => decisionMatchesFocusedArtifacts(entry, artifacts)),
+      plainNameIncumbents: current.canonical.plainNameIncumbents.filter((entry) => decisionMatchesFocusedArtifacts(entry, artifacts)),
+    },
+  });
+}
+
+function mergeFocusedArtifactGraphLock(
+  current: GraphLock,
+  previous: GraphLock,
+  rootId: string,
+  focused: FocusedArtifact,
+): GraphLock {
+  const currentFocused = focusedArtifactsForRoot(current, rootId, focused);
+  if (currentFocused.length === 0) {
+    throw new Error(`Resolved graph does not contain focused artifact ${focused.type}/${focused.name} for ${rootId}.`);
+  }
+  const previousFocused = focusedArtifactsForRoot(previous, rootId, focused);
+  const previousFocusedKeys = new Set(previousFocused.map(graphArtifactIdentity));
+  const previousPreserved = previous.canonical.artifacts.filter(
+    (artifact) => !previousFocusedKeys.has(graphArtifactIdentity(artifact)),
+  );
+  const currentNodeIds = focusedGraphNodeIds(current, rootId, currentFocused);
+  const previousNodeIds = preservedGraphNodeIds(previous, rootId, previousPreserved);
+  const currentRoot = current.canonical.roots.find((root) => root.rootId === rootId);
+  if (!currentRoot) throw new Error(`Resolved graph root not found for focused update: ${rootId}`);
+  const roots = previous.canonical.roots.map((root) => root.rootId === rootId ? currentRoot : root);
+  if (!roots.some((root) => root.rootId === rootId)) roots.push(currentRoot);
+  const currentIncludes = usedIncludeEdges(current, currentFocused);
+  const previousIncludes = usedIncludeEdges(previous, previousPreserved);
+
+  return canonicalizeGraphLock({
+    ...current,
+    canonical: {
+      ...current.canonical,
+      roots,
+      nodes: uniqueBy(
+        [
+          ...current.canonical.nodes.filter((node) => currentNodeIds.has(node.id)),
+          ...previous.canonical.nodes.filter((node) => previousNodeIds.has(node.id)),
+        ],
+        (node) => node.id,
+      ),
+      edges: uniqueBy(
+        [
+          ...current.canonical.edges.filter((edge) => currentNodeIds.has(edge.from) && currentNodeIds.has(edge.to)),
+          ...previous.canonical.edges.filter((edge) => previousNodeIds.has(edge.from) && previousNodeIds.has(edge.to)),
+        ],
+        (edge) => `${edge.from}\0${edge.alias}\0${edge.to}`,
+      ),
+      includeEdges: uniqueBy(
+        [...currentIncludes, ...previousIncludes],
+        (edge) => `${edge.fromNodeId}\0${edge.alias}\0${edge.toNodeId}\0${edge.selector}\0${edge.sourceHash}`,
+      ),
+      artifacts: [...currentFocused, ...previousPreserved],
+      namespacing: [
+        ...current.canonical.namespacing.filter((entry) => decisionMatchesFocusedArtifacts(entry, currentFocused)),
+        ...previous.canonical.namespacing.filter((entry) => !decisionMatchesFocusedArtifacts(entry, previousFocused)),
+      ],
+      overrides: [
+        ...current.canonical.overrides.filter((entry) => decisionMatchesFocusedArtifacts(entry, currentFocused)),
+        ...previous.canonical.overrides.filter((entry) => !decisionMatchesFocusedArtifacts(entry, previousFocused)),
+      ],
+      plainNameIncumbents: [
+        ...current.canonical.plainNameIncumbents.filter((entry) => decisionMatchesFocusedArtifacts(entry, currentFocused)),
+        ...previous.canonical.plainNameIncumbents.filter((entry) => !decisionMatchesFocusedArtifacts(entry, previousFocused)),
+      ],
+    },
+  });
+}
+
+function focusedGraphNodeIds(
+  lock: GraphLock,
+  rootId: string,
+  artifacts: GraphLock["canonical"]["artifacts"],
+): Set<string> {
+  const root = lock.canonical.roots.find((candidate) => candidate.rootId === rootId);
+  if (!root) throw new Error(`Resolved graph root not found for focused update: ${rootId}`);
+  const targets = artifactReferencedNodeIds(lock, artifacts);
+  targets.add(root.graphNodeId);
+  return graphAncestorPaths(lock, root.graphNodeId, targets);
+}
+
+function preservedGraphNodeIds(
+  lock: GraphLock,
+  replacedRootId: string,
+  artifacts: GraphLock["canonical"]["artifacts"],
+): Set<string> {
+  const selected = artifactReferencedNodeIds(lock, artifacts);
+  const replacedRoot = lock.canonical.roots.find((root) => root.rootId === replacedRootId);
+  if (replacedRoot) {
+    const replacedRootClosure = graphRootClosure(lock, replacedRootId);
+    for (const artifact of artifacts) {
+      if (!replacedRootClosure.has(artifact.graphNodeId)) continue;
+      for (const nodeId of graphAncestorPaths(lock, replacedRoot.graphNodeId, new Set([artifact.graphNodeId]))) {
+        selected.add(nodeId);
+      }
+    }
+  }
+  for (const root of lock.canonical.roots) {
+    if (root.rootId === replacedRootId) continue;
+    for (const nodeId of graphRootClosure(lock, root.rootId)) selected.add(nodeId);
+  }
+  return selected;
+}
+
+function artifactReferencedNodeIds(
+  lock: GraphLock,
+  artifacts: GraphLock["canonical"]["artifacts"],
+): Set<string> {
+  const selected = new Set(artifacts.map((artifact) => artifact.graphNodeId));
+  const includes = usedIncludeEdges(lock, artifacts);
+  for (const edge of includes) {
+    selected.add(edge.fromNodeId);
+    selected.add(edge.toNodeId);
+  }
+  return selected;
+}
+
+function usedIncludeEdges(
+  lock: GraphLock,
+  artifacts: GraphLock["canonical"]["artifacts"],
+): GraphLock["canonical"]["includeEdges"] {
+  const selectors = new Set(artifacts.flatMap((artifact) => artifact.composedFrom?.map((entry) => entry.selector) ?? []));
+  return lock.canonical.includeEdges.filter((edge) => selectors.has(`${edge.toNodeId}:${edge.selector}`));
+}
+
+function graphAncestorPaths(lock: GraphLock, rootNodeId: string, targets: Set<string>): Set<string> {
+  const selected = new Set<string>(targets);
+  selected.add(rootNodeId);
+  const queue = [...targets];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (nodeId === rootNodeId) continue;
+    for (const edge of lock.canonical.edges) {
+      if (edge.to !== nodeId || selected.has(edge.from)) continue;
+      selected.add(edge.from);
+      queue.push(edge.from);
+    }
+  }
+  return selected;
+}
+
+function graphArtifactIdentity(artifact: GraphLock["canonical"]["artifacts"][number]): string {
+  return `${artifact.graphNodeId}\0${artifact.type}\0${artifact.name}\0${artifact.installName}`;
+}
+
+function decisionMatchesFocusedArtifacts(
+  entry: { graphNodeId: string; type: string; name: string; installName?: string; selector?: string },
+  artifacts: GraphLock["canonical"]["artifacts"],
+): boolean {
+  return artifacts.some((artifact) => entry.graphNodeId === artifact.graphNodeId
+    && entry.type === artifact.type
+    && (entry.name === artifact.name
+      || entry.installName === artifact.installName
+      || entry.selector === artifact.logicalSelector));
+}
+
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const id = key(value);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 function scopeInstallPlanToRoot(
@@ -2475,6 +2944,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
         })),
         targetRoot: remainingGroup.target.targetRoot,
         workspaceRoot: remainingGroup.target.workspaceRoot,
+        fleetId: remainingGroup.target.fleetId,
         adapter: remainingAdapter,
         transport,
         targetKey: targetKeyForTarget(remainingGroup.target, remainingAdapter.name),
@@ -2565,6 +3035,7 @@ function targetForPackage(target: RuntimeTarget, pkg: WorkspacePackage, options:
 function graphGroupKey(target: RuntimeTarget, options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }): string {
   return JSON.stringify({
     adapter: target.adapter,
+    fleetId: target.fleetId,
     installationType: options.installationType ?? target.installationType ?? "local",
     targetRoot: target.targetRoot,
     transport: target.transport,
@@ -2577,6 +3048,7 @@ function graphGroupKey(target: RuntimeTarget, options: { installationType?: stri
 function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, options: { adapterConfig?: string; adapterModule?: string }, installationType?: string): unknown {
   return {
     adapter: adapter.name,
+    fleetId: target.fleetId,
     installationType: installationType ?? target.installationType ?? "local",
     adapterConfig: options.adapterConfig,
     adapterModule: options.adapterModule,
@@ -2598,7 +3070,12 @@ function installStateForTarget(
   const targetFingerprint = targetFingerprintDigest(target, adapter, options, installationType);
   return {
     installationType,
-    stateKey: target.stateKey ?? stateKeyFor(adapter.name, { installationType, targetFingerprint }),
+    stateKey: stateKeyFor(adapter.name, {
+      installationType,
+      stateKey: target.stateKey,
+      targetFingerprint,
+      fleetId: target.fleetId,
+    }),
     installRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh"),
   };
 }
@@ -2742,7 +3219,7 @@ async function resolveSelectedCompositeProfile(options: GraphCliOptions): Promis
   name: string;
   profile: Extract<WorkspaceProfile, { members: unknown[] }>;
 } | undefined> {
-  const workspaceRoot = await findWorkspaceRoot(options.targetRoot ?? process.cwd());
+  const workspaceRoot = (await resolveCliWorkspaceScope(options)).root;
   const config = await readMergedWorkspaceConfig(workspaceRoot);
   const name = options.profile ?? (options.all && config.profiles.all ? "all" : undefined);
   if (!name) return undefined;
@@ -2949,6 +3426,7 @@ function compositeInstallArguments(
   args.push("--profile", profile);
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");
   if (options.replaceConflict) args.push("--replace-conflict");
   if (options.executePlugins) args.push("--execute-plugins");
@@ -2970,6 +3448,7 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   if (options.dryRun) args.push("--dry-run");
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");
   if (options.replaceConflict) args.push("--replace-conflict");
   if (options.executePlugins) args.push("--execute-plugins");
@@ -2994,6 +3473,7 @@ function compositeSkillUpdateArguments(
   if (options.adopt) args.push("--adopt");
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.allowAdapterCode) args.push("--allow-adapter-code");
   if (options.noDeps) args.push("--no-deps");
   if (options.frozenLock) args.push("--frozen-lock");
@@ -3302,7 +3782,7 @@ function skillInstallCommand(
     skill.source,
     "--adapter",
     adapter,
-    ...installationTypeCommandArgs(installationType),
+    ...(options.targetRoot && installationType === "local" ? [] : installationTypeCommandArgs(installationType)),
     ...targetRootCommandArgs(options),
     "--skill",
     skill.name,
@@ -3348,6 +3828,10 @@ function collectTrustOption(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function collectValueOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function collectDependencyOption(value: string, previous: string[]): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
@@ -3369,32 +3853,41 @@ interface RuntimeScopeOptions {
   targetRoot?: string;
   user?: boolean;
   local?: boolean;
+  fleet?: string;
   agent?: string;
   all?: boolean;
   allDetected?: boolean;
   profile?: string;
+  workspaceTargetDerived?: boolean;
 }
 
 function normalizeRuntimeScopeOptions<T extends RuntimeScopeOptions>(options: T, behavior: { defaultUser?: boolean } = {}): T {
-  if (options.user && options.local) {
-    throw new Error("Choose either --user or --local.");
+  if ([options.user === true, options.local === true, options.fleet !== undefined].filter(Boolean).length > 1) {
+    throw new Error("Choose exactly one workspace selector: --user, --local, or --fleet <id>.");
+  }
+  if (options.targetRoot && !options.workspaceTargetDerived && (options.user || options.local || options.fleet)) {
+    throw new Error("--target-root conflicts with --user, --local, and --fleet because each selects a workspace root.");
   }
 
-  const shortcutType = options.user ? "user" : options.local ? "local" : undefined;
+  const canDefaultTargetRoot = !options.agent && !options.all && !options.allDetected && !options.profile;
+  const shortcutType = canDefaultTargetRoot
+    ? options.user ? "user" : options.local ? "local" : undefined
+    : undefined;
   if (shortcutType && options.installationType && options.installationType !== shortcutType) {
     throw new Error(`--${shortcutType} conflicts with --installation-type ${options.installationType}.`);
   }
 
   let targetRoot = options.targetRoot ? normalizeCliPath(options.targetRoot) : undefined;
+  let workspaceTargetDerived = options.workspaceTargetDerived;
   let installationType = options.installationType ?? shortcutType;
 
-  if (!installationType && targetRoot) {
+  if (!installationType && targetRoot && canDefaultTargetRoot) {
     installationType = isHomePath(targetRoot) ? "user" : "local";
   }
 
-  const canDefaultTargetRoot = !options.agent && !options.all && !options.allDetected && !options.profile;
   if (!targetRoot && canDefaultTargetRoot && (options.user || installationType === "user" || behavior.defaultUser)) {
     targetRoot = homedir();
+    workspaceTargetDerived = true;
   }
 
   if (!installationType && behavior.defaultUser) {
@@ -3405,7 +3898,64 @@ function normalizeRuntimeScopeOptions<T extends RuntimeScopeOptions>(options: T,
     ...options,
     installationType,
     targetRoot,
+    workspaceTargetDerived,
   };
+}
+
+async function workspaceRootFromOptions(options: RuntimeScopeOptions): Promise<string> {
+  return (await resolveCliWorkspaceScope(options)).root;
+}
+
+async function workspaceContextRootFromOptions(options: RuntimeScopeOptions): Promise<string> {
+  if (options.targetRoot && !hasWorkspaceSelector(options)) {
+    return (await resolveCliWorkspaceScope(options)).root;
+  }
+  if (options.user || options.local || options.fleet) {
+    return (await resolveWorkspaceScope({
+      cwd: process.cwd(),
+      user: options.user,
+      local: options.local,
+      fleet: options.fleet,
+    })).root;
+  }
+  return normalizeTargetRoot(process.cwd());
+}
+
+async function resolveCliWorkspaceScope(options: RuntimeScopeOptions): Promise<{ root: string; fleetId?: string }> {
+  const derivedUserScope = isDerivedUserWorkspaceScope(options);
+  if (options.targetRoot && !hasWorkspaceSelector(options) && !derivedUserScope) {
+    const root = normalizeTargetRoot(options.targetRoot);
+    const config = await readWorkspaceConfig(root);
+    if (config.schemaVersion === 3 && config.fleetId) {
+      const kind = isHomePath(root) ? "user" : "local";
+      throw new Error(
+        `The ${kind} config declares fleetId '${config.fleetId}'. Select it through the registered --fleet <id> scope.`,
+      );
+    }
+    return { root };
+  }
+  return resolveWorkspaceScope({
+    cwd: process.cwd(),
+    user: options.user || derivedUserScope,
+    local: options.local,
+    fleet: options.fleet,
+  });
+}
+
+function formatFleetNormalization(
+  result: Awaited<ReturnType<typeof planFleetNormalization>>
+    | Awaited<ReturnType<typeof applyFleetNormalization>>
+    | Awaited<ReturnType<typeof recoverFleetNormalization>>,
+): string {
+  if ("recovered" in result) return `Recovered fleet normalization source state and removed journal: ${result.journalPath}`;
+  if ("applied" in result) return `Applied fleet normalization ${result.planDigest}: ${result.packages.join(", ")}`;
+  const packageArgs = result.packages.map((pkg) => `--package ${shellQuoteArg(pkg.name)}`).join(" ");
+  return [
+    `Fleet normalization plan: ${result.source.root} -> ${result.destination.root}`,
+    `Packages: ${result.packages.map((pkg) => pkg.name).join(", ")}`,
+    `Plan digest: ${result.planDigest}`,
+    `Apply: agentwheel fleet normalize ${result.destination.fleetId} --from ${result.request.from} ${packageArgs} --apply --plan-digest ${result.planDigest}`,
+  ].join("\n");
 }
 
 function shouldDefaultUserInstall(nameOrSource: string | undefined, options: RuntimeScopeOptions & { adapter?: string }): boolean {
@@ -3415,6 +3965,7 @@ function shouldDefaultUserInstall(nameOrSource: string | undefined, options: Run
       && !options.installationType
       && !options.user
       && !options.local
+      && !options.fleet
       && !options.targetRoot
       && !options.agent
       && !options.all
@@ -3422,6 +3973,14 @@ function shouldDefaultUserInstall(nameOrSource: string | undefined, options: Run
       && !options.profile
       && looksLikeSourceSpecifier(nameOrSource),
   );
+}
+
+function hasWorkspaceSelector(options: RuntimeScopeOptions): boolean {
+  return options.user === true || options.local === true || options.fleet !== undefined;
+}
+
+function isDerivedUserWorkspaceScope(options: RuntimeScopeOptions): boolean {
+  return options.workspaceTargetDerived === true && options.installationType === "user";
 }
 
 function looksLikeSourceSpecifier(value: string): boolean {
@@ -3513,7 +4072,7 @@ async function initPackage(root: string): Promise<void> {
   await mkdir(join(root, "skills"), { recursive: true });
   const manifestPath = join(root, "openpack.json");
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: CURRENT_OPENPACK_SCHEMA_VERSION,
     name: "example/agentwheel-package",
     version: "0.1.0",
     provides: [
@@ -3600,7 +4159,7 @@ function printRegistryEntries(entries: Array<{ name: string; type: string; sourc
   }
 }
 
-interface SearchCliOptions {
+interface SearchCliOptions extends RuntimeScopeOptions {
   json: boolean;
   scope: string;
   type?: string;
@@ -3610,13 +4169,11 @@ interface SearchCliOptions {
   refresh: boolean;
   offline: boolean;
   semantic: boolean;
-  targetRoot: string;
 }
 
-interface SkillTrialCliOptions {
+interface SkillTrialCliOptions extends RuntimeScopeOptions {
   driver?: string;
   json: boolean;
-  targetRoot: string;
   select: string[];
   skill: string[];
 }

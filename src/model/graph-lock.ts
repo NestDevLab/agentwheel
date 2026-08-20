@@ -5,6 +5,8 @@ import { z } from "zod";
 import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
 import { immutableCacheIdentitySchema } from "./cache-identity.js";
 
+export const CURRENT_GRAPH_LOCK_VERSION = 1 as const;
+
 export const graphLockNodeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -119,7 +121,7 @@ export const graphLockCanonicalSchema = z.object({
 });
 
 export const graphLockSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(CURRENT_GRAPH_LOCK_VERSION),
   generatedAt: z.string().datetime().optional(),
   canonical: graphLockCanonicalSchema,
 });
@@ -158,7 +160,7 @@ export function canonicalGraphLockJson(lock: GraphLock): string {
 export function canonicalizeGraphLock(lock: GraphLock): GraphLock {
   const parsed = graphLockSchema.parse(lock);
   return {
-    version: 1,
+    version: CURRENT_GRAPH_LOCK_VERSION,
     canonical: {
       targetFingerprint: parsed.canonical.targetFingerprint,
       roots: [...parsed.canonical.roots]

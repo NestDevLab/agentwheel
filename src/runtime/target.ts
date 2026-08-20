@@ -11,6 +11,7 @@ export interface RuntimeTarget {
   stateKey?: string;
   targetRoot: string;
   workspaceRoot: string;
+  fleetId?: string;
   agentName?: string;
   targetKey?: string;
   executePlugins?: boolean;
@@ -31,6 +32,7 @@ export interface RuntimeTargetRequest {
   all?: boolean;
   allDetected?: boolean;
   globalRoot?: string;
+  fleetId?: string;
 }
 
 interface RuntimeMarker {
@@ -65,12 +67,12 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
   const config = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: request.globalRoot });
 
   if (request.agent) {
-    return targetFromAgent(request.agent, config, workspaceRoot, request.installationType);
+    return targetFromAgent(request.agent, config, workspaceRoot, request.installationType, request.fleetId);
   }
 
   const detected = await detectRuntimeTarget(cwd, request.adapter);
   if (detected) {
-    return { ...detected, installationType: request.installationType, workspaceRoot: await findWorkspaceRoot(detected.targetRoot), transport: "local", source: "auto-detect" };
+    return { ...detected, installationType: request.installationType, workspaceRoot, ...(request.fleetId ? { fleetId: request.fleetId } : {}), transport: "local", source: "auto-detect" };
   }
 
   return {
@@ -78,6 +80,7 @@ export async function resolveRuntimeTarget(request: RuntimeTargetRequest = {}): 
     installationType: request.installationType,
     targetRoot: cwd,
     workspaceRoot,
+    ...(request.fleetId ? { fleetId: request.fleetId } : {}),
     transport: "local",
     source: "cwd",
   };
@@ -90,7 +93,7 @@ export async function resolveAllRuntimeTargets(request: RuntimeTargetRequest = {
   const cwd = resolve(request.cwd ?? process.cwd());
   const workspaceRoot = await findWorkspaceRoot(cwd);
   const config = await readMergedWorkspaceConfig(workspaceRoot, { globalRoot: request.globalRoot });
-  const targets = Object.entries(config.agents).map(([name]) => targetFromAgent(name, config, workspaceRoot, request.installationType));
+  const targets = Object.entries(config.agents).map(([name]) => targetFromAgent(name, config, workspaceRoot, request.installationType, request.fleetId));
   if (targets.length === 0) {
     throw new Error("No agents configured. Add agents to .agentwheel/config.json or pass --target-root.");
   }
@@ -109,7 +112,7 @@ export async function resolveProfileRuntimeTargets(request: RuntimeTargetRequest
     throw new Error(`Profile '${request.profile}' is composite and has no direct runtime targets.`);
   }
 
-  return profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, workspaceRoot, request.installationType));
+  return profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, workspaceRoot, request.installationType, request.fleetId));
 }
 
 export function resolveProfileRuntimeTarget(
@@ -117,13 +120,14 @@ export function resolveProfileRuntimeTarget(
   config: WorkspaceConfig,
   workspaceRoot: string,
   installationType?: string,
+  fleetId?: string,
 ): RuntimeTarget {
   if (runtime.agent) {
-    const target = targetFromAgent(runtime.agent, config, workspaceRoot, installationType ?? runtime.installationType);
+    const target = targetFromAgent(runtime.agent, config, workspaceRoot, installationType ?? runtime.installationType, fleetId);
     return {
       ...target,
-      adapterConfig: runtime.adapterConfig,
-      adapterModule: runtime.adapterModule,
+      adapterConfig: runtime.adapterConfig ?? target.adapterConfig,
+      adapterModule: runtime.adapterModule ?? target.adapterModule,
       stateKey: runtime.stateKey ?? target.stateKey,
       executePlugins: runtime.executePlugins,
       reloadRuntimes: runtime.reloadRuntimes,
@@ -141,6 +145,7 @@ export function resolveProfileRuntimeTarget(
     stateKey: runtime.stateKey,
     targetRoot: runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, workspaceRoot) : workspaceRoot,
     workspaceRoot,
+    ...(fleetId ? { fleetId } : {}),
     executePlugins: runtime.executePlugins,
     reloadRuntimes: runtime.reloadRuntimes,
     reloadCommands: runtime.reloadCommands,
@@ -162,6 +167,7 @@ export async function resolveAllDetectedRuntimeTargets(request: RuntimeTargetReq
     ...match,
     installationType: request.installationType,
     workspaceRoot: await findWorkspaceRoot(match.targetRoot),
+    ...(request.fleetId ? { fleetId: request.fleetId } : {}),
     transport: "local" as const,
     source: "auto-detect" as const,
   })));
@@ -193,7 +199,7 @@ export async function detectRuntimeTargets(cwd = process.cwd(), adapterFilter?: 
   return dedupeTargets(matches);
 }
 
-function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: string, installationType?: string): RuntimeTarget {
+function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: string, installationType?: string, fleetId?: string): RuntimeTarget {
   const agent = config.agents[name];
   if (!agent) {
     throw new Error(`Unknown agent: ${name}`);
@@ -208,6 +214,7 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
     stateKey: agent.stateKey,
     targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
+    ...(fleetId ? { fleetId } : {}),
     reloadCommands: agent.reloadCommands,
     transport: agent.transport,
     ssh: agent.transport === "ssh"

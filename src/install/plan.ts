@@ -767,7 +767,8 @@ function operationMatchesManifestEntry(op: InstallOperation, entry: PlanningMani
 }
 
 function entryOwnedByWorkspace(entry: PlanningManifestEntry, workspaceOwner: string): boolean {
-  return "workspaceOwner" in entry && entry.workspaceOwner === workspaceOwner;
+  return "workspaceOwner" in entry
+    && entry.workspaceOwner === workspaceOwner;
 }
 
 async function canAdoptLegacyUnownedEntry(

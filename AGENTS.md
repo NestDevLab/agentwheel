@@ -15,7 +15,8 @@ harness behavior.
 - Typecheck: `pnpm typecheck`
 - Test: `pnpm test`
 - Build: `pnpm build`
-- Sync static site version from `package.json`: `pnpm run sync-site-version`
+- Prepare release metadata from `package.json`: `pnpm release:prepare <stable-semver>`
+- Check every derived release copy: `pnpm release:check`
 
 Run `pnpm typecheck` and `pnpm test` before release commits. Run `pnpm build` when changing CLI
 runtime behavior or version metadata so `dist/index.js` reflects the release.
@@ -65,8 +66,10 @@ Important current mappings and semantics:
 
 - Do not run `npm publish` manually from Codex or other local agents.
 - The npm package publish is handled by the configured release pipeline.
-- For a release, update `package.json`, `openpack.json`, `CHANGELOG.md`, README/site version text,
-  and run `pnpm run sync-site-version`.
+- For a release, run `pnpm release:prepare <stable-semver>`, replace any generated changelog
+  placeholder with real notes, and run `pnpm release:check`. `package.json.version` is the only
+  manually maintained product-version source; OpenPack, product skills, site markers, and the
+  changelog heading are derived or checked.
 - Run `pnpm typecheck`, `pnpm test`, and `pnpm build` before pushing release changes.
 - A `package.json` version increase merged to `main` is validated by the auto-release workflow. It
   creates the annotated tag and dispatches the release pipeline only when all version files and the
@@ -74,7 +77,7 @@ Important current mappings and semantics:
 - Do not push a release tag manually during the normal flow. Use the release workflow's manual
   dispatch only to recover an existing tag whose publish run did not complete.
 - If npm auth is missing locally, treat that as expected; do not try to re-authenticate or publish
-  outside the pipeline unless Giuseppe explicitly asks for a manual emergency publish.
+  outside the pipeline unless a maintainer explicitly asks for a manual emergency publish.
 
 ## Git Safety
 

@@ -26,7 +26,7 @@ forward explicitly; installs make the current declaration true.
 ```bash
 npm i -g agentwheel
 agentwheel init
-agentwheel add github:your-org/agent-pack --adapter codex --installation-type local --mode tracking
+agentwheel add github:your-org/agent-pack --adapter codex --local --mode tracking
 agentwheel plan
 agentwheel install
 ```
@@ -65,10 +65,6 @@ agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill 
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel-discovery
 ```
 
-> **Status: early (v0.12).** The public CLI vocabulary is package-manager style:
-> `add`, `install`, `update`, and `uninstall`. A hidden `sync` shim remains for old bootstrapped
-> skills; use `install` in all new docs and scripts.
-
 ## Supported runtimes & resources
 
 agentwheel installs OpenPack resources into five built-in runtimes and into custom harnesses.
@@ -106,10 +102,10 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
 | `agentwheel update [name]` | Re-resolve tracking packages, then apply. A configured name preserves artifacts owned by other roots; `--dependency <name-or-source>` moves one tracking dependency while unrelated graph nodes stay locked. |
-| `agentwheel skill update <name>` | Resolve the owning configured package and reconcile only its closure; pinned owners install current source, tracking owners re-resolve. |
+| `agentwheel skill update <name>` | Resolve the owning configured package and reconcile only that skill plus genuine transitive composition inputs; sibling artifacts stay byte-identical and retain manifest/lock state. |
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
-| `agentwheel status` | Show configured packages, manifest/lock presence, and install state. Use `--profile <name>` for profile-managed fleets; `status --all` uses profile `all` when present. |
+| `agentwheel status` | Show configured packages, manifest/lock presence, and install state. For a named fleet, use `--fleet <fleet-id> --profile <name>`; `--fleet <fleet-id> --all` uses profile `all` when present. |
 | `agentwheel ownership handoff <type/name>` | Transfer one manifest entry to a different workspace root after exact owner, hash, and revision checks; runtime content is not rewritten. |
 | `agentwheel mcp retire <package>` | Preview removal of one exact legacy MCP contribution under an explicitly selected install-state key; add `--apply` only after review. |
 | `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |
@@ -314,45 +310,45 @@ agentwheel install github:your-org/agent-pack --adapter codex,claude
 ```
 
 Use `--local` for the current directory or `-t/--target-root <project>` for another
-project/workspace. Use `--user`, `--local`, or `-i/--installation-type <type>` when you want the
-scope to be explicit. For example, Codex local skills install into `.agents/skills`, while Codex user
-skills install into `~/.agents/skills`.
+project/workspace. Use exactly one of `--user`, `--local`, or `--fleet <fleet-id>` when desired
+state scope matters. `-i/--installation-type <type>` selects the runtime's install layout inside
+that scope. For example, Codex local skills install into `.agents/skills`, while Codex user skills
+install into `~/.agents/skills`. Named fleets are optional; ordinary user and local work does not
+require a fleet registry.
 
 When adding a new source this way, Agentwheel saves one package entry per adapter so later installs
 do not collapse Codex and Claude state into the same config entry.
 
-For a control-plane setup, define named agents in config. Global config lives at
-`~/.agentwheel/config.json`; project config lives at `.agentwheel/config.json`; project values win.
+For a control-plane setup, register a named fleet and define its agents and profiles in that fleet's
+config. A fleet is selected explicitly with `--fleet <fleet-id>`; no fleet has global priority and
+Agentwheel never merges desired state from user, local, and fleet scopes.
 
 ```jsonc
 {
+  "schemaVersion": 3,
+  "fleetId": "example-fleet",
+  "packages": [
+    {
+      "name": "core-agent-pack",
+      "source": "github:example-org/core-agent-pack",
+      "driver": "git",
+      "adapter": "codex",
+      "installationType": "local",
+      "mode": "tracking"
+    }
+  ],
   "agents": {
-    "lab-openclaw": { "adapter": "openclaw", "installationType": "local", "root": "$HOME/.openclaw-home", "transport": "local" },
-    "remote-codex": {
+    "lab-codex": {
       "adapter": "codex",
       "installationType": "local",
       "root": "/workspace/project",
-      "transport": "ssh",
-      "host": "agent-host.example",
-      "user": "agent",
-      "port": 22,
-      "identityFile": "~/.ssh/id_ed25519"
-    },
-    "tirrenia": {
-      "adapter": "openclaw",
-      "installationType": "local",
-      "root": "/home/openclaw-tirrenia",
-      "transport": "ssh",
-      "host": "ct110",
-      "user": "openclaw-tirrenia",
-      "reloadCommands": [["systemctl", "restart", "openclaw-gateway-tirrenia.service"]]
+      "transport": "local"
     }
   },
   "profiles": {
     "daily": {
       "runtimes": [
-        { "agent": "lab-openclaw" },
-        { "agent": "remote-codex" }
+        { "agent": "lab-codex" }
       ]
     }
   }
@@ -360,23 +356,40 @@ For a control-plane setup, define named agents in config. Global config lives at
 ```
 
 ```bash
-agentwheel install --agent lab-openclaw
-agentwheel install --all
-agentwheel update --profile daily --dry-run
-agentwheel install --profile daily
-agentwheel status --profile daily
+agentwheel fleet register example-fleet \
+  --root /srv/agentwheel/fleets/example-fleet \
+  --required-package core-agent-pack
+agentwheel fleet list
+agentwheel fleet show example-fleet
+agentwheel install --fleet example-fleet --agent lab-codex
+agentwheel install --fleet example-fleet --all
+agentwheel update --fleet example-fleet --profile daily --dry-run
+agentwheel install --fleet example-fleet --profile daily
+agentwheel status --fleet example-fleet --profile daily
 agentwheel install --all-detected
 ```
+
+If another scope already owns an intended runtime path, the plan fails closed even when the bytes
+match. Use the separate normalization command to preview an explicit ownership transfer, review its
+plan digest, and apply only that same plan. Fleet selection never implies takeover.
+
+```bash
+agentwheel fleet normalize example-fleet --from user --package core-agent-pack --json
+agentwheel fleet normalize example-fleet --from user --package core-agent-pack \
+  --plan-digest <reviewed-sha256> --apply
+agentwheel fleet normalize example-fleet --from user --recover
+```
+
+Recovery restores the source side from a pending normalization journal after verifying that the
+recorded configs, manifests, and graph locks have not changed outside the transaction.
+
+Configuration with named fleets requires a schema-v3-capable Agentwheel CLI. Upgrade the CLI first,
+verify `agentwheel --version` and `agentwheel fleet --help`, then create the fleet config and
+register it. Do not edit the config to an older schema or run an older CLI against it.
 
 SSH targets use the same manifest and drift model as local targets. Planning reads the remote
 install manifest and hashes remote files before deciding whether a file is up to date, drifted, or
 conflicting. SSH hosts need `ssh`, `tar`, and `node` available on `PATH`.
-
-To scaffold a control-plane example:
-
-```bash
-agentwheel init --fleet-example
-```
 
 Target resolution order is exact: `--target-root` wins, then `--agent`, then auto-detect from the
 current directory, then fallback to the current directory. `--all-detected` is an explicit escape hatch
@@ -742,7 +755,7 @@ Built-in runtime targets:
 - [`docs/fleet-config.md`](docs/fleet-config.md) — named agents, SSH targets, and profiles.
 - [`docs/design/federated-fleet-clusters.md`](docs/design/federated-fleet-clusters.md) — federating autonomous workspaces under one doctor/update control plane.
 - [`docs/design/artifact-harness-compatibility.md`](docs/design/artifact-harness-compatibility.md) — artifact/harness compatibility matrix and rule semantics.
-- Resource catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html.
+- Resource catalogue: https://www.nestdev.it/agentwheel/catalogue.html.
 - [`DESIGN.md`](DESIGN.md) — architecture and module layout.
 - [`LIFECYCLE.md`](LIFECYCLE.md) — publish, install, update, and customization model.
 

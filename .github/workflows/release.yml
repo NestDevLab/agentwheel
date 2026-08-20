@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
 
       - name: Validate release version
-        run: node scripts/check-release-version.mjs --tag "$RELEASE_TAG"
+        run: pnpm release:check --tag "$RELEASE_TAG"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -12,6 +12,8 @@ const mergeRemovalSchema: z.ZodType<Record<string, MergeValue>> = z.record(z.str
 export const dependencyRoleSchema = z.enum(["root", "direct", "transitive", "fragment"]);
 export type DependencyRole = z.infer<typeof dependencyRoleSchema>;
 export const legacyUnownedWorkspaceOwner = "legacy:unowned";
+export const CURRENT_INSTALL_MANIFEST_VERSION = 2 as const;
+export const CURRENT_SOURCE_LOCK_VERSION = 1 as const;
 
 export const semanticPluginSpecSchema = z.object({
   runtime: z.enum(["openclaw", "claude", "codex", "copilot", "hermes"]),
@@ -78,7 +80,7 @@ export const installManifestV1Schema = z.object({
 }));
 
 export const installManifestV2Schema = z.object({
-  version: z.literal(2),
+  version: z.literal(CURRENT_INSTALL_MANIFEST_VERSION),
   adapter: z.string().min(1),
   installationType: installationTypeSchema.default(defaultInstallationType),
   stateKey: z.string().min(1).optional(),
@@ -98,7 +100,7 @@ export const installManifestV2Schema = z.object({
 export const installManifestSchema = z.union([installManifestV2Schema, installManifestV1Schema]);
 
 export const sourceLockSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(CURRENT_SOURCE_LOCK_VERSION),
   driver: z.string().min(1),
   source: z.string().min(1),
   resolvedPath: z.string().min(1),

@@ -18,6 +18,8 @@ import {
   type DesiredArtifact,
 } from "../src/install/index.js";
 import { acquireApplyLock, applyBackupDir, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
+import { createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
+import { workspaceOwnerForRoot } from "../src/lifecycle/ownership.js";
 import { installManifestPath } from "../src/install/paths.js";
 import type { InstallOperation } from "../src/install/plan.js";
 import { localTransport } from "../src/transport/index.js";
@@ -873,4 +875,235 @@ function failOnCopy(failAt: number): TargetTransport {
       await localTransport.atomicCopy(sourcePath, destPath, kind);
     },
   };
+}
+
+// Install state is keyed by target fingerprint, so one runtime root holds several manifests under
+// the same adapter and installation type that cannot read each other. These fixtures build that
+// situation from scratch: two synthetic workspace roots, one target root, and manifests that differ
+// only by state key and workspaceOwner.
+const foreignStateAdapter: AdapterConfig = {
+  name: "test",
+  targets: {
+    skills: { local: { enabled: true, dest: ".runtime/skills" } },
+  },
+};
+
+const alphaStateKey = `test.local.${"1".repeat(64)}`;
+const betaStateKey = `test.local.${"2".repeat(64)}`;
+
+describe("foreign workspace state at a shared target root", () => {
+  it("refuses to plan when another workspace owns a path this run would install", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(projectBeta, "shared-skill");
+
+    // A single-owner root must still plan cleanly, so the guard cannot be firing on coexistence alone.
+    const first = await graphPlan(source, target, projectBeta);
+    expect(first.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+    await applyCombinedInstallPlan(first.plan);
+
+    // Alpha had installed into the same runtime root under its own state key, claiming the same path.
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [
+      ".runtime/skills/shared-skill",
+      ".runtime/skills/alpha-only-skill",
+    ]);
+
+    await expect(graphPlan(source, target, projectBeta)).rejects.toThrow(
+      /already carries Agentwheel state owned by another workspace/,
+    );
+  });
+
+  it("names the foreign owner, its manifest, entry count, colliding path and the ways out", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(projectBeta, "shared-skill");
+
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [
+      ".runtime/skills/shared-skill",
+      ".runtime/skills/alpha-only-skill",
+    ]);
+
+    const error = await graphPlan(source, target, projectBeta).catch((cause: unknown) => cause);
+    const message = error instanceof Error ? error.message : String(error);
+
+    expect(message).toContain(workspaceOwnerForRoot(fleetAlpha));
+    expect(message).toContain(`${alphaStateKey}.install-manifest.json`);
+    expect(message).toContain("2 entries");
+    expect(message).toContain(".runtime/skills/shared-skill");
+    expect(message).not.toContain(".runtime/skills/alpha-only-skill");
+    expect(message).toContain(projectBeta);
+    expect(message).toContain("--force-foreign-state");
+  });
+
+  it("allows a foreign owner that shares the root but no path", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(projectBeta, "beta-skill");
+
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [
+      ".runtime/skills/alpha-only-skill",
+    ]);
+
+    const result = await graphPlan(source, target, projectBeta);
+    expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+
+  it("allows the same workspace owning the path under a different fingerprint", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(fleetAlpha, "shared-skill");
+
+    // One workspace reaches a runtime root under several fingerprints -- per-agent and per-profile
+    // runs -- so its own state must never look foreign to it, colliding paths included.
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [
+      ".runtime/skills/shared-skill",
+    ]);
+
+    const result = await graphPlan(source, target, fleetAlpha);
+    expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+
+  it("allows sub-workspaces of the resolving workspace even when the path collides", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(fleetAlpha, "shared-skill");
+
+    // Per-profile and per-rollout roots checked out beneath a control plane belong to it.
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(join(fleetAlpha, "profiles", "pack-one")), [
+      ".runtime/skills/shared-skill",
+    ]);
+    await writeOwnedManifest(target, betaStateKey, workspaceOwnerForRoot(join(fleetAlpha, "var", "rollouts", "pack-two")), [
+      ".runtime/skills/shared-skill",
+    ]);
+
+    const result = await graphPlan(source, target, fleetAlpha);
+    expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+
+  it("refuses nested owners when the resolving root is the global config directory", async () => {
+    const globalHome = await tempRoot("agentwheel-b2-globalhome-");
+    const controlPlane = join(globalHome, "workspace", "control-plane");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(globalHome, "shared-skill");
+
+    // Every control plane on the machine sits beneath the global config directory, so containment
+    // there would exempt the case this guards.
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(controlPlane), [
+      ".runtime/skills/shared-skill",
+    ]);
+
+    await expect(graphPlan(source, target, globalHome, { globalRoot: globalHome })).rejects.toThrow(
+      /already carries Agentwheel state owned by another workspace/,
+    );
+  });
+
+  it("ignores legacy and unknown owner labels that predate workspace-root ownership", async () => {
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(projectBeta, "shared-skill");
+
+    await writeOwnedManifest(target, alphaStateKey, "legacy:unowned", [".runtime/skills/shared-skill"]);
+    await writeOwnedManifest(target, betaStateKey, "workspace:unknown", [".runtime/skills/shared-skill"]);
+
+    const result = await graphPlan(source, target, projectBeta);
+    expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+
+  it("proceeds against foreign state when the caller forces it", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(projectBeta, "shared-skill");
+
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [".runtime/skills/shared-skill"]);
+
+    const result = await graphPlan(source, target, projectBeta, { forceForeignState: true });
+    expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+});
+
+// Keeps the plan path off the developer's real home: without these the resolver would read
+// ~/.agentwheel/config.json and ~/.agentwheel/trust.json.
+async function graphPlan(
+  source: string,
+  targetRoot: string,
+  workspaceRoot: string,
+  options: { forceForeignState?: boolean; globalRoot?: string } = {},
+) {
+  const isolatedHome = options.globalRoot ?? await tempRoot("agentwheel-b2-home-");
+  return createGraphSourcePlan({
+    roots: [{ rootId: "root", source }],
+    targetRoot,
+    workspaceRoot,
+    adapter: foreignStateAdapter,
+    installationType: "local",
+    targetKey: "foreign-state",
+    globalRoot: isolatedHome,
+    trustStorePath: join(isolatedHome, ".agentwheel", "trust.json"),
+    readOnly: true,
+    isTTY: false,
+    forceForeignState: options.forceForeignState,
+  });
+}
+
+async function skillSource(workspaceRoot: string, skillName: string): Promise<string> {
+  const root = join(workspaceRoot, "source");
+  await writeText(join(root, "skills", skillName, "SKILL.md"), [
+    "---",
+    `name: ${skillName}`,
+    "description: Fixture skill for foreign-state guard tests.",
+    "---",
+    "",
+    `# ${skillName}`,
+    "",
+  ].join("\n"));
+  await writeText(join(root, "openpack.json"), `${JSON.stringify({
+    schemaVersion: 2,
+    name: "fixture/foreign-state",
+    version: "1.0.0",
+    provides: [{ type: "skills", path: "skills" }],
+  }, null, 2)}\n`);
+  return root;
+}
+
+async function writeOwnedManifest(
+  targetRoot: string,
+  stateKey: string,
+  workspaceOwner: string,
+  paths: string[],
+): Promise<void> {
+  await localTransport.writeJsonAtomic(installManifestPath(targetRoot, foreignStateAdapter.name, { stateKey }), {
+    version: 2,
+    adapter: foreignStateAdapter.name,
+    installationType: "local",
+    stateKey,
+    targetRoot,
+    generatedAt: new Date().toISOString(),
+    revision: "fixture-revision-0000",
+    entries: paths.map((path) => ({
+      path,
+      artifactType: "skills",
+      artifactName: path.split("/").at(-1),
+      installName: path.split("/").at(-1),
+      logicalSelector: `skills/${path.split("/").at(-1)}`,
+      kind: "dir",
+      hash: "0".repeat(64),
+      sourceHash: "0".repeat(64),
+      updatedAt: new Date().toISOString(),
+      channel: "managed",
+      packageName: "fixture/other-pack",
+      dependencyRole: "root",
+      owners: ["fixture/other-pack"],
+      refCount: 1,
+      workspaceOwner,
+    })),
+  });
+}
+
+async function writeText(path: string, value: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, value, "utf8");
 }

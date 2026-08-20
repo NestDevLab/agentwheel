@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { defaultInstallationType } from "../model/adapter.js";
 import { installManifestSchema, installManifestV2Schema, type InstallManifest, type InstallManifestV2, type SourceLock } from "../model/manifest.js";
 import { sourceLockSchema } from "../model/manifest.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import { installManifestPath, sourceLockPath, type InstallStateScope } from "./paths.js";
+import { installManifestPath, metadataDir, sourceLockPath, type InstallStateScope } from "./paths.js";
 
 export async function readInstallManifest(
   targetRoot: string,
@@ -21,6 +21,41 @@ export async function readInstallManifest(
     ...parsed,
     revision: computeManifestRevision(raw),
   };
+}
+
+export interface DiscoveredInstallManifest {
+  path: string;
+  fileName: string;
+  stateKey: string;
+  manifest: InstallManifest;
+}
+
+// Install state is keyed by target fingerprint, so one runtime root can hold several manifests that
+// describe the same directory tree and cannot see each other. Callers that need to reason about the
+// whole root -- not just their own slice of it -- must enumerate rather than read a single state key.
+export async function listInstallManifests(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+): Promise<DiscoveredInstallManifest[]> {
+  const dir = metadataDir(targetRoot);
+  const suffix = ".install-manifest.json";
+  const prefix = `${adapter}.`;
+  const found: DiscoveredInstallManifest[] = [];
+  for (const fileName of await transport.listDir(dir)) {
+    if (!fileName.endsWith(suffix)) continue;
+    const stateKey = fileName.slice(0, -suffix.length);
+    if (stateKey !== adapter && !stateKey.startsWith(prefix)) continue;
+    const path = join(dir, fileName);
+    try {
+      const raw = JSON.parse(await transport.readFile(path));
+      const parsed = installManifestSchema.parse(raw);
+      found.push({ path, fileName, stateKey, manifest: { ...parsed, revision: computeManifestRevision(raw) } });
+    } catch (error) {
+      throw new Error(`Unreadable install manifest at ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return found.sort((a, b) => a.fileName.localeCompare(b.fileName));
 }
 
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {

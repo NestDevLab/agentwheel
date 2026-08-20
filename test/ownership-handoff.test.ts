@@ -75,6 +75,7 @@ describe("artifact ownership handoff", () => {
       kind: "ssh",
       description: "ssh://fixture",
       pathExists: async (path) => files.has(path) || dirs.has(path),
+      listDir: async () => [],
       mkdirExclusive: async (path) => {
         if (dirs.has(path)) throw Object.assign(new Error("exists"), { code: "EEXIST" });
         dirs.add(path);

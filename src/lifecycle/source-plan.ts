@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import { defaultInstallationType, installRootForAdapterInstallationType, installRootForArtifacts, resolveInstallationTypeForArtifacts } from "../model/adapter.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
@@ -24,9 +24,10 @@ import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.j
 import { pathExists } from "../utils/fs.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
-import { readMergedWorkspaceConfig } from "../model/workspace.js";
+import { globalWorkspaceConfigPath, readMergedWorkspaceConfig } from "../model/workspace.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
 import { workspaceOwnerForRoot } from "./ownership.js";
+import { listInstallManifests } from "../install/manifest.js";
 import { createExactMcpRetirementPlan } from "./mcp-retirement.js";
 
 export interface SourcePlanOptions {
@@ -86,6 +87,7 @@ export interface GraphSourcePlanOptions {
   replaceConflict?: boolean;
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
+  forceForeignState?: boolean;
 }
 
 export interface GraphSourcePlanResult {
@@ -246,6 +248,18 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
         replaceConflict: options.replaceConflict,
         warn,
       });
+  if (options.forceForeignState !== true) {
+    await assertNoForeignWorkspaceState({
+      installRoot: resolvedInstallRoot,
+      adapter: options.adapter.name,
+      transport,
+      workspaceRoot,
+      globalRoot: options.globalRoot,
+      stateKey,
+      plannedPaths: plan.operations.map((operation) => operation.relativeDestPath),
+    });
+  }
+
   return {
     plan,
     graph,
@@ -318,6 +332,89 @@ function resolveInstallationTypeForAdapterTarget(adapter: AdapterConfig): string
 async function readExistingGraphLock(path: string): Promise<GraphLock | undefined> {
   if (!(await pathExists(path))) return undefined;
   return readGraphLock(path);
+}
+
+const workspaceOwnerPrefix = "workspace-root:";
+
+interface ForeignStateCheck {
+  installRoot: string;
+  adapter: string;
+  transport: TargetTransport;
+  workspaceRoot: string;
+  globalRoot?: string;
+  stateKey: string;
+  plannedPaths: string[];
+}
+
+interface ForeignStateOwner {
+  owner: string;
+  fileName: string;
+  entryCount: number;
+  collidingPaths: string[];
+}
+
+// One runtime root legitimately holds state for several workspaces -- user-scoped installs all land
+// in $HOME -- so coexistence is not the problem. The problem is a path this run would touch that a
+// different workspace already owns in a manifest under another target fingerprint: this run cannot
+// read that manifest, sees only a file it did not install, and calls it an unmanaged conflict.
+// Refuse rather than report a classification that is known to be wrong.
+//
+// A workspace also owns its own sub-workspaces -- per-profile and per-rollout roots checked out
+// beneath it -- so containment is the right exemption almost everywhere. The exception is the
+// directory holding the global config: it is a workspace root only because that file doubles as
+// one, every control plane on the machine sits beneath it, and containment there would exempt
+// exactly the case this guards. Standing in it, only the workspace itself is not foreign.
+async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<void> {
+  const planned = new Set(check.plannedPaths);
+  if (planned.size === 0) return;
+
+  const manifests = await listInstallManifests(check.installRoot, check.adapter, check.transport);
+  const root = resolve(check.workspaceRoot);
+  const ownsSubWorkspaces = root !== globalConfigRoot(check.globalRoot);
+  const foreign: ForeignStateOwner[] = [];
+
+  for (const entry of manifests) {
+    if (entry.stateKey === check.stateKey) continue;
+    const byOwner = new Map<string, { entryCount: number; collidingPaths: string[] }>();
+    for (const manifestEntry of entry.manifest.entries) {
+      const owner = "workspaceOwner" in manifestEntry ? manifestEntry.workspaceOwner : undefined;
+      if (typeof owner !== "string" || !owner.startsWith(workspaceOwnerPrefix)) continue;
+      if (ownedByWorkspace(owner, root, ownsSubWorkspaces)) continue;
+      const bucket = byOwner.get(owner) ?? { entryCount: 0, collidingPaths: [] };
+      bucket.entryCount += 1;
+      if (planned.has(manifestEntry.path)) bucket.collidingPaths.push(manifestEntry.path);
+      byOwner.set(owner, bucket);
+    }
+    for (const [owner, bucket] of byOwner) {
+      if (bucket.collidingPaths.length === 0) continue;
+      foreign.push({ owner, fileName: entry.fileName, ...bucket });
+    }
+  }
+
+  if (foreign.length === 0) return;
+
+  throw new Error([
+    `Refusing to plan ${check.adapter} at ${check.installRoot}.`,
+    "This runtime root already carries Agentwheel state owned by another workspace, at paths this run would install:",
+    ...foreign.flatMap((item) => [
+      `  ${item.owner} (${item.entryCount} entries, ${item.fileName})`,
+      ...item.collidingPaths.map((path) => `    ${path}`),
+    ]),
+    `Current workspace: ${check.workspaceRoot} (state key ${check.stateKey})`,
+    "Agentwheel keys install state by target fingerprint, so this run cannot read that manifest and",
+    "would report those paths as unmanaged conflicts or drift. Re-run from the owning workspace, or",
+    "pass --force-foreign-state to plan against it anyway.",
+  ].join("\n"));
+}
+
+function globalConfigRoot(globalRoot?: string): string {
+  return dirname(dirname(globalWorkspaceConfigPath(globalRoot)));
+}
+
+function ownedByWorkspace(owner: string, workspaceRoot: string, ownsSubWorkspaces: boolean): boolean {
+  const ownerRoot = resolve(owner.slice(workspaceOwnerPrefix.length));
+  if (ownerRoot === workspaceRoot) return true;
+  return ownsSubWorkspaces && ownerRoot.startsWith(`${workspaceRoot}/`);
 }
 
 function pathForGraphLock(workspaceRoot: string, targetKey: string, adapter: string, targetFingerprint: string): string {

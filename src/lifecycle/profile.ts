@@ -28,6 +28,7 @@ export interface ProfileSyncOptions {
   allowAdapterCode?: boolean;
   forceDrift?: boolean;
   forceConflict?: boolean;
+  forceForeignState?: boolean;
   replaceConflict?: boolean;
   noDeps?: boolean;
   includeSuggestions?: boolean;
@@ -136,6 +137,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       warn: options.warn,
       forceDrift: options.forceDrift,
       forceConflict: options.forceConflict,
+      forceForeignState: options.forceForeignState,
       replaceConflict: options.replaceConflict,
     });
     try {

@@ -46,6 +46,11 @@ export function createSshTransport(config: SshTransportConfig): TargetTransport 
     readFile(path) {
       return run(`cat -- ${quoteSh(path)}`);
     },
+    async listDir(path) {
+      // `ls -A` exits non-zero on a missing directory; an absent directory is an empty listing here.
+      const output = await run(`ls -A -- ${quoteSh(path)} 2>/dev/null || true`);
+      return output.split("\n").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+    },
     writeFileAtomic(path, content) {
       const dir = posixDirname(path);
       const temp = `${path}.tmp-agentwheel-${process.pid}-${Date.now()}`;

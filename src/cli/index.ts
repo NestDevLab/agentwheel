@@ -349,6 +349,7 @@ program
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
@@ -389,6 +390,7 @@ program
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -430,6 +432,7 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
@@ -477,6 +480,7 @@ program
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -508,6 +512,7 @@ program
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plans without writing", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
+  .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
@@ -567,6 +572,7 @@ program
       .option("--dry-run", "show plans without writing", false)
       .option("--adopt", "replace unmanaged destinations in the owning package closure", false)
       .option("--force-drift", "replace drifted managed artifacts", false)
+      .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
       .option("--allow-adapter-code", "allow loading local adapter code from the owning package", false)
       .option("--no-deps", "resolve only the owning package and ignore its requires with a warning")
       .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -1126,6 +1132,7 @@ async function runInstallCommand(
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
+      forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
@@ -1250,6 +1257,7 @@ async function buildPlanReport(
       allowAdapterCode: normalizedOptions.allowAdapterCode,
       forceDrift: normalizedOptions.forceDrift,
       forceConflict: normalizedOptions.forceConflict,
+      forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
@@ -1717,6 +1725,7 @@ interface GraphCliOptions {
   keepFiles?: boolean;
   forceDrift?: boolean;
   forceConflict?: boolean;
+  forceForeignState?: boolean;
   replaceConflict?: boolean;
   format?: string;
   reportFormat?: PlanOutputFormat;
@@ -2033,6 +2042,7 @@ async function buildGraphPlansForTarget(
       isTTY: process.stdin.isTTY === true,
       forceDrift: targetOptions.forceDrift,
       forceConflict: targetOptions.forceConflict,
+      forceForeignState: targetOptions.forceForeignState,
       replaceConflict: targetOptions.replaceConflict,
       retireExactMcp: targetOptions.retireExactMcp,
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
@@ -2949,6 +2959,7 @@ function compositeInstallArguments(
   args.push("--profile", profile);
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");
   if (options.replaceConflict) args.push("--replace-conflict");
   if (options.executePlugins) args.push("--execute-plugins");
@@ -2970,6 +2981,7 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   if (options.dryRun) args.push("--dry-run");
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");
   if (options.replaceConflict) args.push("--replace-conflict");
   if (options.executePlugins) args.push("--execute-plugins");
@@ -2994,6 +3006,7 @@ function compositeSkillUpdateArguments(
   if (options.adopt) args.push("--adopt");
   if (options.refresh) args.push("--refresh");
   if (options.forceDrift) args.push("--force-drift");
+  if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.allowAdapterCode) args.push("--allow-adapter-code");
   if (options.noDeps) args.push("--no-deps");
   if (options.frozenLock) args.push("--frozen-lock");

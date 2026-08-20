@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.1
+
+- Fixed focused skill updates so dependency-only sibling graph nodes and include edges remain
+  locked, while stale include edges owned only by the updated skill are replaced.
+
 ## 0.18.0
 
 - Added optional named fleets and explicit `--user`, `--local`, and `--fleet <fleet-id>`

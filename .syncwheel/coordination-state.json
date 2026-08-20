@@ -1,12 +1,12 @@
 {
   "changed_refs": {
-    "refs/heads/fix/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed"
+    "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T15:10:39+00:00",
+  "created_at": "2026-08-20T15:20:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/fix/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
+    "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
     "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
@@ -71,7 +71,8 @@
         },
         "branch": "fix/focused-skill-graph-preservation",
         "commits": [
-          "441197b61b73b12f51215b5e3e49a60d7254c2ed"
+          "441197b61b73b12f51215b5e3e49a60d7254c2ed",
+          "2b1a89862f99c0eed6063ba2c196806152b524fe"
         ],
         "id": "focused-skill-graph-preservation",
         "integration_branch": "main-integration",
@@ -80,11 +81,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "2de657a582cb1187e87f7306c3e072ed6911bff84343021b7f9eb38d67b9f347",
-  "parent_state": "b987e52fa2972bd43384bb76a7b65c6411ef4b71",
+  "manifest_digest": "6f1d7a44aea948d2e3c8b2de222061de11f0c898e008c859f366010b8bd7d826",
+  "parent_state": "6c9dbbf396cca722cec526a580fb7e04fa09c55a",
   "projection_status": "partial",
-  "publication_id": "3c3410fd-39bb-467c-bafc-63580d3ac7ef",
-  "publication_scope": "promote:focused-skill-graph-preservation",
+  "publication_id": "4dabb3c2-21cb-4b88-82f9-076cc140b61e",
+  "publication_scope": "stack:focused-skill-graph-preservation",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [

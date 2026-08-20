@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-20T13:19:57+00:00",
+  "created_at": "2026-08-20T13:29:15+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a",
@@ -37,35 +35,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "mgt-0139-named-fleets"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "mgt-0139-foreign-state-guard",
-        "commits": [
-          "bc67dc44a8cd8b5db1308c9f070b6490fdbbc838",
-          "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
-        ],
-        "id": "mgt-0139-named-fleets",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "133455191682a773f3a9351953ea03719ab8ef0d6583e7bf5654d1f6c9739bd8",
-  "parent_state": "a2a5695c034212ed00e68c796bac2749ab0368e5",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "7562d0ce36988f403bb725c938bc52839358c9f8",
   "projection_status": "partial",
-  "publication_id": "2a10e396-6251-4a5a-ad39-56bb7c1b8b1d",
-  "publication_scope": "stack:mgt-0139-named-fleets",
+  "publication_id": "6ba09d65-7fee-4fc5-a3c2-7a21e83a3ec0",
+  "publication_scope": "close:mgt-0139-named-fleets",
   "schema_version": 2,
   "syncwheel_version": "0.33.3",
   "tombstones": [
@@ -84,6 +64,14 @@
       "ref": "refs/heads/pr/amf-exact-mcp-retirement",
       "remote_tip": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
       "stack": "amf-exact-mcp-retirement"
+    },
+    {
+      "branch": "mgt-0139-foreign-state-guard",
+      "closed_at": "2026-08-20T13:29:06+00:00",
+      "reason": "superseded-by-privacy-safe-branch",
+      "ref": "refs/heads/mgt-0139-foreign-state-guard",
+      "remote_tip": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+      "stack": "mgt-0139-named-fleets"
     }
   ]
 }

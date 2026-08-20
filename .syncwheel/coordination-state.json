@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-20T18:48:13+00:00",
+  "created_at": "2026-08-20T18:52:24+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -48,8 +46,7 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "site-card-alignment",
-        "agentwheel-discovery-rollout"
+        "site-card-alignment"
       ],
       "strategy": "cherry-pick"
     },
@@ -67,29 +64,15 @@
         "id": "site-card-alignment",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/agentwheel-discovery-intent",
-        "commits": [
-          "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0"
-        ],
-        "id": "agentwheel-discovery-rollout",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "8a29c6f06d133ad613c449f213bf7ea613c5e1c47650edff6ddaf281566d4440",
-  "parent_state": "32658b81f92be9c8f7a228d8e416092e35f75685",
+  "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
+  "parent_state": "c3eb20eebbcf5bbaf4776769f6bc1e7fb5632f38",
   "projection_status": "partial",
-  "publication_id": "1ec5653e-0d35-44e9-b7ad-a172343e99ae",
-  "publication_scope": "stack:agentwheel-discovery-rollout",
+  "publication_id": "373fbd1c-87a5-4e7e-a9bc-51df75c8d0c8",
+  "publication_scope": "close:agentwheel-discovery-rollout",
   "schema_version": 2,
   "syncwheel_version": "0.34.0",
   "tombstones": [
@@ -180,6 +163,14 @@
       "ref": "refs/heads/pr/agentwheel-discovery-intent-0-18-1",
       "remote_tip": "16c061171466c65afb05a109e4d1f84fa51e996a",
       "stack": "agentwheel-discovery-intent"
+    },
+    {
+      "branch": "pr/agentwheel-discovery-intent",
+      "closed_at": "2026-08-20T18:52:16+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/agentwheel-discovery-intent",
+      "remote_tip": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
+      "stack": "agentwheel-discovery-rollout"
     }
   ]
 }

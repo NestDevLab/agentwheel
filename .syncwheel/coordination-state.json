@@ -1,12 +1,13 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a"
+    "refs/heads/mgt-0139-foreign-state-guard": "ae7b0bbbe85c51447f924d87f2e5d036d1da277e"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-18T07:52:25+00:00",
+  "created_at": "2026-08-20T13:17:01+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a",
+    "refs/heads/mgt-0139-foreign-state-guard": "ae7b0bbbe85c51447f924d87f2e5d036d1da277e",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
@@ -36,19 +37,37 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "mgt-0139-named-fleets"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "mgt-0139-foreign-state-guard",
+        "commits": [
+          "9569b2c53d738d1bf979a7eaddfd5d9d5fa57618",
+          "ae7b0bbbe85c51447f924d87f2e5d036d1da277e"
+        ],
+        "id": "mgt-0139-named-fleets",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "d17a51b6924ed6153dcef8a43c1ea837bd7b5e43",
+  "manifest_digest": "618d3c8138ad7d56e25b28e0054c4b1614fdc0f66807ccf380221c02d17f4d3f",
+  "parent_state": "3580aabdb5ea7289ded88b4f695cf3820faf8357",
   "projection_status": "partial",
-  "publication_id": "1e1f8dd6-101f-4f76-83f1-911fc156aa60",
-  "publication_scope": "integration",
+  "publication_id": "719a2fea-d18e-48dd-8f99-d5d30baed162",
+  "publication_scope": "stack:mgt-0139-named-fleets",
   "schema_version": 2,
-  "syncwheel_version": "0.33.2",
+  "syncwheel_version": "0.33.3",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

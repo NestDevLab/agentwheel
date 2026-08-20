@@ -3,7 +3,7 @@
     "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T14:27:17+00:00",
+  "created_at": "2026-08-20T14:27:42+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
@@ -64,10 +64,10 @@
     "version": 2
   },
   "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
-  "parent_state": "3c387dd91817ee42714e1e177f6aba7ce320fe61",
+  "parent_state": "ea8297b695f5bdaf112735956d05297a0e2a4ebe",
   "projection_status": "partial",
-  "publication_id": "61777665-a885-4d50-96ef-a1dd3367b282",
-  "publication_scope": "promote:site-card-alignment",
+  "publication_id": "2f2d84c3-47c8-4df0-9031-eb6a6c6e92e1",
+  "publication_scope": "stack:site-card-alignment",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [

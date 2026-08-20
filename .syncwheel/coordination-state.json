@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "05168c82726adbf713b13608ca365c7c0d7e4395"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-20T15:26:14+00:00",
+  "created_at": "2026-08-20T15:27:16+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -45,7 +43,6 @@
       "branch": "main-integration",
       "stacks": [
         "site-card-alignment",
-        "focused-skill-graph-preservation",
         "agentwheel-discovery-intent"
       ],
       "strategy": "cherry-pick"
@@ -71,21 +68,6 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "fix/focused-skill-graph-preservation",
-        "commits": [
-          "441197b61b73b12f51215b5e3e49a60d7254c2ed",
-          "2b1a89862f99c0eed6063ba2c196806152b524fe"
-        ],
-        "id": "focused-skill-graph-preservation",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
         "branch": "syncwheel/draft/agentwheel-discovery-intent",
         "commits": [],
         "id": "agentwheel-discovery-intent",
@@ -96,11 +78,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "fed5cfc85e56f23689e6597330606e69c316a8681b426725f4bd68a191ed2866",
-  "parent_state": "805909c5c219faed9977df947a0dc8a5d0f1e97f",
+  "manifest_digest": "9645f72d9afea66dd9c97c290f2c170f4c2a044e718c07f215dc7f7c655b6e39",
+  "parent_state": "d6e5f1e526b2ffe4276e65f7eec8a860e2a45353",
   "projection_status": "partial",
-  "publication_id": "043dd948-ff0b-4c59-b0ea-f16995aa8e41",
-  "publication_scope": "stack:agentwheel-discovery-intent",
+  "publication_id": "14b36068-4217-4b4c-b864-173c2f583d72",
+  "publication_scope": "close:focused-skill-graph-preservation",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [
@@ -150,6 +132,14 @@
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/focused-skill-graph-preservation",
       "remote_tip": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
+      "stack": "focused-skill-graph-preservation"
+    },
+    {
+      "branch": "fix/focused-skill-graph-preservation",
+      "closed_at": "2026-08-20T15:27:07+00:00",
+      "reason": "merged-by-squash-tree-equivalent",
+      "ref": "refs/heads/fix/focused-skill-graph-preservation",
+      "remote_tip": "2b1a89862f99c0eed6063ba2c196806152b524fe",
       "stack": "focused-skill-graph-preservation"
     }
   ]

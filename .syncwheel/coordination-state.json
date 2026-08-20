@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
+    "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T14:27:42+00:00",
+  "created_at": "2026-08-20T15:10:14+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
@@ -12,6 +12,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+    "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
@@ -41,7 +42,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "site-card-alignment"
+        "site-card-alignment",
+        "focused-skill-graph-preservation"
       ],
       "strategy": "cherry-pick"
     },
@@ -59,15 +61,30 @@
         "id": "site-card-alignment",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/focused-skill-graph-preservation",
+        "commits": [
+          "441197b61b73b12f51215b5e3e49a60d7254c2ed"
+        ],
+        "id": "focused-skill-graph-preservation",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
-  "parent_state": "ea8297b695f5bdaf112735956d05297a0e2a4ebe",
+  "manifest_digest": "41b156be9d45211acc04b6ac724c77471c3ceb8968f1521ee033dcb7be105918",
+  "parent_state": "45df68ead728bd1d6e819617a13562af7d76dd36",
   "projection_status": "partial",
-  "publication_id": "2f2d84c3-47c8-4df0-9031-eb6a6c6e92e1",
-  "publication_scope": "stack:site-card-alignment",
+  "publication_id": "1220fc5e-688a-4a7a-bd35-e3fb200ab0ae",
+  "publication_scope": "stack:focused-skill-graph-preservation",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [

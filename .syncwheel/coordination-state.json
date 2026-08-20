@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-20T18:46:06+00:00",
+  "created_at": "2026-08-20T18:47:21+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -47,8 +45,7 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "site-card-alignment",
-        "agentwheel-discovery-intent"
+        "site-card-alignment"
       ],
       "strategy": "cherry-pick"
     },
@@ -66,29 +63,15 @@
         "id": "site-card-alignment",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/agentwheel-discovery-intent-0-18-1",
-        "commits": [
-          "16c061171466c65afb05a109e4d1f84fa51e996a"
-        ],
-        "id": "agentwheel-discovery-intent",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "82d1b96442a7d7c647d9737d4f966f41b6d9d0574fd14e010b5e7fa655cf7526",
-  "parent_state": "208a743666610c97f2bdc6622fe6a381adbca7e6",
+  "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
+  "parent_state": "32c3193bbbcd897f20dff4ca2b39a09901b976ea",
   "projection_status": "partial",
-  "publication_id": "f5402ffb-d83d-4bca-9e11-d3ef97a26a14",
-  "publication_scope": "promote:agentwheel-discovery-intent",
+  "publication_id": "5371f2a5-e233-4042-abc4-2f5db03f01f9",
+  "publication_scope": "close:agentwheel-discovery-intent",
   "schema_version": 2,
   "syncwheel_version": "0.34.0",
   "tombstones": [
@@ -169,6 +152,14 @@
       "closed_at": "2026-08-20T18:45:58+00:00",
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/agentwheel-discovery-intent",
+      "remote_tip": "16c061171466c65afb05a109e4d1f84fa51e996a",
+      "stack": "agentwheel-discovery-intent"
+    },
+    {
+      "branch": "pr/agentwheel-discovery-intent-0-18-1",
+      "closed_at": "2026-08-20T18:47:12+00:00",
+      "reason": "superseded-by-validated-0.18.1-projection",
+      "ref": "refs/heads/pr/agentwheel-discovery-intent-0-18-1",
       "remote_tip": "16c061171466c65afb05a109e4d1f84fa51e996a",
       "stack": "agentwheel-discovery-intent"
     }

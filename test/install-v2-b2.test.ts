@@ -129,6 +129,58 @@ async function writeRawV2Manifest(targetRoot: string, entries: unknown[]): Promi
 }
 
 describe("install manifest v2", () => {
+  it("keeps a same-root legacy workspace owner foreign until an explicit handoff", async () => {
+    const workspace = await tempRoot("agentwheel-owner-workspace-");
+    const foreignWorkspace = await tempRoot("agentwheel-owner-foreign-");
+    const target = await tempRoot("agentwheel-owner-target-");
+    const source = await tempRoot("agentwheel-owner-source-");
+    const artifact = await writeArtifact(source, "rules/fleet.md", "fleet\n");
+    const legacyOwner = workspaceOwnerForRoot(workspace);
+    const fleetOwner = workspaceOwnerForRoot(workspace, "delivery");
+
+    await applyCombinedInstallPlan(await createCombinedInstallPlan(
+      [artifact],
+      adapter,
+      target,
+      undefined,
+      localTransport,
+      { workspaceOwner: legacyOwner },
+    ));
+    const legacyManifest = await readInstallManifest(target, adapter.name);
+    if (!legacyManifest) throw new Error("expected legacy-owned manifest");
+
+    const fleetPlan = await createCombinedInstallPlan(
+      [artifact],
+      adapter,
+      target,
+      legacyManifest,
+      localTransport,
+      { workspaceOwner: fleetOwner },
+    );
+    expect(fleetPlan.operations).toMatchObject([{
+      action: "keep",
+      preserveInManifest: true,
+      workspaceOwner: legacyOwner,
+    }]);
+    await applyCombinedInstallPlan(fleetPlan);
+    const preserved = await readInstallManifest(target, adapter.name);
+    expect(preserved?.entries[0]).toMatchObject({ workspaceOwner: legacyOwner });
+
+    const foreign = await createCombinedInstallPlan(
+      [artifact],
+      adapter,
+      target,
+      preserved,
+      localTransport,
+      { workspaceOwner: workspaceOwnerForRoot(foreignWorkspace, "other") },
+    );
+    expect(foreign.operations).toMatchObject([{
+      action: "keep",
+      preserveInManifest: true,
+      workspaceOwner: legacyOwner,
+    }]);
+  });
+
   it("roundtrips v2 manifests with sorted owners and reads v1 manifests as legacy", async () => {
     const target = await tempRoot();
     const source = await tempRoot();
@@ -892,6 +944,32 @@ const alphaStateKey = `test.local.${"1".repeat(64)}`;
 const betaStateKey = `test.local.${"2".repeat(64)}`;
 
 describe("foreign workspace state at a shared target root", () => {
+  it("partitions an explicit runtime state key by fleet and blocks a same-path cross-fleet install", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const fleetBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const alphaSource = await skillSource(fleetAlpha, "shared-skill");
+    const betaSource = await skillSource(fleetBeta, "shared-skill");
+
+    const alpha = await graphPlan(alphaSource, target, fleetAlpha, {
+      fleetId: "alpha",
+      stateKey: "shared-runtime",
+    });
+    expect(alpha.plan.stateKey).not.toBe("shared-runtime");
+    await applyCombinedInstallPlan(alpha.plan);
+
+    const betaError = await graphPlan(betaSource, target, fleetBeta, {
+      fleetId: "beta",
+      stateKey: "shared-runtime",
+      forceForeignState: true,
+    }).catch((cause: unknown) => cause);
+    const message = betaError instanceof Error ? betaError.message : String(betaError);
+    expect(message).toContain("already carries Agentwheel state owned by another workspace");
+    expect(message).toContain(workspaceOwnerForRoot(fleetAlpha, "alpha"));
+    expect(message).toContain(".runtime/skills/shared-skill");
+    expect(message).toContain("fleet normalize");
+  });
+
   it("refuses to plan when another workspace owns a path this run would install", async () => {
     const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
     const projectBeta = await tempRoot("agentwheel-b2-beta-");
@@ -1031,7 +1109,7 @@ async function graphPlan(
   source: string,
   targetRoot: string,
   workspaceRoot: string,
-  options: { forceForeignState?: boolean; globalRoot?: string } = {},
+  options: { forceForeignState?: boolean; globalRoot?: string; fleetId?: string; stateKey?: string } = {},
 ) {
   const isolatedHome = options.globalRoot ?? await tempRoot("agentwheel-b2-home-");
   return createGraphSourcePlan({
@@ -1041,6 +1119,8 @@ async function graphPlan(
     adapter: foreignStateAdapter,
     installationType: "local",
     targetKey: "foreign-state",
+    fleetId: options.fleetId,
+    stateKey: options.stateKey,
     globalRoot: isolatedHome,
     trustStorePath: join(isolatedHome, ".agentwheel", "trust.json"),
     readOnly: true,

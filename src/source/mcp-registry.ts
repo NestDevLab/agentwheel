@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Artifact } from "../model/artifact.js";
+import { CURRENT_OPENPACK_SCHEMA_VERSION } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, ScanResult, SourceDriver, SourceResolveOptions } from "./types.js";
@@ -142,7 +143,7 @@ async function writeGeneratedPackage(root: string, server: { serverName: string;
   const mcpPath = join(root, "mcp", `${serverId}.json`);
   await mkdir(dirname(mcpPath), { recursive: true });
   await writeFile(join(root, "openpack.json"), `${JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: CURRENT_OPENPACK_SCHEMA_VERSION,
     name: `mcp-registry/${server.serverName}`,
     version: server.version ?? "latest",
     provides: [{ type: "mcp", path: "mcp" }],

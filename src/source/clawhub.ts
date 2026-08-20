@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Artifact } from "../model/artifact.js";
+import { CURRENT_OPENPACK_SCHEMA_VERSION } from "../model/package.js";
 import { hashPath, pathExists } from "../utils/fs.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, ScanResult, SourceDriver, SourceResolveOptions } from "./types.js";
@@ -169,7 +170,7 @@ async function writeGeneratedPackage(root: string, packageInfo: ClawHubPackage):
   await rm(root, { recursive: true, force: true });
   await mkdir(dirname(pluginPath), { recursive: true });
   await writeFile(join(root, "openpack.json"), `${JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: CURRENT_OPENPACK_SCHEMA_VERSION,
     name: `clawhub/${name}`,
     version: packageInfo.latestVersion ?? "latest",
     runtimes: ["openclaw"],

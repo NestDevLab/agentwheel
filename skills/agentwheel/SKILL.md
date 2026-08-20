@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.17.0"
+  version: "0.18.0"
 ---
 
 # agentwheel
@@ -19,7 +19,7 @@ Mental model:
 - `add` records desired packages.
 - `install` makes the declared state true in the target runtime.
 - `update` re-resolves tracking packages, then applies.
-- `skill update <name>` maps a configured skill to its owning package and reconciles only that package closure.
+- `skill update <name>` maps a configured skill to its owning package and reconciles only that skill plus its genuine transitive composition inputs; sibling artifacts keep their runtime bytes and manifest/lock state.
 - `uninstall` removes configured packages and their managed runtime output.
 
 ## Safety Rules
@@ -54,9 +54,10 @@ To add and install in one step:
 agentwheel install github:owner/repo --adapter codex,claude
 ```
 
-Explicit source installs with explicit adapters default to user-level artifacts. Use `--local` for
-the current directory or `-t/--target-root <project>` for project/workspace installs. Use `--user`, `--local`, or
-`-i/--installation-type <type>` when scope should be explicit.
+Explicit source installs with explicit adapters default to user-level artifacts. Use exactly one of
+`--user`, `--local`, or `--fleet <fleet-id>` when desired-state scope matters. Use
+`-i/--installation-type <type>` for the runtime layout inside that scope and
+`-t/--target-root <project>` for an explicit target root. Named fleets are optional.
 
 ## Workspace Setup
 
@@ -277,9 +278,10 @@ agentwheel install github:owner/repo --adapter codex,claude
 ```
 
 Explicit source installs with explicit adapters default to documented user-level installs. Pass
-`--local` for the current directory or `-t/--target-root <project>` for project/workspace installs, and use `--user`, `--local`,
-or `-i/--installation-type <type>` when scope should be explicit. If a package can be installed in
-more than one type and no CLI/context default applies, agentwheel fails instead of guessing.
+`--user`, `--local`, or `--fleet <fleet-id>` to select one desired-state scope, and use
+`-i/--installation-type <type>` for the runtime layout inside that scope. If a package can be
+installed in more than one type and no CLI/context default applies, Agentwheel fails instead of
+guessing.
 
 Target selection order is `--target-root`, then `--agent`, then runtime auto-detection from the current directory, then the current directory.
 
@@ -294,32 +296,46 @@ agentwheel status --all
 agentwheel status --profile daily
 ```
 
-For profile-managed fleets, prefer `agentwheel status --profile <name>` over
+For a named fleet, prefer `agentwheel status --fleet <fleet-id> --profile <name>` over
 direct agent status; profile status uses the same runtime resolution, adapter
 config, installation type, and graph lock fingerprinting as
-`install --profile <name>`. If a workspace defines a profile named `all`,
-`agentwheel status --all` checks that profile.
+`install --fleet <fleet-id> --profile <name>`. If that fleet defines a profile named `all`,
+`agentwheel status --fleet <fleet-id> --all` checks that profile.
 
-## Named Agents And Profiles
+## Named Fleets, Agents, And Profiles
 
-Global config is `~/.agentwheel/config.json`. Project config is `.agentwheel/config.json`; project values win.
+Named fleets are optional control-plane configurations. Select one explicitly with
+`--fleet <fleet-id>`; ordinary user and local work does not require fleet registration. User,
+local, and fleet scopes are isolated desired state: Agentwheel does not merge them, and no fleet
+has global priority.
+
+Named fleets require a schema-v3-capable Agentwheel CLI. Upgrade first, verify
+`agentwheel --version` and `agentwheel fleet --help`, then create or register fleet state. Do not
+downgrade the config, strip named-fleet data, or run an old CLI against it.
 
 Current config shape:
 
 ```json
 {
-  "schemaVersion": 1,
-  "packages": [],
-  "registry": {},
+  "schemaVersion": 3,
+  "fleetId": "example-fleet",
+  "packages": [
+    {
+      "name": "core-agent-pack",
+      "source": "github:example-org/core-agent-pack",
+      "driver": "git",
+      "adapter": "codex",
+      "installationType": "local",
+      "mode": "tracking"
+    }
+  ],
   "agents": {
-    "lab-codex": { "adapter": "codex", "installationType": "local", "root": "$HOME/project" },
-    "lab-claude": { "adapter": "claude", "installationType": "local", "root": "$HOME/project" }
+    "lab-codex": { "adapter": "codex", "installationType": "local", "root": "/workspace/project" }
   },
   "profiles": {
     "daily": {
       "runtimes": [
-        { "agent": "lab-codex" },
-        { "agent": "lab-claude" }
+        { "agent": "lab-codex" }
       ]
     }
   }
@@ -329,13 +345,29 @@ Current config shape:
 Use named targets:
 
 ```bash
-agentwheel install --agent lab-codex --dry-run
-agentwheel install --agent lab-codex
-agentwheel install --all --dry-run
-agentwheel install --all
-agentwheel install --profile daily --dry-run
-agentwheel install --profile daily
+agentwheel fleet register example-fleet --root /srv/agentwheel/fleets/example-fleet --required-package core-agent-pack
+agentwheel fleet list
+agentwheel fleet show example-fleet
+agentwheel install --fleet example-fleet --agent lab-codex --dry-run
+agentwheel install --fleet example-fleet --all --dry-run
+agentwheel install --fleet example-fleet --profile daily --dry-run
 ```
+
+An intended runtime path owned by another scope is a blocking conflict even when the bytes match.
+Use the dedicated fleet normalization workflow: preview the transfer, review its exact plan digest,
+then apply only the unchanged plan. Never remove the source declaration first or hand-edit runtime
+output to manufacture a clean plan.
+
+```bash
+agentwheel fleet normalize example-fleet --from user --package core-agent-pack --json
+agentwheel fleet normalize example-fleet --from user --package core-agent-pack \
+  --plan-digest <reviewed-sha256> --apply
+agentwheel fleet normalize example-fleet --from user --recover
+```
+
+`fleetId` in the fleet config must match the registry key. Every repeatable
+`--required-package` must name a package declared by that fleet. Recovery is only for a pending
+journal and must fail if recorded configs, manifests, or graph locks changed externally.
 
 ## Adapters
 
@@ -382,9 +414,9 @@ agentwheel update --all --dry-run
 agentwheel update --profile daily --dry-run
 ```
 
-For profile-managed fleets, use `agentwheel update --profile <name>` before
-`install --profile <name>` when tracking packages should move forward. If a
-workspace defines a profile named `all`, `agentwheel update --all` checks that
+For a named fleet, use `agentwheel update --fleet <fleet-id> --profile <name>` before
+`install --fleet <fleet-id> --profile <name>` when tracking packages should move forward. If that
+fleet defines a profile named `all`, `agentwheel update --fleet <fleet-id> --all` checks that
 profile.
 
 Limit an update to one configured package:
@@ -396,14 +428,14 @@ agentwheel update team-agent-pack
 
 Named package updates preserve artifacts owned by other configured roots, including unrelated drift.
 
-For one configured skill, resolve its owner and only that package closure:
+For one configured skill, resolve its owner and reconcile only that skill plus genuine transitive composition inputs:
 
 ```bash
-agentwheel skill update code-review --profile daily --dry-run
-agentwheel skill update code-review --profile daily
+agentwheel skill update code-review --fleet example-fleet --profile daily --dry-run
+agentwheel skill update code-review --fleet example-fleet --profile daily
 ```
 
-Pinned owners use install semantics; tracking owners re-resolve. Unrelated configured packages are not resolved. If ownership is ambiguous, pass `--package <name>`. Use `--adopt` only after explicit approval of the dry-run's unmanaged destinations.
+Pinned owners use install semantics; tracking owners re-resolve. Sibling artifacts from the same package retain their runtime bytes and manifest/graph-lock entries; only composition inputs actually used by the requested skill join the update scope. Unrelated configured packages are not resolved. If ownership is ambiguous, pass `--package <name>`. Use `--adopt` only after explicit approval of the dry-run's unmanaged destinations.
 
 Advance one tracking dependency while unrelated graph nodes remain locked:
 

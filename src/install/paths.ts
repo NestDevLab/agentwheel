@@ -5,6 +5,7 @@ export interface InstallStateScope {
   installationType?: string;
   stateKey?: string;
   targetFingerprint?: string;
+  fleetId?: string;
 }
 
 export function metadataDir(targetRoot: string): string {
@@ -12,7 +13,16 @@ export function metadataDir(targetRoot: string): string {
 }
 
 export function stateKeyFor(adapter: string, scope: InstallStateScope = {}): string {
-  if (scope.stateKey) return sanitizeStateKey(scope.stateKey);
+  if (scope.stateKey) {
+    const explicit = sanitizeStateKey(scope.stateKey);
+    const adapterScoped = scope.fleetId && explicit !== adapter && !explicit.startsWith(`${adapter}.`)
+      ? `${adapter}.${explicit}`
+      : explicit;
+    const fleetSuffix = scope.fleetId
+      ? `.fleet-${sanitizeStateKey(scope.fleetId)}${scope.targetFingerprint ? `.${scope.targetFingerprint}` : ""}`
+      : "";
+    return sanitizeStateKey(`${adapterScoped}${fleetSuffix}`);
+  }
   const installationType = scope.installationType ?? defaultInstallationType;
   const fingerprint = scope.targetFingerprint ? `.${scope.targetFingerprint}` : "";
   return sanitizeStateKey(`${adapter}.${installationType}${fingerprint}`);

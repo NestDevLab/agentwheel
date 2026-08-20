@@ -15,6 +15,7 @@ import { normalizeArtifactSelectors } from "../model/selection.js";
 
 export interface ProfileSyncOptions {
   workspaceRoot: string;
+  fleetId?: string;
   profile: string;
   source?: string;
   driver?: string;
@@ -79,7 +80,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     throw new Error("--select/--skill cannot be combined with a package selection import.");
   }
   for (const runtime of profile.runtimes) {
-    const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType);
+    const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
     const transport = transportForTarget(target);
     const adapter = await resolveAdapter({
       adapter: target.adapter,
@@ -107,11 +108,13 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       })),
       targetRoot: target.targetRoot,
       workspaceRoot: options.workspaceRoot,
+      fleetId: target.fleetId,
       adapter,
       transport,
       targetKey: target.targetKey ?? target.agentName ?? adapter.name,
       targetFingerprintParts: {
         adapter: adapter.name,
+        fleetId: target.fleetId,
         installationType,
         adapterConfig: target.adapterConfig,
         adapterModule: target.adapterModule,

@@ -7,10 +7,11 @@ import { normalizeArtifactSelectors } from "../model/selection.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";
 import { GitSourceDriver } from "../source/git.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
+import { CURRENT_OPENPACK_SCHEMA_VERSION } from "../model/package.js";
 
 export const DEFAULT_REGISTRY_SOURCE = "github:NestDevLab/agentwheel-registry";
 export const DEFAULT_REGISTRY_TTL_MS = 24 * 60 * 60 * 1000;
-export const SUPPORTED_OPENPACK_SCHEMA_VERSION = 2;
+export const SUPPORTED_OPENPACK_SCHEMA_VERSION = CURRENT_OPENPACK_SCHEMA_VERSION;
 
 export interface RegistryClientOptions {
   workspaceRoot?: string;

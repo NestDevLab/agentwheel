@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.0
+
+- Added optional named fleets and explicit `--user`, `--local`, and `--fleet <fleet-id>`
+  desired-state selection without merging scopes or assigning any fleet global priority.
+- Added a foreign-state guard that blocks implicit ownership changes across user, local, and
+  fleet manifests, including overlaps whose rendered bytes already match.
+- Added plan-digested fleet normalization with ordered locks, durable journal recovery, stale-plan
+  revalidation, and source-first ownership transfer before declarations are removed.
+- Fixed named-agent uninstall so manifest and runtime resolution use the target's effective adapter
+  configuration instead of the invoking workspace's defaults.
+
 ## 0.17.0
 
 - Added `agentwheel cache prune` to preview old Git source snapshots, with `--apply` to

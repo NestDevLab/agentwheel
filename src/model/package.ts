@@ -18,6 +18,7 @@ const legacyArtifactTypeSchema = z.enum([
 ]);
 
 const runtimeListSchema = z.array(z.string().min(1));
+export const CURRENT_OPENPACK_SCHEMA_VERSION = 2 as const;
 
 const packageProvideBaseSchema = z.object({
   path: z.string().min(1),
@@ -70,7 +71,7 @@ export const packageManifestV1Schema = z.object({
 });
 
 export const packageManifestV2Schema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(CURRENT_OPENPACK_SCHEMA_VERSION),
   name: z.string().min(1),
   version: z.string().min(1),
   runtimes: runtimeListSchema.optional(),

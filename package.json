@@ -1,6 +1,6 @@
 {
   "name": "agentwheel",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Weave skills, rules, and instructions across every AI agent.",
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/NestDevLab/agentwheel.git"
   },
-  "homepage": "https://github.com/NestDevLab/agentwheel#readme",
+  "homepage": "https://www.nestdev.it/agentwheel/",
   "bugs": {
     "url": "https://github.com/NestDevLab/agentwheel/issues"
   },
@@ -42,9 +42,9 @@
   },
   "scripts": {
     "build": "tsup && chmod +x dist/index.js",
-    "check-release-version": "node scripts/check-release-version.mjs",
     "prepack": "pnpm build",
-    "sync-site-version": "node scripts/sync-site-version.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "release:prepare": "node scripts/release-prepare.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

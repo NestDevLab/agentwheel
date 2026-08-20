@@ -8,6 +8,7 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { isSupportedVersionRange } from "../resolve/semver.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
+export const CURRENT_WORKSPACE_SCHEMA_VERSION = 3 as const;
 
 export const workspaceSelectionImportSchema = z.object({
   export: z.string().min(1),
@@ -82,6 +83,16 @@ const workspacePackageV1Schema = workspacePackageBaseSchema.extend({
 const commandSchema = z.array(z.string().min(1)).min(1);
 const commandListSchema = z.array(commandSchema).min(1).optional();
 const installStateKeySchema = z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i);
+export const fleetIdSchema = z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i);
+
+export const registeredFleetSchema = z.object({
+  root: z.string().min(1),
+  requiredPackages: z.array(z.string().min(1)).min(1),
+}).strict().superRefine((fleet, ctx) => {
+  if (new Set(fleet.requiredPackages).size !== fleet.requiredPackages.length) {
+    ctx.addIssue({ code: "custom", path: ["requiredPackages"], message: "Required fleet packages must be unique." });
+  }
+});
 
 export const workspaceProfileRuntimeSchema = z.object({
   agent: z.string().min(1).optional(),
@@ -195,9 +206,18 @@ const workspaceConfigV2Schema = workspaceConfigBaseSchema.extend({
   exports: workspaceExportsSchema.default({ selections: {} }),
 });
 
+const workspaceConfigV3Schema = workspaceConfigBaseSchema.extend({
+  schemaVersion: z.literal(CURRENT_WORKSPACE_SCHEMA_VERSION),
+  packages: z.array(workspacePackageSchema).default([]),
+  exports: workspaceExportsSchema.default({ selections: {} }),
+  fleetId: fleetIdSchema.optional(),
+  fleets: z.record(fleetIdSchema, registeredFleetSchema).default({}),
+});
+
 export const workspaceConfigSchema = z.discriminatedUnion("schemaVersion", [
   workspaceConfigV1Schema,
   workspaceConfigV2Schema,
+  workspaceConfigV3Schema,
 ]);
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
@@ -210,6 +230,7 @@ export type WorkspaceProfileRuntime = z.infer<typeof workspaceProfileRuntimeSche
 export type WorkspaceProfileMember = z.infer<typeof workspaceProfileMemberSchema>;
 export type WorkspaceProfile = z.infer<typeof workspaceProfileSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
+export type RegisteredFleet = z.infer<typeof registeredFleetSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
 export function workspaceConfigPath(workspaceRoot: string): string {
@@ -252,6 +273,16 @@ export async function findWorkspaceRoot(start = process.cwd()): Promise<string> 
   }
 }
 
+export async function findExistingWorkspaceRoot(start = process.cwd()): Promise<string | undefined> {
+  let current = resolve(start);
+  while (true) {
+    if (await pathExists(workspaceConfigPath(current))) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
 export async function readMergedWorkspaceConfig(projectRoot: string, options: WorkspaceMergeOptions = {}): Promise<WorkspaceConfig> {
   const global = await readConfigPath(globalWorkspaceConfigPath(options.globalRoot));
   const project = await readWorkspaceConfig(projectRoot);
@@ -259,16 +290,12 @@ export async function readMergedWorkspaceConfig(projectRoot: string, options: Wo
 }
 
 export function mergeWorkspaceConfig(global: WorkspaceConfig, project: WorkspaceConfig): WorkspaceConfig {
-  const schemaVersion = global.schemaVersion === 2 || project.schemaVersion === 2 ? 2 : 1;
-  const exports = project.schemaVersion === 2
-    ? project.exports
-    : global.schemaVersion === 2
-      ? global.exports
-      : undefined;
+  const schemaVersion = project.schemaVersion;
+  const exports = project.schemaVersion >= 2 ? project.exports : undefined;
   return workspaceConfigSchema.parse({
     schemaVersion,
-    packages: project.packages.length > 0 ? project.packages : global.packages,
-    bootstrapSkills: project.bootstrapSkills ?? global.bootstrapSkills,
+    packages: project.packages,
+    bootstrapSkills: project.bootstrapSkills,
     registry: {
       ...global.registry,
       ...project.registry,
@@ -276,9 +303,10 @@ export function mergeWorkspaceConfig(global: WorkspaceConfig, project: Workspace
       ttlSeconds: project.registry.ttlSeconds ?? global.registry.ttlSeconds,
     },
     trust: mergeWorkspaceTrust(global.trust, project.trust),
-    profiles: { ...global.profiles, ...project.profiles },
-    agents: { ...global.agents, ...project.agents },
+    profiles: project.profiles,
+    agents: project.agents,
     ...(exports ? { exports } : {}),
+    ...(project.schemaVersion === 3 ? { fleetId: project.fleetId, fleets: project.fleets } : {}),
   });
 }
 

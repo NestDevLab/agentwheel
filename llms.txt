@@ -7,7 +7,8 @@
 - README: https://github.com/NestDevLab/agentwheel#readme
 - AI install handoff: https://github.com/NestDevLab/agentwheel/blob/main/install.md
 - AI agent guide: https://github.com/NestDevLab/agentwheel/blob/main/AGENT.md
-- Public catalogue: https://nestdevlab.github.io/agentwheel/catalogue.html
+- Public site: https://www.nestdev.it/agentwheel/
+- Public catalogue: https://www.nestdev.it/agentwheel/catalogue.html
 
 ## Specs And Design
 
@@ -25,3 +26,8 @@ npm i -g agentwheel
 agentwheel doctor --adapter codex --local
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
 ```
+
+Named fleets are optional and require a schema-v3-capable Agentwheel CLI. Select exactly one
+desired-state scope when it matters: `--user`, `--local`, or `--fleet <fleet-id>`. Upgrade and
+verify `agentwheel fleet --help` before creating, registering, or reading fleet state; see the fleet
+configuration guide for registration, plan-digested normalization, and journal recovery.

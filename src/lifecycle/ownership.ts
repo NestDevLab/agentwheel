@@ -5,6 +5,8 @@ import { defaultInstallationType } from "../model/adapter.js";
 import { acquireApplyLock, readApplyJournal } from "../install/transaction.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
+export { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 
 export interface OwnershipHandoffRequest extends InstallStateScope {
   targetRoot: string;
@@ -29,10 +31,6 @@ export interface OwnershipHandoffPlan {
   manifestRevision: string;
   fromOwner: string;
   toOwner: string;
-}
-
-export function workspaceOwnerForRoot(workspaceRoot: string): string {
-  return `workspace-root:${resolve(workspaceRoot)}`;
 }
 
 export async function planArtifactOwnershipHandoff(request: OwnershipHandoffRequest): Promise<OwnershipHandoffPlan> {

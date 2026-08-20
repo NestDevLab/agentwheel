@@ -37,7 +37,7 @@ jobs:
         id: release
         env:
           BEFORE_SHA: ${{ github.event.before }}
-        run: node scripts/check-release-version.mjs --before "$BEFORE_SHA"
+        run: pnpm release:check --before "$BEFORE_SHA"
 
       - name: Reject an existing release version
         if: steps.release.outputs.release == 'true'
@@ -58,12 +58,6 @@ jobs:
       - name: Install dependencies
         if: steps.release.outputs.release == 'true'
         run: pnpm install --frozen-lockfile
-
-      - name: Verify generated site version
-        if: steps.release.outputs.release == 'true'
-        run: |
-          pnpm run sync-site-version
-          git diff --exit-code -- docs/index.html docs/catalogue.html
 
       - name: Typecheck
         if: steps.release.outputs.release == 'true'

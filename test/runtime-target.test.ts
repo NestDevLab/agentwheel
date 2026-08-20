@@ -65,7 +65,7 @@ describe("runtime target resolution", () => {
     expect(target.source).toBe("auto-detect");
   });
 
-  it("merges fleet agents with project config overriding global config", async () => {
+  it("isolates local agents from user desired state", async () => {
     const globalRoot = await tempRoot("agentwheel-global-");
     const project = await tempRoot("agentwheel-project-");
     const globalAgentRoot = join(globalRoot, "global-openclaw");
@@ -93,7 +93,7 @@ describe("runtime target resolution", () => {
 
     const merged = await readMergedWorkspaceConfig(project, { globalRoot });
     expect(merged.agents.lab).toEqual({ adapter: "codex", root: projectAgentRoot, transport: "local" });
-    expect(merged.agents.globalOnly?.adapter).toBe("hermes");
+    expect(merged.agents.globalOnly).toBeUndefined();
   });
 
   it("resolves --agent and --all targets to distinct roots with separate manifests", async () => {
@@ -188,6 +188,44 @@ describe("runtime target resolution", () => {
     if (!runtimes) throw new Error("expected leaf profile");
     const profileTarget = resolveProfileRuntimeTarget(runtimes[0]!, config, project);
     expect(profileTarget.stateKey).toBe("codex.user.legacy-fixture");
+  });
+
+  it("inherits agent adapter configuration in profile runtimes unless explicitly overridden", async () => {
+    const project = await tempRoot("agentwheel-profile-adapter-config-");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 1,
+      profiles: { selected: { runtimes: [{ agent: "odino", adapter: "hermes" }] } },
+      agents: {
+        odino: {
+          adapter: "hermes",
+          root: project,
+          adapterConfig: "config/hermes.jsonc",
+          adapterModule: "adapters/hermes.mjs",
+        },
+      },
+    });
+    const config = await readMergedWorkspaceConfig(project);
+    const profile = config.profiles.selected;
+    const runtimes = profile && "runtimes" in profile ? profile.runtimes : undefined;
+    if (!runtimes) throw new Error("expected leaf profile");
+    const target = resolveProfileRuntimeTarget(runtimes[0]!, config, project);
+    expect(target.adapterConfig).toBe("config/hermes.jsonc");
+    expect(target.adapterModule).toBe("adapters/hermes.mjs");
+  });
+
+  it("assigns fleet ownership only from an explicitly resolved fleet scope", async () => {
+    const project = await tempRoot("agentwheel-explicit-fleet-target-");
+    await writeWorkspaceConfig(project, {
+      schemaVersion: 3,
+      fleetId: "delivery",
+      agents: { runtime: { adapter: "codex", root: project } },
+    });
+
+    const localTarget = await resolveRuntimeTarget({ cwd: project, agent: "runtime" });
+    expect(localTarget.fleetId).toBeUndefined();
+
+    const fleetTarget = await resolveRuntimeTarget({ cwd: project, agent: "runtime", fleetId: "delivery" });
+    expect(fleetTarget.fleetId).toBe("delivery");
   });
 
   it("rejects unsafe explicit install-state keys", async () => {

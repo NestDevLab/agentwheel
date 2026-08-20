@@ -26,7 +26,7 @@ import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
 import { globalWorkspaceConfigPath, readMergedWorkspaceConfig } from "../model/workspace.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
-import { workspaceOwnerForRoot } from "./ownership.js";
+import { parseWorkspaceOwner, workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { listInstallManifests } from "../install/manifest.js";
 import { createExactMcpRetirementPlan } from "./mcp-retirement.js";
 
@@ -48,6 +48,7 @@ export interface SourcePlanOptions {
   forceDrift?: boolean;
   forceConflict?: boolean;
   replaceConflict?: boolean;
+  fleetId?: string;
 }
 
 export interface SourcePlanResult {
@@ -88,6 +89,7 @@ export interface GraphSourcePlanOptions {
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
   forceForeignState?: boolean;
+  fleetId?: string;
 }
 
 export interface GraphSourcePlanResult {
@@ -125,10 +127,25 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   const installRootArtifacts = filterArtifactsByAdapterTargets(formatCompatibleArtifacts, options.adapter, requestedInstallationType, { warn: options.warn });
   const installationType = resolveInstallationTypeForArtifacts(options.adapter, installRootArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
-  const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType });
+  const targetFingerprint = options.fleetId
+    ? computeTargetFingerprint({
+        adapter: options.adapter.name,
+        fleetId: options.fleetId,
+        installationType,
+        targetRoot: options.targetRoot,
+        transport: transport.kind,
+        transportDescription: transport.description,
+      })
+    : undefined;
+  const stateKey = stateKeyFor(options.adapter.name, {
+    installationType,
+    stateKey: options.stateKey,
+    targetFingerprint,
+    fleetId: options.fleetId,
+  });
   const manifest = await readInstallManifest(installRoot, options.adapter.name, transport, { installationType, stateKey });
   const plan = await createInstallPlan(bundle, options.adapter, options.targetRoot, manifest, transport, {
-    workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
+    workspaceOwner: workspaceOwnerForRoot(workspaceRoot, options.fleetId),
     installationType,
     stateKey,
     forceDrift: options.forceDrift,
@@ -154,12 +171,18 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const installationType = options.installationType ?? resolveInstallationTypeForAdapterTarget(options.adapter);
   const targetFingerprint = computeTargetFingerprint(options.targetFingerprintParts ?? {
     adapter: options.adapter.name,
+    fleetId: options.fleetId,
     installationType,
     targetRoot: options.targetRoot,
     transport: transport.kind,
     transportDescription: transport.description,
   });
-  const stateKey = options.stateKey ?? stateKeyFor(options.adapter.name, { installationType, targetFingerprint });
+  const stateKey = stateKeyFor(options.adapter.name, {
+    installationType,
+    stateKey: options.stateKey,
+    targetFingerprint,
+    fleetId: options.fleetId,
+  });
   const installRoot = installRootForAdapterInstallationType(options.adapter, options.targetRoot, installationType, transport.kind === "ssh");
   const recoveredPendingApply = options.readOnly === true
     ? false
@@ -221,7 +244,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const graphLockDigest = digestGraphLock(bundle.graphLock);
   const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
   const manifest = await readInstallManifest(resolvedInstallRoot, options.adapter.name, transport, { installationType: resolvedInstallationType, stateKey });
-  const workspaceOwner = workspaceOwnerForRoot(workspaceRoot);
+  const workspaceOwner = workspaceOwnerForRoot(workspaceRoot, options.fleetId);
   const plan = options.retireExactMcp
     ? await createExactMcpRetirementPlan(
         desiredArtifacts,
@@ -248,12 +271,13 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
         replaceConflict: options.replaceConflict,
         warn,
       });
-  if (options.forceForeignState !== true) {
+  if (options.forceForeignState !== true || options.fleetId) {
     await assertNoForeignWorkspaceState({
       installRoot: resolvedInstallRoot,
       adapter: options.adapter.name,
       transport,
       workspaceRoot,
+      workspaceOwner,
       globalRoot: options.globalRoot,
       stateKey,
       plannedPaths: plan.operations.map((operation) => operation.relativeDestPath),
@@ -341,6 +365,7 @@ interface ForeignStateCheck {
   adapter: string;
   transport: TargetTransport;
   workspaceRoot: string;
+  workspaceOwner: string;
   globalRoot?: string;
   stateKey: string;
   plannedPaths: string[];
@@ -379,7 +404,7 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
     for (const manifestEntry of entry.manifest.entries) {
       const owner = "workspaceOwner" in manifestEntry ? manifestEntry.workspaceOwner : undefined;
       if (typeof owner !== "string" || !owner.startsWith(workspaceOwnerPrefix)) continue;
-      if (ownedByWorkspace(owner, root, ownsSubWorkspaces)) continue;
+      if (ownedByWorkspace(owner, check.workspaceOwner, root, ownsSubWorkspaces)) continue;
       const bucket = byOwner.get(owner) ?? { entryCount: 0, collidingPaths: [] };
       bucket.entryCount += 1;
       if (planned.has(manifestEntry.path)) bucket.collidingPaths.push(manifestEntry.path);
@@ -402,8 +427,10 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
     ]),
     `Current workspace: ${check.workspaceRoot} (state key ${check.stateKey})`,
     "Agentwheel keys install state by target fingerprint, so this run cannot read that manifest and",
-    "would report those paths as unmanaged conflicts or drift. Re-run from the owning workspace, or",
-    "pass --force-foreign-state to plan against it anyway.",
+    "would report those paths as unmanaged conflicts or drift.",
+    parseWorkspaceOwner(check.workspaceOwner)?.fleetId
+      ? "Reconcile the owners with an explicit agentwheel fleet normalize operation before planning this fleet."
+      : "Re-run from the owning workspace, or pass --force-foreign-state to plan against it anyway.",
   ].join("\n"));
 }
 
@@ -411,10 +438,12 @@ function globalConfigRoot(globalRoot?: string): string {
   return dirname(dirname(globalWorkspaceConfigPath(globalRoot)));
 }
 
-function ownedByWorkspace(owner: string, workspaceRoot: string, ownsSubWorkspaces: boolean): boolean {
-  const ownerRoot = resolve(owner.slice(workspaceOwnerPrefix.length));
-  if (ownerRoot === workspaceRoot) return true;
-  return ownsSubWorkspaces && ownerRoot.startsWith(`${workspaceRoot}/`);
+function ownedByWorkspace(owner: string, desiredOwner: string, workspaceRoot: string, ownsSubWorkspaces: boolean): boolean {
+  if (owner === desiredOwner) return true;
+  const parsedOwner = parseWorkspaceOwner(owner);
+  const parsedDesired = parseWorkspaceOwner(desiredOwner);
+  if (!parsedOwner || !parsedDesired || parsedOwner.fleetId || parsedDesired.fleetId) return false;
+  return ownsSubWorkspaces && parsedOwner.root.startsWith(`${workspaceRoot}/`);
 }
 
 function pathForGraphLock(workspaceRoot: string, targetKey: string, adapter: string, targetFingerprint: string): string {

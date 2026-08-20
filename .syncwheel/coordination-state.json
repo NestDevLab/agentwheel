@@ -1,10 +1,12 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-20T14:08:52+00:00",
+  "created_at": "2026-08-20T14:09:59+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a",
+    "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
@@ -43,10 +45,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "d25764eeade6d8692a559dd15893733fa0b95b1a",
+  "parent_state": "2c24cb06b1fff7f146177c754ed95ae3f042de31",
   "projection_status": "partial",
-  "publication_id": "092cd4ae-3c9f-4f45-a71c-1067bfcb1ab4",
-  "publication_scope": "close:release-0-18-named-fleets",
+  "publication_id": "716432f0-0e10-4302-854f-ee618aaaeea6",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.33.3",
   "tombstones": [

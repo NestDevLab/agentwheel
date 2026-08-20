@@ -1,13 +1,16 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-20T18:45:28+00:00",
+  "created_at": "2026-08-20T18:46:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
     "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+    "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
@@ -70,23 +73,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/agentwheel-discovery-intent",
+        "branch": "pr/agentwheel-discovery-intent-0-18-1",
         "commits": [
           "16c061171466c65afb05a109e4d1f84fa51e996a"
         ],
         "id": "agentwheel-discovery-intent",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "53d350732c7eca77e12107800b9e976ecf867625506d6f28a46e10168f06a1af",
-  "parent_state": "00ab29b41ebfed4d25fb028816f5df4e77234e7a",
+  "manifest_digest": "82d1b96442a7d7c647d9737d4f966f41b6d9d0574fd14e010b5e7fa655cf7526",
+  "parent_state": "208a743666610c97f2bdc6622fe6a381adbca7e6",
   "projection_status": "partial",
-  "publication_id": "a4fa71d0-f083-49e4-83a0-bd5ecfe8a259",
-  "publication_scope": "close:agentwheel-0-18-1",
+  "publication_id": "f5402ffb-d83d-4bca-9e11-d3ef97a26a14",
+  "publication_scope": "promote:agentwheel-discovery-intent",
   "schema_version": 2,
   "syncwheel_version": "0.34.0",
   "tombstones": [
@@ -161,6 +163,14 @@
       "ref": "refs/heads/release/0.18.1-focused-graph",
       "remote_tip": "dc86014ad20f0275a0b8445ddafca46a710447ee",
       "stack": "agentwheel-0-18-1"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-discovery-intent",
+      "closed_at": "2026-08-20T18:45:58+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-discovery-intent",
+      "remote_tip": "16c061171466c65afb05a109e4d1f84fa51e996a",
+      "stack": "agentwheel-discovery-intent"
     }
   ]
 }

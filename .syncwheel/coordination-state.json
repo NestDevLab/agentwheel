@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee"
+    "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T15:36:00+00:00",
+  "created_at": "2026-08-20T15:36:28+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -13,6 +13,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+    "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
@@ -87,23 +88,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/agentwheel-0-18-1",
+        "branch": "release/0.18.1-focused-graph",
         "commits": [
           "dc86014ad20f0275a0b8445ddafca46a710447ee"
         ],
         "id": "agentwheel-0-18-1",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "b23b3050546b2805c8d4704423d309070d9ebe6a5d8718e3df6db598b164eaab",
-  "parent_state": "99c190854872016b013ad8a8ad2760b83dce0d2f",
+  "manifest_digest": "bdea5878094ed58b5cc13e9b2cf5570b82fd886162c080f5a95afa22d9b5b38e",
+  "parent_state": "c023eeb250cd10f2c80a51740bb84827eb8676e4",
   "projection_status": "partial",
-  "publication_id": "d766269c-4b31-4d99-b378-5b2b1acbdb89",
-  "publication_scope": "stack:agentwheel-0-18-1",
+  "publication_id": "45c2d26f-a090-4062-9890-cf8ac6a6e85b",
+  "publication_scope": "promote:agentwheel-0-18-1",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [
@@ -162,6 +162,14 @@
       "ref": "refs/heads/fix/focused-skill-graph-preservation",
       "remote_tip": "2b1a89862f99c0eed6063ba2c196806152b524fe",
       "stack": "focused-skill-graph-preservation"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-0-18-1",
+      "closed_at": "2026-08-20T15:36:20+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-0-18-1",
+      "remote_tip": "dc86014ad20f0275a0b8445ddafca46a710447ee",
+      "stack": "agentwheel-0-18-1"
     }
   ]
 }

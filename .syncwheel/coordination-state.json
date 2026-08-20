@@ -1,11 +1,12 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
+    "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T14:26:42+00:00",
+  "created_at": "2026-08-20T14:27:17+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
+    "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
     "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
@@ -51,23 +52,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/site-card-alignment",
+        "branch": "fix/site-card-alignment",
         "commits": [
           "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
         ],
         "id": "site-card-alignment",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "fe1fb363f24f0c068ac6111e5930d392151fb2f1c2809a60c585b745acfe10d1",
-  "parent_state": "d0cacfff84ffce5ed4def527d09ed4306aebc9ac",
+  "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
+  "parent_state": "3c387dd91817ee42714e1e177f6aba7ce320fe61",
   "projection_status": "partial",
-  "publication_id": "387e7cb3-c743-4fff-be46-b6e5f8303524",
-  "publication_scope": "partial",
+  "publication_id": "61777665-a885-4d50-96ef-a1dd3367b282",
+  "publication_scope": "promote:site-card-alignment",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [
@@ -102,6 +102,14 @@
       "ref": "refs/heads/release/0.18.0-named-fleets",
       "remote_tip": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
       "stack": "release-0-18-named-fleets"
+    },
+    {
+      "branch": "syncwheel/draft/site-card-alignment",
+      "closed_at": "2026-08-20T14:27:09+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/site-card-alignment",
+      "remote_tip": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
+      "stack": "site-card-alignment"
     }
   ]
 }

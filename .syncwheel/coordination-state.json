@@ -1,13 +1,13 @@
 {
   "changed_refs": {
-    "refs/heads/mgt-0139-foreign-state-guard": "ae7b0bbbe85c51447f924d87f2e5d036d1da277e"
+    "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T13:17:01+00:00",
+  "created_at": "2026-08-20T13:19:57+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/main-integration": "05ead2d0c35ec455de7ee2cbc401d3aec02d106a",
-    "refs/heads/mgt-0139-foreign-state-guard": "ae7b0bbbe85c51447f924d87f2e5d036d1da277e",
+    "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1"
   },
@@ -51,8 +51,8 @@
         },
         "branch": "mgt-0139-foreign-state-guard",
         "commits": [
-          "9569b2c53d738d1bf979a7eaddfd5d9d5fa57618",
-          "ae7b0bbbe85c51447f924d87f2e5d036d1da277e"
+          "bc67dc44a8cd8b5db1308c9f070b6490fdbbc838",
+          "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b"
         ],
         "id": "mgt-0139-named-fleets",
         "integration_branch": "main-integration",
@@ -61,10 +61,10 @@
     ],
     "version": 2
   },
-  "manifest_digest": "618d3c8138ad7d56e25b28e0054c4b1614fdc0f66807ccf380221c02d17f4d3f",
-  "parent_state": "3580aabdb5ea7289ded88b4f695cf3820faf8357",
+  "manifest_digest": "133455191682a773f3a9351953ea03719ab8ef0d6583e7bf5654d1f6c9739bd8",
+  "parent_state": "a2a5695c034212ed00e68c796bac2749ab0368e5",
   "projection_status": "partial",
-  "publication_id": "719a2fea-d18e-48dd-8f99-d5d30baed162",
+  "publication_id": "2a10e396-6251-4a5a-ad39-56bb7c1b8b1d",
   "publication_scope": "stack:mgt-0139-named-fleets",
   "schema_version": 2,
   "syncwheel_version": "0.33.3",

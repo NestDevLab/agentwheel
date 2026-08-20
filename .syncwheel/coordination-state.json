@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-0-18-1": "84c3602cfdd77fbc20173d771c22ba7a9ea9cb1f"
+    "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-20T15:33:25+00:00",
+  "created_at": "2026-08-20T15:33:58+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -14,7 +14,7 @@
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "84c3602cfdd77fbc20173d771c22ba7a9ea9cb1f",
-    "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "05168c82726adbf713b13608ca365c7c0d7e4395",
+    "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
@@ -73,7 +73,9 @@
           "role": "canonical"
         },
         "branch": "syncwheel/draft/agentwheel-discovery-intent",
-        "commits": [],
+        "commits": [
+          "16c061171466c65afb05a109e4d1f84fa51e996a"
+        ],
         "id": "agentwheel-discovery-intent",
         "integration_branch": "main-integration",
         "state": "draft",
@@ -95,11 +97,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "c5c5c8011a2cd6452066a3d66459aaf9acb72fb85e18d28603c9071e94fe13a9",
-  "parent_state": "9a42de93cf0608ab68f088cd17c5115deb1f241f",
+  "manifest_digest": "b695bb071ca000d1cf7f7a8aa9a1c0869c09f35f7751076d24c787965130d53f",
+  "parent_state": "970b944a428ecf5e0690bed1c7a0a7bc33cc2b6d",
   "projection_status": "partial",
-  "publication_id": "cbaa444b-de5b-4cc8-ac64-a1858898b05a",
-  "publication_scope": "stack:agentwheel-0-18-1",
+  "publication_id": "d4111e6a-7970-4412-b113-b4eaae578a95",
+  "publication_scope": "stack:agentwheel-discovery-intent",
   "schema_version": 2,
   "syncwheel_version": "0.33.4",
   "tombstones": [

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.2
+
+- Fixed legacy same-fleet normalization so it considers only locally provable manifest/graph-lock
+  pairs, preserves unrelated composite or stale lock state byte-for-byte, and still rejects
+  relevant foreign ownership before any handoff.
+
 ## 0.18.1
 
 - Fixed focused skill updates so dependency-only sibling graph nodes and include edges remain

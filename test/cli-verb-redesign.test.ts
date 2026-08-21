@@ -1,10 +1,13 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
+import { stateKeyFor } from "../src/install/paths.js";
+import { workspaceOwnerForRoot } from "../src/lifecycle/ownership.js";
+import { computeTargetFingerprint } from "../src/model/graph-lock.js";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -530,6 +533,89 @@ describe("CLI verb redesign", () => {
 
     await expect(runCli(["fleet", "normalize", "delivery", "--from", "user", "--recover"]))
       .rejects.toMatchObject({ stderr: expect.stringMatching(/No pending fleet normalization journal/) });
+  });
+
+  it("keeps fleet install, update, and uninstall previews usable after legacy ownership normalization", async () => {
+    const fleetRoot = await tempRoot("agentwheel-cli-normalize-fleet-");
+    const runtimeRoot = await tempRoot("agentwheel-cli-normalize-runtime-");
+    const source = await skillPackageFixture("fleet-normalize-core", "fleet-normalize-core");
+    await mkdir(join(fleetRoot, ".agentwheel"), { recursive: true });
+    await writeFile(join(fleetRoot, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 3,
+      fleetId: "delivery",
+      packages: [{
+        name: "fleet-normalize-core",
+        source,
+        driver: "local",
+        adapter: "codex",
+        installationType: "local",
+        mode: "pinned",
+        select: ["skills/fleet-normalize-core"],
+      }],
+      agents: {
+        runtime: { adapter: "codex", root: runtimeRoot, installationType: "local", transport: "local" },
+      },
+      profiles: { daily: { runtimes: [{ agent: "runtime" }] } },
+      registry: {},
+      trust: {},
+      fleets: {},
+    }, null, 2)}\n`, "utf8");
+    await runCli(["fleet", "register", "delivery", "--root", fleetRoot, "--required-package", "fleet-normalize-core"]);
+    await runCli(["install", "--fleet", "delivery", "--profile", "daily"]);
+
+    const graphRoot = join(fleetRoot, ".agentwheel", "locks");
+    const [qualifiedGraphPath] = (await filesBelow(graphRoot)).filter((path) => path.endsWith(".graph-lock.json"));
+    expect(qualifiedGraphPath).toBeTruthy();
+    const qualifiedGraph = JSON.parse(await readFile(qualifiedGraphPath!, "utf8"));
+    const legacyFingerprint = computeTargetFingerprint({
+      adapter: "codex",
+      installationType: "local",
+      agentName: "runtime",
+      targetRoot: runtimeRoot,
+      transport: "local",
+      ssh: undefined,
+    });
+    const legacyGraphPath = join(dirname(qualifiedGraphPath!), `${legacyFingerprint}.graph-lock.json`);
+    qualifiedGraph.canonical.targetFingerprint = legacyFingerprint;
+    for (const incumbent of qualifiedGraph.canonical.plainNameIncumbents ?? []) {
+      if (incumbent.targetFingerprint) incumbent.targetFingerprint = legacyFingerprint;
+    }
+    await writeFile(legacyGraphPath, `${JSON.stringify(qualifiedGraph, null, 2)}\n`, "utf8");
+    await rm(qualifiedGraphPath!);
+
+    const metadataRoot = join(runtimeRoot, ".agentwheel");
+    const [qualifiedManifestName] = (await readdir(metadataRoot)).filter((name) => name.endsWith(".install-manifest.json"));
+    expect(qualifiedManifestName).toBeTruthy();
+    const qualifiedManifestPath = join(metadataRoot, qualifiedManifestName!);
+    const qualifiedManifest = JSON.parse(await readFile(qualifiedManifestPath, "utf8"));
+    const legacyStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: legacyFingerprint });
+    const legacyManifest = { ...qualifiedManifest };
+    legacyManifest.stateKey = legacyStateKey;
+    legacyManifest.entries = legacyManifest.entries.map((entry: Record<string, unknown>) => ({
+      ...entry,
+      workspaceOwner: workspaceOwnerForRoot(fleetRoot),
+    }));
+    const legacyManifestPath = join(metadataRoot, `${legacyStateKey}.install-manifest.json`);
+    await writeFile(legacyManifestPath, `${JSON.stringify(legacyManifest, null, 2)}\n`, "utf8");
+    await rm(qualifiedManifestPath);
+
+    const normalization = JSON.parse((await runCli([
+      "fleet", "normalize", "delivery", "--from", "fleet:delivery", "--json",
+    ])).stdout);
+    expect(normalization.planDigest).toMatch(/^[a-f0-9]{64}$/);
+    await runCli([
+      "fleet", "normalize", "delivery", "--from", "fleet:delivery",
+      "--apply", "--plan-digest", normalization.planDigest, "--json",
+    ]);
+
+    const install = await runCli(["install", "--fleet", "delivery", "--profile", "daily", "--dry-run"]);
+    const update = await runCli(["update", "--fleet", "delivery", "--profile", "daily", "--dry-run"]);
+    const uninstall = await runCli([
+      "uninstall", "fleet-normalize-core", "--fleet", "delivery", "--agent", "runtime", "--dry-run",
+    ]);
+    for (const output of [install.stdout, update.stdout, uninstall.stdout]) {
+      expect(output).not.toMatch(/(?:drift|conflict) [1-9]/i);
+    }
   });
 
   it("creates local package config explicitly with --local while implicit missing scope still fails", async () => {

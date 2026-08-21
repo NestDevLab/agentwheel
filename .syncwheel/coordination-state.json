@@ -1,12 +1,16 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
+    "refs/heads/main-integration": "ea117cc3d9e91adcc716f863ec09d8d34493f6f1",
+    "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-20T18:52:24+00:00",
+  "created_at": "2026-08-21T19:13:38+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
-    "refs/heads/fix/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
-    "refs/heads/main-integration": "05168c82726adbf713b13608ca365c7c0d7e4395",
+    "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
+    "refs/heads/main-integration": "ea117cc3d9e91adcc716f863ec09d8d34493f6f1",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
@@ -17,6 +21,7 @@
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
+    "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
@@ -46,7 +51,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "site-card-alignment"
+        "site-card-alignment",
+        "proof-scoped-self-fleet-normalization"
       ],
       "strategy": "cherry-pick"
     },
@@ -59,22 +65,37 @@
         },
         "branch": "fix/site-card-alignment",
         "commits": [
-          "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
+          "23760e656efaf492aa46a3310f5b93880ccf60d1"
         ],
         "id": "site-card-alignment",
         "integration_branch": "main-integration",
+        "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/proof-scoped-self-fleet-normalization",
+        "commits": [
+          "5622b73489fd9f59652004d59efb4250ab11ea4c"
+        ],
+        "id": "proof-scoped-self-fleet-normalization",
+        "integration_branch": "main-integration",
+        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "34bda72a5fde81cc98f7eef52d01419be97f59656bfbfb3706b14a22e95a769a",
-  "parent_state": "c3eb20eebbcf5bbaf4776769f6bc1e7fb5632f38",
-  "projection_status": "partial",
-  "publication_id": "373fbd1c-87a5-4e7e-a9bc-51df75c8d0c8",
-  "publication_scope": "close:agentwheel-discovery-rollout",
+  "manifest_digest": "e888b99b793ab22fab30f3d5e7022df4bbe614803cee380f224ffd63e4b0af5a",
+  "parent_state": "fc9907efa4cb9e005ab7bb466cbbc33a3febe4b2",
+  "projection_status": "convergent",
+  "publication_id": "8200ec66-7600-4779-bed6-ce001b6bbb9c",
+  "publication_scope": "full",
   "schema_version": 2,
-  "syncwheel_version": "0.34.0",
+  "syncwheel_version": "0.34.5",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

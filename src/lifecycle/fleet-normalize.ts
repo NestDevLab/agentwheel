@@ -897,13 +897,7 @@ async function hasLegacyManifestCandidate(
   const manifest = (await collectManifests([state.installRoot])).find((item) => item.path === state.manifestPath);
   return manifest?.manifest.entries.some((entry) =>
     entry.workspaceOwner === legacyOwner
-    || entry.workspaceOwner === fleetOwner
-    || !isNestedFleetWorkspaceOwner(entry.workspaceOwner, fleet.root)) ?? false;
-}
-
-function isNestedFleetWorkspaceOwner(owner: string, fleetRoot: string): boolean {
-  const prefix = `workspace-root:${resolve(fleetRoot)}/`;
-  return owner.startsWith(prefix);
+    || entry.workspaceOwner === fleetOwner) ?? false;
 }
 
 interface DerivedTargetState {
@@ -1295,7 +1289,7 @@ async function buildJournalManifestStates(
       throw new Error(`Source manifest changed after planning: ${transfer.sourceManifestPath}`);
     }
     const desiredEntries = source.manifest.entries
-      .filter((entry) => entryMatchesPackages(entry, selected) && transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry)))
+      .filter((entry) => transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry)))
       .map((entry) => ({ ...entry, workspaceOwner: workspaceOwnerForRoot(plan.destination.root, plan.destination.fleetId) }));
     const before = await readOptionalRecord(transfer.destinationManifestPath);
     const parsedBefore = before ? installManifestSchema.parse(before) : undefined;

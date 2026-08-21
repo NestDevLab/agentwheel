@@ -417,8 +417,6 @@ describe("fleet normalization", () => {
     const staleGraph = JSON.parse(await readFile(staleGraphLock, "utf8"));
     staleGraph.canonical.artifacts[0].owners = ["node-core", "foreign-node"];
     await writeFile(staleGraphLock, `${JSON.stringify(staleGraph, null, 2)}\n`, "utf8");
-    const staleStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: staleFingerprint });
-    await writeManifest(state.runtime, staleStateKey, workspaceOwnerForRoot(join(state.fleet, "profiles", "stale")), await hashPath(state.runtimeFile));
     await writeGraphLock(state.fleet, "stale-legacy-lock", "retired");
 
     const plan = await planFleetNormalization({
@@ -433,6 +431,35 @@ describe("fleet normalization", () => {
       destinationManifestPath: state.destinationManifest,
     });
     expect(plan.installedState.sourceGraphLockPaths).toEqual([state.graphLock]);
+
+    await applyFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+      apply: true,
+      planDigest: plan.planDigest,
+    });
+    expect(await readFile(staleGraphLock, "utf8")).toEqual(`${JSON.stringify(staleGraph, null, 2)}\n`);
+    await expect(stat(state.destinationManifest)).resolves.toBeDefined();
+  });
+
+  it("rejects a live nested-workspace foreign owner without writing state", async () => {
+    const state = await legacySelfFixture();
+    const manifestBefore = await readFile(state.manifest, "utf8");
+    const manifest = JSON.parse(manifestBefore);
+    manifest.entries.push({
+      ...manifest.entries[0],
+      workspaceOwner: workspaceOwnerForRoot(join(state.fleet, "profiles", "live")),
+    });
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    })).rejects.toThrow(/owner mismatch|foreign/i);
+    expect(await readFile(state.manifest, "utf8")).toContain(workspaceOwnerForRoot(join(state.fleet, "profiles", "live")));
+    await expect(stat(state.destinationManifest)).rejects.toThrow();
   });
 
   it("rejects a partial self-normalization of a legacy multi-root graph without writing state", async () => {
@@ -455,21 +482,17 @@ describe("fleet normalization", () => {
     await expect(stat(state.destinationGraphLock)).rejects.toThrow();
   });
 
-  it("rejects self-normalization when ownership is foreign or already fleet-qualified", async () => {
-    for (const owner of ["workspace-root:/foreign", "fleet-qualified"] as const) {
-      const state = await legacySelfFixture();
-      const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
-      manifest.entries[0].workspaceOwner = owner === "fleet-qualified"
-        ? workspaceOwnerForRoot(state.fleet, "delivery")
-        : owner;
-      await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-      await expect(planFleetNormalization({
-        destinationFleet: "delivery",
-        from: "fleet:delivery",
-        globalRoot: state.home,
-      })).rejects.toThrow(owner === "fleet-qualified" ? /already.*normalized|fleet-qualified/i : /owner.*mismatch|foreign/i);
-      expect((JSON.parse(await readFile(state.manifest, "utf8"))).entries[0].workspaceOwner).toBe(manifest.entries[0].workspaceOwner);
-    }
+  it("rejects self-normalization when ownership is already fleet-qualified", async () => {
+    const state = await legacySelfFixture();
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(state.fleet, "delivery");
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    })).rejects.toThrow(/already.*normalized|fleet-qualified/i);
+    expect((JSON.parse(await readFile(state.manifest, "utf8"))).entries[0].workspaceOwner).toBe(manifest.entries[0].workspaceOwner);
   });
 
   it("rolls self-normalization back to legacy ownership after destination transfer failure", async () => {

@@ -89,6 +89,7 @@ export interface GraphSourcePlanOptions {
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
   forceForeignState?: boolean;
+  deferForeignStateCheck?: boolean;
   fleetId?: string;
 }
 
@@ -271,7 +272,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
         replaceConflict: options.replaceConflict,
         warn,
       });
-  if (options.forceForeignState !== true || options.fleetId) {
+  if ((options.forceForeignState !== true || options.fleetId) && options.deferForeignStateCheck !== true) {
     await assertNoForeignWorkspaceState({
       installRoot: resolvedInstallRoot,
       adapter: options.adapter.name,
@@ -297,6 +298,29 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     graphDiff,
     recoveredPendingApply,
   };
+}
+
+export async function assertNoForeignWorkspaceStateForPlan(
+  plan: InstallPlan,
+  options: {
+    transport?: TargetTransport;
+    workspaceRoot: string;
+    workspaceOwner: string;
+    globalRoot?: string;
+    plannedPaths?: string[];
+  },
+): Promise<void> {
+  if (!plan.stateKey) throw new Error(`Foreign-state validation requires a state key for ${plan.adapter}.`);
+  await assertNoForeignWorkspaceState({
+    installRoot: plan.targetRoot,
+    adapter: plan.adapter,
+    transport: options.transport ?? localTransport,
+    workspaceRoot: options.workspaceRoot,
+    workspaceOwner: options.workspaceOwner,
+    globalRoot: options.globalRoot,
+    stateKey: plan.stateKey,
+    plannedPaths: options.plannedPaths ?? plan.operations.map((operation) => operation.relativeDestPath),
+  });
 }
 
 export async function writeGraphSourceLock(result: GraphSourcePlanResult): Promise<void> {

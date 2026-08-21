@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c"
+    "refs/heads/pr/proof-scoped-self-fleet-normalization": "13a404a95a3567695ced3ee1d2254483e692d648"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-21T19:17:32+00:00",
+  "created_at": "2026-08-21T19:18:31+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -14,7 +14,7 @@
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
+    "refs/heads/pr/proof-scoped-self-fleet-normalization": "13a404a95a3567695ced3ee1d2254483e692d648",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
@@ -88,10 +88,10 @@
     "version": 2
   },
   "manifest_digest": "f284431daebd8f21020b34616dada404edf56c2f8a0a7f81db088e5af31d50f3",
-  "parent_state": "b6d6071c64aa840341b86ad7b96c2c04b7370303",
+  "parent_state": "581509000552f8328f6f72ed35c3e120175f30f3",
   "projection_status": "partial",
-  "publication_id": "fad24ae8-7b49-4271-a5ac-c376cadd51bc",
-  "publication_scope": "promote:proof-scoped-self-fleet-normalization",
+  "publication_id": "83aa8c70-83c3-4f10-913e-7b8c7632651c",
+  "publication_scope": "stack:proof-scoped-self-fleet-normalization",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [

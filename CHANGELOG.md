@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.2
+
+- Fixed legacy named-fleet ownership normalization to inspect only live target state,
+  including graph-node and workspace owner aliases, while ignoring stale nested-workspace locks.
+
 ## 0.18.1
 
 - Fixed focused skill updates so dependency-only sibling graph nodes and include edges remain

@@ -390,6 +390,51 @@ describe("fleet normalization", () => {
     await expect(planFleetNormalization(request)).rejects.toThrow(/already.*normalized|fleet-qualified/i);
   });
 
+  it("self-normalizes only live legacy target state when composite profiles and stale locks coexist", async () => {
+    const state = await legacySelfFixture();
+    const config = await readConfig(state.fleet);
+    config.profiles = {
+      remote: {
+        members: [{
+          id: "retired",
+          workspace: "/unavailable/retired",
+          profile: "all",
+          transport: "ssh",
+          host: "retired.invalid",
+        }],
+      },
+    };
+    await writeConfig(state.fleet, config);
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].owners = ["node-core"];
+    manifest.entries[0].packageName = "example/core";
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const graph = JSON.parse(await readFile(state.graphLock, "utf8"));
+    graph.canonical.artifacts[0].owners = ["node-core"];
+    await writeFile(state.graphLock, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
+    const staleFingerprint = "stale-current-lock";
+    const staleGraphLock = await writeGraphLock(state.fleet, staleFingerprint);
+    const staleGraph = JSON.parse(await readFile(staleGraphLock, "utf8"));
+    staleGraph.canonical.artifacts[0].owners = ["node-core", "foreign-node"];
+    await writeFile(staleGraphLock, `${JSON.stringify(staleGraph, null, 2)}\n`, "utf8");
+    const staleStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: staleFingerprint });
+    await writeManifest(state.runtime, staleStateKey, workspaceOwnerForRoot(join(state.fleet, "profiles", "stale")), await hashPath(state.runtimeFile));
+    await writeGraphLock(state.fleet, "stale-legacy-lock", "retired");
+
+    const plan = await planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    });
+
+    expect(plan.installedState.transfers).toHaveLength(1);
+    expect(plan.installedState.transfers[0]).toMatchObject({
+      sourceManifestPath: state.manifest,
+      destinationManifestPath: state.destinationManifest,
+    });
+    expect(plan.installedState.sourceGraphLockPaths).toEqual([state.graphLock]);
+  });
+
   it("rejects a partial self-normalization of a legacy multi-root graph without writing state", async () => {
     const state = await legacySelfMultiRootFixture();
     const configBefore = await readFile(join(state.fleet, ".agentwheel", "config.json"));

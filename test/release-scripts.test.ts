@@ -28,7 +28,8 @@ describe("release scripts", () => {
 
   it("checks the repository release metadata", async () => {
     const { stdout } = await execFileAsync("node", ["scripts/release-check.mjs"], { cwd: repoRoot });
-    expect(stdout).toContain("Release metadata is aligned for v0.18.1.");
+    const { version } = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8")) as { version: string };
+    expect(stdout).toContain(`Release metadata is aligned for v${version}.`);
   });
 
   it("prepares every product-coupled copy from non-empty Unreleased notes without changing history", async () => {

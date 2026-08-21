@@ -718,10 +718,11 @@ async function runtimeRoots(scope: WorkspaceScope): Promise<string[]> {
     if (agent.transport === "ssh") throw new Error(`Installed-state normalization cannot inspect SSH agent '${name}' locally.`);
     roots.add(resolveConfigPath(agent.root, scope.root));
   }
-  for (const [name, profile] of Object.entries(scope.config.profiles)) {
-    if (isCompositeWorkspaceProfile(profile)) {
-      throw new Error(`Installed-state normalization cannot prove composite profile '${name}' locally.`);
-    }
+  for (const profile of Object.values(scope.config.profiles)) {
+    // Composite profiles coordinate member workspaces; they do not own a local
+    // runtime target. Each member's installed state remains authoritative in
+    // that member workspace and must be normalized there independently.
+    if (isCompositeWorkspaceProfile(profile)) continue;
     for (const runtime of profile.runtimes) {
       if (runtime.agent) continue;
       roots.add(runtime.targetRoot ? resolveConfigPath(runtime.targetRoot, scope.root) : scope.root);

@@ -390,6 +390,31 @@ describe("fleet normalization", () => {
     await expect(planFleetNormalization(request)).rejects.toThrow(/already.*normalized|fleet-qualified/i);
   });
 
+  it("self-normalizes local installed state when the fleet also declares a composite profile", async () => {
+    const state = await legacySelfFixture();
+    const config = await readConfig(state.fleet);
+    config.profiles = {
+      local: { runtimes: [{ agent: "runtime" }] },
+      cluster: {
+        members: [{
+          id: "local",
+          workspace: state.fleet,
+          profile: "local",
+          transport: "local",
+        }],
+      },
+    };
+    await writeConfig(state.fleet, config);
+    const request = { destinationFleet: "delivery", from: "fleet:delivery" as const, globalRoot: state.home };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.transfers).toHaveLength(1);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
+  });
+
   it("rejects a partial self-normalization of a legacy multi-root graph without writing state", async () => {
     const state = await legacySelfMultiRootFixture();
     const configBefore = await readFile(join(state.fleet, ".agentwheel", "config.json"));

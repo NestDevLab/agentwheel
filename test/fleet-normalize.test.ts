@@ -446,19 +446,22 @@ describe("fleet normalization", () => {
   it("rejects a live nested-workspace foreign owner without writing state", async () => {
     const state = await legacySelfFixture();
     const manifestBefore = await readFile(state.manifest, "utf8");
-    const manifest = JSON.parse(manifestBefore);
-    manifest.entries.push({
-      ...manifest.entries[0],
-      workspaceOwner: workspaceOwnerForRoot(join(state.fleet, "profiles", "live")),
-    });
-    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const foreignFingerprint = "live-nested-foreign";
+    await writeGraphLock(state.fleet, foreignFingerprint);
+    const foreignStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: foreignFingerprint });
+    await writeManifest(
+      state.runtime,
+      foreignStateKey,
+      workspaceOwnerForRoot(join(state.fleet, "profiles", "live")),
+      await hashPath(state.runtimeFile),
+    );
 
     await expect(planFleetNormalization({
       destinationFleet: "delivery",
       from: "fleet:delivery",
       globalRoot: state.home,
-    })).rejects.toThrow(/owner mismatch|foreign/i);
-    expect(await readFile(state.manifest, "utf8")).toContain(workspaceOwnerForRoot(join(state.fleet, "profiles", "live")));
+    })).rejects.toThrow(/foreign same-path ownership/i);
+    expect(await readFile(state.manifest, "utf8")).toEqual(manifestBefore);
     await expect(stat(state.destinationManifest)).rejects.toThrow();
   });
 

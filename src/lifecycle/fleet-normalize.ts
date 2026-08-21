@@ -704,6 +704,17 @@ async function inspectLegacySelfInstalledState(
   if (coveredEntries.size !== legacyEntries.length) {
     throw new Error("Legacy same-root manifest ownership is only partially covered by canonical graph locks.");
   }
+  for (const manifest of manifests) {
+    for (const entry of manifest.manifest.entries) {
+      const renderedPath = renderedEntryPath(manifest.manifest, entry);
+      if (!renderedPaths.has(renderedPath)) continue;
+      if (entry.workspaceOwner === legacyOwner || entry.workspaceOwner === fleetOwner) continue;
+      throw new Error(
+        `Foreign same-path ownership at ${renderedPath} belongs to ${entry.workspaceOwner}. `
+        + "Byte equality is insufficient; an explicit reviewed handoff plan is required.",
+      );
+    }
+  }
 
   return {
     graphLockDigests: graphs.map((graph) => graph.digest).sort(),

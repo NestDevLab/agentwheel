@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "9ff8909de32e29c1342b05ecbb1da90e75fd0902"
+    "refs/heads/pr/proof-scoped-self-fleet-normalization": "5c54197caff69487e02555d02e6a48dd8edf2e16"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-21T19:26:15+00:00",
+  "created_at": "2026-08-21T19:27:49+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -14,7 +14,7 @@
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "9ff8909de32e29c1342b05ecbb1da90e75fd0902",
+    "refs/heads/pr/proof-scoped-self-fleet-normalization": "5c54197caff69487e02555d02e6a48dd8edf2e16",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
@@ -78,7 +78,8 @@
         },
         "branch": "pr/proof-scoped-self-fleet-normalization",
         "commits": [
-          "5622b73489fd9f59652004d59efb4250ab11ea4c"
+          "5622b73489fd9f59652004d59efb4250ab11ea4c",
+          "18f960a3b052a7c6405f5e0e51d0cd43b2b3940a"
         ],
         "id": "proof-scoped-self-fleet-normalization",
         "integration_branch": "main-integration",
@@ -87,10 +88,10 @@
     ],
     "version": 2
   },
-  "manifest_digest": "f284431daebd8f21020b34616dada404edf56c2f8a0a7f81db088e5af31d50f3",
-  "parent_state": "f58cade2432db18fc3027bb81d3dd10ea44cad72",
+  "manifest_digest": "b2c64c473714b812b1020afafdaaa567d8ebcd88dbbb338c3e8cf9791248a932",
+  "parent_state": "05f1f2d4f471ffbea2766e3e494faff5d36f8788",
   "projection_status": "partial",
-  "publication_id": "bb27725e-29e7-4b37-95be-4a4bee3ddfc0",
+  "publication_id": "6fba48b2-63ed-4cd2-ac0f-6abf6159cecf",
   "publication_scope": "stack:proof-scoped-self-fleet-normalization",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",

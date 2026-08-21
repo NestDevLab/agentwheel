@@ -1,14 +1,14 @@
 {
   "changed_refs": {
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "b3258f816843da15094019781e3e473bf7add186"
+    "refs/heads/main-integration": "37d9cb7904d7686a60b3da1d2ab743753207ca9e"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-21T19:29:57+00:00",
+  "created_at": "2026-08-21T19:30:31+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "ea117cc3d9e91adcc716f863ec09d8d34493f6f1",
+    "refs/heads/main-integration": "37d9cb7904d7686a60b3da1d2ab743753207ca9e",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
@@ -89,10 +89,10 @@
     "version": 2
   },
   "manifest_digest": "b2c64c473714b812b1020afafdaaa567d8ebcd88dbbb338c3e8cf9791248a932",
-  "parent_state": "81274bc1f1c193f37161e4fcf12dbaad84c7fd4f",
+  "parent_state": "64716db28909b052df36f5d0800315b2591b46cb",
   "projection_status": "partial",
-  "publication_id": "1a315a99-5107-4a87-802d-a1d3fbf0f996",
-  "publication_scope": "stack:proof-scoped-self-fleet-normalization",
+  "publication_id": "55159522-b983-4f79-9f14-8e0547fbb08a",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [

@@ -415,6 +415,33 @@ describe("fleet normalization", () => {
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
   });
 
+  it("scopes same-fleet normalization to the selected concrete profile", async () => {
+    const state = await legacySelfFixture();
+    const unrelated = await tempRoot("agentwheel-normalize-unrelated-runtime-");
+    await mkdir(join(unrelated, ".agentwheel"), { recursive: true });
+    await writeFile(join(unrelated, ".agentwheel", "codex.install-manifest.json"), "{}\n", "utf8");
+    const config = await readConfig(state.fleet);
+    config.agents.unrelated = { adapter: "codex", root: unrelated };
+    config.profiles = {
+      all: { runtimes: [{ agent: "runtime" }] },
+      unrelated: { runtimes: [{ agent: "unrelated" }] },
+    };
+    await writeConfig(state.fleet, config);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      profile: "all",
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.request.profile).toBe("all");
+    expect(plan.installedState.transfers).toHaveLength(1);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    await expect(stat(join(unrelated, ".agentwheel", "codex.install-manifest.json"))).resolves.toBeTruthy();
+  });
+
   it("rejects a partial self-normalization of a legacy multi-root graph without writing state", async () => {
     const state = await legacySelfMultiRootFixture();
     const configBefore = await readFile(join(state.fleet, ".agentwheel", "config.json"));
@@ -433,6 +460,36 @@ describe("fleet normalization", () => {
     expect(await readFile(state.graphLock)).toEqual(graphBefore);
     await expect(stat(state.destinationManifest)).rejects.toThrow();
     await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+  });
+
+  it("transfers one selected artifact from a legacy multi-root graph without moving sibling graph state", async () => {
+    const state = await legacySelfMultiRootFixture();
+    const graphBefore = await readFile(state.graphLock);
+    const extraBefore = await readFile(state.extraRuntimeFile);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      packages: ["core"],
+      artifacts: ["instructions/AGENTS.md"],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.request.artifacts).toEqual(["instructions/AGENTS.md"]);
+    expect(plan.installedState).toMatchObject({ renderedPathCount: 1, graphTransfers: [] });
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const sourceManifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    expect(sourceManifest.entries.map((entry: { logicalSelector: string }) => entry.logicalSelector))
+      .toEqual(["instructions/EXTRA.md"]);
+    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(destinationManifest.entries).toMatchObject([{
+      logicalSelector: "instructions/AGENTS.md",
+      workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
+    }]);
+    expect(await readFile(state.graphLock)).toEqual(graphBefore);
+    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+    expect(await readFile(state.extraRuntimeFile)).toEqual(extraBefore);
   });
 
   it("rejects self-normalization when ownership is foreign or already fleet-qualified", async () => {

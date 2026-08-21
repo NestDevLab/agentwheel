@@ -26,7 +26,7 @@ import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
-import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
+import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
@@ -163,6 +163,8 @@ fleetCommand
   .argument("<destinationFleet>", "destination fleet id")
   .requiredOption("--from <scope>", "user or fleet:<sourceFleet>")
   .option("--package <name>", "limit to one duplicate package (repeatable)", collectValueOption, [] as string[])
+  .option("--artifact <type/name>", "limit same-fleet ownership normalization to one artifact (repeatable)", collectValueOption, [] as string[])
+  .option("--profile <name>", "limit same-fleet installed-state normalization to one concrete profile")
   .option("--apply", "apply a reviewed plan", false)
   .option("--recover", "restore source state from a pending normalization journal", false)
   .option("--plan-digest <sha256>", "exact digest from the reviewed dry-run")
@@ -172,9 +174,11 @@ fleetCommand
       destinationFleet,
       from: options.from as FleetNormalizationSource,
       ...(options.package.length > 0 ? { packages: options.package } : {}),
+      ...(options.artifact.length > 0 ? { artifacts: options.artifact } : {}),
+      ...(options.profile ? { profile: options.profile } : {}),
     };
-    if (options.recover && (options.apply || options.planDigest || options.package.length > 0)) {
-      throw new Error("--recover cannot be combined with --apply, --plan-digest, or --package.");
+    if (options.recover && (options.apply || options.planDigest || options.package.length > 0 || options.artifact.length > 0 || options.profile)) {
+      throw new Error("--recover cannot be combined with --apply, --plan-digest, --package, --artifact, or --profile.");
     }
     const result = options.recover
       ? await recoverFleetNormalization(request)
@@ -1646,6 +1650,7 @@ async function packageSelectsSkillForTarget(
     onlySource: true,
     dryRun: true,
     suppressEmptyMessage: true,
+    deferForeignStateCheck: true,
   }, { mode: "install" });
   try {
     return results.some((result) => result.bundle.graphLock.canonical.roots.some(
@@ -1860,6 +1865,7 @@ interface GraphCliOptions {
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
   focusedArtifact?: { type: "skills"; name: string };
+  deferForeignStateCheck?: boolean;
 }
 
 async function runExactMcpRetirement(packageName: string, options: GraphCliOptions & { fromWorkspaceRoot?: string }): Promise<void> {
@@ -2169,6 +2175,7 @@ async function buildGraphPlansForTarget(
       forceDrift: targetOptions.forceDrift,
       forceConflict: targetOptions.forceConflict,
       forceForeignState: targetOptions.forceForeignState,
+      deferForeignStateCheck: targetOptions.deferForeignStateCheck === true || targetOptions.focusedArtifact !== undefined,
       replaceConflict: targetOptions.replaceConflict,
       retireExactMcp: targetOptions.retireExactMcp,
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
@@ -2176,13 +2183,29 @@ async function buildGraphPlansForTarget(
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      results.push(targetOptions.focusedArtifact
+      const scopedResult = targetOptions.focusedArtifact
         ? previousGroupLock
           ? scopeUpdatePlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, previousGroupLock, manifest)
           : scopeInstallPlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, manifest)
         : previousGroupLock
           ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
-          : scopeInstallPlanToRoot(result, scopedRootId, manifest));
+          : scopeInstallPlanToRoot(result, scopedRootId, manifest);
+      if (targetOptions.focusedArtifact && (targetOptions.forceForeignState !== true || group.target.fleetId)) {
+        const focusedPaths = scopedResult.plan.operations
+          .filter((operation) => operationMatchesFocusedArtifact(
+            operation,
+            targetOptions.focusedArtifact!,
+            focusedArtifactOwnerKeys(result.bundle.graphLock, previousGroupLock, scopedRootId, targetOptions.focusedArtifact!),
+          ))
+          .map((operation) => operation.relativeDestPath);
+        await assertNoForeignWorkspaceStateForPlan(scopedResult.plan, {
+          transport,
+          workspaceRoot: group.target.workspaceRoot,
+          workspaceOwner: workspaceOwnerForRoot(group.target.workspaceRoot, group.target.fleetId),
+          plannedPaths: focusedPaths,
+        });
+      }
+      results.push(scopedResult);
     } else if (scopedDependencyUpdate) {
       const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
       const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
@@ -2437,11 +2460,7 @@ function scopePlanOperationsToArtifact(
 ): GraphSourcePlanResult {
   const currentArtifacts = focusedArtifactsForRoot(result.bundle.graphLock, rootId, focused);
   const previousArtifacts = previousLock ? focusedArtifactsForRoot(previousLock, rootId, focused) : [];
-  const focusedOwnerKeys = new Set([
-    `workspace:${rootId}`,
-    ...currentArtifacts.map((artifact) => artifact.graphNodeId),
-    ...previousArtifacts.map((artifact) => artifact.graphNodeId),
-  ]);
+  const focusedOwnerKeys = focusedArtifactOwnerKeys(result.bundle.graphLock, previousLock, rootId, focused);
   const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
   const plannedPaths = new Set<string>();
   const preservedPaths = new Set<string>();
@@ -2482,6 +2501,21 @@ function scopePlanOperationsToArtifact(
       hasBlockingChanges: operations.some((operation) => operation.action === "drift" || operation.action === "conflict"),
     },
   };
+}
+
+function focusedArtifactOwnerKeys(
+  currentLock: GraphLock,
+  previousLock: GraphLock | undefined,
+  rootId: string,
+  focused: FocusedArtifact,
+): Set<string> {
+  const currentArtifacts = focusedArtifactsForRoot(currentLock, rootId, focused);
+  const previousArtifacts = previousLock ? focusedArtifactsForRoot(previousLock, rootId, focused) : [];
+  return new Set([
+    `workspace:${rootId}`,
+    ...currentArtifacts.map((artifact) => artifact.graphNodeId),
+    ...previousArtifacts.map((artifact) => artifact.graphNodeId),
+  ]);
 }
 
 function operationMatchesFocusedArtifact(
@@ -3973,11 +4007,13 @@ function formatFleetNormalization(
   if ("recovered" in result) return `Recovered fleet normalization source state and removed journal: ${result.journalPath}`;
   if ("applied" in result) return `Applied fleet normalization ${result.planDigest}: ${result.packages.join(", ")}`;
   const packageArgs = result.packages.map((pkg) => `--package ${shellQuoteArg(pkg.name)}`).join(" ");
+  const artifactArgs = result.request.artifacts?.map((artifact) => ` --artifact ${shellQuoteArg(artifact)}`).join("") ?? "";
+  const profileArg = result.request.profile ? ` --profile ${shellQuoteArg(result.request.profile)}` : "";
   return [
     `Fleet normalization plan: ${result.source.root} -> ${result.destination.root}`,
     `Packages: ${result.packages.map((pkg) => pkg.name).join(", ")}`,
     `Plan digest: ${result.planDigest}`,
-    `Apply: agentwheel fleet normalize ${result.destination.fleetId} --from ${result.request.from} ${packageArgs} --apply --plan-digest ${result.planDigest}`,
+    `Apply: agentwheel fleet normalize ${result.destination.fleetId} --from ${result.request.from} ${packageArgs}${artifactArgs}${profileArg} --apply --plan-digest ${result.planDigest}`,
   ].join("\n");
 }
 

@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/main-integration": "37d9cb7904d7686a60b3da1d2ab743753207ca9e"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-21T19:30:31+00:00",
+  "created_at": "2026-08-22T07:03:31+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -50,26 +48,11 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "site-card-alignment",
         "proof-scoped-self-fleet-normalization"
       ],
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "fix/site-card-alignment",
-        "commits": [
-          "23760e656efaf492aa46a3310f5b93880ccf60d1"
-        ],
-        "id": "site-card-alignment",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -88,11 +71,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "b2c64c473714b812b1020afafdaaa567d8ebcd88dbbb338c3e8cf9791248a932",
-  "parent_state": "64716db28909b052df36f5d0800315b2591b46cb",
+  "manifest_digest": "c985b63c99ac7482e9eef782ee9a1b8a279d15961e3fcd5c06921d9c31c1a5fc",
+  "parent_state": "c9f413a7659f555fefdb3385a80c2a278733ff59",
   "projection_status": "partial",
-  "publication_id": "55159522-b983-4f79-9f14-8e0547fbb08a",
-  "publication_scope": "integration",
+  "publication_id": "af63e266-edc2-4288-8236-9db7edb2535c",
+  "publication_scope": "close:site-card-alignment",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -199,6 +182,14 @@
       "ref": "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization",
       "remote_tip": "5622b73489fd9f59652004d59efb4250ab11ea4c",
       "stack": "proof-scoped-self-fleet-normalization"
+    },
+    {
+      "branch": "fix/site-card-alignment",
+      "closed_at": "2026-08-22T07:03:23+00:00",
+      "reason": "merged",
+      "ref": "refs/heads/fix/site-card-alignment",
+      "remote_tip": "23760e656efaf492aa46a3310f5b93880ccf60d1",
+      "stack": "site-card-alignment"
     }
   ]
 }

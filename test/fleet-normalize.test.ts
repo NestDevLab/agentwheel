@@ -415,6 +415,43 @@ describe("fleet normalization", () => {
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
   });
 
+  it("self-normalizes only the proved live target when composite profiles and stale locks coexist", async () => {
+    const state = await legacySelfFixture();
+    const staleGraphLock = await writeGraphLock(state.fleet, "stale-retired-lock", "retired");
+    const staleGraph = JSON.parse(await readFile(staleGraphLock, "utf8"));
+    staleGraph.canonical.artifacts[0].owners = ["core", "foreign-retired-owner"];
+    await writeFile(staleGraphLock, `${JSON.stringify(staleGraph, null, 2)}\n`, "utf8");
+    const [runtimeBefore, staleBefore] = await Promise.all([
+      readFile(state.runtimeFile, "utf8"),
+      readFile(staleGraphLock, "utf8"),
+    ]);
+    const config = await readConfig(state.fleet);
+    config.profiles = {
+      local: { runtimes: [{ agent: "runtime" }] },
+      cluster: {
+        members: [{
+          id: "retired-member",
+          workspace: "/unavailable/retired",
+          profile: "local",
+          transport: "ssh",
+          host: "retired.invalid",
+        }],
+      },
+    };
+    await writeConfig(state.fleet, config);
+    const request = { destinationFleet: "delivery", from: "fleet:delivery" as const, globalRoot: state.home };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.sourceGraphLockPaths).toEqual([state.graphLock]);
+    expect(plan.installedState.transfers).toHaveLength(1);
+
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile, "utf8")).toBe(runtimeBefore);
+    expect(await readFile(staleGraphLock, "utf8")).toBe(staleBefore);
+    await expect(stat(state.destinationManifest)).resolves.toBeDefined();
+  });
+
   it("scopes same-fleet normalization to the selected concrete profile", async () => {
     const state = await legacySelfFixture();
     const unrelated = await tempRoot("agentwheel-normalize-unrelated-runtime-");

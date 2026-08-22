@@ -614,6 +614,136 @@ describe("fleet normalization", () => {
     }
   });
 
+  it("recovers an explicitly admitted missing owner without rewriting verified runtime bytes", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const graph = JSON.parse(await readFile(state.graphLock, "utf8"));
+    graph.canonical.nodes[0].id = "node-core-current";
+    graph.canonical.roots[0].graphNodeId = "node-core-current";
+    graph.canonical.artifacts[0].graphNodeId = "node-core-current";
+    graph.canonical.artifacts[0].hash = "f".repeat(64);
+    await writeFile(state.graphLock, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.transfers).toHaveLength(1);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(destinationManifest.entries[0]).toMatchObject({
+      workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
+      hash: manifest.entries[0].hash,
+    });
+    const destinationGraph = JSON.parse(await readFile(state.destinationGraphLock!, "utf8"));
+    expect(destinationGraph.canonical.artifacts[0].hash).toBe("f".repeat(64));
+    await expect(stat(state.manifest)).rejects.toThrow();
+  });
+
+  it("limits explicit orphan recovery to the admitted owner when a manifest also has legacy entries", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    manifest.entries.push({
+      ...manifest.entries[0],
+      path: ".runtime/retained-managed-block.md",
+      artifactType: "instructions",
+      artifactName: "retained-managed-block.md",
+      installName: "retained-managed-block.md",
+      mode: "managed-block",
+      workspaceOwner: workspaceOwnerForRoot(state.fleet),
+    });
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.transfers[0]?.renderedPaths).toEqual([state.runtimeFile]);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const retainedManifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    expect(retainedManifest.entries).toHaveLength(1);
+    expect(retainedManifest.entries[0]).toMatchObject({
+      path: ".runtime/retained-managed-block.md",
+      workspaceOwner: workspaceOwnerForRoot(state.fleet),
+      mode: "managed-block",
+    });
+  });
+
+  it("retires explicitly admitted stale orphan ownership while retaining the verified runtime file", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const graph = JSON.parse(await readFile(state.graphLock, "utf8"));
+    graph.canonical.artifacts = [];
+    await writeFile(state.graphLock, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.orphanedUnmanagedPaths).toEqual([state.runtimeFile]);
+    expect(plan.installedState.transfers[0]?.destinationRenderedPaths).toEqual([]);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    await expect(stat(state.manifest)).rejects.toThrow();
+    await expect(stat(state.destinationManifest)).rejects.toThrow();
+  });
+
+  it("refuses orphan recovery when the named source still exists or runtime bytes drift", async () => {
+    const existing = await legacySelfFixture();
+    const existingOwner = join(existing.fleet, "still-present-owner");
+    await mkdir(existingOwner, { recursive: true });
+    const existingManifest = JSON.parse(await readFile(existing.manifest, "utf8"));
+    existingManifest.entries[0].workspaceOwner = workspaceOwnerForRoot(existingOwner);
+    await writeFile(existing.manifest, `${JSON.stringify(existingManifest, null, 2)}\n`, "utf8");
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      agent: "runtime",
+      orphanedOwnerRoots: [existingOwner],
+      globalRoot: existing.home,
+    })).rejects.toThrow(/still exists/i);
+
+    const drifted = await legacySelfFixture();
+    const missingOwner = join(drifted.fleet, "var", "syncwheel", "removed-owner");
+    const driftedManifest = JSON.parse(await readFile(drifted.manifest, "utf8"));
+    driftedManifest.entries[0].workspaceOwner = workspaceOwnerForRoot(missingOwner);
+    await writeFile(drifted.manifest, `${JSON.stringify(driftedManifest, null, 2)}\n`, "utf8");
+    await writeFile(drifted.runtimeFile, "drifted runtime bytes\n", "utf8");
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      agent: "runtime",
+      orphanedOwnerRoots: [missingOwner],
+      globalRoot: drifted.home,
+    })).rejects.toThrow(/runtime content drift/i);
+  });
+
   it("rolls self-normalization back to legacy ownership after destination transfer failure", async () => {
     const state = await legacySelfFixture();
     const configBefore = await readFile(join(state.fleet, ".agentwheel", "config.json"));

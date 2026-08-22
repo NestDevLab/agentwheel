@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveAdapter } from "../adapters/resolve.js";
 import { computeManifestRevision, withManifestRevision } from "../install/manifest.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
@@ -23,6 +23,8 @@ export interface FleetNormalizationRequest {
   packages?: string[];
   artifacts?: string[];
   profile?: string;
+  agent?: string;
+  orphanedOwnerRoots?: string[];
   globalRoot?: string;
 }
 
@@ -51,6 +53,7 @@ export interface FleetNormalizationInstalledState {
   sourceManifestCount: number;
   destinationManifestCount: number;
   renderedPathCount: number;
+  orphanedUnmanagedPaths: string[];
   sourceGraphLockPaths: string[];
   graphTransfers: FleetNormalizationGraphTransfer[];
   transfers: FleetNormalizationManifestTransfer[];
@@ -72,13 +75,14 @@ export interface FleetNormalizationManifestTransfer {
   sourceManifestRevision: string;
   destinationManifestPath: string;
   destinationManifestRevision: string | null;
-  destinationManifestAfterRevision: string;
+  destinationManifestAfterRevision: string | null;
   destinationTargetRoot: string;
   destinationStateKey: string;
   installationType: string;
   adapter: string;
   renderedPaths: string[];
   destinationRenderedPaths: string[];
+  unmanagedSourceRenderedPaths: string[];
 }
 
 export interface FleetNormalizationResult {
@@ -172,11 +176,18 @@ export async function planFleetNormalization(request: FleetNormalizationRequest)
 
   if (!legacySelfNormalization) await assertSourceFleetPostcondition(normalizedRequest, sourceScope, candidates);
 
-  if ((normalizedRequest.profile || normalizedRequest.artifacts) && !legacySelfNormalization) {
-    throw new Error("--profile and --artifact are supported only for legacy same-fleet ownership normalization.");
+  if ((normalizedRequest.profile || normalizedRequest.agent || normalizedRequest.artifacts || normalizedRequest.orphanedOwnerRoots) && !legacySelfNormalization) {
+    throw new Error("--profile, --agent, --artifact, and --orphaned-owner are supported only for legacy same-fleet ownership normalization.");
   }
   const installedState = legacySelfNormalization
-    ? await inspectLegacySelfInstalledState(destinationScope, candidates, normalizedRequest.profile, normalizedRequest.artifacts)
+    ? await inspectLegacySelfInstalledState(
+        destinationScope,
+        candidates,
+        normalizedRequest.profile,
+        normalizedRequest.agent,
+        normalizedRequest.artifacts,
+        normalizedRequest.orphanedOwnerRoots,
+      )
     : await inspectInstalledState(sourceScope, destinationScope, candidates);
 
   const planWithoutDigest = {
@@ -382,14 +393,31 @@ function normalizeRequest(request: FleetNormalizationRequest): FleetNormalizatio
   if (request.artifacts !== undefined && artifacts?.length === 0) throw new Error("--artifact requires at least one type/name selector.");
   const profile = request.profile?.trim();
   if (request.profile !== undefined && !profile) throw new Error("--profile requires a profile name.");
+  const agent = request.agent?.trim();
+  if (request.agent !== undefined && !agent) throw new Error("--agent requires a configured agent name.");
+  if (profile && agent) throw new Error("--profile and --agent cannot be combined.");
+  const orphanedOwnerRoots = request.orphanedOwnerRoots === undefined
+    ? undefined
+    : sortedUnique(request.orphanedOwnerRoots.map((root) => normalizeOrphanedOwnerRoot(root)));
+  if (request.orphanedOwnerRoots !== undefined && orphanedOwnerRoots?.length === 0) {
+    throw new Error("--orphaned-owner requires at least one absolute workspace root.");
+  }
   return {
     destinationFleet: request.destinationFleet.trim(),
     from: request.from,
     ...(packages ? { packages } : {}),
     ...(artifacts ? { artifacts } : {}),
     ...(profile ? { profile } : {}),
+    ...(agent ? { agent } : {}),
+    ...(orphanedOwnerRoots ? { orphanedOwnerRoots } : {}),
     ...(request.globalRoot ? { globalRoot: resolve(request.globalRoot) } : {}),
   };
+}
+
+function normalizeOrphanedOwnerRoot(value: string): string {
+  const root = value.trim();
+  if (!root || !isAbsolute(root)) throw new Error(`Invalid orphaned owner root '${value}'; expected an absolute workspace path.`);
+  return resolve(root);
 }
 
 async function normalizationRoots(request: FleetNormalizationRequest): Promise<{ source: string; destination: string }> {
@@ -447,6 +475,7 @@ async function inspectInstalledState(
       sourceManifestCount: 0,
       destinationManifestCount: 0,
       renderedPathCount: 0,
+      orphanedUnmanagedPaths: [],
       sourceGraphLockPaths: [],
       graphTransfers: [],
       transfers: [],
@@ -550,6 +579,7 @@ async function inspectInstalledState(
       adapter: destinationState.adapter,
       renderedPaths: sortedUnique(sourceRenderedPaths),
       destinationRenderedPaths: sortedUnique(destinationRenderedPaths),
+      unmanagedSourceRenderedPaths: [],
     });
   }
 
@@ -584,6 +614,7 @@ async function inspectInstalledState(
     sourceManifestCount: new Set(sourceEntries.map((entry) => entry.manifest.path)).size,
     destinationManifestCount: new Set(destinationEntries.map((entry) => entry.manifest.path)).size,
     renderedPathCount: plannedDestinationPaths.size,
+    orphanedUnmanagedPaths: [],
     sourceGraphLockPaths: sourceGraphs.map((graph) => graph.path).sort((a, b) => a.localeCompare(b)),
     graphTransfers: graphTransfers.sort((a, b) => a.sourceGraphLockPath.localeCompare(b.sourceGraphLockPath)),
     transfers: [...transfers.values()]
@@ -595,14 +626,18 @@ async function inspectLegacySelfInstalledState(
   fleet: WorkspaceScope,
   packageNames: string[],
   profileName?: string,
+  agentName?: string,
   artifactNames?: string[],
+  orphanedOwnerRoots?: string[],
 ): Promise<FleetNormalizationInstalledState> {
   if (fleet.kind !== "fleet" || !fleet.fleetId) {
     throw new Error("Legacy self-normalization requires a registered named fleet destination.");
   }
   const selected = new Set(packageNames);
   const selectedArtifacts = artifactNames ? new Set(artifactNames) : undefined;
-  const targetKeys = profileName ? targetKeysForProfile(fleet, profileName) : undefined;
+  const targetKeys = agentName
+    ? targetKeysForAgent(fleet, agentName)
+    : profileName ? targetKeysForProfile(fleet, profileName) : undefined;
   const graphCandidates = await relevantGraphLocks(
     fleet.root,
     selected,
@@ -612,6 +647,9 @@ async function inspectLegacySelfInstalledState(
   const graphs: RelevantGraphLock[] = [];
   const legacyOwner = workspaceOwnerForRoot(fleet.root);
   const fleetOwner = workspaceOwnerForRoot(fleet.root, fleet.fleetId);
+  const orphanedOwners = await orphanedWorkspaceOwners(orphanedOwnerRoots);
+  const knownLegacyOwners = new Set([legacyOwner, ...orphanedOwners]);
+  const transferableOwners = orphanedOwners.size > 0 ? orphanedOwners : new Set([legacyOwner]);
   let normalizedGraphCount = 0;
   for (const graph of graphCandidates) {
     const legacyState = await legacyTargetStateForGraph(fleet, graph);
@@ -642,16 +680,21 @@ async function inspectLegacySelfInstalledState(
     .filter((entry) => graphs.some((graph) => entryMatchesGraphPackages(entry, graph.lock, selected))
       && entryMatchesArtifacts(entry, selectedArtifacts))
     .map((entry) => ({ manifest, entry, renderedPath: renderedEntryPath(manifest.manifest, entry) })));
-  const legacyEntries = relevantEntries.filter((entry) => entry.entry.workspaceOwner === legacyOwner);
+  const legacyEntries = relevantEntries.filter((entry) => transferableOwners.has(entry.entry.workspaceOwner));
   const qualifiedEntries = relevantEntries.filter((entry) => entry.entry.workspaceOwner === fleetOwner);
   const foreignEntries = relevantEntries.filter((entry) =>
-    entry.entry.workspaceOwner !== legacyOwner && entry.entry.workspaceOwner !== fleetOwner);
+    !knownLegacyOwners.has(entry.entry.workspaceOwner) && entry.entry.workspaceOwner !== fleetOwner);
 
   if (foreignEntries.length > 0) {
     throw new Error(
       `Legacy self-normalization owner mismatch at ${foreignEntries[0]!.renderedPath}: `
       + `expected ${legacyOwner}, found foreign owner ${foreignEntries[0]!.entry.workspaceOwner}.`,
     );
+  }
+  for (const orphanedOwner of orphanedOwners) {
+    if (!legacyEntries.some((entry) => entry.entry.workspaceOwner === orphanedOwner)) {
+      throw new Error(`Accepted orphaned owner '${orphanedOwner}' has no matching installed-state entries for this normalization.`);
+    }
   }
   if (legacyEntries.length === 0) {
     if (qualifiedEntries.length > 0) {
@@ -672,6 +715,7 @@ async function inspectLegacySelfInstalledState(
   const graphTransfers: FleetNormalizationGraphTransfer[] = [];
   const coveredEntries = new Set<RelevantManifestEntry>();
   const renderedPaths = new Set<string>();
+  const orphanedUnmanagedPaths = new Set<string>();
 
   for (const graph of graphs) {
     const legacyState = await legacyTargetStateForGraph(fleet, graph);
@@ -686,35 +730,51 @@ async function inspectLegacySelfInstalledState(
     const graphArtifacts = new Set(graph.artifactIdentities);
     const existingManifest = manifests.find((manifest) => manifest.path === destinationState.manifestPath);
     const desiredEntries: InstallManifestV2["entries"] = [];
+    const sourceRenderedPaths: string[] = [];
+    const destinationRenderedPaths: string[] = [];
     for (const entry of expectedEntries) {
       coveredEntries.add(entry);
       assertSimpleVerifiableEntry(entry.entry, entry.renderedPath);
-      if (!graphArtifacts.has(graphEntryIdentity(entry.entry))) {
+      const coveredByCurrentGraph = graphArtifacts.has(graphEntryIdentity(entry.entry));
+      const matchesCurrentGraph = orphanedOwners.has(entry.entry.workspaceOwner)
+        && orphanedEntryMatchesCurrentGraph(entry, graph, selected);
+      if (!coveredByCurrentGraph && !matchesCurrentGraph && !orphanedOwners.has(entry.entry.workspaceOwner)) {
         throw new Error(`Legacy manifest entry is not covered by its graph lock: ${entry.renderedPath}`);
       }
       await assertEquivalentRuntimeBytes(entry.renderedPath, entry.renderedPath, entry.entry.hash);
       renderedPaths.add(entry.renderedPath);
-      desiredEntries.push({ ...entry.entry, workspaceOwner: fleetOwner });
+      sourceRenderedPaths.push(entry.renderedPath);
+      if (coveredByCurrentGraph || matchesCurrentGraph) {
+        desiredEntries.push({ ...entry.entry, workspaceOwner: fleetOwner });
+        destinationRenderedPaths.push(entry.renderedPath);
+      } else {
+        orphanedUnmanagedPaths.add(entry.renderedPath);
+      }
     }
-    const after = mergeDestinationManifest(
-      existingManifest,
-      destinationState,
-      expectedEntries[0]!.manifest.manifest.generatedAt,
-      desiredEntries,
-      new Set([legacyOwner]),
-    );
+    const after = desiredEntries.length > 0 || existingManifest
+      ? mergeDestinationManifest(
+          existingManifest,
+          destinationState,
+          expectedEntries[0]!.manifest.manifest.generatedAt,
+          desiredEntries,
+          transferableOwners,
+        )
+      : undefined;
     transfers.set(legacyState.manifestPath, {
       sourceManifestPath: legacyState.manifestPath,
       sourceManifestRevision: expectedEntries[0]!.manifest.manifest.revision,
       destinationManifestPath: destinationState.manifestPath,
       destinationManifestRevision: existingManifest?.manifest.revision ?? null,
-      destinationManifestAfterRevision: computeManifestRevision(after),
+      destinationManifestAfterRevision: after ? computeManifestRevision(after) : null,
       destinationTargetRoot: destinationState.installRoot,
       destinationStateKey: destinationState.stateKey,
       installationType: destinationState.installationType,
       adapter: destinationState.adapter,
-      renderedPaths: sortedUnique(expectedEntries.map((entry) => entry.renderedPath)),
-      destinationRenderedPaths: sortedUnique(expectedEntries.map((entry) => entry.renderedPath)),
+      renderedPaths: sortedUnique(sourceRenderedPaths),
+      destinationRenderedPaths: sortedUnique(destinationRenderedPaths),
+      unmanagedSourceRenderedPaths: sortedUnique(
+        sourceRenderedPaths.filter((path) => !destinationRenderedPaths.includes(path)),
+      ),
     });
     if (!selectedArtifacts) {
       const fullDigest = sha256(canonicalJson(graph.lock));
@@ -745,10 +805,22 @@ async function inspectLegacySelfInstalledState(
     sourceManifestCount: new Set(legacyEntries.map((entry) => entry.manifest.path)).size,
     destinationManifestCount: new Set(qualifiedEntries.map((entry) => entry.manifest.path)).size,
     renderedPathCount: renderedPaths.size,
+    orphanedUnmanagedPaths: [...orphanedUnmanagedPaths].sort((a, b) => a.localeCompare(b)),
     sourceGraphLockPaths: graphs.map((graph) => graph.path).sort((a, b) => a.localeCompare(b)),
     graphTransfers: graphTransfers.sort((a, b) => a.sourceGraphLockPath.localeCompare(b.sourceGraphLockPath)),
     transfers: [...transfers.values()].sort((a, b) => a.sourceManifestPath.localeCompare(b.sourceManifestPath)),
   };
+}
+
+async function orphanedWorkspaceOwners(roots?: string[]): Promise<Set<string>> {
+  const owners = new Set<string>();
+  for (const root of roots ?? []) {
+    if (await pathExists(root)) {
+      throw new Error(`Orphaned owner root still exists and cannot be adopted: ${root}. Recover or normalize it from that workspace instead.`);
+    }
+    owners.add(workspaceOwnerForRoot(root));
+  }
+  return owners;
 }
 
 function targetKeysForProfile(scope: WorkspaceScope, name: string): Set<string> {
@@ -758,6 +830,15 @@ function targetKeysForProfile(scope: WorkspaceScope, name: string): Set<string> 
     throw new Error(`Fleet normalization requires a concrete local profile; '${name}' is composite.`);
   }
   return new Set(profile.runtimes.map((runtime) => runtime.agent ?? runtime.adapter));
+}
+
+function targetKeysForAgent(scope: WorkspaceScope, name: string): Set<string> {
+  const agent = scope.config.agents[name];
+  if (!agent) throw new Error(`Unknown fleet agent '${name}'.`);
+  if (agent.transport === "ssh") {
+    throw new Error(`Installed-state normalization cannot hand off SSH agent '${name}' locally.`);
+  }
+  return new Set([name]);
 }
 
 interface RelevantManifestEntry {
@@ -1357,6 +1438,25 @@ function graphEntryIdentity(entry: InstallManifestV2["entries"][number]): string
   });
 }
 
+function orphanedEntryMatchesCurrentGraph(
+  entry: RelevantManifestEntry,
+  graph: RelevantGraphLock,
+  selected: Set<string>,
+): boolean {
+  // Graph locks record an artifact's source-relative path, whereas manifests
+  // record its adapter-rendered runtime path. For user installations those
+  // bases can differ (for example `skills/foo` and `.openclaw/skills/foo`).
+  // The adapter routes an artifact by type and installName, so those fields
+  // are the stable destination identity. Runtime bytes are verified separately.
+  return graph.lock.canonical.artifacts.some((artifact) =>
+    artifact.owners.some((owner) => ownerMatchesGraphPackage(graph.lock, owner, selected))
+    && artifact.type === entry.entry.artifactType
+    && artifact.name === entry.entry.artifactName
+    && artifact.installName === entry.entry.installName
+    && artifact.kind === entry.entry.kind,
+  );
+}
+
 async function readExactConfig(path: string): Promise<WorkspaceConfig> {
   return workspaceConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
 }
@@ -1401,7 +1501,9 @@ async function buildJournalManifestStates(
       throw new Error(`Source manifest changed after planning: ${transfer.sourceManifestPath}`);
     }
     const desiredEntries = source.manifest.entries
-      .filter((entry) => entryMatchesPackages(entry, selected) && transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry)))
+      .filter((entry) => entryMatchesPackages(entry, selected)
+        && transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry))
+        && !transfer.unmanagedSourceRenderedPaths.includes(renderedEntryPath(source.manifest, entry)))
       .map((entry) => ({ ...entry, workspaceOwner: workspaceOwnerForRoot(plan.destination.root, plan.destination.fleetId) }));
     const before = await readOptionalRecord(transfer.destinationManifestPath);
     const parsedBefore = before ? installManifestSchema.parse(before) : undefined;
@@ -1425,25 +1527,27 @@ async function buildJournalManifestStates(
       graphLockPath: "journaled",
       manifestPath: transfer.destinationManifestPath,
     };
-    const after = mergeDestinationManifest(
-      existing,
-      state,
-      source.manifest.generatedAt,
-      desiredEntries,
-      workspaceOwnersForPlanSource(plan),
-    );
+    const after = desiredEntries.length > 0 || existing
+      ? mergeDestinationManifest(
+          existing,
+          state,
+          source.manifest.generatedAt,
+          desiredEntries,
+          workspaceOwnersForPlanSource(plan),
+        )
+      : undefined;
     const beforeRevision = before ? computeManifestRevision(before) : null;
-    const afterRevision = computeManifestRevision(after);
+    const afterRevision = after ? computeManifestRevision(after) : null;
     if (beforeRevision !== transfer.destinationManifestRevision || afterRevision !== transfer.destinationManifestAfterRevision) {
       throw new Error(`Destination manifest changed after planning: ${transfer.destinationManifestPath}`);
     }
     if (transfer.sourceManifestPath === transfer.destinationManifestPath) {
       const sourceState = states.find((candidate) => candidate.path === transfer.sourceManifestPath);
       if (!sourceState) throw new Error(`Source manifest journal state is missing: ${transfer.sourceManifestPath}`);
-      sourceState.after = after;
+      sourceState.after = after ?? null;
       sourceState.afterRevision = afterRevision;
     } else {
-      states.push({ path: transfer.destinationManifestPath, before, after, beforeRevision, afterRevision });
+      if (after || before) states.push({ path: transfer.destinationManifestPath, before, after: after ?? null, beforeRevision, afterRevision });
     }
   }
   return states;
@@ -1607,6 +1711,7 @@ function workspaceOwnersForPlanSource(plan: FleetNormalizationPlan): Set<string>
   return new Set([
     workspaceOwnerForRoot(plan.source.root),
     ...(plan.source.fleetId ? [workspaceOwnerForRoot(plan.source.root, plan.source.fleetId)] : []),
+    ...(plan.request.orphanedOwnerRoots ?? []).map((root) => workspaceOwnerForRoot(root)),
   ]);
 }
 

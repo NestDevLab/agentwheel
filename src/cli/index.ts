@@ -165,6 +165,8 @@ fleetCommand
   .option("--package <name>", "limit to one duplicate package (repeatable)", collectValueOption, [] as string[])
   .option("--artifact <type/name>", "limit same-fleet ownership normalization to one artifact (repeatable)", collectValueOption, [] as string[])
   .option("--profile <name>", "limit same-fleet installed-state normalization to one concrete profile")
+  .option("--agent <name>", "limit same-fleet ownership normalization to one configured local agent")
+  .option("--orphaned-owner <workspace-root>", "explicit missing workspace root whose verified runtime ownership may be recovered (repeatable)", collectValueOption, [] as string[])
   .option("--apply", "apply a reviewed plan", false)
   .option("--recover", "restore source state from a pending normalization journal", false)
   .option("--plan-digest <sha256>", "exact digest from the reviewed dry-run")
@@ -176,9 +178,11 @@ fleetCommand
       ...(options.package.length > 0 ? { packages: options.package } : {}),
       ...(options.artifact.length > 0 ? { artifacts: options.artifact } : {}),
       ...(options.profile ? { profile: options.profile } : {}),
+      ...(options.agent ? { agent: options.agent } : {}),
+      ...(options.orphanedOwner.length > 0 ? { orphanedOwnerRoots: options.orphanedOwner } : {}),
     };
-    if (options.recover && (options.apply || options.planDigest || options.package.length > 0 || options.artifact.length > 0 || options.profile)) {
-      throw new Error("--recover cannot be combined with --apply, --plan-digest, --package, --artifact, or --profile.");
+    if (options.recover && (options.apply || options.planDigest || options.package.length > 0 || options.artifact.length > 0 || options.profile || options.agent || options.orphanedOwner.length > 0)) {
+      throw new Error("--recover cannot be combined with --apply, --plan-digest, --package, --artifact, --profile, --agent, or --orphaned-owner.");
     }
     const result = options.recover
       ? await recoverFleetNormalization(request)
@@ -4009,11 +4013,17 @@ function formatFleetNormalization(
   const packageArgs = result.packages.map((pkg) => `--package ${shellQuoteArg(pkg.name)}`).join(" ");
   const artifactArgs = result.request.artifacts?.map((artifact) => ` --artifact ${shellQuoteArg(artifact)}`).join("") ?? "";
   const profileArg = result.request.profile ? ` --profile ${shellQuoteArg(result.request.profile)}` : "";
+  const agentArg = result.request.agent ? ` --agent ${shellQuoteArg(result.request.agent)}` : "";
+  const orphanedOwnerArgs = result.request.orphanedOwnerRoots?.map((root) => ` --orphaned-owner ${shellQuoteArg(root)}`).join("") ?? "";
+  const orphanedUnmanaged = result.installedState.orphanedUnmanagedPaths;
   return [
     `Fleet normalization plan: ${result.source.root} -> ${result.destination.root}`,
     `Packages: ${result.packages.map((pkg) => pkg.name).join(", ")}`,
+    ...(orphanedUnmanaged.length > 0
+      ? [`Retired orphan ownership (files retained unmanaged): ${orphanedUnmanaged.join(", ")}`]
+      : []),
     `Plan digest: ${result.planDigest}`,
-    `Apply: agentwheel fleet normalize ${result.destination.fleetId} --from ${result.request.from} ${packageArgs}${artifactArgs}${profileArg} --apply --plan-digest ${result.planDigest}`,
+    `Apply: agentwheel fleet normalize ${result.destination.fleetId} --from ${result.request.from} ${packageArgs}${artifactArgs}${profileArg}${agentArg}${orphanedOwnerArgs} --apply --plan-digest ${result.planDigest}`,
   ].join("\n");
 }
 

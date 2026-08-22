@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.3
+
+- Fixed same-fleet normalization to ignore a stale named-target graph lock only when no legacy
+  manifest entry is covered by it; a manifest-covered absent root remains a fail-closed error.
+
 ## 0.18.2
 
 - Fixed legacy same-fleet normalization so it considers only locally provable manifest/graph-lock

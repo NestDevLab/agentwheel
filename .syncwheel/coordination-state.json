@@ -1,15 +1,16 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c"
+    "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:41:52+00:00",
+  "created_at": "2026-08-22T07:42:29+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
     "refs/heads/main-integration": "37d9cb7904d7686a60b3da1d2ab743753207ca9e",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
+    "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
@@ -65,23 +66,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission",
+        "branch": "pr/agentwheel-0-18-3-legacy-lock-admission",
         "commits": [
           "f580a9a7483b3716f7311175e9e5f462ea89af9c"
         ],
         "id": "agentwheel-0-18-3-legacy-lock-admission",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "bc40ea6d9bf2fd0f2861e59ee0e125043cce139228d74a69662a65f3979acdda",
-  "parent_state": "9bc49a5560dbd5f7bb0e221e936c2cbb37d05e4b",
+  "manifest_digest": "0db0fe2cfb8897ba0708ff98d901f2374ba2567efad4e3f96f96ee1d7ae4b013",
+  "parent_state": "92a41699c77850f60809ece64b230fc62e687613",
   "projection_status": "partial",
-  "publication_id": "df34d77d-1a00-4d8e-8cdf-193aeaeaeb81",
-  "publication_scope": "stack:agentwheel-0-18-3-legacy-lock-admission",
+  "publication_id": "6246b4ab-67f9-4094-bfe0-e9f15c19aa40",
+  "publication_scope": "promote:agentwheel-0-18-3-legacy-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -228,6 +228,14 @@
       "ref": "refs/heads/pr/legacy-graph-lock-admission",
       "remote_tip": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
       "stack": "legacy-graph-lock-admission"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission",
+      "closed_at": "2026-08-22T07:42:21+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission",
+      "remote_tip": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
+      "stack": "agentwheel-0-18-3-legacy-lock-admission"
     }
   ]
 }

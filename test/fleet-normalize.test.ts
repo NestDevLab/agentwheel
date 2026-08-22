@@ -650,6 +650,40 @@ describe("fleet normalization", () => {
     await expect(stat(state.manifest)).rejects.toThrow();
   });
 
+  it("replays the exact graph-selected orphan entries during journaling", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    // This is a transitive graph artifact: its manifest ownership need not use
+    // the root package name that selected the graph.
+    manifest.entries[0].owners = ["node-core"];
+    manifest.entries[0].packageName = "core-dependency";
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const graph = JSON.parse(await readFile(state.graphLock, "utf8"));
+    graph.canonical.artifacts[0].owners = ["node-core"];
+    await writeFile(state.graphLock, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.installedState.transfers[0]?.renderedPaths).toEqual([state.runtimeFile]);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(destinationManifest.entries[0]).toMatchObject({
+      workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
+      owners: ["node-core"],
+      packageName: "core-dependency",
+    });
+    await expect(stat(state.manifest)).rejects.toThrow();
+  });
+
   it("limits explicit orphan recovery to the admitted owner when a manifest also has legacy entries", async () => {
     const state = await legacySelfFixture();
     const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");

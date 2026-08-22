@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:42:29+00:00",
+  "created_at": "2026-08-22T07:56:08+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -54,34 +52,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "agentwheel-0-18-3-legacy-lock-admission"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/agentwheel-0-18-3-legacy-lock-admission",
-        "commits": [
-          "f580a9a7483b3716f7311175e9e5f462ea89af9c"
-        ],
-        "id": "agentwheel-0-18-3-legacy-lock-admission",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "0db0fe2cfb8897ba0708ff98d901f2374ba2567efad4e3f96f96ee1d7ae4b013",
-  "parent_state": "92a41699c77850f60809ece64b230fc62e687613",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "278c9042392e0995f924a0751f0bd244e5814dfa",
   "projection_status": "partial",
-  "publication_id": "6246b4ab-67f9-4094-bfe0-e9f15c19aa40",
-  "publication_scope": "promote:agentwheel-0-18-3-legacy-lock-admission",
+  "publication_id": "624fe73c-e7fd-457d-bf8e-e71041326a89",
+  "publication_scope": "close:agentwheel-0-18-3-legacy-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -234,6 +215,14 @@
       "closed_at": "2026-08-22T07:42:21+00:00",
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission",
+      "remote_tip": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
+      "stack": "agentwheel-0-18-3-legacy-lock-admission"
+    },
+    {
+      "branch": "pr/agentwheel-0-18-3-legacy-lock-admission",
+      "closed_at": "2026-08-22T07:56:00+00:00",
+      "reason": "merged-by-squash-tree-equivalent",
+      "ref": "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission",
       "remote_tip": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
       "stack": "agentwheel-0-18-3-legacy-lock-admission"
     }

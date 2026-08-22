@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.4
+
+- Added fail-closed recovery for verified Agentwheel ownership stranded by a deleted workspace,
+  scoped to one local fleet agent and preserving unrelated legacy manifest entries.
+
 ## 0.18.3
 
 - Fixed same-fleet normalization to ignore a stale named-target graph lock only when no legacy

@@ -1,7 +1,9 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:35:06+00:00",
+  "created_at": "2026-08-22T07:37:37+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -21,6 +23,7 @@
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
+    "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
@@ -50,7 +53,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "legacy-graph-lock-admission"
+        "legacy-graph-lock-admission",
+        "released-0-18-2-integration-recovery"
       ],
       "strategy": "cherry-pick"
     },
@@ -68,15 +72,28 @@
         "id": "legacy-graph-lock-admission",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/released-0-18-2-integration-recovery",
+        "commits": [],
+        "id": "released-0-18-2-integration-recovery",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "1deec64ac91752b031dad4441259a509b515a5323af8999eea47a6146a3743a4",
-  "parent_state": "f888a64626def90d6e4004d5421693637adff830",
+  "manifest_digest": "ea4481abbb382f31e69c579732a75c3681eee6a4298a8aef16496e9fccb2cc15",
+  "parent_state": "bb4caa81507c7f62fa720fe460bc0d75590e1f23",
   "projection_status": "partial",
-  "publication_id": "62c64fe3-071f-485a-ad57-58bc91d47084",
-  "publication_scope": "close:proof-scoped-self-fleet-normalization",
+  "publication_id": "bff988a2-9599-4897-8558-c90982a4ab5b",
+  "publication_scope": "stack:released-0-18-2-integration-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [

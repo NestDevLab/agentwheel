@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:34:29+00:00",
+  "created_at": "2026-08-22T07:35:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -52,27 +50,11 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "proof-scoped-self-fleet-normalization",
         "legacy-graph-lock-admission"
       ],
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/proof-scoped-self-fleet-normalization",
-        "commits": [
-          "5622b73489fd9f59652004d59efb4250ab11ea4c",
-          "18f960a3b052a7c6405f5e0e51d0cd43b2b3940a"
-        ],
-        "id": "proof-scoped-self-fleet-normalization",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -90,11 +72,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "eb2dda13a937b2bdae829e8b77bbc21f5b0d5cc9901c75b81ccd977fcc5380ec",
-  "parent_state": "13cfcc487e6d6c210d6c74471565a221afbf1f4c",
+  "manifest_digest": "1deec64ac91752b031dad4441259a509b515a5323af8999eea47a6146a3743a4",
+  "parent_state": "f888a64626def90d6e4004d5421693637adff830",
   "projection_status": "partial",
-  "publication_id": "42a0f909-b964-48c2-8f1a-6350b570e324",
-  "publication_scope": "promote:legacy-graph-lock-admission",
+  "publication_id": "62c64fe3-071f-485a-ad57-58bc91d47084",
+  "publication_scope": "close:proof-scoped-self-fleet-normalization",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -217,6 +199,14 @@
       "ref": "refs/heads/syncwheel/draft/legacy-graph-lock-admission",
       "remote_tip": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
       "stack": "legacy-graph-lock-admission"
+    },
+    {
+      "branch": "pr/proof-scoped-self-fleet-normalization",
+      "closed_at": "2026-08-22T07:34:58+00:00",
+      "reason": "merged-by-squash-tree-equivalent",
+      "ref": "refs/heads/pr/proof-scoped-self-fleet-normalization",
+      "remote_tip": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
+      "stack": "proof-scoped-self-fleet-normalization"
     }
   ]
 }

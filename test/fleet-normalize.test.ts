@@ -452,6 +452,74 @@ describe("fleet normalization", () => {
     await expect(stat(state.destinationManifest)).resolves.toBeDefined();
   });
 
+  it("ignores a stale same-target lock with an absent root before target derivation", async () => {
+    const state = await legacySelfFixture();
+    const staleGraphLock = await writeGraphLock(state.fleet, "stale-unmatched-legacy-lock");
+    const staleGraph = JSON.parse(await readFile(staleGraphLock, "utf8"));
+    staleGraph.canonical.roots.push({
+      rootId: "retired-package",
+      source: "/packages/retired-package",
+      normalizedSource: "local:/packages/retired-package",
+      graphNodeId: "node-retired-package",
+      mode: "pinned",
+      selected: ["skills/retired"],
+    });
+    staleGraph.canonical.nodes.push({
+      id: "node-retired-package",
+      name: "retired-package",
+      version: "1.0.0",
+      source: "/packages/retired-package",
+      normalizedSource: "local:/packages/retired-package",
+      driver: "local",
+      sourceHash: "fedcba9876543210",
+      mode: "pinned",
+      requiredBy: ["retired-package"],
+      selected: ["skills/retired"],
+    });
+    await writeFile(staleGraphLock, `${JSON.stringify(staleGraph, null, 2)}\n`, "utf8");
+    const config = await readConfig(state.fleet);
+    config.agents.runtime.installationType = "local";
+    await writeConfig(state.fleet, config);
+
+    const plan = await planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    });
+
+    expect(plan.installedState.sourceGraphLockPaths).toEqual([state.graphLock]);
+    await applyFleetNormalization({ ...plan.request, apply: true, planDigest: plan.planDigest });
+    await expect(stat(staleGraphLock)).resolves.toBeDefined();
+  });
+
+  it("fails closed when an absent legacy root is covered by the target manifest", async () => {
+    const state = await legacySelfFixture();
+    const staleFingerprint = "stale-covered-legacy-root";
+    const staleGraphLock = await writeGraphLock(state.fleet, staleFingerprint);
+    const staleGraph = JSON.parse(await readFile(staleGraphLock, "utf8"));
+    staleGraph.canonical.roots.push({
+      rootId: "retired-package",
+      source: "/packages/retired-package",
+      normalizedSource: "local:/packages/retired-package",
+      graphNodeId: "node-retired-package",
+      mode: "pinned",
+      selected: ["skills/retired"],
+    });
+    await writeFile(staleGraphLock, `${JSON.stringify(staleGraph, null, 2)}\n`, "utf8");
+    const config = await readConfig(state.fleet);
+    config.agents.runtime.installationType = "local";
+    await writeConfig(state.fleet, config);
+    const staleStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: staleFingerprint });
+    await writeManifest(state.runtime, staleStateKey, workspaceOwnerForRoot(state.fleet), await hashPath(state.runtimeFile));
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    })).rejects.toThrow(/absent from the fleet configuration/);
+    await expect(stat(staleGraphLock)).resolves.toBeDefined();
+  });
+
   it("scopes same-fleet normalization to the selected concrete profile", async () => {
     const state = await legacySelfFixture();
     const unrelated = await tempRoot("agentwheel-normalize-unrelated-runtime-");

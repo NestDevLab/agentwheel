@@ -916,10 +916,44 @@ async function hasRelevantLegacyManifestCandidate(
   selected: Set<string>,
 ): Promise<boolean> {
   if (!isCurrentLocalTarget(scope, graph)) return false;
-  const state = await legacyTargetStateForGraph(scope, graph);
-  const manifest = (await collectManifestPaths([state.manifestPath]))[0];
+  // A historical graph can name a retired root.  For a configured named
+  // target with an explicit installation type we can locate its legacy
+  // manifest without treating that retired root as current desired state.
+  // Only a manifest entry actually covered by the graph admits the lock to
+  // the full, fail-closed target derivation below.
+  const manifestPath = await legacyManifestPathForConfiguredTarget(scope, graph)
+    ?? (await legacyTargetStateForGraph(scope, graph)).manifestPath;
+  const manifest = (await collectManifestPaths([manifestPath]))[0];
   return manifest?.manifest.entries.some((entry) =>
     entryMatchesGraphPackages(entry, graph.lock, selected)) ?? false;
+}
+
+async function legacyManifestPathForConfiguredTarget(
+  scope: WorkspaceScope,
+  graph: RelevantGraphLock,
+): Promise<string | undefined> {
+  const agent = scope.config.agents[graph.targetKey];
+  if (!agent || !agent.installationType) return undefined;
+  if (agent.transport === "ssh") {
+    throw new Error(`Installed-state normalization cannot hand off SSH target '${graph.targetKey}' locally.`);
+  }
+  if (agent.adapter !== graph.adapter) {
+    throw new Error(`Graph adapter '${graph.adapter}' does not match configured target adapter '${agent.adapter}'.`);
+  }
+  const adapter = await resolveAdapter({
+    adapter: agent.adapter,
+    adapterConfig: agent.adapterConfig,
+    adapterModule: agent.adapterModule,
+    allowAdapterCode: false,
+    baseDir: scope.root,
+  });
+  const targetRoot = resolveConfigPath(agent.root, scope.root);
+  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, agent.installationType, false));
+  const stateKey = stateKeyFor(adapter.name, {
+    installationType: agent.installationType,
+    targetFingerprint: graph.lock.canonical.targetFingerprint!,
+  });
+  return installManifestPath(installRoot, adapter.name, { installationType: agent.installationType, stateKey });
 }
 
 interface DerivedTargetState {

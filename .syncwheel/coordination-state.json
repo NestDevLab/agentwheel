@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
+    "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:34:01+00:00",
+  "created_at": "2026-08-22T07:34:29+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -14,6 +14,7 @@
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
@@ -78,23 +79,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/legacy-graph-lock-admission",
+        "branch": "pr/legacy-graph-lock-admission",
         "commits": [
           "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
         ],
         "id": "legacy-graph-lock-admission",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "f940a9618ee2e06ab010fdba9cb894efe501de21a0589e125a0a6938cf45c417",
-  "parent_state": "18ceb271faf8d39e1569975e9275833ff352ca71",
+  "manifest_digest": "eb2dda13a937b2bdae829e8b77bbc21f5b0d5cc9901c75b81ccd977fcc5380ec",
+  "parent_state": "13cfcc487e6d6c210d6c74471565a221afbf1f4c",
   "projection_status": "partial",
-  "publication_id": "a5f01f81-74b7-4723-9d2b-47d8b68896bf",
-  "publication_scope": "stack:legacy-graph-lock-admission",
+  "publication_id": "42a0f909-b964-48c2-8f1a-6350b570e324",
+  "publication_scope": "promote:legacy-graph-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -209,6 +209,14 @@
       "ref": "refs/heads/fix/site-card-alignment",
       "remote_tip": "23760e656efaf492aa46a3310f5b93880ccf60d1",
       "stack": "site-card-alignment"
+    },
+    {
+      "branch": "syncwheel/draft/legacy-graph-lock-admission",
+      "closed_at": "2026-08-22T07:34:21+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/legacy-graph-lock-admission",
+      "remote_tip": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
+      "stack": "legacy-graph-lock-admission"
     }
   ]
 }

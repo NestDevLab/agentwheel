@@ -1478,9 +1478,11 @@ async function buildJournalManifestStates(
     const parsed = installManifestSchema.parse(before);
     if (parsed.version !== 2) throw new Error(`Manifest changed to unsupported v1 state: ${path}`);
     sourceByPath.set(path, { raw: before, manifest: { ...parsed, revision: computeManifestRevision(before), legacy: false } });
-    const entries = parsed.entries.filter((entry) =>
-      !(entryMatchesPackages(entry, selected) && renderedPaths.has(renderedEntryPath(parsed, entry))),
-    );
+    // `renderedPaths` is the exact set of source entries admitted by the
+    // reviewed plan. Re-evaluating package membership here is unsafe: graph
+    // dependencies can be selected by graph-node identity while their manifest
+    // owners and packageName do not equal a root package name.
+    const entries = parsed.entries.filter((entry) => !renderedPaths.has(renderedEntryPath(parsed, entry)));
     const removeEmptyLegacyManifest = isLegacySelfNormalizationPlan(plan) && entries.length === 0;
     const afterManifest = removeEmptyLegacyManifest
       ? undefined
@@ -1501,8 +1503,7 @@ async function buildJournalManifestStates(
       throw new Error(`Source manifest changed after planning: ${transfer.sourceManifestPath}`);
     }
     const desiredEntries = source.manifest.entries
-      .filter((entry) => entryMatchesPackages(entry, selected)
-        && transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry))
+      .filter((entry) => transfer.renderedPaths.includes(renderedEntryPath(source.manifest, entry))
         && !transfer.unmanagedSourceRenderedPaths.includes(renderedEntryPath(source.manifest, entry)))
       .map((entry) => ({ ...entry, workspaceOwner: workspaceOwnerForRoot(plan.destination.root, plan.destination.fleetId) }));
     const before = await readOptionalRecord(transfer.destinationManifestPath);
@@ -1539,7 +1540,11 @@ async function buildJournalManifestStates(
     const beforeRevision = before ? computeManifestRevision(before) : null;
     const afterRevision = after ? computeManifestRevision(after) : null;
     if (beforeRevision !== transfer.destinationManifestRevision || afterRevision !== transfer.destinationManifestAfterRevision) {
-      throw new Error(`Destination manifest changed after planning: ${transfer.destinationManifestPath}`);
+      throw new Error(
+        `Destination manifest changed after planning: ${transfer.destinationManifestPath} `
+        + `(before ${beforeRevision ?? "absent"}, expected ${transfer.destinationManifestRevision ?? "absent"}; `
+        + `after ${afterRevision ?? "absent"}, expected ${transfer.destinationManifestAfterRevision ?? "absent"}).`,
+      );
     }
     if (transfer.sourceManifestPath === transfer.destinationManifestPath) {
       const sourceState = states.find((candidate) => candidate.path === transfer.sourceManifestPath);

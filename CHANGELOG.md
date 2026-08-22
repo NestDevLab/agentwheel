@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.5
+
+- Fixed ownership-normalization journaling to replay the exact graph-verified manifest paths
+  from the reviewed plan, including transitive artifacts whose manifest owner is a graph node
+  rather than a root package name.
+
 ## 0.18.4
 
 - Added fail-closed recovery for verified Agentwheel ownership stranded by a deleted workspace,

@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b"
+    "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:04:44+00:00",
+  "created_at": "2026-08-22T07:34:01+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -20,6 +20,7 @@
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
+    "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
@@ -50,7 +51,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "proof-scoped-self-fleet-normalization"
+        "proof-scoped-self-fleet-normalization",
+        "legacy-graph-lock-admission"
       ],
       "strategy": "cherry-pick"
     },
@@ -69,15 +71,30 @@
         "id": "proof-scoped-self-fleet-normalization",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/legacy-graph-lock-admission",
+        "commits": [
+          "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
+        ],
+        "id": "legacy-graph-lock-admission",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "c985b63c99ac7482e9eef782ee9a1b8a279d15961e3fcd5c06921d9c31c1a5fc",
-  "parent_state": "c72cf50db7a5be400a799caaff7bd1f2e8ccc87a",
+  "manifest_digest": "f940a9618ee2e06ab010fdba9cb894efe501de21a0589e125a0a6938cf45c417",
+  "parent_state": "18ceb271faf8d39e1569975e9275833ff352ca71",
   "projection_status": "partial",
-  "publication_id": "2a4268dd-7b3e-447d-8f3c-aa6e200bb4b8",
-  "publication_scope": "stack:proof-scoped-self-fleet-normalization",
+  "publication_id": "a5f01f81-74b7-4723-9d2b-47d8b68896bf",
+  "publication_scope": "stack:legacy-graph-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [

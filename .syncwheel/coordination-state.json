@@ -1,7 +1,7 @@
 {
   "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:38:05+00:00",
+  "created_at": "2026-08-22T07:39:54+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -50,34 +50,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "legacy-graph-lock-admission"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/legacy-graph-lock-admission",
-        "commits": [
-          "973ab382ad4b3d9c63f484449e580f7feb09bbe6"
-        ],
-        "id": "legacy-graph-lock-admission",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "1deec64ac91752b031dad4441259a509b515a5323af8999eea47a6146a3743a4",
-  "parent_state": "1f7d5e5f6a3e8a8a851fbf11ddda4f896a921b40",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "a4560c3c3fd6971ae42ea5ffdbe3c49aa0ae88d9",
   "projection_status": "partial",
-  "publication_id": "96019d77-05f4-4f1d-a0a6-faff42855c46",
-  "publication_scope": "close:released-0-18-2-integration-recovery",
+  "publication_id": "fcbfbe40-4ea2-4d98-909f-96d80a67e56f",
+  "publication_scope": "close:legacy-graph-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [
@@ -216,6 +199,14 @@
       "ref": "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery",
       "remote_tip": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
       "stack": "released-0-18-2-integration-recovery"
+    },
+    {
+      "branch": "pr/legacy-graph-lock-admission",
+      "closed_at": "2026-08-22T07:39:46+00:00",
+      "reason": "merged-by-squash-tree-equivalent",
+      "ref": "refs/heads/pr/legacy-graph-lock-admission",
+      "remote_tip": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
+      "stack": "legacy-graph-lock-admission"
     }
   ]
 }

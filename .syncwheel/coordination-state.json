@@ -1,7 +1,9 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-22T07:39:54+00:00",
+  "created_at": "2026-08-22T07:41:52+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -17,6 +19,7 @@
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
+    "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -50,17 +53,35 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "agentwheel-0-18-3-legacy-lock-admission"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission",
+        "commits": [
+          "f580a9a7483b3716f7311175e9e5f462ea89af9c"
+        ],
+        "id": "agentwheel-0-18-3-legacy-lock-admission",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "a4560c3c3fd6971ae42ea5ffdbe3c49aa0ae88d9",
+  "manifest_digest": "bc40ea6d9bf2fd0f2861e59ee0e125043cce139228d74a69662a65f3979acdda",
+  "parent_state": "9bc49a5560dbd5f7bb0e221e936c2cbb37d05e4b",
   "projection_status": "partial",
-  "publication_id": "fcbfbe40-4ea2-4d98-909f-96d80a67e56f",
-  "publication_scope": "close:legacy-graph-lock-admission",
+  "publication_id": "df34d77d-1a00-4d8e-8cdf-193aeaeaeb81",
+  "publication_scope": "stack:agentwheel-0-18-3-legacy-lock-admission",
   "schema_version": 2,
   "syncwheel_version": "0.34.5",
   "tombstones": [

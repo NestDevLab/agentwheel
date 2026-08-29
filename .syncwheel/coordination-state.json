@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/skill-evolution-v01": "909890d19c72199120698b2f904f4b74504c2dfa"
+    "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-29T15:55:11+00:00",
+  "created_at": "2026-08-29T15:58:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -19,7 +19,7 @@
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
-    "refs/heads/pr/skill-evolution-v01": "909890d19c72199120698b2f904f4b74504c2dfa",
+    "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
@@ -101,7 +101,8 @@
         },
         "branch": "pr/skill-evolution-v01",
         "commits": [
-          "909890d19c72199120698b2f904f4b74504c2dfa"
+          "909890d19c72199120698b2f904f4b74504c2dfa",
+          "235786b9d30b033eb4bc526fc362230f74bdcbcd"
         ],
         "id": "skill-evolution-v01",
         "integration_branch": "main-integration",
@@ -110,11 +111,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "e985538db90d39e56fa6842800028f6681e60e8b433c7372f71f628b043fc959",
-  "parent_state": "af0057720aa5b748a5c1562d1b5a7cbc99d4e343",
+  "manifest_digest": "470f5b37f64866fec69e35bf330464f766331bfc29a29494feddcb27b0e773ec",
+  "parent_state": "ca6cfd0e13ecb2fb5795fbceb97710230137a049",
   "projection_status": "partial",
-  "publication_id": "e05f622a-50a2-4513-8f8d-8b67b2e37819",
-  "publication_scope": "compose-stack:skill-evolution-v01",
+  "publication_id": "72b60edb-b72e-44b5-ab13-731b6f1b9181",
+  "publication_scope": "stack:skill-evolution-v01",
   "schema_version": 2,
   "syncwheel_version": "0.34.8",
   "tombstones": [

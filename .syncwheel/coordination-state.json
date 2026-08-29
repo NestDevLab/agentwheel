@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632"
+    "refs/heads/pr/skill-evolution-v01": "909890d19c72199120698b2f904f4b74504c2dfa"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-22T11:15:23+00:00",
+  "created_at": "2026-08-29T15:55:11+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -19,6 +19,7 @@
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
+    "refs/heads/pr/skill-evolution-v01": "909890d19c72199120698b2f904f4b74504c2dfa",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
@@ -58,7 +59,8 @@
       "branch": "main-integration",
       "stacks": [
         "orphaned-fleet-ownership-recovery",
-        "orphaned-fleet-ownership-journal-target"
+        "orphaned-fleet-ownership-journal-target",
+        "skill-evolution-v01"
       ],
       "strategy": "cherry-pick"
     },
@@ -90,15 +92,29 @@
         "id": "orphaned-fleet-ownership-journal-target",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/skill-evolution-v01",
+        "commits": [
+          "909890d19c72199120698b2f904f4b74504c2dfa"
+        ],
+        "id": "skill-evolution-v01",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "8c3c8afef1d15c6888ce25cec819ec54ffb985d61e5e46a9725f352fc5491b4e",
-  "parent_state": "7438ab27f619c9d38c566c88ab2d6547031f92de",
+  "manifest_digest": "e985538db90d39e56fa6842800028f6681e60e8b433c7372f71f628b043fc959",
+  "parent_state": "af0057720aa5b748a5c1562d1b5a7cbc99d4e343",
   "projection_status": "partial",
-  "publication_id": "c4909231-511d-4a30-b137-e0aca358ca00",
-  "publication_scope": "compose-stack:orphaned-fleet-ownership-journal-target",
+  "publication_id": "e05f622a-50a2-4513-8f8d-8b67b2e37819",
+  "publication_scope": "compose-stack:skill-evolution-v01",
   "schema_version": 2,
   "syncwheel_version": "0.34.8",
   "tombstones": [

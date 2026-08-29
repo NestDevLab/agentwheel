@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { z } from "zod";
-import { artifactFormatSchema, artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageItemRequireSchema, packageItemSuggestSchema } from "./artifact.js";
+import { artifactFormatSchema, artifactTypeSchema, packageAssetSchema, packageComposeEntrySchema, packageCompositionRuleSchema, packageItemRequireSchema, packageItemSuggestSchema, packageSupersedesEntrySchema } from "./artifact.js";
 import { pathExists } from "../utils/fs.js";
 
 const legacyArtifactTypeSchema = z.enum([
@@ -18,7 +18,7 @@ const legacyArtifactTypeSchema = z.enum([
 ]);
 
 const runtimeListSchema = z.array(z.string().min(1));
-export const CURRENT_OPENPACK_SCHEMA_VERSION = 2 as const;
+export const CURRENT_OPENPACK_SCHEMA_VERSION = 3 as const;
 
 const packageProvideBaseSchema = z.object({
   path: z.string().min(1),
@@ -34,6 +34,7 @@ export const packageItemSchema = z.object({
   requires: z.array(packageItemRequireSchema).optional(),
   suggests: z.array(packageItemSuggestSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
+  supersedes: z.array(packageSupersedesEntrySchema).optional(),
   runtimes: runtimeListSchema.optional(),
 });
 
@@ -70,8 +71,7 @@ export const packageManifestV1Schema = z.object({
   provides: z.array(packageProvideV1Schema).min(1),
 });
 
-export const packageManifestV2Schema = z.object({
-  schemaVersion: z.literal(CURRENT_OPENPACK_SCHEMA_VERSION),
+const packageManifestModernShape = {
   name: z.string().min(1),
   version: z.string().min(1),
   runtimes: runtimeListSchema.optional(),
@@ -79,7 +79,9 @@ export const packageManifestV2Schema = z.object({
   suggests: z.record(z.string().min(1), packageSuggestionSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
   provides: z.array(packageProvideSchema).default([]),
-}).superRefine((manifest, ctx) => {
+};
+
+function requireProvidesOrDependencies(manifest: { provides: unknown[]; requires?: Record<string, unknown> }, ctx: z.RefinementCtx): void {
   const hasProvides = manifest.provides.length > 0;
   const hasRequires = Object.keys(manifest.requires ?? {}).length > 0;
   if (!hasProvides && !hasRequires) {
@@ -89,9 +91,20 @@ export const packageManifestV2Schema = z.object({
       message: "OpenPack v2 manifest must declare at least one provides entry or one requires dependency",
     });
   }
-});
+}
 
-export const packageManifestSchema = z.union([packageManifestV1Schema, packageManifestV2Schema]);
+export const packageManifestV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  ...packageManifestModernShape,
+}).superRefine(requireProvidesOrDependencies);
+
+export const packageManifestV3Schema = z.object({
+  schemaVersion: z.literal(CURRENT_OPENPACK_SCHEMA_VERSION),
+  ...packageManifestModernShape,
+  compositionRules: z.array(packageCompositionRuleSchema).optional(),
+}).superRefine(requireProvidesOrDependencies);
+
+export const packageManifestSchema = z.union([packageManifestV1Schema, packageManifestV2Schema, packageManifestV3Schema]);
 
 export type PackageManifest = z.infer<typeof packageManifestSchema>;
 export type PackageProvide = PackageManifest["provides"][number];
@@ -141,9 +154,31 @@ export function parsePackageManifest(parsed: unknown, path = "package manifest")
     return parseWithSchema(packageManifestV1Schema, parsed, path) as PackageManifest;
   }
   if (parsed.schemaVersion === 2) {
+    const violations = v2OpenPackViolations(parsed);
+    if (violations.length > 0) {
+      throw new Error(`OpenPack schemaVersion 3 is required for ${violations.join(", ")} in ${path}. Set "schemaVersion": 3.`);
+    }
     return parseWithSchema(packageManifestV2Schema, parsed, path) as PackageManifest;
   }
-  throw new Error(`Invalid package manifest ${path}: schemaVersion must be 1 or 2`);
+  if (parsed.schemaVersion === 3) {
+    return parseWithSchema(packageManifestV3Schema, parsed, path) as PackageManifest;
+  }
+  throw new Error(`Invalid package manifest ${path}: schemaVersion must be 1, 2, or 3`);
+}
+
+function v2OpenPackViolations(manifest: Record<string, unknown>): string[] {
+  const violations: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(manifest, "compositionRules")) violations.push("compositionRules");
+  const provides = Array.isArray(manifest.provides) ? manifest.provides : [];
+  for (const [provideIndex, provide] of provides.entries()) {
+    if (!isRecord(provide) || !isRecord(provide.items)) continue;
+    for (const [itemName, item] of Object.entries(provide.items)) {
+      if (isRecord(item) && Object.prototype.hasOwnProperty.call(item, "supersedes")) {
+        violations.push(`provides[${provideIndex}].items.${itemName}.supersedes`);
+      }
+    }
+  }
+  return violations;
 }
 
 function parseWithSchema<T>(schema: z.ZodType<T>, parsed: unknown, path: string): T {
@@ -157,7 +192,7 @@ function parseWithSchema<T>(schema: z.ZodType<T>, parsed: unknown, path: string)
 
 function v1OpenPackViolations(manifest: Record<string, unknown>): string[] {
   const violations: string[] = [];
-  for (const key of ["requires", "items", "compose", "runtimes"]) {
+  for (const key of ["requires", "items", "compose", "runtimes", "compositionRules", "supersedes"]) {
     if (Object.prototype.hasOwnProperty.call(manifest, key)) violations.push(key);
   }
   const provides = Array.isArray(manifest.provides) ? manifest.provides : [];

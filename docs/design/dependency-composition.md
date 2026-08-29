@@ -57,7 +57,8 @@ locks, install manifests, overrides/eject storage, the CLI surface.
 - Manifest discovery order becomes `openpack.json(c)` → `agentwheel.json(c)` (legacy alias, read
   with a deprecation warning — the installed base of v1 packs keeps working unchanged).
 - `agentwheel package migrate` rewrites a pack in place: renames the manifest and upgrades
-  schemaVersion 1 → 2.
+  schemaVersion 1 → 2 → 3. Version 3 adds wildcard skill composition and explicit derivative
+  supersession; older manifests cannot declare those fields.
 - The legacy alias stays for a long deprecation window (one extra filename in the discovery list —
   cheap), then leaves the spec; agentwheel itself may keep reading it longer.
 

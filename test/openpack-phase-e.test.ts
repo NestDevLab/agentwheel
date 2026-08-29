@@ -521,7 +521,7 @@ describe("OpenPack phase E", () => {
     });
 
     expect((await client.getIndex()).entries[0]?.openpack?.schemaVersion).toBe(99);
-    expect(warnings.join("\n")).toMatch(/future-pack.*schemaVersion 99.*supported 2/);
+    expect(warnings.join("\n")).toMatch(/future-pack.*schemaVersion 99.*supported 3/);
   });
 });
 

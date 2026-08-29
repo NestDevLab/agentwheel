@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.0
+
+- Added OpenPack schema v3 composition rules for deterministic wildcard fragment injection into
+  skills, plus explicit `supersedes` resolution for source-aware derivative collisions.
+
 ## 0.18.5
 
 - Fixed ownership-normalization journaling to replay the exact graph-verified manifest paths

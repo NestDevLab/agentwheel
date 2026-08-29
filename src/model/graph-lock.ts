@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema } from "./artifact.js";
+import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema, packageSupersedesEntrySchema } from "./artifact.js";
 import { immutableCacheIdentitySchema } from "./cache-identity.js";
 
 export const CURRENT_GRAPH_LOCK_VERSION = 1 as const;
@@ -80,6 +80,7 @@ export const graphLockArtifactSchema = z.object({
   hash: z.string().min(16),
   channel: z.enum(["managed", "overlay", "addition", "override", "ejected"]).default("managed"),
   composedFrom: z.array(composedFromEntrySchema).optional(),
+  supersedes: z.array(packageSupersedesEntrySchema).optional(),
 });
 
 export const graphLockPlainNameIncumbentSchema = z.object({

@@ -106,10 +106,10 @@ interface Requirement {
   updateClosure?: boolean;
 }
 
-type PackageManifestV2 = Extract<PackageManifest, { schemaVersion: 2 }>;
-type PackageDependencies = NonNullable<PackageManifestV2["requires"]>;
+type PackageManifestModern = Exclude<PackageManifest, { schemaVersion: 1 }>;
+type PackageDependencies = NonNullable<PackageManifestModern["requires"]>;
 type PackageDependency = PackageDependencies[string];
-type PackageSuggestions = NonNullable<PackageManifestV2["suggests"]>;
+type PackageSuggestions = NonNullable<PackageManifestModern["suggests"]>;
 type PackageSuggestion = PackageSuggestions[string];
 
 interface FetchedPackage {
@@ -415,7 +415,7 @@ async function collectDependencyNeeds(
   options: ResolveGraphOptions,
   chain: string[],
 ): Promise<Requirement[]> {
-  if (fetched.manifest?.schemaVersion !== 2) return [];
+  if (!fetched.manifest || fetched.manifest.schemaVersion === 1) return [];
 
   const dependencies = fetched.manifest.requires ?? {};
   const suggestions = fetched.manifest.suggests ?? {};
@@ -1181,6 +1181,14 @@ function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
   for (const [selector, owners] of bySelector) {
     const uniqueOwners = [...new Map(owners.map((owner) => [owner.node.id, owner])).values()];
     if (uniqueOwners.length <= 1) continue;
+    const replacements = uniqueOwners.filter((owner) => {
+      const artifact = owner.artifacts.find((candidate) => artifactSelectorKey(candidate) === selector);
+      return uniqueOwners.every((other) => {
+        if (other === owner) return true;
+        return artifact?.supersedes?.some((entry) => entry.package === other.node.name && entry.selector === selector) === true;
+      });
+    });
+    if (replacements.length === 1) continue;
     throw new Error(
       `Direct dependency artifact collision for ${selector}: `
       + `${uniqueOwners.map((owner) => `${owner.node.id} required by ${owner.node.requiredBy.join(", ")}`).join("; ")}. `

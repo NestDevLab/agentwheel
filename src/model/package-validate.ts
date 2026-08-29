@@ -52,9 +52,19 @@ export async function validatePackage(root: string): Promise<PackageValidationRe
     findings.push({ level: "error", message: error instanceof Error ? error.message : String(error), path: packageRoot });
   }
 
-  if (manifest.schemaVersion === 2 && manifest.compose) {
+  if (manifest.schemaVersion !== 1 && manifest.compose) {
     for (const entry of manifest.compose) {
       await validateManifestComposeInclude(packageRoot, entry.include, entry.optional === true, findings, manifestPath, Object.keys(manifest.requires ?? {}));
+    }
+  }
+  if (manifest.schemaVersion === 3) {
+    const aliases = Object.keys(manifest.requires ?? {});
+    for (const [index, rule] of (manifest.compositionRules ?? []).entries()) {
+      validateSelector(rule.include, `compositionRules[${index}].include`, findings, manifestPath, { fragmentsOnly: true, aliases });
+      if (!rule.target.startsWith("skills/")) {
+        findings.push({ level: "error", message: `compositionRules[${index}].target: v3 composition rules may target only skills/*`, path: manifestPath });
+      }
+      await validateManifestComposeInclude(packageRoot, rule.include, false, findings, manifestPath, aliases);
     }
   }
 
@@ -62,7 +72,7 @@ export async function validatePackage(root: string): Promise<PackageValidationRe
 }
 
 function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageValidationFinding[], manifestPath: string): void {
-  if (manifest.schemaVersion === 2) {
+  if (manifest.schemaVersion !== 1) {
     for (const [alias, dependency] of Object.entries(manifest.requires ?? {})) {
       if (!alias.trim()) {
         findings.push({ level: "error", message: "Dependency alias must be non-empty", path: manifestPath });
@@ -84,13 +94,19 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
   for (const [provideIndex, provide] of manifest.provides.entries()) {
     if (!("items" in provide) || !provide.items) continue;
     for (const [itemName, item] of Object.entries(provide.items)) {
+      for (const declaration of item.supersedes ?? []) {
+        const expected = `${provide.type}/${itemName}`;
+        if (declaration.selector !== expected) {
+          findings.push({ level: "error", message: `provides[${provideIndex}].items.${itemName}.supersedes: selector must equal ${expected}`, path: manifestPath });
+        }
+      }
       for (const requirement of item.requires ?? []) {
         const selector = typeof requirement === "string" ? requirement : requirement.selector;
-        validateSelector(selector, `provides[${provideIndex}].items.${itemName}.requires`, findings, manifestPath, { aliases: manifest.schemaVersion === 2 ? Object.keys(manifest.requires ?? {}) : [] });
+        validateSelector(selector, `provides[${provideIndex}].items.${itemName}.requires`, findings, manifestPath, { aliases: manifest.schemaVersion !== 1 ? Object.keys(manifest.requires ?? {}) : [] });
       }
       for (const suggestion of item.suggests ?? []) {
         const alias = typeof suggestion === "string" ? suggestion : suggestion.alias;
-        if (manifest.schemaVersion === 2 && !Object.keys(manifest.suggests ?? {}).includes(alias)) {
+        if (manifest.schemaVersion !== 1 && !Object.keys(manifest.suggests ?? {}).includes(alias)) {
           findings.push({ level: "error", message: `provides[${provideIndex}].items.${itemName}.suggests: suggestion alias not declared: ${alias}`, path: manifestPath });
         }
         for (const selector of typeof suggestion === "string" ? [] : suggestion.select ?? []) {
@@ -99,7 +115,7 @@ function validateDeclaredSelectors(manifest: PackageManifest, findings: PackageV
       }
       for (const entry of item.compose ?? []) {
         validateSelector(entry.include, `provides[${provideIndex}].items.${itemName}.compose.include`, findings, manifestPath, {
-          aliases: manifest.schemaVersion === 2 ? Object.keys(manifest.requires ?? {}) : [],
+          aliases: manifest.schemaVersion !== 1 ? Object.keys(manifest.requires ?? {}) : [],
           fragmentsOnly: true,
         });
       }

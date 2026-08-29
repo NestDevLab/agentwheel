@@ -66,6 +66,53 @@ composition metadata, runtime targeting, or fragments.
 }
 ```
 
+`schemaVersion: 3` adds source-wide skill composition rules and explicit derivative ownership:
+
+```jsonc
+{
+  "schemaVersion": 3,
+  "name": "example/evolution-policy",
+  "version": "1.0.0",
+  "compositionRules": [
+    {
+      "target": "skills/*",
+      "include": "fragments/evolution.md",
+      "exclude": ["example/private:skills/legacy"],
+      "runtimes": ["claude", "codex", "copilot"]
+    }
+  ],
+  "provides": [
+    { "type": "fragments", "path": "fragments" },
+    {
+      "type": "skills",
+      "path": "skills",
+      "items": {
+        "review": {
+          "supersedes": [
+            {
+              "package": "vendor/upstream",
+              "selector": "skills/review",
+              "reason": "Governed redistributable derivative"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+Composition rules are render-time transclusion, not source mutation. Rules may target only
+`skills/*`; `target` and `exclude` accept `*` globs against plain `type/name` or qualified
+`package:type/name` selectors. The declaring package supplies the fragment and the graph lock
+records its hash in `composedFrom`. Installers apply global rules only from configured graph roots;
+a transitive dependency cannot inject a rule into sibling artifacts.
+
+`supersedes` resolves only the declared package and selector. It does not act as a wildcard or
+license grant. A direct collision is bypassed only when exactly one candidate explicitly
+supersedes every other colliding package. The declared selector must equal the replacement
+artifact's own selector; ambiguous or unrelated removal remains fatal.
+
 Dependency declarations in `requires` are part of the schema in this draft. Tools implementing
 L4 resolve the dependency graph recursively, apply parseable semver ranges, and lock the selected
 source identities. Tools below L4 may still validate and record these fields without resolving
@@ -200,3 +247,4 @@ OpenPack tools can implement partial conformance:
 - L2: selective install by artifact selector.
 - L3: Markdown composition with fragments.
 - L4: dependency graph resolution.
+- L5: schema v3 global skill composition and explicit derivative supersession.

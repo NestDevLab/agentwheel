@@ -36,6 +36,14 @@ export interface MarkdownIncludeOptions {
   originNodeId?: string;
   allowCrossPackage?: boolean;
   resolveCrossPackageInclude?: (request: CrossPackageIncludeRequest) => Promise<CrossPackageIncludeResolution | undefined>;
+  additionalComposeEntries?: (artifact: Artifact) => ExternalComposeEntry[];
+}
+
+export interface ExternalComposeEntry {
+  entry: PackageComposeEntry;
+  packageRoot: string;
+  artifactPaths: Map<string, string>;
+  nodeId?: string;
 }
 
 export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot: string, options: MarkdownIncludeOptions = {}): Promise<Artifact[]> {
@@ -53,7 +61,16 @@ export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot:
 
     const composedFrom: ComposedFromEntry[] = [];
     for (const file of files) {
-      const result = await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths, options);
+      const localEntries = composeEntriesForFile(artifact, file).map((entry) => ({
+        entry,
+        packageRoot,
+        artifactPaths,
+        nodeId: options.nodeId,
+      }));
+      const externalEntries = isPrimaryMarkdownFile(artifact, file)
+        ? options.additionalComposeEntries?.(artifact) ?? []
+        : [];
+      const result = await expandFile(file, packageRoot, [...localEntries, ...externalEntries], artifactPaths, options);
       if (result.changed) await writeFile(file, result.content, "utf8");
       composedFrom.push(...result.composedFrom);
     }
@@ -74,7 +91,8 @@ export async function validateMarkdownIncludes(artifacts: Artifact[], packageRoo
   const artifactPaths = artifactPathMap(artifacts);
   for (const artifact of artifacts) {
     for (const file of await markdownFilesForArtifact(artifact)) {
-      await expandFile(file, packageRoot, composeEntriesForFile(artifact, file), artifactPaths, options);
+      const entries = composeEntriesForFile(artifact, file).map((entry) => ({ entry, packageRoot, artifactPaths, nodeId: options.nodeId }));
+      await expandFile(file, packageRoot, entries, artifactPaths, options);
     }
   }
 }
@@ -82,7 +100,7 @@ export async function validateMarkdownIncludes(artifacts: Artifact[], packageRoo
 async function expandFile(
   file: string,
   packageRoot: string,
-  appendEntries: PackageComposeEntry[],
+  appendEntries: ExternalComposeEntry[],
   artifactPaths: Map<string, string>,
   options: MarkdownIncludeOptions,
 ): Promise<{ content: string; changed: boolean; composedFrom: ComposedFromEntry[] }> {
@@ -92,9 +110,11 @@ async function expandFile(
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
 
-  for (const entry of appendEntries) {
-    const included = await expandInclude(entry.include, packageRoot, artifactPaths, {
+  for (const external of appendEntries) {
+    const { entry } = external;
+    const included = await expandInclude(entry.include, external.packageRoot, external.artifactPaths, {
       ...options,
+      nodeId: external.nodeId,
       optional: entry.optional === true,
       markers: entry.markers !== false,
       chain: [owner],
@@ -295,6 +315,11 @@ function composeEntriesForFile(artifact: Artifact, file: string): PackageCompose
   if (!artifact.compose?.length) return [];
   if (artifact.kind === "file") return [resolve(artifact.stagedPath ?? artifact.sourcePath), resolve(file)].every(Boolean) && resolve(artifact.stagedPath ?? artifact.sourcePath) === resolve(file) ? artifact.compose : [];
   return basename(file) === "SKILL.md" && dirname(file) === resolve(artifact.stagedPath ?? artifact.sourcePath) ? artifact.compose : [];
+}
+
+function isPrimaryMarkdownFile(artifact: Artifact, file: string): boolean {
+  if (artifact.kind === "file") return resolve(artifact.stagedPath ?? artifact.sourcePath) === resolve(file);
+  return basename(file) === "SKILL.md" && dirname(file) === resolve(artifact.stagedPath ?? artifact.sourcePath);
 }
 
 function orderedForExpansion(artifacts: Artifact[]): Artifact[] {

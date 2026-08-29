@@ -12,9 +12,28 @@
     "branch": "main-integration",
     "base": "origin/main",
     "strategy": "cherry-pick",
-    "stacks": []
+    "stacks": [
+      "skill-evolution-v01"
+    ]
   },
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "skill-evolution-v01",
+      "branch": "pr/skill-evolution-v01",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Implement OpenPack source-aware skill evolution"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "coordination": {
@@ -27,5 +46,7 @@
       "backup_retention_days": 30,
       "backup_keep": 2
     }
-  }
+  },
+  "repository_mode": "delivery",
+  "channels": []
 }

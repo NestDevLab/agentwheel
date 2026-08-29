@@ -39,6 +39,22 @@ export const packageComposeEntrySchema = z.object({
 });
 export type PackageComposeEntry = z.infer<typeof packageComposeEntrySchema>;
 
+export const packageCompositionRuleSchema = z.object({
+  target: z.string().min(1),
+  include: z.string().min(1),
+  exclude: z.array(z.string().min(1)).optional(),
+  runtimes: z.array(z.string().min(1)).optional(),
+  markers: z.boolean().optional(),
+});
+export type PackageCompositionRule = z.infer<typeof packageCompositionRuleSchema>;
+
+export const packageSupersedesEntrySchema = z.object({
+  package: z.string().min(1),
+  selector: z.string().min(1),
+  reason: z.string().min(1),
+});
+export type PackageSupersedesEntry = z.infer<typeof packageSupersedesEntrySchema>;
+
 export const packageItemRequireObjectSchema = z.object({
   selector: z.string().min(1),
   optional: z.boolean().optional(),
@@ -88,6 +104,7 @@ export const artifactSchema = z.object({
   requires: z.array(packageItemRequireSchema).optional(),
   suggests: z.array(packageItemSuggestSchema).optional(),
   compose: z.array(packageComposeEntrySchema).optional(),
+  supersedes: z.array(packageSupersedesEntrySchema).optional(),
   runtimes: z.array(z.string().min(1)).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });

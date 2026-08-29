@@ -3,11 +3,11 @@ import { readFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
-import type { Artifact } from "../model/artifact.js";
+import type { Artifact, PackageCompositionRule } from "../model/artifact.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
 import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockOverride } from "../model/graph-lock.js";
 import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
-import { expandMarkdownIncludes, type CrossPackageIncludeResolution } from "../compose/markdown.js";
+import { expandMarkdownIncludes, type CrossPackageIncludeResolution, type ExternalComposeEntry } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
 import { renderClaudeSubagents } from "../staging/claude-subagents.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
@@ -37,7 +37,10 @@ export async function renderGraphForTarget(
   const ambiguousPackageNames = ambiguousGraphPackageNames(graph);
 
   for (const rawNode of graph.rawNodes) {
-    if (rawNode.node.selected.length === 0) continue;
+    const ownsCompositionRules = rawNode.depth === 0
+      && rawNode.manifest?.schemaVersion === 3
+      && Boolean(rawNode.manifest.compositionRules?.length);
+    if (rawNode.node.selected.length === 0 && !ownsCompositionRules) continue;
     const rawBundle = await stageResolvedArtifactsRaw(rawNode.resolved, rawNode.artifacts);
     const fragmentCustomized = targetContext.workspaceRoot && targetContext.adapter
       ? await applyFragmentCustomizations(rawBundle.artifacts, {
@@ -60,12 +63,19 @@ export async function renderGraphForTarget(
   }
 
   const aliasEdges = aliasEdgeMap(graph);
+  const compositionRules = collectCompositionRules(stagedNodes);
 
   for (const staged of [...stagedNodes.values()].sort((a, b) => a.rawNode.node.id.localeCompare(b.rawNode.node.id))) {
     const rawNode = staged.rawNode;
     const expandedArtifacts = await expandMarkdownIncludes(staged.artifacts, staged.root, {
       nodeId: rawNode.node.id,
       originNodeId: rawNode.node.id,
+      additionalComposeEntries: (artifact) => matchingCompositionEntries(
+        artifact,
+        rawNode.node.id,
+        targetContext.adapter?.name,
+        compositionRules,
+      ),
       resolveCrossPackageInclude: async (request): Promise<CrossPackageIncludeResolution | undefined> => {
         const edge = aliasEdges.get(`${request.fromNodeId}\0${request.alias}`);
         if (!edge) {
@@ -165,6 +175,66 @@ interface StagedGraphNode {
   artifactContent: Map<string, string | undefined>;
 }
 
+interface ResolvedCompositionRule {
+  ownerNodeId: string;
+  ownerPackageName: string;
+  rule: PackageCompositionRule;
+  packageRoot: string;
+  artifactPaths: Map<string, string>;
+}
+
+function collectCompositionRules(stagedNodes: Map<string, StagedGraphNode>): ResolvedCompositionRule[] {
+  const rules: ResolvedCompositionRule[] = [];
+  for (const staged of stagedNodes.values()) {
+    if (staged.rawNode.depth !== 0) continue;
+    const manifest = staged.rawNode.manifest;
+    if (!manifest || manifest.schemaVersion !== 3) continue;
+    for (const rule of manifest.compositionRules ?? []) {
+      rules.push({
+        ownerNodeId: staged.rawNode.node.id,
+        ownerPackageName: staged.rawNode.node.name,
+        rule,
+        packageRoot: staged.root,
+        artifactPaths: staged.artifactPaths,
+      });
+    }
+  }
+  return rules.sort((a, b) => `${a.ownerNodeId}\0${a.rule.target}\0${a.rule.include}`.localeCompare(`${b.ownerNodeId}\0${b.rule.target}\0${b.rule.include}`));
+}
+
+function matchingCompositionEntries(
+  artifact: Artifact,
+  targetNodeId: string,
+  runtime: string | undefined,
+  rules: ResolvedCompositionRule[],
+): ExternalComposeEntry[] {
+  const selector = `${artifact.type}/${artifact.name}`;
+  const qualifiedSelector = `${artifact.packageName ?? targetNodeId}:${selector}`;
+  const seen = new Set<string>();
+  const entries: ExternalComposeEntry[] = [];
+  for (const candidate of rules) {
+    const { rule } = candidate;
+    if (rule.runtimes?.length && (!runtime || !rule.runtimes.includes(runtime))) continue;
+    if (!globMatches(rule.target, selector) && !globMatches(rule.target, qualifiedSelector)) continue;
+    if (rule.exclude?.some((pattern) => globMatches(pattern, selector) || globMatches(pattern, qualifiedSelector))) continue;
+    const key = `${candidate.ownerNodeId}\0${rule.include}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      entry: { include: rule.include, markers: rule.markers },
+      packageRoot: candidate.packageRoot,
+      artifactPaths: candidate.artifactPaths,
+      nodeId: candidate.ownerNodeId,
+    });
+  }
+  return entries;
+}
+
+function globMatches(pattern: string, value: string): boolean {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*");
+  return new RegExp(`^${escaped}$`).test(value);
+}
+
 function aliasEdgeMap(graph: ResolvedGraph): Map<string, { to: string }> {
   return new Map(graph.edges.map((edge) => [`${edge.from}\0${edge.alias}`, { to: edge.to }]));
 }
@@ -216,10 +286,12 @@ interface WorkspaceOverride {
 }
 
 function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[]; overrides: GraphLockOverride[] } {
+  const superseded = supersededLogicalSelectors(artifacts);
+  const effectiveArtifacts = artifacts.filter((artifact) => !superseded.has(artifact.logicalSelector));
   const aliases = workspaceAliases(graph);
-  validateAliasScopes(graph, artifacts, aliases);
+  validateAliasScopes(graph, effectiveArtifacts, aliases);
   const decisions = new Map<string, GraphLockNamespacing>();
-  const withAliases: ResolvedArtifact[] = artifacts.map((artifact) => {
+  const withAliases: ResolvedArtifact[] = effectiveArtifacts.map((artifact) => {
     const alias = aliasForArtifact(artifact, graph, aliases);
     if (!alias) return artifact;
     const updated = { ...artifact, installName: alias };
@@ -262,6 +334,27 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     installName: finalInstallNames.get(`${override.graphNodeId}\0${override.type}\0${override.name}`) ?? override.installName,
   }));
   return { artifacts: out, namespacing: [...decisions.values()], overrides: finalOverrides };
+}
+
+function supersededLogicalSelectors(artifacts: ResolvedArtifact[]): Set<string> {
+  const removed = new Set<string>();
+  for (const replacement of artifacts) {
+    for (const declaration of replacement.supersedes ?? []) {
+      const replacementSelector = `${replacement.type}/${replacement.name}`;
+      if (declaration.selector !== replacementSelector) {
+        throw new Error(`Supersedes selector must match the replacement artifact ${replacement.logicalSelector}: ${declaration.selector}`);
+      }
+      const matches = artifacts.filter((candidate) =>
+        candidate !== replacement
+        && candidate.packageName === declaration.package
+        && `${candidate.type}/${candidate.name}` === declaration.selector);
+      if (matches.length > 1) {
+        throw new Error(`Supersedes target is ambiguous for ${replacement.logicalSelector}: ${declaration.package}:${declaration.selector}`);
+      }
+      if (matches[0]) removed.add(matches[0].logicalSelector);
+    }
+  }
+  return removed;
 }
 
 function applyWorkspaceOverrides(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; overrides: GraphLockOverride[] } {
@@ -499,5 +592,6 @@ function lockArtifactFor(artifact: ResolvedArtifact): GraphLockArtifact {
     hash: artifact.hash,
     channel: artifact.channel ?? "managed",
     composedFrom: artifact.composedFrom,
+    supersedes: artifact.supersedes,
   };
 }

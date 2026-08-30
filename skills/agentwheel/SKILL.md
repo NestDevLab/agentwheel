@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.19.10"
+  version: "0.20.0"
 ---
 
 # agentwheel
@@ -309,7 +309,7 @@ Named fleets are optional control-plane configurations. Select one explicitly wi
 local, and fleet scopes are isolated desired state: Agentwheel does not merge them, and no fleet
 has global priority.
 
-Named fleets require a schema-v3-capable Agentwheel CLI. Upgrade first, verify
+Named fleets use workspace schema v3 or newer and require a compatible Agentwheel CLI. Upgrade first, verify
 `agentwheel --version` and `agentwheel fleet --help`, then create or register fleet state. Do not
 downgrade the config, strip named-fleet data, or run an old CLI against it.
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.20.0
+
+- Added schema-v4 governed mutation policies with required reasons, durable sanitized receipts,
+  exact declared-path revisioning, audited no-commit overrides, and idempotent finalize/recovery.
+- Added strict revision-provider protocol v1 adapters for built-in Git and external JSON commands,
+  including canonical shared fixtures and explicit owned-but-unpublished records that distinguish
+  projected draft tips from integration control commits.
+- External providers now execute from an unlinked private snapshot of the verified entrypoint bytes,
+  with an explicit dependency-closure trust boundary and a timeout that kills the complete provider
+  process group.
+- Linked runtime apply journals to revisioned and journal-only governed operations, added receipt
+  revision/digest compare-and-swap checks, and added verified local crash recovery without rerunning
+  completed runtime writes.
+- Made commit-after-verify fail closed for unsupported multi-repository and composite mutations,
+  concurrent state changes, failed postchecks, hook rejection, and provider protocol mismatch.
+
 ## 0.19.10
 
 - Canonicalize composition identities by resolved node, fragment selector, and expanded content so

@@ -2,6 +2,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 import {
   findExistingWorkspaceRoot,
   fleetIdSchema,
@@ -11,6 +12,7 @@ import {
   workspaceConfigPath,
   workspaceConfigSchema,
   CURRENT_WORKSPACE_SCHEMA_VERSION,
+  supportsFleetConfig,
   type RegisteredFleet,
   type WorkspaceConfig,
 } from "./workspace.js";
@@ -85,10 +87,10 @@ export async function registerFleet(request: RegisterFleetRequest): Promise<Flee
   if (requiredPackages.length === 0) throw new Error("Fleet registration requires at least one --required-package <name>.");
   const globalRoot = resolve(request.globalRoot ?? homedir());
   const home = await readWorkspaceConfig(globalRoot);
-  if (home.schemaVersion === 3 && home.fleetId) {
+  if (supportsFleetConfig(home) && home.fleetId) {
     throw new Error(`The home config is fleet '${home.fleetId}', so it cannot own the global fleet registry.`);
   }
-  const existing = home.schemaVersion === 3 ? await canonicalizeExistingFleetRoots(home.fleets, globalRoot) : {};
+  const existing = supportsFleetConfig(home) ? await canonicalizeExistingFleetRoots(home.fleets, globalRoot) : {};
   if (existing[id]) throw new Error(`Fleet '${id}' is already registered.`);
   const root = await assertCanonicalDirectory(request.root, `Fleet '${id}' root`);
   const duplicateRoot = Object.entries(existing).find(([, value]) => value.root === root);
@@ -104,7 +106,9 @@ export async function registerFleet(request: RegisterFleetRequest): Promise<Flee
     exports: home.schemaVersion >= 2 ? home.exports : { selections: {} },
     fleets: { ...existing, [id]: registration },
   });
-  await writeJsonAtomic(globalWorkspaceConfigPath(globalRoot), upgraded);
+  const configPath = globalWorkspaceConfigPath(globalRoot);
+  declareMutationPath(configPath);
+  await writeJsonAtomic(configPath, upgraded);
   return { id, ...registration };
 }
 
@@ -130,7 +134,7 @@ async function canonicalizeExistingFleetRoots(
 export async function listRegisteredFleets(options: { globalRoot?: string } = {}): Promise<FleetRegistration[]> {
   const globalRoot = resolve(options.globalRoot ?? homedir());
   const home = await readWorkspaceConfig(globalRoot);
-  if (home.schemaVersion !== 3) return [];
+  if (!supportsFleetConfig(home)) return [];
   return Object.entries(home.fleets)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([id, registration]) => ({ id, ...registration }));
@@ -157,8 +161,8 @@ async function readRequiredConfig(root: string, label: string): Promise<Workspac
 }
 
 function assertFleetContract(id: string, registration: RegisteredFleet, config: WorkspaceConfig): void {
-  if (config.schemaVersion !== 3) {
-    throw new Error(`Fleet '${id}' config must use schemaVersion 3 before registration or selection.`);
+  if (!supportsFleetConfig(config)) {
+    throw new Error(`Fleet '${id}' config must use schemaVersion 3 or newer before registration or selection.`);
   }
   if (config.fleetId !== id) {
     throw new Error(`Fleet fleetId mismatch: expected '${id}', found '${config.fleetId ?? "missing"}'.`);
@@ -203,7 +207,7 @@ function missingScopeError(label: string): Error {
 }
 
 function assertNonFleetScope(kind: "user" | "local", config: WorkspaceConfig): void {
-  if (config.schemaVersion === 3 && config.fleetId) {
+  if (supportsFleetConfig(config) && config.fleetId) {
     throw new Error(
       `The ${kind} config declares fleetId '${config.fleetId}'. Select it through the registered --fleet <id> scope.`,
     );

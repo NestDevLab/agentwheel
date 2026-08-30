@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "action": "finalize",
+  "operationId": "123e4567-e89b-12d3-a456-426614174000",
+  "repositoryRoot": "/tmp/example-product",
+  "expectedHead": "1111111111111111111111111111111111111111",
+  "expectedManifestDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "commandName": "agentwheel install",
+  "reason": "Install the reviewed artifact set after runtime verification",
+  "noCommit": false,
+  "paths": [
+    {
+      "path": ".agentwheel/config.json",
+      "beforeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "afterSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}

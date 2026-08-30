@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "providerId": "syncwheel",
+  "action": "finalize",
+  "operationId": "123e4567-e89b-12d3-a456-426614174000",
+  "ok": true,
+  "status": "verified",
+  "expectedHead": "1111111111111111111111111111111111111111",
+  "resultingHead": "3333333333333333333333333333333333333333",
+  "productCommitSha": "2222222222222222222222222222222222222222",
+  "draftStackId": "agentwheel-123e4567-e89b-12d3-a456-426614174000",
+  "draftBranch": "syncwheel/draft/agentwheel-123e4567-e89b-12d3-a456-426614174000",
+  "draftTipSha": "4444444444444444444444444444444444444444",
+  "controlCommitSha": "3333333333333333333333333333333333333333",
+  "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "unmappedIntegrationCommits": [],
+  "published": false
+}

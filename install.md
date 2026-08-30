@@ -48,7 +48,7 @@ agentwheel --version
 agentwheel doctor --help
 ```
 
-Named fleets require a schema-v3-capable CLI. Upgrade Agentwheel first, verify
+Named fleets require a CLI that supports schema v3 or newer. Upgrade Agentwheel first, verify
 `agentwheel --version` and `agentwheel fleet --help`, then create, register, inspect, or plan fleet
 state. Do not rewrite the config to an older schema or remove named-fleet data to make an old CLI
 accept it.

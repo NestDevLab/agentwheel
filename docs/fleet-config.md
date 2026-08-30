@@ -8,14 +8,14 @@ User, local, and fleet configurations are separate desired-state scopes. Agentwh
 them, and no named fleet has global priority. Commands that need workspace state must select exactly
 one scope: `--user`, `--local`, or `--fleet <fleet-id>`.
 
-Named fleets require a schema-v3-capable Agentwheel CLI. Upgrade first and verify
+Named fleets use workspace schema v3 or newer and require a compatible Agentwheel CLI. Upgrade first and verify
 `agentwheel --version` and `agentwheel fleet --help`; only then create or inspect fleet state. Do
 not downgrade the config, remove fleet data, or run an old CLI against it.
 
 ## Create and register a fleet
 
 A fleet root is an existing canonical absolute directory with its own `.agentwheel/config.json`.
-The config uses schema v3, declares a `fleetId` matching the intended registry key, and contains
+The config uses schema v3 or newer, declares a `fleetId` matching the intended registry key, and contains
 every package named later with `--required-package`:
 
 ```jsonc
@@ -62,8 +62,44 @@ agentwheel fleet show example-fleet
 
 `fleet register` validates the canonical root, `fleetId`, and required packages before atomically
 adding the registration. It preserves existing user packages and upgrades the user registry to
-schema v3; it does not merge user desired state into the fleet. Repeat `--required-package` when a
+the current schema; it does not merge user desired state into the fleet. Repeat `--required-package` when a
 fleet contract requires more than one package.
+
+## Optional governed mutation policy
+
+Schema v4 adds an optional `mutationPolicy` to user, local, and fleet configs. It can require a
+full `--reason`, durable receipts, and commit-after-verify revisioning for mutating Agentwheel
+commands. Fleet-specific Git coordination belongs in a SHA-256-pinned external command provider;
+Agentwheel core does not infer branch, stack, publication, or remote-ref rules.
+
+```json
+{
+  "schemaVersion": 4,
+  "fleetId": "governed-fleet",
+  "mutationPolicy": {
+    "reason": "required",
+    "journal": "required",
+    "revisioning": {
+      "mode": "commit-after-verify",
+      "allowNoCommitOverride": false,
+      "reasonInCommit": "full",
+      "provider": {
+        "kind": "command",
+        "id": "coordination-provider",
+        "command": ["/absolute/path/to/coordination-provider", "revision-provider"],
+        "executableSha256": "<sha256-of-the-executable>",
+        "trustBoundary": "entrypoint",
+        "timeoutMs": 30000,
+        "protocolVersion": 1
+      }
+    }
+  }
+}
+```
+
+See [governed mutations and revision-provider protocol v1](specs/revision-provider-v1.md) for the
+wire contract, receipt recovery commands, policy precedence, and fail-closed multi-repository
+limits.
 
 ## Portable project selections
 

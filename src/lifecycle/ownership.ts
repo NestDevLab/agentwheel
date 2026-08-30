@@ -5,7 +5,7 @@ import { assertExactMergeContribution, hasMergeRemovalContent } from "../install
 import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
 import { defaultInstallationType } from "../model/adapter.js";
 import type { InstallManifestEntry } from "../model/manifest.js";
-import { acquireApplyLock, readApplyJournal } from "../install/transaction.js";
+import { acquireApplyLock, assertGovernedRuntimeTransportSupported, readApplyJournal } from "../install/transaction.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
@@ -46,6 +46,7 @@ export async function applyArtifactOwnershipHandoff(request: OwnershipHandoffReq
     throw new Error("Applying an ownership handoff requires expectedHash and expectedRevision from a reviewed dry-run.");
   }
   const transport = request.transport ?? localTransport;
+  assertGovernedRuntimeTransportSupported(transport);
   const scope = { installationType: request.installationType, stateKey: request.stateKey };
   const lock = await acquireApplyLock(request.targetRoot, request.adapter, transport, {}, scope);
   try {

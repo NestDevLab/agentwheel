@@ -27,7 +27,8 @@ agentwheel doctor --adapter codex --local
 agentwheel install github:NestDevLab/agentwheel --adapter codex --local --skill agentwheel
 ```
 
-Named fleets are optional and require a schema-v3-capable Agentwheel CLI. Select exactly one
-desired-state scope when it matters: `--user`, `--local`, or `--fleet <fleet-id>`. Upgrade and
-verify `agentwheel fleet --help` before creating, registering, or reading fleet state; see the fleet
-configuration guide for registration, plan-digested normalization, and journal recovery.
+Named fleets are optional and require an Agentwheel CLI that supports schema v3 or newer. Select
+exactly one desired-state scope when it matters: `--user`, `--local`, or `--fleet <fleet-id>`.
+Upgrade and verify `agentwheel fleet --help` before creating, registering, or reading fleet state;
+see the fleet configuration guide for registration, plan-digested normalization, and journal
+recovery.

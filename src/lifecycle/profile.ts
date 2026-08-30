@@ -12,6 +12,7 @@ import { inferSourceDriverName } from "../source/identify.js";
 import { transportForTarget } from "../transport/index.js";
 import type { TransportKind } from "../transport/index.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 
 export interface ProfileSyncOptions {
   workspaceRoot: string;
@@ -155,6 +156,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         warnings: graphPlan.warnings,
       };
       if (!options.dryRun) {
+        declareMutationPath(graphPlan.graphLockPath);
         const executePlugins = runtime.executePlugins ?? options.executePlugins;
         await applyCombinedInstallPlan(graphPlan.plan, {
           executePlugins,

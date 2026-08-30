@@ -383,7 +383,7 @@ agentwheel fleet normalize example-fleet --from user --recover
 Recovery restores the source side from a pending normalization journal after verifying that the
 recorded configs, manifests, and graph locks have not changed outside the transaction.
 
-Configuration with named fleets requires a schema-v3-capable Agentwheel CLI. Upgrade the CLI first,
+Named fleets use workspace schema v3 or newer and require a compatible Agentwheel CLI. Upgrade the CLI first,
 verify `agentwheel --version` and `agentwheel fleet --help`, then create the fleet config and
 register it. Do not edit the config to an older schema or run an older CLI against it.
 
@@ -407,6 +407,31 @@ reserved for configured agents.
 | **Runtime** | `.openclaw/`, `~/.claude/`, `.codex/`, ... | generated output |
 
 Flow: **author + workspace → `install` → runtime**.
+
+## Governed mutations
+
+Workspace schema v4 can require a full mutation reason, durable receipts, and automatic
+commit-after-verify revisioning for Agentwheel's mutating commands. Revision providers can use the
+built-in exact-path Git implementation or a strict JSON command whose absolute entrypoint is
+SHA-256 pinned. Runtime output remains generated state; only declared and verified repository paths
+are eligible for a commit.
+
+```bash
+agentwheel install --reason "Install the reviewed artifact set"
+agentwheel mutation list
+agentwheel mutation show <operation-id>
+agentwheel mutation finalize <operation-id>
+agentwheel mutation recover-runtime <operation-id>
+```
+
+See [the v1 revision-provider specification](docs/specs/revision-provider-v1.md) for configuration,
+the JSON protocol, crash recovery, and fail-closed boundaries.
+
+Provider-owned drafts are recorded as `owned-but-unpublished`, including their stack, branch,
+projected draft tip, and integration control commit. Agentwheel never publishes them and does not
+invent a publication command; inspect the durable record and follow the provider's separately
+documented, authorized workflow. An active-active provider check may deliberately remain blocked
+until then.
 
 ## Packages
 
@@ -610,7 +635,8 @@ OpenPack packages can depend on other packages and compose shared markdown fragm
   resolve.
 - **Offline & frozen installs.** `--offline` guarantees zero network; `--frozen-lock` hard-fails if
   resolution would differ from the lock.
-- **Introspection.** `agentwheel deps tree` prints the resolved graph; `agentwheel deps why
+- **Introspection.** `agentwheel deps tree` prints the resolved graph (source resolution may refresh
+  incidental local caches but does not recover runtime journals or persist trust); `agentwheel deps why
   <selector>` explains why an artifact is installed.
 
 ### Meta-packages (packs)

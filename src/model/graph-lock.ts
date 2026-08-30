@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { declareMutationPath } from "../mutation/declarations.js";
 import { artifactTypeSchema, composedFromEntrySchema, fileKindSchema, packageSupersedesEntrySchema } from "./artifact.js";
 import { immutableCacheIdentitySchema } from "./cache-identity.js";
 
@@ -144,6 +145,7 @@ export async function readGraphLock(path: string): Promise<GraphLock> {
 }
 
 export async function writeGraphLock(path: string, lock: GraphLock): Promise<void> {
+  declareMutationPath(path);
   await mkdir(dirname(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
   await writeFile(temp, stringifyGraphLock(lock), "utf8");

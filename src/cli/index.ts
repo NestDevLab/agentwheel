@@ -21,7 +21,7 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, stageSourceRaw } from "../staging/staging.js";
-import { CURRENT_WORKSPACE_SCHEMA_VERSION, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
+import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
@@ -67,6 +67,10 @@ import {
 import { pruneGitCache, releaseGitSnapshotLease } from "../source/cache.js";
 import { listRegisteredFleets, registerFleet, resolveWorkspaceScope, showRegisteredFleet } from "../model/fleet.js";
 import { applyFleetNormalization, planFleetNormalization, recoverFleetNormalization, type FleetNormalizationSource } from "../lifecycle/fleet-normalize.js";
+import { declareMutationPath } from "../mutation/declarations.js";
+import { GovernedMutation, checkMutationProvider, mutationPolicyForWorkspace, recoverMutationRuntime, resumeMutation } from "../mutation/coordinator.js";
+import { listMutationReceipts, readMutationReceipt, type MutationReceipt } from "../mutation/receipts.js";
+import { isGovernedCommand, requiresCleanMutationPreflight } from "../mutation/commands.js";
 
 const CLI_VERSION = resolveCliVersion();
 const COMPANION_SKILL_SOURCE = "github:NestDevLab/agentwheel";
@@ -82,6 +86,9 @@ program
   .version(CLI_VERSION)
   .showSuggestionAfterError(false)
   .option("--no-update-check", "disable npm version update check", false)
+  .option("--reason <text>", "full reason for a governed mutation")
+  .option("--operation-id <id>", "stable governed-mutation operation id")
+  .option("--no-commit", "apply under an audited policy override without creating a revision")
   .addHelpText("after", `
 
 Core flow:
@@ -127,7 +134,7 @@ const fleetCommand = program
 
 fleetCommand
   .command("register")
-  .description("register an existing schema-v3 fleet in the user config")
+  .description("register an existing named fleet in the user config")
   .argument("<id>", "fleet id")
   .requiredOption("--root <path>", "absolute canonical fleet root")
   .requiredOption("--required-package <name>", "required package (repeatable)", collectValueOption, [] as string[])
@@ -728,7 +735,12 @@ program
         const targets = await resolveCliTargets(normalizedOptions);
         for (const target of targets) {
           if (source) {
-            for (const result of await buildGraphPlansForTarget(target, source, normalizedOptions, { mode: "install" })) {
+            for (const result of await buildGraphPlansForTarget(
+              target,
+              source,
+              normalizedOptions,
+              { mode: "install", readOnly: true },
+            )) {
               console.log(formatDependencyTree(result.graph).join("\n"));
               for (const decision of result.bundle.graphLock.canonical.namespacing) {
                 console.log(`NAMESPACE ${decision.graphNodeId}:${decision.type}/${decision.name} -> ${decision.type}/${decision.installName} (${decision.reason})`);
@@ -1188,6 +1200,79 @@ journalCommand
     if (aborted === 0) console.log("No pending apply journals.");
   });
 
+const mutationCommand = program
+  .command("mutation")
+  .description("inspect and recover governed mutation receipts");
+
+mutationCommand
+  .command("check")
+  .description("check the configured revision provider without mutating repository state")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
+  .option("--json", "print the provider response as JSON", false)
+  .action(async (options) => {
+    const workspaceRoot = await workspaceContextRootFromOptions(normalizeRuntimeScopeOptions(options));
+    const response = await checkMutationProvider(workspaceRoot);
+    if (options.json) {
+      console.log(JSON.stringify(response ?? null, null, 2));
+      return;
+    }
+    console.log(response
+      ? `Revision provider ${response.providerId}: ${response.status}`
+      : "No commit-after-verify mutation provider is configured for this workspace.");
+  });
+
+mutationCommand
+  .command("list")
+  .description("list durable governed mutation receipts")
+  .option("--json", "print receipts as JSON", false)
+  .action(async (options) => {
+    const receipts = await listMutationReceipts();
+    if (options.json) {
+      console.log(JSON.stringify(receipts, null, 2));
+      return;
+    }
+    if (receipts.length === 0) return console.log("No governed mutation receipts.");
+    for (const receipt of receipts) printMutationReceiptSummary(receipt);
+  });
+
+mutationCommand
+  .command("show")
+  .description("show one durable governed mutation receipt")
+  .argument("<operation-id>", "mutation operation id")
+  .option("--json", "print the receipt as JSON", false)
+  .action(async (operationId, options) => {
+    const receipt = await readMutationReceipt(operationId);
+    if (options.json) return console.log(JSON.stringify(receipt, null, 2));
+    printMutationReceipt(receipt);
+  });
+
+for (const action of ["finalize", "recover"] as const) {
+  mutationCommand
+    .command(action)
+    .description(`${action} one verified successful governed mutation idempotently`)
+    .argument("<operation-id>", "mutation operation id")
+    .option("--json", "print the updated receipt as JSON", false)
+    .action(async (operationId, options) => {
+      const receipt = await resumeMutation(operationId, action);
+      if (options.json) return console.log(JSON.stringify(receipt, null, 2));
+      printMutationReceipt(receipt);
+    });
+}
+
+mutationCommand
+  .command("recover-runtime")
+  .description("resume linked runtime apply journals, verify them, and finalize revisioning")
+  .argument("<operation-id>", "mutation operation id")
+  .option("--json", "print the updated receipt as JSON", false)
+  .action(async (operationId, options) => {
+    const receipt = await recoverMutationRuntime(operationId);
+    if (options.json) return console.log(JSON.stringify(receipt, null, 2));
+    printMutationReceipt(receipt);
+  });
+
 program
   .command("doctor")
   .description("check agentwheel runtime setup and companion skill guidance")
@@ -1333,6 +1418,8 @@ async function runInstallCommand(
     for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
       if (!behavior.quiet) console.log(formatGraphPlan(result));
       if (behavior.apply) {
+        declareMutationPath(result.graphLockPath);
+        if (extraPackage && !targetOptions.onlySource) declareMutationPath(workspaceConfigPath(target.workspaceRoot));
         const transport = transportForTarget(target);
         const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
         await applyCombinedInstallPlan(result.plan, {
@@ -1989,6 +2076,7 @@ async function runConfiguredGraphPackages(
     console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
     console.log(formatGraphPlan(result));
     if (!options.dryRun) {
+      declareMutationPath(result.graphLockPath);
       const transport = transportForTarget(target);
       const executePlugins = target.executePlugins ?? options.executePlugins;
       await applyCombinedInstallPlan(result.plan, {
@@ -2013,7 +2101,7 @@ async function buildGraphPlansForTarget(
   target: RuntimeTarget,
   source: string | undefined,
   options: GraphCliOptions,
-  behavior: { mode: "install" | "update" },
+  behavior: { mode: "install" | "update"; readOnly?: boolean },
 ) {
   const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -2197,7 +2285,7 @@ async function buildGraphPlansForTarget(
       offline: targetOptions.offline,
       yes: targetOptions.yes,
       trustPatterns: targetOptions.trust ?? [],
-      readOnly: targetOptions.dryRun === true,
+      readOnly: behavior.readOnly === true || targetOptions.dryRun === true,
       isTTY: process.stdin.isTTY === true,
       forceDrift: targetOptions.forceDrift,
       forceConflict: targetOptions.forceConflict,
@@ -3062,6 +3150,18 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
             targetFingerprintParts(removedTarget, adapter, removedAdapterOptions, removedInstallationType),
           ),
         };
+    if (!options.dryRun) {
+      declareMutationPath(workspaceConfigPath(target.workspaceRoot));
+      const declarativeGraphPath = remainingGraphPlan
+        ? remainingGraphPlan.graphLockPath
+        : graphLockPathForTarget(
+            removedTarget.workspaceRoot,
+            targetKeyForTarget(removedTarget, adapter.name),
+            adapter.name,
+            targetFingerprintParts(removedTarget, adapter, removedAdapterOptions, removedInstallationType),
+          );
+      declareMutationPath(declarativeGraphPath);
+    }
     const result = await uninstall(plan, {
       dryRun: options.dryRun,
       force: options.force,
@@ -3360,6 +3460,7 @@ async function runCompositeUpdate(
   packageName: string | undefined,
   options: GraphCliOptions,
 ): Promise<void> {
+  await assertCompositeMutationSupported(workspaceRoot, profile, options.dryRun === true);
   const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
   printStatusReport(preflight);
   const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
@@ -3409,6 +3510,7 @@ async function runCompositeSkillUpdate(
   packageName: string | undefined,
   options: GraphCliOptions,
 ): Promise<void> {
+  await assertCompositeMutationSupported(workspaceRoot, profile, options.dryRun === true);
   const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
   printStatusReport(preflight);
   const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
@@ -3458,6 +3560,7 @@ async function runCompositeInstall(
   options: GraphCliOptions,
   behavior: { apply: boolean },
 ): Promise<void> {
+  await assertCompositeMutationSupported(workspaceRoot, profile, !behavior.apply);
   const preflight = await collectCompositeStatus(workspaceRoot, profileName, profile, options);
   printStatusReport(preflight);
   const blockers = preflight.members.filter((member) => blocksCompositeApply(member.health));
@@ -3496,6 +3599,33 @@ async function runCompositeInstall(
     const result = await runMemberAgentwheel(member, workspaceRoot, args, memberChain);
     if (result.stdout.trim()) console.log(result.stdout.trimEnd());
     if (result.stderr.trim()) console.error(result.stderr.trimEnd());
+  }
+}
+
+async function assertCompositeMutationSupported(
+  workspaceRoot: string,
+  profile: Extract<WorkspaceProfile, { members: unknown[] }>,
+  readOnly: boolean,
+): Promise<void> {
+  if (readOnly) return;
+  if (activeMutation) {
+    throw new Error(
+      "Governed composite-profile mutations are refused because distributed child receipts and atomic cross-member revisioning are not yet supported.",
+    );
+  }
+  for (const member of profile.members) {
+    if (member.transport !== "local") {
+      throw new Error(
+        `Composite-profile mutation is refused before member execution because ${member.id} uses ${member.transport}; durable remote policy and recovery preflight is not implemented.`,
+      );
+    }
+    const memberRoot = resolve(workspaceRoot, member.workspace);
+    const memberPolicy = await mutationPolicyForWorkspace(memberRoot);
+    if (memberPolicy?.revisioning.mode === "commit-after-verify") {
+      throw new Error(
+        `Composite-profile mutation is refused before member execution because ${member.id} uses commit-after-verify; distributed child receipts are not implemented.`,
+      );
+    }
   }
 }
 
@@ -4010,7 +4140,7 @@ async function resolveCliWorkspaceScope(options: RuntimeScopeOptions): Promise<{
   if (options.targetRoot && !hasWorkspaceSelector(options) && !derivedUserScope) {
     const root = normalizeTargetRoot(options.targetRoot);
     const config = await readWorkspaceConfig(root);
-    if (config.schemaVersion === 3 && config.fleetId) {
+    if (supportsFleetConfig(config) && config.fleetId) {
       const kind = isHomePath(root) ? "user" : "local";
       throw new Error(
         `The ${kind} config declares fleetId '${config.fleetId}'. Select it through the registered --fleet <id> scope.`,
@@ -4163,6 +4293,7 @@ async function initPackage(root: string): Promise<void> {
   await mkdir(join(root, "rules"), { recursive: true });
   await mkdir(join(root, "skills"), { recursive: true });
   const manifestPath = join(root, "openpack.json");
+  const instructionsPath = join(root, "instructions", "AGENTS.md");
   const manifest = {
     schemaVersion: CURRENT_OPENPACK_SCHEMA_VERSION,
     name: "example/agentwheel-package",
@@ -4173,8 +4304,10 @@ async function initPackage(root: string): Promise<void> {
       { type: "skills", path: "skills" },
     ],
   };
+  declareMutationPath(manifestPath);
+  declareMutationPath(instructionsPath);
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-  await writeFile(join(root, "instructions", "AGENTS.md"), "# Agent Instructions\n", "utf8");
+  await writeFile(instructionsPath, "# Agent Instructions\n", "utf8");
 }
 
 async function defaultBootstrapPackage(_root: string): Promise<WorkspacePackage | undefined> {
@@ -4320,6 +4453,172 @@ function printSearchResults(query: string, results: SearchResult[]): void {
   }
 }
 
+interface GovernedCommandContext {
+  workspaceRoot: string;
+  anticipatedPaths: string[];
+  additionalWorkspaceRoots?: string[];
+  requireCleanWorkingTree?: boolean;
+  requiresDeclarativeRepositoryDelta?: boolean;
+}
+
+interface GlobalMutationOptions extends RuntimeScopeOptions {
+  reason?: string;
+  operationId?: string;
+  commit?: boolean;
+  dryRun?: boolean;
+  apply?: boolean;
+  recover?: boolean;
+  runtime?: string;
+  from?: string;
+}
+
+let activeMutation: GovernedMutation | undefined;
+
+program.hook("preAction", async (_command, actionCommand) => {
+  if (!isGovernedMutationCommand(actionCommand)) return;
+  const options = actionCommand.optsWithGlobals() as GlobalMutationOptions;
+  const context = await governedCommandContext(actionCommand, options);
+  activeMutation = await GovernedMutation.begin({
+    workspaceRoot: context.workspaceRoot,
+    commandName: `agentwheel ${commandPath(actionCommand)}`,
+    reason: options.reason,
+    operationId: options.operationId,
+    noCommit: options.commit === false,
+    anticipatedPaths: context.anticipatedPaths,
+    additionalWorkspaceRoots: context.additionalWorkspaceRoots,
+    requireCleanWorkingTree: context.requireCleanWorkingTree,
+    requiresDeclarativeRepositoryDelta: context.requiresDeclarativeRepositoryDelta,
+  });
+  if (activeMutation) console.error(`Agentwheel mutation operation: ${activeMutation.operationId}`);
+});
+
+program.hook("postAction", async (_command, actionCommand) => {
+  if (!activeMutation || !isGovernedMutationCommand(actionCommand)) return;
+  const mutation = activeMutation;
+  if (typeof process.exitCode === "number" && process.exitCode !== 0) {
+    const error = new Error(`agentwheel ${commandPath(actionCommand)} completed with exit code ${process.exitCode}`);
+    await mutation.fail(error);
+    activeMutation = undefined;
+    throw error;
+  }
+  const receipt = await mutation.complete();
+  activeMutation = undefined;
+  console.error(`Agentwheel mutation ${receipt.operationId}: ${receipt.status}`);
+  for (const line of mutationHandoffLines(receipt)) console.error(line);
+});
+
+function isGovernedMutationCommand(command: Command): boolean {
+  const path = commandPath(command);
+  const options = command.optsWithGlobals() as GlobalMutationOptions;
+  return isGovernedCommand(path, options);
+}
+
+async function governedCommandContext(command: Command, options: GlobalMutationOptions): Promise<GovernedCommandContext> {
+  const path = commandPath(command);
+  if (path === "fleet register") {
+    return { workspaceRoot: homedir(), anticipatedPaths: [globalWorkspaceConfigPath()] };
+  }
+  if (path === "fleet normalize") {
+    const destinationFleet = String(command.args[0] ?? "");
+    const scope = await resolveWorkspaceScope({ fleet: destinationFleet });
+    const sourceRoot = options.from === "user"
+      ? homedir()
+      : options.from?.startsWith("fleet:")
+        ? (await resolveWorkspaceScope({ fleet: options.from.slice("fleet:".length) })).root
+        : undefined;
+    if (!sourceRoot) throw new Error("Fleet normalization requires --from user or --from fleet:<id>.");
+    return {
+      workspaceRoot: scope.root,
+      anticipatedPaths: [workspaceConfigPath(scope.root), workspaceConfigPath(sourceRoot)],
+      additionalWorkspaceRoots: [sourceRoot],
+      requireCleanWorkingTree: true,
+    };
+  }
+  if (path === "init") {
+    const targetRoot = normalizeTargetRoot(options.targetRoot ?? process.cwd());
+    const workspaceRoot = await findExistingWorkspaceRoot(targetRoot) ?? targetRoot;
+    const kind = String(command.args[0] ?? "workspace");
+    return {
+      workspaceRoot,
+      anticipatedPaths: kind === "package"
+        ? [join(targetRoot, "openpack.json"), join(targetRoot, "instructions", "AGENTS.md")]
+        : [workspaceConfigPath(targetRoot)],
+    };
+  }
+  if (path === "package migrate") {
+    const packageRoot = normalizeTargetRoot(String(command.args[0] ?? "."));
+    return {
+      workspaceRoot: await findExistingWorkspaceRoot(packageRoot) ?? packageRoot,
+      anticipatedPaths: ["agentwheel.json", "agentwheel.jsonc", "openpack.json", "openpack.jsonc"]
+        .map((name) => join(packageRoot, name)),
+    };
+  }
+
+  const source = typeof command.args[0] === "string" ? command.args[0] : undefined;
+  const normalized = normalizeRuntimeScopeOptions(options, {
+    defaultUser: (path === "install" || path === "sync") && shouldDefaultUserInstall(source, options),
+  });
+  const contextOnly = path === "cache prune";
+  const workspaceRoot = contextOnly
+    ? await workspaceContextRootFromOptions(normalized)
+    : await workspaceRootFromOptions(normalized);
+  const anticipatedPaths: string[] = [];
+  if (path === "add") anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
+  if (path === "remember" && options.runtime) {
+    anticipatedPaths.push(join(workspaceRoot, ".agentwheel", "overlays", options.runtime, "instructions.local.md"));
+  }
+  if (path === "uninstall" && source) anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
+  return {
+    workspaceRoot,
+    anticipatedPaths,
+    requireCleanWorkingTree: requiresCleanMutationPreflight(path),
+    requiresDeclarativeRepositoryDelta: path === "ownership handoff",
+  };
+}
+
+function commandPath(command: Command): string {
+  const names: string[] = [];
+  let current: Command | null = command;
+  while (current && current !== program) {
+    names.unshift(current.name());
+    current = current.parent;
+  }
+  return names.join(" ");
+}
+
+function printMutationReceiptSummary(receipt: MutationReceipt): void {
+  console.log(`${receipt.operationId}\t${receipt.status}\t${receipt.commandName}\t${receipt.updatedAt}`);
+}
+
+function printMutationReceipt(receipt: MutationReceipt): void {
+  printMutationReceiptSummary(receipt);
+  console.log(`Reason: ${receipt.reason}`);
+  console.log(`Repository: ${receipt.repositoryRoot ?? "none"}`);
+  console.log(`Expected HEAD: ${receipt.expectedHead ?? "none"}`);
+  console.log(`Paths: ${receipt.paths.length === 0 ? "none" : receipt.paths.map((entry) => entry.path).join(", ")}`);
+  if (receipt.providerResponse && "productCommitSha" in receipt.providerResponse && receipt.providerResponse.productCommitSha) {
+    console.log(`Product commit: ${receipt.providerResponse.productCommitSha}`);
+  }
+  for (const line of mutationHandoffLines(receipt)) console.log(line);
+  if (receipt.error) console.log(`Error: ${receipt.error}`);
+}
+
+function mutationHandoffLines(receipt: MutationReceipt): string[] {
+  const response = receipt.providerResponse;
+  if (!response || !("published" in response) || response.published !== false
+    || !(response.draftStackId || response.draftBranch || response.draftTipSha || response.controlCommitSha)) return [];
+  return [
+    `Ownership record: owned-but-unpublished (provider=${response.providerId}, published=false).`,
+    `Draft stack: ${response.draftStackId ?? "none"}`,
+    `Draft branch: ${response.draftBranch ?? "none"}`,
+    `Draft tip: ${response.draftTipSha ?? "none"}`,
+    `Control commit: ${response.controlCommitSha ?? "none"}`,
+    `Read-only inspection: agentwheel mutation show ${receipt.operationId}`,
+    `Publication: not performed. Agentwheel exposes no publication command; use provider '${response.providerId}' documentation only after separate authorization.`,
+    "Active-active note: a fresh provider check may intentionally block while this ownership remains unresolved.",
+  ];
+}
+
 async function main(): Promise<void> {
   await maybeCheckForUpdate({
     currentVersion: CLI_VERSION,
@@ -4333,6 +4632,10 @@ async function main(): Promise<void> {
 try {
   await main();
 } catch (error: unknown) {
+  if (activeMutation) {
+    await activeMutation.fail(error).catch(() => undefined);
+    activeMutation = undefined;
+  }
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }

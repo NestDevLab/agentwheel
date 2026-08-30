@@ -41,8 +41,8 @@ agentwheel install --fleet example-fleet --profile daily --dry-run
 `--user`, `--local`, and `--fleet <fleet-id>` select separate desired-state scopes. Named fleets
 are optional. Do not merge scopes or assume a fleet has priority over user or local state.
 
-Register and inspect a schema-v3 fleet only after its canonical root, matching `fleetId`, and
-required packages exist:
+Register and inspect a fleet using schema v3 or newer only after its canonical root, matching
+`fleetId`, and required packages exist:
 
 ```bash
 agentwheel fleet register example-fleet --root /srv/agentwheel/fleets/example-fleet --required-package core-agent-pack
@@ -60,7 +60,7 @@ agentwheel fleet normalize example-fleet --from user --package core-agent-pack -
 agentwheel fleet normalize example-fleet --from user --recover
 ```
 
-Named fleets require a schema-v3-capable CLI. Upgrade Agentwheel first and verify
+Named fleets require a CLI that supports schema v3 or newer. Upgrade Agentwheel first and verify
 `agentwheel fleet --help` before creating, registering, reading, or planning fleet state. Do not
 downgrade the config, strip fleet fields, or run a planning/mutation command with the old CLI.
 

@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "providerId": "syncwheel",
+  "action": "check",
+  "operationId": "operation-001",
+  "ok": true,
+  "status": "ready"
+}

@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe("named fleet config and resolution", () => {
-  it("reads v1/v2 and accepts v3 with optional fleet identity and home registry", () => {
+  it("reads v1/v2 and accepts v3/v4 with optional fleet identity and home registry", () => {
     expect(workspaceConfigSchema.parse({ schemaVersion: 1 }).schemaVersion).toBe(1);
     expect(workspaceConfigSchema.parse({ schemaVersion: 2 }).schemaVersion).toBe(2);
     const parsed = workspaceConfigSchema.parse({
@@ -34,6 +34,29 @@ describe("named fleet config and resolution", () => {
     if (parsed.schemaVersion !== 3) throw new Error("expected v3 fixture");
     expect(parsed.fleetId).toBe("delivery");
     expect(parsed.fleets.delivery?.requiredPackages).toEqual(["core"]);
+    expect(workspaceConfigSchema.parse({ schemaVersion: 4, fleetId: "delivery" }).schemaVersion).toBe(4);
+  });
+
+  it.each([3, 4] as const)("registers and selects schema-v%s fleet state", async (schemaVersion) => {
+    const home = await tempRoot(`agentwheel-fleet-v${schemaVersion}-home-`);
+    const fleet = await tempRoot(`agentwheel-fleet-v${schemaVersion}-root-`);
+    await writeConfig(home, { schemaVersion: 2 });
+    await writeConfig(fleet, {
+      schemaVersion,
+      fleetId: "delivery",
+      packages: [pkg("core")],
+      ...(schemaVersion === 4 ? {
+        mutationPolicy: { reason: "optional", journal: "off", revisioning: { mode: "off" } },
+      } : {}),
+    });
+
+    await registerFleet({ id: "delivery", root: fleet, requiredPackages: ["core"], globalRoot: home });
+    await expect(resolveWorkspaceScope({ fleet: "delivery", globalRoot: home })).resolves.toMatchObject({
+      kind: "fleet",
+      root: fleet,
+      fleetId: "delivery",
+      config: { schemaVersion },
+    });
   });
 
   it("isolates desired state while inheriting only global registry and trust", async () => {
@@ -134,7 +157,7 @@ describe("named fleet config and resolution", () => {
     await expect(registerFleet({ id: "delivery", root: link, requiredPackages: ["core"], globalRoot: home })).rejects.toThrow(/canonical|symlink/i);
   });
 
-  it("registers atomically, upgrades only home to v3, and preserves prior fields", async () => {
+  it("registers atomically, upgrades only home to the current schema, and preserves prior fields", async () => {
     const home = await tempRoot("agentwheel-fleet-home-");
     const fleet = await tempRoot("agentwheel-fleet-root-");
     await writeConfig(home, { schemaVersion: 1, packages: [pkg("home")], bootstrapSkills: false });
@@ -143,7 +166,7 @@ describe("named fleet config and resolution", () => {
     const registered = await registerFleet({ id: "delivery", root: fleet, requiredPackages: ["core"], globalRoot: home });
     expect(registered.root).toBe(await realpath(fleet));
     const saved = await readWorkspaceConfig(home);
-    expect(saved).toMatchObject({ schemaVersion: 3, bootstrapSkills: false });
+    expect(saved).toMatchObject({ schemaVersion: 4, bootstrapSkills: false });
     expect(saved.packages.map((entry) => entry.name)).toEqual(["home"]);
     expect(await listRegisteredFleets({ globalRoot: home })).toEqual([registered]);
     expect(await showRegisteredFleet("delivery", { globalRoot: home })).toEqual(registered);
@@ -169,7 +192,7 @@ describe("named fleet config and resolution", () => {
 
     await registerFleet({ id: "delivery", root: delivery, requiredPackages: ["core"], globalRoot: home });
     const saved = await readWorkspaceConfig(home);
-    if (saved.schemaVersion !== 3) throw new Error("expected schema v3 registry");
+    if (saved.schemaVersion !== 4) throw new Error("expected schema v4 registry");
     expect(saved.fleets.primary?.root).toBe(await realpath(existing));
   });
 

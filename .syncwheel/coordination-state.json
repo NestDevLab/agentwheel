@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
+    "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:04:37+00:00",
+  "created_at": "2026-08-30T22:05:02+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -11,6 +11,7 @@
     "refs/heads/main-integration": "ad3ac53cbe13b3ce58a202a3848b4ce2a8ad7160",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
+    "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
     "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
@@ -73,23 +74,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/agentwheel-coordination-cleanup",
+        "branch": "pr/agentwheel-coordination-cleanup",
         "commits": [
           "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
         ],
         "id": "agentwheel-coordination-cleanup",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "fe873edaf78912c7d310d95e4782ff56973d1de882ded993021a635299b6d16a",
-  "parent_state": "c2f4db4830d86c2d165f1a34814c2f5eeffefee0",
+  "manifest_digest": "8f21a6c8c391ff17aefb6df7762497b462e9ade8cfa42941abc04040ddc8be26",
+  "parent_state": "48e08991dc21069ef017001d8a387ef337a35169",
   "projection_status": "partial",
-  "publication_id": "5e307fc4-5fb3-4c27-8f76-882dd3f9b66f",
-  "publication_scope": "stack:agentwheel-coordination-cleanup",
+  "publication_id": "8b7791ed-e1d9-4ba7-b946-b330f1090061",
+  "publication_scope": "promote:agentwheel-coordination-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -300,6 +300,14 @@
       "ref": "refs/heads/syncwheel/draft/agentwheel-0-20-0",
       "remote_tip": null,
       "stack": "agentwheel-0-20-0"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-coordination-cleanup",
+      "closed_at": "2026-08-30T22:04:54+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup",
+      "remote_tip": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
+      "stack": "agentwheel-coordination-cleanup"
     }
   ]
 }

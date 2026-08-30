@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/merge-managed-self-normalization": "f488cd98a4bd25bfab6138e6f18a91d14fff2ae9"
+    "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-30T02:34:36+00:00",
+  "created_at": "2026-08-30T02:38:58+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -16,7 +16,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
-    "refs/heads/pr/merge-managed-self-normalization": "f488cd98a4bd25bfab6138e6f18a91d14fff2ae9",
+    "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
@@ -117,7 +117,9 @@
           "role": "canonical"
         },
         "branch": "pr/merge-managed-self-normalization",
-        "commits": [],
+        "commits": [
+          "d1ed81494b942690f2de9e94e86d7583418644e0"
+        ],
         "id": "merge-managed-self-normalization",
         "integration_branch": "main-integration",
         "target_branch": "main"
@@ -125,10 +127,10 @@
     ],
     "version": 2
   },
-  "manifest_digest": "f314124d7e52c451d5af278346690b06ee9ed19bec7df102477e10a842b25036",
-  "parent_state": "e36a0d62a8a3a87920c943a7c8ac927fed5ae5b9",
+  "manifest_digest": "af41c73dc6da2122b3d516d4896ad678fb9d5209f1646abce13e2d6dd84b4673",
+  "parent_state": "ae50abe42cdaf13f463c8dc6432ea52e87df258f",
   "projection_status": "partial",
-  "publication_id": "d3dd84d8-b155-47f8-8416-503ad00bcff6",
+  "publication_id": "ccc7481d-3b6a-41eb-8528-047093d9a643",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.35.1",

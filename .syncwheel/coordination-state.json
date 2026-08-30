@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T02:51:15+00:00",
+  "created_at": "2026-08-30T21:50:13+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -60,7 +58,6 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "orphaned-fleet-ownership-recovery",
         "orphaned-fleet-ownership-journal-target",
         "skill-evolution-v01",
         "merge-managed-self-normalization",
@@ -69,20 +66,6 @@
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/orphaned-fleet-ownership-recovery",
-        "commits": [
-          "b8d2fdae3359c3d728d692f4d428724be6a46203"
-        ],
-        "id": "orphaned-fleet-ownership-recovery",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -143,13 +126,13 @@
     ],
     "version": 2
   },
-  "manifest_digest": "462e9f091539a00e485cd7cafdb006c8a3e3785fcc1ed0bb80a7655be11d4f65",
-  "parent_state": "438e4c4b65cc180e30f602120850815ac72012e5",
+  "manifest_digest": "db3ae3285ed8dd080ea456cead08275917aa8057b321b51e424904a89e2b5bdb",
+  "parent_state": "4ba22e0e812a9af7a9c6278d9d94e36513fa4f10",
   "projection_status": "partial",
-  "publication_id": "b14ec786-8a22-40d5-8506-9d521e9e5954",
-  "publication_scope": "partial",
+  "publication_id": "98019123-5099-441d-b935-61b68a7ab3f1",
+  "publication_scope": "close:orphaned-fleet-ownership-recovery",
   "schema_version": 2,
-  "syncwheel_version": "0.35.1",
+  "syncwheel_version": "0.36.0",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",
@@ -310,6 +293,14 @@
       "ref": "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission",
       "remote_tip": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
       "stack": "agentwheel-0-18-3-legacy-lock-admission"
+    },
+    {
+      "branch": "pr/orphaned-fleet-ownership-recovery",
+      "closed_at": "2026-08-30T21:50:05+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/orphaned-fleet-ownership-recovery",
+      "remote_tip": "b8d2fdae3359c3d728d692f4d428724be6a46203",
+      "stack": "orphaned-fleet-ownership-recovery"
     }
   ]
 }

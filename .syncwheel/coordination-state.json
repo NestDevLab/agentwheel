@@ -1,7 +1,9 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:02:30+00:00",
+  "created_at": "2026-08-30T22:04:37+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -25,6 +27,7 @@
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/syncwheel/draft/agentwheel-0-20-0": null,
+    "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -58,17 +61,35 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "agentwheel-coordination-cleanup"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/agentwheel-coordination-cleanup",
+        "commits": [
+          "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
+        ],
+        "id": "agentwheel-coordination-cleanup",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "b6196374ca7b80e33dc754a189c713b55a9fe8a2",
+  "manifest_digest": "fe873edaf78912c7d310d95e4782ff56973d1de882ded993021a635299b6d16a",
+  "parent_state": "c2f4db4830d86c2d165f1a34814c2f5eeffefee0",
   "projection_status": "partial",
-  "publication_id": "c29cc207-d7f4-431a-b013-defd1969d38d",
-  "publication_scope": "close:agentwheel-0-20-0",
+  "publication_id": "5e307fc4-5fb3-4c27-8f76-882dd3f9b66f",
+  "publication_scope": "stack:agentwheel-coordination-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [

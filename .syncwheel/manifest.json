@@ -9,31 +9,12 @@
     "replay_mode": "auto"
   },
   "integration": {
-    "branch": "main-integration",
     "base": "origin/main",
-    "strategy": "cherry-pick",
-    "stacks": [
-      "skill-evolution-v01"
-    ]
+    "branch": "main-integration",
+    "stacks": [],
+    "strategy": "cherry-pick"
   },
-  "stacks": [
-    {
-      "id": "skill-evolution-v01",
-      "branch": "pr/skill-evolution-v01",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Implement OpenPack source-aware skill evolution"
-      }
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "coordination": {

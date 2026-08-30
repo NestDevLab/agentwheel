@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.2
+
+- Allow exact MCP retirement to inspect its explicitly selected legacy state while preserving exact owner, revision, hash, and runtime-content preconditions.
+
 ## 0.19.1
 
 - Allow exact MCP retirement to remove multiple fully verified servers from one artifact while

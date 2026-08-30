@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0"
+    "refs/heads/pr/fleet-qualified-ownership-handoff": "af5192c7c7b42fbbcdb9d49db9110ed74bde4629"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-30T02:38:58+00:00",
+  "created_at": "2026-08-30T02:48:47+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -15,6 +15,7 @@
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/pr/fleet-qualified-ownership-handoff": "af5192c7c7b42fbbcdb9d49db9110ed74bde4629",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
@@ -62,7 +63,8 @@
         "orphaned-fleet-ownership-recovery",
         "orphaned-fleet-ownership-journal-target",
         "skill-evolution-v01",
-        "merge-managed-self-normalization"
+        "merge-managed-self-normalization",
+        "fleet-qualified-ownership-handoff"
       ],
       "strategy": "cherry-pick"
     },
@@ -123,14 +125,26 @@
         "id": "merge-managed-self-normalization",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/fleet-qualified-ownership-handoff",
+        "commits": [],
+        "id": "fleet-qualified-ownership-handoff",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "af41c73dc6da2122b3d516d4896ad678fb9d5209f1646abce13e2d6dd84b4673",
-  "parent_state": "ae50abe42cdaf13f463c8dc6432ea52e87df258f",
+  "manifest_digest": "8dc171a75aba7a7bee4a8fc4785c87696cb220a9617c399b6e0c56468cf5119c",
+  "parent_state": "f23cb3e0ba43f7cf9a919620f57c78228c236b99",
   "projection_status": "partial",
-  "publication_id": "ccc7481d-3b6a-41eb-8528-047093d9a643",
+  "publication_id": "0a8a4a3f-5ed8-4241-8722-bd6e15a051c6",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.35.1",

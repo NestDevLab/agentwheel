@@ -1,0 +1,49 @@
+[
+  {
+    "name": "parent path segment",
+    "overrides": {
+      "paths": [
+        {
+          "path": "..",
+          "beforeSha256": null,
+          "afterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    }
+  },
+  {
+    "name": "relative repository root",
+    "overrides": {
+      "repositoryRoot": "relative/repository"
+    }
+  },
+  {
+    "name": "abbreviated expected head",
+    "overrides": {
+      "expectedHead": "1234abcd"
+    }
+  },
+  {
+    "name": "multiline command name",
+    "overrides": {
+      "commandName": "agentwheel install\nsecond command"
+    }
+  },
+  {
+    "name": "duplicate path",
+    "overrides": {
+      "paths": [
+        {
+          "path": "config.json",
+          "beforeSha256": null,
+          "afterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "path": "config.json",
+          "beforeSha256": null,
+          "afterSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ]
+    }
+  }
+]

@@ -124,23 +124,29 @@ export function computeManifestRevision(manifest: unknown): string {
   return createHash("sha256").update(canonicalJson(stripRuntimeManifestFields(manifest))).digest("hex");
 }
 
+export function canonicalInstallManifestJson(manifest: unknown): string {
+  return canonicalJson(stripRuntimeManifestFields(manifest));
+}
+
 function stripRuntimeManifestFields(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (Array.isArray(value)) return value.map(stripRuntimeManifestFields);
+  if (!value || typeof value !== "object") return value;
   const record = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(record)) {
-    if (key === "revision" || key === "legacy") continue;
+    if (key === "revision" || key === "legacy" || item === undefined) continue;
     out[key] = stripRuntimeManifestFields(item);
   }
   return out;
 }
 
 function stripReadOnlyManifestFields(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (Array.isArray(value)) return value.map(stripReadOnlyManifestFields);
+  if (!value || typeof value !== "object") return value;
   const record = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(record)) {
-    if (key === "legacy") continue;
+    if (key === "legacy" || item === undefined) continue;
     out[key] = stripReadOnlyManifestFields(item);
   }
   return out;

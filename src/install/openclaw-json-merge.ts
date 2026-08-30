@@ -4,16 +4,20 @@ import { pathExists } from "../utils/fs.js";
 import { deepMerge, isRecord, type JsonValue } from "./json-merge.js";
 
 export async function mergeOpenClawJsonFile(sourcePath: string, destPath: string): Promise<void> {
-  const source = expandEnvPlaceholders(
-    normalizeOpenClawConfig(JSON.parse(await readFile(sourcePath, "utf8")) as JsonValue),
-    sourcePath,
-  );
+  const source = await renderOpenClawJsonMergeSource(sourcePath);
   const current = await pathExists(destPath)
     ? JSON.parse(await readFile(destPath, "utf8")) as JsonValue
     : {};
   const merged = mergeOpenClawJson(current, source);
   await mkdir(dirname(destPath), { recursive: true });
   await writeFile(destPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+}
+
+export async function renderOpenClawJsonMergeSource(sourcePath: string): Promise<JsonValue> {
+  return expandEnvPlaceholders(
+    normalizeOpenClawConfig(JSON.parse(await readFile(sourcePath, "utf8")) as JsonValue),
+    sourcePath,
+  );
 }
 
 function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] = []): JsonValue {

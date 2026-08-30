@@ -6,9 +6,11 @@ import { artifactTypeSchema } from "./artifact.js";
 import { installationTypeSchema } from "./adapter.js";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { isSupportedVersionRange } from "../resolve/semver.js";
+import { mutationPolicySchema } from "./mutation.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
-export const CURRENT_WORKSPACE_SCHEMA_VERSION = 3 as const;
+export const CURRENT_WORKSPACE_SCHEMA_VERSION = 4 as const;
 
 export const workspaceSelectionImportSchema = z.object({
   export: z.string().min(1),
@@ -198,26 +200,36 @@ const workspaceConfigV1Schema = workspaceConfigBaseSchema.extend({
   schemaVersion: z.literal(1),
   packages: z.array(workspacePackageV1Schema).default([]),
   exports: z.never().optional(),
-});
+}).strict();
 
 const workspaceConfigV2Schema = workspaceConfigBaseSchema.extend({
   schemaVersion: z.literal(2),
   packages: z.array(workspacePackageSchema).default([]),
   exports: workspaceExportsSchema.default({ selections: {} }),
-});
+}).strict();
 
 const workspaceConfigV3Schema = workspaceConfigBaseSchema.extend({
+  schemaVersion: z.literal(3),
+  packages: z.array(workspacePackageSchema).default([]),
+  exports: workspaceExportsSchema.default({ selections: {} }),
+  fleetId: fleetIdSchema.optional(),
+  fleets: z.record(fleetIdSchema, registeredFleetSchema).default({}),
+}).strict();
+
+const workspaceConfigV4Schema = workspaceConfigBaseSchema.extend({
   schemaVersion: z.literal(CURRENT_WORKSPACE_SCHEMA_VERSION),
   packages: z.array(workspacePackageSchema).default([]),
   exports: workspaceExportsSchema.default({ selections: {} }),
   fleetId: fleetIdSchema.optional(),
   fleets: z.record(fleetIdSchema, registeredFleetSchema).default({}),
-});
+  mutationPolicy: mutationPolicySchema.optional(),
+}).strict();
 
 export const workspaceConfigSchema = z.discriminatedUnion("schemaVersion", [
   workspaceConfigV1Schema,
   workspaceConfigV2Schema,
   workspaceConfigV3Schema,
+  workspaceConfigV4Schema,
 ]);
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
@@ -232,6 +244,11 @@ export type WorkspaceProfile = z.infer<typeof workspaceProfileSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type RegisteredFleet = z.infer<typeof registeredFleetSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
+export type FleetWorkspaceConfig = Extract<WorkspaceConfig, { schemaVersion: 3 | 4 }>;
+
+export function supportsFleetConfig(config: WorkspaceConfig): config is FleetWorkspaceConfig {
+  return config.schemaVersion === 3 || config.schemaVersion === 4;
+}
 
 export function workspaceConfigPath(workspaceRoot: string): string {
   return join(workspaceRoot, ".agentwheel", "config.json");
@@ -244,7 +261,9 @@ export async function readWorkspaceConfig(workspaceRoot: string): Promise<Worksp
 }
 
 export async function writeWorkspaceConfig(workspaceRoot: string, config: WorkspaceConfigInput): Promise<void> {
-  await writeJsonAtomic(workspaceConfigPath(workspaceRoot), workspaceConfigSchema.parse(config));
+  const path = workspaceConfigPath(workspaceRoot);
+  declareMutationPath(path);
+  await writeJsonAtomic(path, workspaceConfigSchema.parse(config));
 }
 
 export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePackage): WorkspaceConfig {
@@ -306,7 +325,8 @@ export function mergeWorkspaceConfig(global: WorkspaceConfig, project: Workspace
     profiles: project.profiles,
     agents: project.agents,
     ...(exports ? { exports } : {}),
-    ...(project.schemaVersion === 3 ? { fleetId: project.fleetId, fleets: project.fleets } : {}),
+    ...(supportsFleetConfig(project) ? { fleetId: project.fleetId, fleets: project.fleets } : {}),
+    ...(project.schemaVersion === 4 ? { mutationPolicy: project.mutationPolicy } : {}),
   });
 }
 

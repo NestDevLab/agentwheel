@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "providerId": "syncwheel",
+  "action": "finalize",
+  "operationId": "123e4567-e89b-12d3-a456-426614174000",
+  "ok": false,
+  "status": "rejected",
+  "error": "operation 123e4567-e89b-12d3-a456-426614174000 has no prepared journal; run preflight first",
+  "expectedHead": "1111111111111111111111111111111111111111",
+  "resultingHead": null,
+  "productCommitSha": null,
+  "draftStackId": null,
+  "draftBranch": null,
+  "draftTipSha": null,
+  "controlCommitSha": null,
+  "manifestDigest": null,
+  "unmappedIntegrationCommits": [],
+  "published": false
+}

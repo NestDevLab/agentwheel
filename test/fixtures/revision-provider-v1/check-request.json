@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "action": "check",
+  "operationId": "operation-001",
+  "repositoryRoot": "/workspace/repository",
+  "expectedHead": "1111111111111111111111111111111111111111",
+  "expectedManifestDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "commandName": "agentwheel install",
+  "reason": "Install the reviewed workspace configuration.",
+  "noCommit": false,
+  "paths": []
+}

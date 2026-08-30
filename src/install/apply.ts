@@ -1,20 +1,23 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { declareMutationPath } from "../mutation/declarations.js";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
-import { writeGraphLock } from "../model/graph-lock.js";
+import { canonicalGraphLockJson, readGraphLock, writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
-import { readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import { canonicalInstallManifestJson, readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
 import {
   acquireApplyLock,
+  assertGovernedRuntimeTransportSupported,
+  assertApplyJournalRecoveryAllowed,
   localPathExists,
   readApplyJournal,
   recordBackup,
@@ -22,11 +25,12 @@ import {
   rollbackCompletedOperations,
   type ApplyJournal,
   type ApplyLockOptions,
+  mutationMetadataForApplyJournal,
   writeApplyJournal,
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
-import { assertExactMcpMergeContribution, removeMergeContribution } from "./merge-removal.js";
+import { assertExactMcpMergeContribution, assertMergedSourceContribution, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
@@ -36,7 +40,7 @@ import {
   removeManagedInstructionBlock,
   writeManagedInstructionBlock,
 } from "./instructions-block.js";
-import { writeJsonAtomic } from "../utils/fs.js";
+import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -88,10 +92,12 @@ export async function recoverPendingApply(
   transport: TargetTransport = localTransport,
   scope: { installationType?: string; stateKey?: string } = {},
 ): Promise<InstallManifest | undefined> {
+  assertGovernedRuntimeTransportSupported(transport);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
+    assertApplyJournalRecoveryAllowed(journal);
 
     if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
       throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
@@ -148,13 +154,17 @@ async function applyPlanTransactionally(
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
 
+  assertGovernedRuntimeTransportSupported(transport);
+
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock, scope);
   try {
     await assertBaseRevision(plan, transport);
     const now = new Date().toISOString();
     const graphLockDigest = options.graphLockDigest ?? plan.graphLockDigest;
+    const mutation = mutationMetadataForApplyJournal();
     const journal: ApplyJournal = {
-      version: 1,
+      version: mutation ? 2 : 1,
+      ...(mutation ? { mutation } : {}),
       adapter: plan.adapter,
       installationType: plan.installationType,
       stateKey: plan.stateKey,
@@ -234,6 +244,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const removedDrifted = resolvedOptions.force ? plan.operations.filter((operation) => operation.action === "keep" && isForceRemovableKeep(operation)).length : 0;
   if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
+  assertGovernedRuntimeTransportSupported(transport);
+
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
     : kept;
@@ -267,8 +279,10 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   try {
     await assertBaseRevision(plan, transport);
     await assertExactMergeRemovalPreconditions(removable, transport);
+    const mutation = mutationMetadataForApplyJournal();
     const journal: ApplyJournal = {
-      version: 1,
+      version: mutation ? 2 : 1,
+      ...(mutation ? { mutation } : {}),
       mode: "uninstall",
       adapter: plan.adapter,
       installationType: plan.installationType,
@@ -338,13 +352,76 @@ async function commitJournalState(
     await writeInstallManifest(manifest, transport);
   }
   if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
-  if (journal.graphLockRemovePath) await rm(journal.graphLockRemovePath, { force: true });
-  if (journal.workspaceConfigPath && journal.workspaceConfig) await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
+  if (journal.graphLockRemovePath) {
+    declareMutationPath(journal.graphLockRemovePath);
+    await rm(journal.graphLockRemovePath, { force: true });
+  }
+  if (journal.workspaceConfigPath && journal.workspaceConfig) {
+    declareMutationPath(journal.workspaceConfigPath);
+    await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
+  }
+  const verifiedManifest = await assertCommittedJournalState(journal, manifest, transport);
   await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
   });
-  return manifest;
+  if (await readApplyJournal(journal.targetRoot, journal.adapter, transport, {
+    installationType: journal.installationType,
+    stateKey: journal.stateKey,
+  })) {
+    throw new Error("Agentwheel apply journal remained after verified state commit.");
+  }
+  return verifiedManifest ?? manifest;
+}
+
+async function assertCommittedJournalState(
+  journal: ApplyJournal,
+  expectedManifest: InstallManifest,
+  transport: TargetTransport,
+): Promise<InstallManifest | undefined> {
+  const scope = { installationType: journal.installationType, stateKey: journal.stateKey };
+  const actualManifest = await readInstallManifest(journal.targetRoot, journal.adapter, transport, scope);
+  if (journal.mode === "uninstall" && expectedManifest.entries.length === 0) {
+    if (actualManifest) throw new Error("Uninstall postcheck found an install manifest that should have been removed.");
+  } else if (!actualManifest) {
+    throw new Error(
+      `Install manifest postcheck failed: expected ${expectedManifest.revision}, found missing.`,
+    );
+  } else if (canonicalInstallManifestJson(actualManifest) !== canonicalInstallManifestJson(expectedManifest)) {
+    throw new Error("Install manifest postcheck found content that differs from the verified apply result.");
+  }
+  for (const operation of journal.operations.filter(isJournaledMutation)) {
+    if (!(await operationLanded(operation, transport))) {
+      throw new Error(`Runtime postcheck failed for ${operation.relativeDestPath}.`);
+    }
+  }
+  if (journal.graphLockPath && journal.graphLock) {
+    const actual = await readGraphLock(journal.graphLockPath);
+    if (canonicalGraphLockJson(actual) !== canonicalGraphLockJson(journal.graphLock)) {
+      throw new Error(`Graph-lock postcheck failed for ${journal.graphLockPath}.`);
+    }
+  }
+  if (journal.graphLockRemovePath && await pathExists(journal.graphLockRemovePath)) {
+    throw new Error(`Graph-lock removal postcheck failed for ${journal.graphLockRemovePath}.`);
+  }
+  if (journal.workspaceConfigPath && journal.workspaceConfig) {
+    const actual = JSON.parse(await readFile(journal.workspaceConfigPath, "utf8"));
+    if (canonicalJson(actual) !== canonicalJson(journal.workspaceConfig)) {
+      throw new Error(`Workspace config postcheck failed for ${journal.workspaceConfigPath}.`);
+    }
+  }
+  return actualManifest;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item === undefined ? null : item)).join(",")}]`;
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .filter((key) => record[key] !== undefined)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
 }
 
 async function applyOperation(
@@ -849,6 +926,16 @@ async function operationLanded(operation: InstallOperation, transport: TargetTra
       const state = await readManagedInstructionBlockState(operation.destPath, selector, transport);
       return !state.exists || !state.hasBlock;
     }
+    if (operation.mergeStrategy) {
+      const exists = await transport.pathExists(operation.destPath);
+      if (operation.mergeCreatedDestination) return !exists;
+      if (!operation.mergeRemoval || !exists) return true;
+      return mergeContributionAbsent(
+        operation.mergeRemoval,
+        operation.mergeStrategy,
+        await transport.readFile(operation.destPath),
+      );
+    }
     return !(await transport.pathExists(operation.destPath));
   }
   if (operation.action !== "create" && operation.action !== "update") return false;
@@ -857,7 +944,19 @@ async function operationLanded(operation: InstallOperation, transport: TargetTra
     const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
     return managedInstructionBlockLanded(operation.destPath, selector, operation.desiredHash, transport);
   }
-  if (operation.mergeStrategy) return true;
+  if (operation.mergeStrategy) {
+    if (!operation.sourcePath) return false;
+    try {
+      await assertMergedSourceContribution(
+        operation.sourcePath,
+        operation.mergeStrategy,
+        await transport.readFile(operation.destPath),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (!operation.desiredHash) return false;
   return (await transport.hashPath(operation.destPath)) === operation.desiredHash;
 }

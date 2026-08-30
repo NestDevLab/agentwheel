@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser";
 import { legacyPackageManifestNames, openPackManifestNames } from "./package.js";
 import { pathExists } from "../utils/fs.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 
 export interface PackageMigrateResult {
   changed: boolean;
@@ -30,6 +31,8 @@ export async function migratePackageManifest(root: string): Promise<PackageMigra
   const to = join(packageRoot, toName);
   const content = await readFile(from, "utf8");
   const updated = updateSchemaVersion(content);
+  declareMutationPath(from);
+  declareMutationPath(to);
   await rename(from, to);
   await writeFile(to, updated, "utf8");
   return { changed: true, from, to, message: `Migrated ${legacyName} to ${toName}.` };

@@ -14,6 +14,8 @@ import {
 import { mergeCodexTomlMcp } from "../src/install/toml-merge.js";
 import { targetMappingSchema, type AdapterConfig } from "../src/model/adapter.js";
 import { localTransport } from "../src/transport/index.js";
+import { applyJournalPath } from "../src/install/transaction.js";
+import { assertExactMergeContribution } from "../src/install/merge-removal.js";
 import { hashPath } from "../src/utils/fs.js";
 
 const tempRoots: string[] = [];
@@ -71,6 +73,107 @@ const jsonAdapter: AdapterConfig = {
 };
 
 describe("exact merged contribution adoption", () => {
+  it("uses OpenClaw path semantics for exact arrays and unique keyed replacements", () => {
+    const contribution = {
+      mcp: {
+        servers: {
+          managed: { codex: { agents: ["alpha", "beta"] } },
+        },
+      },
+      agents: { list: [{ id: "managed", model: "reviewed" }] },
+      plugins: {
+        entries: {
+          "agentwheel-skill-router": {
+            config: { repositories: [{ name: "managed", path: "/srv/reviewed" }] },
+          },
+        },
+      },
+    };
+    const current = {
+      ...contribution,
+      agents: { list: [{ id: "unrelated", model: "keep" }, ...contribution.agents.list] },
+      plugins: {
+        entries: {
+          "agentwheel-skill-router": {
+            config: {
+              repositories: [
+                { name: "unrelated", path: "/srv/keep" },
+                ...contribution.plugins.entries["agentwheel-skill-router"].config.repositories,
+              ],
+            },
+          },
+        },
+      },
+    };
+    expect(() => assertExactMergeContribution(
+      contribution,
+      "openclaw-json-deep",
+      JSON.stringify(current),
+    )).not.toThrow();
+
+    const extraExactArrayMember = structuredClone(current);
+    extraExactArrayMember.mcp.servers.managed.codex.agents.push("not-owned");
+    expect(() => assertExactMergeContribution(
+      contribution,
+      "openclaw-json-deep",
+      JSON.stringify(extraExactArrayMember),
+    )).toThrow(/\$\.mcp\.servers\.managed\.codex\.agents/);
+
+    const nonExactReplacement = structuredClone(current);
+    nonExactReplacement.agents.list[1] = { id: "managed", model: "reviewed", extra: true } as never;
+    expect(() => assertExactMergeContribution(
+      contribution,
+      "openclaw-json-deep",
+      JSON.stringify(nonExactReplacement),
+    )).toThrow(/agents\.list\[id="managed"\]/);
+
+    const duplicateRepository = structuredClone(current);
+    duplicateRepository.plugins.entries["agentwheel-skill-router"].config.repositories.push({
+      name: "managed",
+      path: "/srv/reviewed",
+    });
+    expect(() => assertExactMergeContribution(
+      contribution,
+      "openclaw-json-deep",
+      JSON.stringify(duplicateRepository),
+    )).toThrow(/repositories\[name="managed"\]/);
+  });
+
+  it("fails the runtime postcheck when a merge source contribution is not observable", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const sourcePath = join(sourceRoot, "settings.json");
+    await writeFile(sourcePath, `${JSON.stringify({ managed: { enabled: true } }, null, 2)}\n`, "utf8");
+    const desired: DesiredArtifact = {
+      type: "settings",
+      name: "settings.json",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: "settings.json",
+      kind: "file",
+      hash: await hashPath(sourcePath),
+      channel: "managed",
+      meta: { logicalSelector: "settings/settings.json", dependencyRole: "root", owners: ["postcheck"] },
+    };
+    const configPath = join(targetRoot, "config.json");
+    await writeFile(configPath, "{\"keep\":true}\n", "utf8");
+    const plan = await createCombinedInstallPlan([desired], jsonAdapter, targetRoot);
+    const faultyReadTransport = {
+      ...localTransport,
+      description: "local postcheck fault fixture",
+      async readFile(path: string) {
+        const actual = await localTransport.readFile(path);
+        return path === configPath && actual.includes('"managed"') ? "{}\n" : actual;
+      },
+    };
+
+    await expect(applyCombinedInstallPlan(plan, { transport: faultyReadTransport }))
+      .rejects.toThrow(/runtime postcheck failed/i);
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({ managed: { enabled: true } });
+    await expect(readFile(applyJournalPath(targetRoot, jsonAdapter.name), "utf8"))
+      .resolves.toContain('"version": 1');
+  });
+
   it("adopts and removes an exact pre-existing generic JSON merge contribution", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();

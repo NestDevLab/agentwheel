@@ -23,6 +23,7 @@ runtime behavior or version metadata so `dist/index.js` reflects the release.
 
 ## Architecture Rules
 
+- Workspace schema v4 is current. Schemas v1-v3 remain readable; `mutationPolicy` is v4-only.
 - Use existing module boundaries under `src/model`, `src/install`, `src/lifecycle`, `src/runtime`,
   `src/staging`, and `src/adapters`.
 - Prefer structured schemas and typed helpers over ad hoc path/string handling.

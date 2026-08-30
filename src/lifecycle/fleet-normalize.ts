@@ -16,6 +16,7 @@ import { isCompositeWorkspaceProfile, resolveConfigPath, workspaceConfigPath, wo
 import { graphLockPathForTarget } from "./source-plan.js";
 import { workspaceOwnerForRoot } from "./ownership.js";
 import { hashPath, listFiles, pathExists, withFilesystemLock, writeJsonAtomic } from "../utils/fs.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport } from "../transport/index.js";
 
 export type FleetNormalizationSource = "user" | `fleet:${string}`;
@@ -278,6 +279,9 @@ async function applyLockedNormalization(
     graphLocks,
     phase: "prepared",
   };
+  for (const state of manifests) declareMutationPath(state.path);
+  for (const state of graphLocks) declareMutationPath(state.path);
+  if (!ownershipOnly) declareMutationPath(sourcePath);
   await writeJsonAtomic(journalPath, journal);
 
   try {
@@ -287,21 +291,35 @@ async function applyLockedNormalization(
     const sourceGraphPaths = new Set(current.installedState.graphTransfers.map((transfer) => transfer.sourceGraphLockPath));
     for (const manifest of manifests.filter((state) => destinationManifestPaths.has(state.path))) {
       if (!manifest.after) throw new Error(`Destination manifest handoff has no after state: ${manifest.path}`);
+      declareMutationPath(manifest.path);
       await writeJsonAtomic(manifest.path, manifest.after);
     }
     for (const graphLock of graphLocks.filter((state) => destinationGraphPaths.has(state.path))) {
       if (!graphLock.after) throw new Error(`Destination graph handoff has no after state: ${graphLock.path}`);
+      declareMutationPath(graphLock.path);
       await writeJsonAtomic(graphLock.path, graphLock.after);
     }
     await writeJsonAtomic(journalPath, { ...journal, phase: "destination-created" });
     await hooks.afterDestinationTransfer?.();
     for (const manifest of manifests.filter((state) => sourceManifestPaths.has(state.path))) {
-      if (manifest.after) await writeJsonAtomic(manifest.path, manifest.after);
-      else await rm(manifest.path, { force: true });
+      if (manifest.after) {
+        declareMutationPath(manifest.path);
+        await writeJsonAtomic(manifest.path, manifest.after);
+      }
+      else {
+        declareMutationPath(manifest.path);
+        await rm(manifest.path, { force: true });
+      }
     }
     for (const graphLock of graphLocks.filter((state) => sourceGraphPaths.has(state.path))) {
-      if (graphLock.after) await writeJsonAtomic(graphLock.path, graphLock.after);
-      else await rm(graphLock.path, { force: true });
+      if (graphLock.after) {
+        declareMutationPath(graphLock.path);
+        await writeJsonAtomic(graphLock.path, graphLock.after);
+      }
+      else {
+        declareMutationPath(graphLock.path);
+        await rm(graphLock.path, { force: true });
+      }
     }
     await writeJsonAtomic(journalPath, { ...journal, phase: "source-released" });
     await hooks.afterManifestTransfer?.();
@@ -313,14 +331,45 @@ async function applyLockedNormalization(
       || configRevision(destinationAtCommit) !== configRevision(destinationBefore)) {
       throw new Error("Fleet normalization source config changed or destination config changed concurrently before compare-and-swap commit; the external edit was preserved.");
     }
-    if (!ownershipOnly) await writeJsonAtomic(sourcePath, sourceAfter);
+    if (!ownershipOnly) {
+      declareMutationPath(sourcePath);
+      await writeJsonAtomic(sourcePath, sourceAfter);
+    }
     await writeJsonAtomic(journalPath, { ...journal, phase: "source-updated" });
+    await assertNormalizationPostconditions(journal);
     await rm(journalPath, { force: true });
     return { applied: true, planDigest: current.planDigest, packages: [...names].sort((a, b) => a.localeCompare(b)) };
   } catch (error) {
     const restored = await restoreJournalSource(journal, true).then(() => true, () => false);
     if (restored) await writeJsonAtomic(journalPath, { ...journal, phase: "rolled-back" }).catch(() => undefined);
     throw error;
+  }
+}
+
+async function assertNormalizationPostconditions(journal: NormalizeJournal): Promise<void> {
+  const [source, destination] = await Promise.all([
+    readExactConfig(journal.sourcePath),
+    readExactConfig(journal.destinationPath),
+  ]);
+  if (configRevision(source) !== configRevision(journal.sourceAfter)) {
+    throw new Error("Fleet normalization postcheck found unexpected source config state.");
+  }
+  if (configRevision(destination) !== configRevision(journal.destinationBefore)) {
+    throw new Error("Fleet normalization postcheck found unexpected destination config state.");
+  }
+  for (const manifest of journal.manifests) {
+    const raw = await readOptionalRecord(manifest.path);
+    const revision = raw ? computeManifestRevision(raw) : null;
+    if (revision !== manifest.afterRevision) {
+      throw new Error(`Fleet normalization manifest postcheck failed: ${manifest.path}`);
+    }
+  }
+  for (const graphLock of journal.graphLocks) {
+    const raw = await readOptionalRecord(graphLock.path);
+    const digest = raw ? sha256(canonicalJson(await readGraphLock(graphLock.path))) : null;
+    if (digest !== graphLock.afterDigest) {
+      throw new Error(`Fleet normalization graph-lock postcheck failed: ${graphLock.path}`);
+    }
   }
 }
 
@@ -600,17 +649,11 @@ async function inspectInstalledState(
       throw new Error(`Destination installed state is stale or uncovered: ${destinationEntry.manifest.path}`);
     }
   }
-  for (const manifest of manifests) {
-    for (const entry of manifest.manifest.entries) {
-      const renderedPath = renderedEntryPath(manifest.manifest, entry);
-      if (!plannedDestinationPaths.has(renderedPath)) continue;
-      if (sourceOwners.has(entry.workspaceOwner) || destinationOwners.has(entry.workspaceOwner)) continue;
-      throw new Error(
-        `Foreign same-path ownership at ${renderedPath} belongs to ${entry.workspaceOwner}. `
-        + "Byte equality is insufficient; an explicit reviewed handoff plan is required.",
-      );
-    }
-  }
+  assertNoForeignSamePathOwnership(
+    manifests,
+    plannedDestinationPaths,
+    new Set([...sourceOwners, ...destinationOwners]),
+  );
 
   return {
     graphLockDigests: sourceGraphs.map((item) => item.digest).sort(),
@@ -802,6 +845,14 @@ async function inspectLegacySelfInstalledState(
   if (coveredEntries.size !== legacyEntries.length) {
     throw new Error("Legacy same-root manifest ownership is only partially covered by canonical graph locks.");
   }
+  const runtimeManifests = await collectManifests(
+    sortedUnique(manifests.map((manifest) => manifest.manifest.targetRoot)),
+  );
+  assertNoForeignSamePathOwnership(
+    runtimeManifests,
+    renderedPaths,
+    new Set([...knownLegacyOwners, fleetOwner]),
+  );
 
   return {
     graphLockDigests: graphs.map((graph) => graph.digest).sort(),
@@ -930,6 +981,23 @@ async function collectManifestPaths(paths: string[]): Promise<CollectedManifest[
     found.push({ path, raw, manifest: { ...parsed, revision: computeManifestRevision(raw), legacy: false } });
   }
   return found;
+}
+
+function assertNoForeignSamePathOwnership(
+  manifests: CollectedManifest[],
+  renderedPaths: Set<string>,
+  allowedOwners: Set<string>,
+): void {
+  for (const manifest of manifests) {
+    for (const entry of manifest.manifest.entries) {
+      const renderedPath = renderedEntryPath(manifest.manifest, entry);
+      if (!renderedPaths.has(renderedPath) || allowedOwners.has(entry.workspaceOwner)) continue;
+      throw new Error(
+        `Foreign same-path ownership at ${renderedPath} belongs to ${entry.workspaceOwner}. `
+        + "Byte equality is insufficient; an explicit reviewed handoff plan is required.",
+      );
+    }
+  }
 }
 
 interface RelevantGraphLock {
@@ -1722,10 +1790,12 @@ async function restoreJournalSource(journal: NormalizeJournal, preserveDivergent
   const revision = configRevision(current);
   if (beforeRevision === afterRevision && revision === beforeRevision) return;
   if (!preserveDivergentSource) {
+    declareMutationPath(journal.sourcePath);
     await writeJsonAtomic(journal.sourcePath, journal.sourceBefore);
     return;
   }
   if (afterRevision !== beforeRevision && revision === afterRevision) {
+    declareMutationPath(journal.sourcePath);
     await writeJsonAtomic(journal.sourcePath, journal.sourceBefore);
   }
 }
@@ -1775,6 +1845,7 @@ async function readOptionalRecord(path: string): Promise<Record<string, unknown>
 }
 
 async function restoreJournalFile(path: string, before: Record<string, unknown> | null): Promise<void> {
+  declareMutationPath(path);
   if (before) await writeJsonAtomic(path, before);
   else await rm(path, { force: true });
 }

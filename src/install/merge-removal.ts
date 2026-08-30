@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { mismatchedCodexTomlMcpServers, type JsonRecord } from "./toml-merge.js";
+import { renderOpenClawJsonMergeSource } from "./openclaw-json-merge.js";
 
 export type MergeValue = null | boolean | number | string | MergeValue[] | { [key: string]: MergeValue };
 export type MergeRemoval = Record<string, MergeValue>;
@@ -19,10 +20,21 @@ export function assertExactMergeContribution(
     assertExactMcpMergeContribution(contribution, strategy, currentContent);
     return;
   }
-  const mismatch = firstMergeContributionMismatch(parseMergeDestination(currentContent, strategy), contribution);
+  const current = parseMergeDestination(currentContent, strategy);
+  const mismatch = strategy === "openclaw-json-deep"
+    ? firstOpenClawContributionMismatch(current, contribution)
+    : firstMergeContributionMismatch(current, contribution);
   if (mismatch) {
     throw new MergeAdoptionMismatchError(`exact merge contribution differs or is missing at ${mismatch}`);
   }
+}
+
+export async function assertMergedSourceContribution(
+  sourcePath: string,
+  strategy: MergeStrategy,
+  currentContent: string,
+): Promise<void> {
+  assertExactMergeContribution(await readMergeSource(sourcePath, strategy), strategy, currentContent);
 }
 
 export function assertExactMcpMergeContribution(
@@ -76,7 +88,9 @@ export async function mergeRemovalForInstall(
     const current = parseMergeDestination(currentContent, strategy);
     const mismatch = options.adoptExisting === "mcp"
       ? firstMcpContributionMismatch(current, source)
-      : firstMergeContributionMismatch(current, source);
+      : strategy === "openclaw-json-deep"
+        ? firstOpenClawContributionMismatch(current, source)
+        : firstMergeContributionMismatch(current, source);
     if (mismatch) {
       throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: destination differs or is missing at ${mismatch}`);
     }
@@ -103,7 +117,23 @@ export async function removeMergeContribution(destPath: string, strategy: MergeS
   await writeFile(destPath, strategy === "yaml-deep" ? stringify(current) : `${JSON.stringify(current, null, 2)}\n`, "utf8");
 }
 
+export function mergeContributionAbsent(
+  removal: MergeRemoval,
+  strategy: MergeStrategy,
+  currentContent: string,
+): boolean {
+  if (strategy === "codex-toml-mcp") {
+    const servers = isRecord(removal.mcpServers) ? removal.mcpServers : removal;
+    const currentServers = codexTomlMcpServerNames(currentContent);
+    return Object.keys(servers).every((name) => !currentServers.has(name));
+  }
+  return !containsRemovalContribution(parseMergeDestination(currentContent, strategy), removal);
+}
+
 async function readMergeSource(sourcePath: string, strategy: MergeStrategy): Promise<MergeRemoval> {
+  if (strategy === "openclaw-json-deep") {
+    return requireRecord(await renderOpenClawJsonMergeSource(sourcePath), "OpenClaw JSON merge source");
+  }
   const content = await readFile(sourcePath, "utf8");
   if (strategy === "yaml-deep") return requireRecord(normalizeYamlValue(parse(content)), "YAML merge source");
   return requireRecord(JSON.parse(content) as MergeValue, "JSON merge source");
@@ -165,6 +195,82 @@ function firstMergeContributionMismatch(current: MergeValue, contribution: Merge
   return current === contribution ? undefined : path;
 }
 
+function firstOpenClawContributionMismatch(
+  current: MergeValue,
+  contribution: MergeValue,
+  path: string[] = [],
+): string | undefined {
+  const displayPath = path.length === 0 ? "$" : `$.${path.join(".")}`;
+  if (isOpenClawExactArrayPath(path)) {
+    return sameMcpValue(current, contribution) ? undefined : displayPath;
+  }
+  const keyedBy = openClawKeyedArrayField(path);
+  if (keyedBy) {
+    if (!Array.isArray(current) || !Array.isArray(contribution)) return displayPath;
+    const currentByKey = groupRecordsByStringKey(current, keyedBy);
+    for (const [key, entries] of currentByKey) {
+      if (entries.length !== 1) return `${displayPath}[${keyedBy}=${JSON.stringify(key)}]`;
+    }
+    const incomingByKey = groupRecordsByStringKey(contribution, keyedBy);
+    for (const [key, entries] of incomingByKey) {
+      if (entries.length !== 1) return `${displayPath}[${keyedBy}=${JSON.stringify(key)}]`;
+      const matches = currentByKey.get(key);
+      if (!matches || matches.length !== 1 || !sameMcpValue(matches[0]!, entries[0]!)) {
+        return `${displayPath}[${keyedBy}=${JSON.stringify(key)}]`;
+      }
+    }
+    for (const value of contribution.filter((entry) => recordStringKey(entry, keyedBy) === undefined)) {
+      if (!current.some((candidate) => sameMcpValue(candidate, value))) return displayPath;
+    }
+    return undefined;
+  }
+  if (isRecord(contribution)) {
+    if (!isRecord(current)) return displayPath;
+    for (const [key, value] of Object.entries(contribution)) {
+      if (!(key in current)) return `${displayPath}.${key}`;
+      const mismatch = firstOpenClawContributionMismatch(current[key]!, value, [...path, key]);
+      if (mismatch) return mismatch;
+    }
+    return undefined;
+  }
+  if (Array.isArray(contribution)) {
+    if (!Array.isArray(current)) return displayPath;
+    for (const value of contribution) {
+      if (!current.some((candidate) => sameMcpValue(candidate, value))) return displayPath;
+    }
+    return undefined;
+  }
+  return current === contribution ? undefined : displayPath;
+}
+
+function isOpenClawExactArrayPath(path: string[]): boolean {
+  return path.length === 5
+    && path[0] === "mcp"
+    && path[1] === "servers"
+    && path[3] === "codex"
+    && path[4] === "agents";
+}
+
+function openClawKeyedArrayField(path: string[]): string | undefined {
+  if (path.join(".") === "agents.list") return "id";
+  if (path.join(".") === "plugins.entries.agentwheel-skill-router.config.repositories") return "name";
+  return undefined;
+}
+
+function groupRecordsByStringKey(values: MergeValue[], key: string): Map<string, MergeValue[]> {
+  const grouped = new Map<string, MergeValue[]>();
+  for (const value of values) {
+    const recordKey = recordStringKey(value, key);
+    if (recordKey === undefined) continue;
+    grouped.set(recordKey, [...(grouped.get(recordKey) ?? []), value]);
+  }
+  return grouped;
+}
+
+function recordStringKey(value: MergeValue, key: string): string | undefined {
+  return isRecord(value) && typeof value[key] === "string" ? value[key] : undefined;
+}
+
 function combineMergeValues(existing: MergeValue, incoming: MergeValue): MergeValue {
   if (isRecord(existing) && isRecord(incoming)) {
     const combined: MergeRemoval = { ...existing };
@@ -191,6 +297,23 @@ function removeIntroducedContent(current: MergeRemoval, removal: MergeRemoval): 
       if (remaining.length === 0) delete current[key]; else current[key] = remaining;
     } else delete current[key];
   }
+}
+
+function containsRemovalContribution(current: MergeRemoval, removal: MergeRemoval): boolean {
+  for (const [key, removalValue] of Object.entries(removal)) {
+    if (!(key in current)) continue;
+    const currentValue = current[key];
+    if (isRecord(currentValue) && isRecord(removalValue) && Object.keys(removalValue).length > 0) {
+      if (containsRemovalContribution(currentValue, removalValue)) return true;
+      continue;
+    }
+    if (Array.isArray(currentValue) && Array.isArray(removalValue) && removalValue.length > 0) {
+      if (removalValue.some((removed) => currentValue.some((candidate) => sameValue(candidate, removed)))) return true;
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 function codexTomlMcpServerNames(content: string): Set<string> {

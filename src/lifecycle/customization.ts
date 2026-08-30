@@ -1,5 +1,5 @@
-import { appendFile, cp, mkdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, cp, lstat, mkdir, readdir, rm } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { getAdapter } from "../adapters/index.js";
 import { loadAdapterConfig } from "../model/adapter.js";
 import { artifactTypeSchema, type ArtifactType } from "../model/artifact.js";
@@ -9,6 +9,7 @@ import { normalizeDependencySource } from "../resolve/identity.js";
 import { getSourceDriver } from "../source/index.js";
 import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { hashPath } from "../utils/fs.js";
+import { declareMutationPath } from "../mutation/declarations.js";
 
 export interface RememberResult {
   overlayPath: string;
@@ -26,6 +27,7 @@ export interface EjectResult {
 
 export async function remember(workspaceRoot: string, runtime: string, text: string): Promise<RememberResult> {
   const overlayPath = join(workspaceRoot, ".agentwheel", "overlays", runtime, "instructions.local.md");
+  declareMutationPath(overlayPath);
   await mkdir(dirname(overlayPath), { recursive: true });
   await appendFile(overlayPath, `${text.trim()}\n`, "utf8");
   return { overlayPath };
@@ -56,9 +58,18 @@ export async function ejectArtifact(workspaceRoot: string, item: string): Promis
       ? candidate.nodeId
       : `${candidate.packageName}@${candidate.packageVersion}`;
     const ejectedPath = join(workspaceRoot, ".agentwheel", "ejected", ...ejectedIdentity.split("/"), parsed.type, parsed.name);
+    const sourcePath = artifact.stagedPath ?? artifact.sourcePath;
+    for (const path of await listFilesIfPresent(ejectedPath)) declareMutationPath(path);
+    if (artifact.kind === "dir") {
+      for (const sourceFile of await listFiles(sourcePath)) {
+        declareMutationPath(join(ejectedPath, relative(sourcePath, sourceFile)));
+      }
+    } else {
+      declareMutationPath(ejectedPath);
+    }
     await mkdir(dirname(ejectedPath), { recursive: true });
     await rm(ejectedPath, { recursive: true, force: true });
-    await cp(artifact.stagedPath ?? artifact.sourcePath, ejectedPath, { recursive: artifact.kind === "dir", dereference: true });
+    await cp(sourcePath, ejectedPath, { recursive: artifact.kind === "dir", dereference: true });
     return {
       ...parsed,
       packageName: candidate.packageName,
@@ -69,6 +80,30 @@ export async function ejectArtifact(workspaceRoot: string, item: string): Promis
     };
   } finally {
     await Promise.all(candidates.map((candidate) => rm(candidate.bundle.root, { recursive: true, force: true })));
+  }
+}
+
+async function listFiles(root: string): Promise<string[]> {
+  const stats = await lstat(root);
+  if (stats.isFile()) return [root];
+  const files: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) await walk(path);
+      else files.push(path);
+    }
+  }
+  await walk(root);
+  return files;
+}
+
+async function listFilesIfPresent(root: string): Promise<string[]> {
+  try {
+    return await listFiles(root);
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ENOENT") return [];
+    throw error;
   }
 }
 

@@ -679,6 +679,43 @@ describe("fleet normalization", () => {
     }
   });
 
+  it("rejects foreign same-path ownership from a manifest without a graph lock", async () => {
+    const state = await legacySelfFixture();
+    const foreignStateKey = stateKeyFor("codex", {
+      installationType: "local",
+      targetFingerprint: "foreign-untracked-manifest",
+    });
+    const foreignManifest = await writeManifest(
+      state.runtime,
+      foreignStateKey,
+      workspaceOwnerForRoot(join(state.fleet, "profiles", "foreign")),
+      await hashPath(state.runtimeFile),
+    );
+    const before = await Promise.all([
+      readFile(state.manifest, "utf8"),
+      readFile(foreignManifest, "utf8"),
+      readFile(state.graphLock, "utf8"),
+      readFile(join(state.fleet, ".agentwheel", "config.json")),
+      readFile(state.runtimeFile),
+    ]);
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    })).rejects.toThrow(/Foreign same-path ownership/);
+
+    await expect(Promise.all([
+      readFile(state.manifest, "utf8"),
+      readFile(foreignManifest, "utf8"),
+      readFile(state.graphLock, "utf8"),
+      readFile(join(state.fleet, ".agentwheel", "config.json")),
+      readFile(state.runtimeFile),
+    ])).resolves.toEqual(before);
+    await expect(stat(state.destinationManifest)).rejects.toThrow();
+    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+  });
+
   it("recovers an explicitly admitted missing owner without rewriting verified runtime bytes", async () => {
     const state = await legacySelfFixture();
     const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");

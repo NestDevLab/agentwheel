@@ -54,4 +54,21 @@ describe("public named-fleet documentation", () => {
     expect(content).toContain("no named fleet has global priority");
     expect(content).not.toContain("agentwheel init --fleet-example");
   });
+
+  it("describes named fleets as schema v3 or newer without pinning register help to v3", async () => {
+    for (const file of [
+      "README.md",
+      "AGENT.md",
+      "install.md",
+      "llms.txt",
+      "docs/fleet-config.md",
+      "skills/agentwheel/SKILL.md",
+    ]) {
+      const content = await readFile(join(root, file), "utf8");
+      expect(content, file).toMatch(/schema v3 or newer/i);
+      expect(content, file).not.toContain("schema-v3-capable");
+      expect(content, file).not.toContain("schema-v3-or-newer");
+      expect(content, file).not.toMatch(/schema-v3 fleet/i);
+    }
+  });
 });

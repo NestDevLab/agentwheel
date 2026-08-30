@@ -8,6 +8,8 @@ import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
 import { stateKeyFor } from "../src/install/paths.js";
 import { workspaceOwnerForRoot } from "../src/lifecycle/ownership.js";
 import { computeTargetFingerprint } from "../src/model/graph-lock.js";
+import { commandGovernance } from "../src/mutation/commands.js";
+import { mutationReceiptDigest } from "../src/mutation/receipts.js";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -30,6 +32,12 @@ afterAll(async () => {
 });
 
 describe("CLI verb redesign", () => {
+  it("keeps the governance classifier synchronized with every registered CLI leaf", async () => {
+    const observed = await registeredCliLeafPaths();
+    observed.add("sync"); // Hidden compatibility shim is intentionally absent from Commander help.
+    expect([...observed].sort()).toEqual(Object.keys(commandGovernance).sort());
+  }, 60_000);
+
   it("previews and applies Git cache pruning", async () => {
     const workspace = await tempRoot();
     const cacheRoot = join(workspace, ".agentwheel", "cache");
@@ -464,12 +472,12 @@ describe("CLI verb redesign", () => {
     await expect(stat(join(cliHome, ".codex", "AGENTS.md"))).rejects.toThrow();
   });
 
-  it("rejects an explicit source install targeting an unregistered fleet config before any state write", async () => {
+  it.each([3, 4] as const)("rejects an explicit source install targeting an unregistered schema-v%s fleet config before any state write", async (schemaVersion) => {
     const workspace = await tempRoot("agentwheel-explicit-fleet-root-");
     const source = await packageFixture("invalid-explicit-fleet-root");
     const configPath = join(workspace, ".agentwheel", "config.json");
     const configBytes = `${JSON.stringify({
-      schemaVersion: 3,
+      schemaVersion,
       fleetId: "unregistered",
       packages: [],
       agents: {},
@@ -563,14 +571,24 @@ describe("CLI verb redesign", () => {
     await expect(readFile(join(workspace, "AGENTS.md"), "utf8")).resolves.toContain("explicit-non-fleet-root");
   });
 
-  it("registers, lists, shows, and plans from one named fleet without inheriting home packages", async () => {
+  it("registers and selects a governed schema-v4 fleet for status, provider check, and planning", async () => {
     const fleetRoot = await tempRoot("agentwheel-cli-fleet-");
     const runtimeRoot = await tempRoot("agentwheel-cli-fleet-runtime-");
     const source = await packageFixture("fleet-core");
     await mkdir(join(fleetRoot, ".agentwheel"), { recursive: true });
     await writeFile(join(fleetRoot, ".agentwheel", "config.json"), `${JSON.stringify({
-      schemaVersion: 3,
+      schemaVersion: 4,
       fleetId: "delivery",
+      mutationPolicy: {
+        reason: "required",
+        journal: "required",
+        revisioning: {
+          mode: "commit-after-verify",
+          allowNoCommitOverride: false,
+          reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
       packages: [{
         name: "fleet-core",
         source,
@@ -588,11 +606,33 @@ describe("CLI verb redesign", () => {
       fleets: {},
     }, null, 2)}\n`, "utf8");
 
+    await execFileAsync("git", ["init", "-b", "main"], { cwd: fleetRoot });
+    await execFileAsync("git", ["config", "user.name", "Agentwheel Fleet Test"], { cwd: fleetRoot });
+    await execFileAsync("git", ["config", "user.email", "fleet@example.test"], { cwd: fleetRoot });
+    await execFileAsync("git", ["add", "-f", ".agentwheel/config.json"], { cwd: fleetRoot });
+    await execFileAsync("git", ["commit", "-m", "test: governed fleet v4"], { cwd: fleetRoot });
+
+    const help = await runCli(["fleet", "register", "--help"]);
+    expect(help.stdout).toContain("register an existing named fleet in the user config");
+    expect(help.stdout).not.toContain("schema-v3 fleet");
+
     await runCli(["fleet", "register", "delivery", "--root", fleetRoot, "--required-package", "fleet-core"]);
     const listed = JSON.parse((await runCli(["fleet", "list", "--json"])).stdout);
     expect(listed).toEqual([{ id: "delivery", root: fleetRoot, requiredPackages: ["fleet-core"] }]);
     const shown = JSON.parse((await runCli(["fleet", "show", "delivery", "--json"])).stdout);
     expect(shown).toEqual(listed[0]);
+
+    const status = await runCli(["status", "--fleet", "delivery", "--agent", "delivery", "--offline"]);
+    expect(status.stdout).toContain(`Status for codex/local at ${runtimeRoot}`);
+    expect(status.stdout).toContain("fleet-core");
+    const providerCheck = JSON.parse((await runCli(["mutation", "check", "--fleet", "delivery", "--json"])).stdout);
+    expect(providerCheck).toMatchObject({
+      protocolVersion: 1,
+      providerId: "git",
+      action: "check",
+      ok: true,
+      status: "ready",
+    });
 
     const plan = await runCli(["plan", "fleet-core", "--fleet", "delivery", "--agent", "delivery", "--only-source", "--json"]);
     expect(plan.stdout).toContain('"packageName": "fleet-core"');
@@ -606,6 +646,131 @@ describe("CLI verb redesign", () => {
     expect(explicitPlan.stdout).toContain(`Plan for codex/local at ${fleetRoot}`);
     expect(explicitPlan.stdout).not.toContain(cliHome);
     await expect(stat(join(runtimeRoot, "AGENTS.md"))).rejects.toThrow();
+    expect((await execFileAsync("git", ["status", "--short"], { cwd: fleetRoot })).stdout).toBe("");
+  });
+
+  it("governs a non-Fleet CLI mutation end to end before write through exact Git commit and receipt", async () => {
+    const workspace = await tempRoot("agentwheel-cli-governed-workspace-");
+    const source = await packageFixture("cli-governed-source");
+    const stateRoot = join(await tempRoot("agentwheel-cli-governed-state-"), "mutations");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify({
+      schemaVersion: 4,
+      mutationPolicy: {
+        reason: "required",
+        journal: "required",
+        revisioning: {
+          mode: "commit-after-verify",
+          allowNoCommitOverride: false,
+          reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+    await execFileAsync("git", ["init", "-b", "main"], { cwd: workspace });
+    await execFileAsync("git", ["config", "user.name", "Agentwheel CLI Test"], { cwd: workspace });
+    await execFileAsync("git", ["config", "user.email", "agentwheel-cli@example.test"], { cwd: workspace });
+    await execFileAsync("git", ["add", ".agentwheel/config.json"], { cwd: workspace });
+    await execFileAsync("git", ["commit", "-m", "test: initialize governed workspace"], { cwd: workspace });
+    const originalConfig = await readFile(configPath, "utf8");
+    const originalHead = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    const env = { AGENTWHEEL_MUTATION_STATE_ROOT: stateRoot };
+
+    await expect(runCli(["add", source, "--adapter", "codex", "--local"], { cwd: workspace, env }))
+      .rejects.toMatchObject({ stderr: expect.stringMatching(/mutation reason required.*--reason/i) });
+    await expect(runCli([
+      "--reason", "Attempt a forbidden no-commit override",
+      "--no-commit", "add", source, "--adapter", "codex", "--local",
+    ], { cwd: workspace, env }))
+      .rejects.toMatchObject({ stderr: expect.stringMatching(/does not allow.*--no-commit/i) });
+    await expect(readFile(configPath, "utf8")).resolves.toBe(originalConfig);
+    expect((await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(originalHead);
+
+    const applied = await runCli([
+      "--reason", "Add the reviewed CLI fixture",
+      "--operation-id", "cli-governed-add-1",
+      "add", source, "--adapter", "codex", "--local",
+    ], { cwd: workspace, env });
+    expect(applied.stdout).toContain("Added cli-governed-source");
+    expect(applied.stderr).toContain("Agentwheel mutation cli-governed-add-1: succeeded");
+    const committedPaths = (await execFileAsync(
+      "git",
+      ["show", "--format=", "--name-only", "HEAD"],
+      { cwd: workspace },
+    )).stdout.trim().split("\n").filter(Boolean);
+    expect(committedPaths).toEqual([".agentwheel/config.json"]);
+    const message = (await execFileAsync("git", ["log", "-1", "--format=%B"], { cwd: workspace })).stdout;
+    expect(message).toContain("Add the reviewed CLI fixture");
+    expect(message).toContain("Agentwheel-Operation: cli-governed-add-1");
+    const receipt = JSON.parse(await readFile(join(stateRoot, "receipts", "cli-governed-add-1.json"), "utf8"));
+    expect(receipt).toMatchObject({
+      operationId: "cli-governed-add-1",
+      status: "succeeded",
+      reason: "Add the reviewed CLI fixture",
+      paths: [{ path: ".agentwheel/config.json" }],
+    });
+    expect((await execFileAsync("git", ["status", "--short"], { cwd: workspace })).stdout).toBe("");
+  });
+
+  it("keeps deps tree runtime/trust state read-only while allowing incidental source caches", async () => {
+    const workspace = await tempRoot("agentwheel-deps-read-only-workspace-");
+    const runtime = await tempRoot("agentwheel-deps-read-only-runtime-");
+    const dependency = await markdownRulePackageFixture("deps-read-only-dependency", "dependency");
+    const source = await packageFixture("deps-read-only-root", {
+      requires: { dependency: { source: dependency, select: ["rules/deps-read-only-dependency.md"] } },
+    });
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [],
+      agents: {
+        deps: {
+          adapter: "codex",
+          root: runtime,
+          installationType: "local",
+          stateKey: "deps-read-only",
+          transport: "local",
+        },
+      },
+      profiles: {},
+      registry: {},
+      trust: {},
+    }, null, 2)}\n`, "utf8");
+    const journalPath = join(runtime, ".agentwheel", "deps-read-only.apply-journal.json");
+    const journalBytes = `${JSON.stringify({
+      version: 1,
+      adapter: "codex",
+      installationType: "local",
+      stateKey: "deps-read-only",
+      targetRoot: runtime,
+      baseRevision: null,
+      createdAt: "2026-08-30T00:00:00.000Z",
+      updatedAt: "2026-08-30T00:00:00.000Z",
+      operations: [],
+      completed: [],
+      manifest: {
+        version: 2,
+        adapter: "codex",
+        installationType: "local",
+        stateKey: "deps-read-only",
+        targetRoot: runtime,
+        generatedAt: "2026-08-30T00:00:00.000Z",
+        revision: "pending-apply-0000",
+        legacy: false,
+        entries: [],
+      },
+    }, null, 2)}\n`;
+    await mkdir(dirname(journalPath), { recursive: true });
+    await writeFile(journalPath, journalBytes, "utf8");
+
+    const result = await runCli([
+      "deps", "tree", source, "--local", "--agent", "deps", "--yes", "--trust", "*",
+    ], { cwd: workspace });
+
+    expect(result.stdout).toContain("deps-read-only-root");
+    await expect(readFile(journalPath, "utf8")).resolves.toBe(journalBytes);
+    await expect(stat(join(cliHome, ".agentwheel", "trust.json"))).rejects.toThrow();
   });
 
   it("exposes fleet normalization recovery through the CLI", async () => {
@@ -626,6 +791,74 @@ describe("CLI verb redesign", () => {
 
     await expect(runCli(["fleet", "normalize", "delivery", "--from", "user", "--recover"]))
       .rejects.toMatchObject({ stderr: expect.stringMatching(/No pending fleet normalization journal/) });
+  });
+
+  it("prints an explicit owned-but-unpublished provider handoff", async () => {
+    const receiptRoot = join(cliHome, ".agentwheel", "mutations", "receipts");
+    await mkdir(receiptRoot, { recursive: true });
+    const unsealedReceipt = {
+      version: 1,
+      revision: 1,
+      receiptDigest: "0".repeat(64),
+      operationId: "owned-op",
+      commandName: "agentwheel install",
+      reason: "Keep the provider-owned draft unpublished until authorized handoff",
+      noCommit: false,
+      workspaceRoot: "/tmp/example-product",
+      repositoryRoot: "/tmp/example-product",
+      expectedHead: "1".repeat(40),
+      expectedManifestDigest: null,
+      revisionMode: "commit-after-verify",
+      provider: {
+        kind: "command",
+        id: "syncwheel",
+        command: ["/opt/syncwheel/bin/syncwheel", "revision-provider"],
+        executableSha256: "a".repeat(64),
+        trustBoundary: "entrypoint",
+        timeoutMs: 30000,
+        protocolVersion: 1,
+      },
+      preexistingPaths: [],
+      paths: [],
+      runtimeJournals: [],
+      status: "succeeded",
+      createdAt: "2026-08-30T00:00:00.000Z",
+      updatedAt: "2026-08-30T00:00:01.000Z",
+      providerResponse: {
+        protocolVersion: 1,
+        providerId: "syncwheel",
+        action: "finalize",
+        operationId: "owned-op",
+        ok: true,
+        status: "verified",
+        expectedHead: "1".repeat(40),
+        resultingHead: "3".repeat(40),
+        productCommitSha: "2".repeat(40),
+        draftStackId: "agentwheel-owned-op",
+        draftBranch: "syncwheel/draft/agentwheel-owned-op",
+        draftTipSha: "4".repeat(40),
+        controlCommitSha: "3".repeat(40),
+        manifestDigest: "5".repeat(64),
+        unmappedIntegrationCommits: [],
+        published: false,
+      },
+    };
+    const receipt = {
+      ...unsealedReceipt,
+      receiptDigest: mutationReceiptDigest(unsealedReceipt),
+    };
+    await writeFile(join(receiptRoot, "owned-op.json"), `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+
+    const shown = await runCli(["mutation", "show", "owned-op"]);
+    expect(shown.stdout).toContain("Ownership record: owned-but-unpublished (provider=syncwheel, published=false).");
+    expect(shown.stdout).toContain("Draft stack: agentwheel-owned-op");
+    expect(shown.stdout).toContain("Draft branch: syncwheel/draft/agentwheel-owned-op");
+    expect(shown.stdout).toContain(`Draft tip: ${"4".repeat(40)}`);
+    expect(shown.stdout).toContain(`Control commit: ${"3".repeat(40)}`);
+    expect(shown.stdout).toContain("Read-only inspection: agentwheel mutation show owned-op");
+    expect(shown.stdout).toContain("Agentwheel exposes no publication command");
+    expect(shown.stdout).toContain("only after separate authorization");
+    expect(shown.stdout).toContain("may intentionally block while this ownership remains unresolved");
   });
 
   it("keeps fleet install, update, and uninstall previews usable after legacy ownership normalization", async () => {
@@ -1662,6 +1895,54 @@ describe("CLI verb redesign", () => {
     expect(result.stdout).toContain("Skill composite-skill: composite-pack (install).");
   }, 60_000);
 
+  it("refuses a composite mutation before any member runs when one member is governed", async () => {
+    const workspace = await tempRoot("agentwheel-composite-governance-parent-");
+    const member = await tempRoot("agentwheel-composite-governance-member-");
+    const runtime = await tempRoot("agentwheel-composite-governance-runtime-");
+    const source = await packageFixture("composite-governance-source");
+    await mkdir(join(member, ".agentwheel"), { recursive: true });
+    await writeFile(join(member, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 4,
+      mutationPolicy: {
+        reason: "required",
+        journal: "required",
+        revisioning: {
+          mode: "commit-after-verify",
+          allowNoCommitOverride: false,
+          reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+      packages: [],
+      profiles: {
+        delivery: { runtimes: [{ adapter: "codex", targetRoot: runtime, installationType: "local" }] },
+      },
+      agents: {},
+      registry: {},
+      trust: {},
+      fleets: {},
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [],
+      profiles: {
+        cluster: { members: [{ id: "governed", workspace: member, profile: "delivery", transport: "local" }] },
+      },
+      agents: {},
+      registry: {},
+      trust: {},
+    }, null, 2)}\n`, "utf8");
+
+    await expect(runCli([
+      "install", source, "--profile", "cluster", "--target-root", workspace,
+    ])).rejects.toMatchObject({
+      stderr: expect.stringMatching(/refused before member execution.*commit-after-verify.*distributed child receipts/is),
+    });
+    await expect(stat(join(runtime, "AGENTS.md"))).rejects.toThrow();
+    await expect(stat(join(runtime, ".agentwheel"))).rejects.toThrow();
+  });
+
   it("requires an explicit package when a skill has multiple configured owners", async () => {
     const workspace = await tempRoot();
     const first = await skillPackageFixture("shared-skill", "first");
@@ -2305,6 +2586,32 @@ async function runCli(args: string[], options: { env?: Record<string, string>; c
   } catch (error) {
     throw error as { stdout: string; stderr: string; code: number };
   }
+}
+
+async function registeredCliLeafPaths(): Promise<Set<string>> {
+  const leaves = new Set<string>();
+  const queue: string[][] = [[]];
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    const help = await runCli([...path, "--help"]);
+    const children = commandNamesFromHelp(help.stdout);
+    if (children.length === 0) {
+      if (path.length > 0) leaves.add(path.join(" "));
+      continue;
+    }
+    for (const child of children) queue.push([...path, child]);
+  }
+  return leaves;
+}
+
+function commandNamesFromHelp(help: string): string[] {
+  const marker = "Commands:\n";
+  const offset = help.indexOf(marker);
+  if (offset < 0) return [];
+  return help.slice(offset + marker.length)
+    .split("\n")
+    .map((line) => line.match(/^\s{2}([a-z][a-z0-9-]*)\b/i)?.[1])
+    .filter((name): name is string => Boolean(name) && name !== "help");
 }
 
 async function tempRoot(prefix = "agentwheel-cli-"): Promise<string> {

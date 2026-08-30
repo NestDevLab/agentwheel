@@ -206,6 +206,31 @@ describe("CLI verb redesign", () => {
         "amf-interactive-recall": legacyServer,
       },
     }, null, 2)}\n`, "utf8");
+    await writeFile(join(workspace, ".agentwheel", "claude.local.foreign-fixture.install-manifest.json"), `${JSON.stringify({
+      version: 2,
+      adapter: "claude",
+      installationType: "local",
+      stateKey: "claude.local.foreign-fixture",
+      targetRoot: workspace,
+      generatedAt: "2026-08-30T00:00:00.000Z",
+      revision: "foreign-fixture-revision",
+      entries: [{
+        path: ".mcp.json",
+        artifactType: "mcp",
+        artifactName: "foreign.json",
+        installName: "foreign.json",
+        dependencyRole: "root",
+        owners: ["foreign-package"],
+        refCount: 1,
+        workspaceOwner: "workspace-root:/foreign-workspace",
+        kind: "file",
+        hash: "a".repeat(64),
+        sourceHash: "b".repeat(64),
+        updatedAt: "2026-08-30T00:00:00.000Z",
+        channel: "managed",
+        mergeStrategy: "json-deep",
+      }],
+    }, null, 2)}\n`, "utf8");
     const before = await readFile(configPath, "utf8");
 
     const { stdout } = await runCli([

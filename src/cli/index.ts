@@ -1897,6 +1897,7 @@ async function runExactMcpRetirement(packageName: string, options: GraphCliOptio
     onlySource: true,
     retireExactMcp: true,
     expectedFromWorkspaceOwner,
+    deferForeignStateCheck: true,
     dryRun: true,
   }, { mode: "install" });
   if (results.length !== 1) {

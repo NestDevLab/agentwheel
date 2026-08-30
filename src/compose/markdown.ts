@@ -110,7 +110,7 @@ async function expandFile(
   const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths, options);
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
-  const appliedCompositionRules = new Set<string>();
+  const appliedComposeIdentities = new Set<string>();
 
   for (const external of appendEntries) {
     const { entry } = external;
@@ -122,12 +122,15 @@ async function expandFile(
       chain: [owner],
     });
     if (!included) continue;
+    const markerMode = entry.markers === false ? "plain" : "markers";
+    const identity = `${markerMode}\0${composedLineageKey(included.composedFrom)}`;
     if (external.deduplicate) {
-      const markerMode = entry.markers === false ? "plain" : "markers";
-      const identity = `${markerMode}\0${composedLineageKey(included.composedFrom)}`;
-      if (appliedCompositionRules.has(identity)) continue;
-      appliedCompositionRules.add(identity);
+      if (appliedComposeIdentities.has(identity)) continue;
     }
+    // Explicit item-level repetitions remain meaningful and are always rendered.
+    // Their resolved identities still suppress a later injected composition rule
+    // for the same lineage and marker mode.
+    appliedComposeIdentities.add(identity);
     content = `${content.trimEnd()}\n\n${included.rendered}\n`;
     composedFrom.push(...included.composedFrom);
   }

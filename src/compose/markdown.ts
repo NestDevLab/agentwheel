@@ -109,6 +109,7 @@ async function expandFile(
   const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths, options);
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
+  const appliedIncludes = new Set<string>();
 
   for (const external of appendEntries) {
     const { entry } = external;
@@ -120,6 +121,9 @@ async function expandFile(
       chain: [owner],
     });
     if (!included) continue;
+    const identity = JSON.stringify(included.composedFrom);
+    if (appliedIncludes.has(identity)) continue;
+    appliedIncludes.add(identity);
     content = `${content.trimEnd()}\n\n${included.rendered}\n`;
     composedFrom.push(...included.composedFrom);
   }

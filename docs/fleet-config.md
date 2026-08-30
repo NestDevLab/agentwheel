@@ -336,9 +336,10 @@ Preview with `agentwheel mcp retire <package> --agent legacy-codex --dry-run`. I
 manifest belongs to an earlier workspace, add `--from-workspace-root <exact-old-root>`; omission or
 an owner mismatch fails closed. Unmanaged legacy state needs no owner flag. The plan is valid only
 when it contains one `REMOVE`, no drift/conflict, the expected target root, and the expected legacy
-server name. Apply is a separate decision using `--apply`; Agentwheel rechecks manifest revision and
-the complete MCP subentry before writing, so changed arguments, environment, ownership, or state
-abort without removing runtime content.
+server names. Apply is a separate decision using `--apply`; Agentwheel rechecks manifest revision and
+every complete MCP subentry before writing, so changed arguments, environment, ownership, or state
+abort without removing runtime content. One artifact may retire multiple servers, but any non-MCP
+root configuration remains a blocking error.
 
 Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
 those on an SSH target, run the command on the remote host after reviewing the dry-run output.

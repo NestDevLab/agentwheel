@@ -97,12 +97,33 @@ describe("exact MCP retirement", () => {
     expect(await readFile(configPath, "utf8")).toBe(before);
   });
 
-  it("rejects multiple servers and non-MCP root configuration", async () => {
+  it("retires multiple exact servers from one MCP artifact", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();
     const legacy = await mcpArtifact(sourceRoot);
     const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
     source.mcpServers.secondLegacy = { command: "second" };
+    await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
+    const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
+    await writeFile(join(targetRoot, ".claude.json"), `${JSON.stringify({
+      mcpServers: { amf: { command: "canonical-amf" }, ...source.mcpServers },
+    }, null, 2)}\n`, "utf8");
+
+    const plan = await retirementPlan([desired], claudeAdapter, targetRoot, undefined, {
+      workspaceOwner: "workspace-root:/fleet/cutover",
+    });
+    expect(plan.operations).toMatchObject([{ action: "remove", exactMergeRemoval: true }]);
+    await uninstall(plan);
+    expect((JSON.parse(await readFile(join(targetRoot, ".claude.json"), "utf8"))).mcpServers).toEqual({
+      amf: { command: "canonical-amf" },
+    });
+  });
+
+  it("rejects non-MCP root configuration", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await mcpArtifact(sourceRoot);
+    const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
     source.unrelated = true;
     await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
     const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
@@ -113,7 +134,7 @@ describe("exact MCP retirement", () => {
 
     await expect(retirementPlan([desired], claudeAdapter, targetRoot, undefined, {
       workspaceOwner: "workspace-root:/fleet/cutover",
-    })).rejects.toThrow(/exactly one MCP server and no non-MCP configuration/);
+    })).rejects.toThrow(/one or more MCP servers and no non-MCP configuration/);
   });
 
   it("revalidates exact content before apply without leaving a journal on a plan/apply race", async () => {

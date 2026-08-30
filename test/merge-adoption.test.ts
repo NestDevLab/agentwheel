@@ -64,10 +64,67 @@ const jsonAdapter: AdapterConfig = {
     mcp: {
       local: targetMappingSchema.parse({ enabled: true, dest: "config.json", merge: "json-deep" }),
     },
+    settings: {
+      local: targetMappingSchema.parse({ enabled: true, dest: "config.json", merge: "json-deep" }),
+    },
   },
 };
 
 describe("exact merged contribution adoption", () => {
+  it("adopts and removes an exact pre-existing generic JSON merge contribution", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const sourcePath = join(sourceRoot, "settings.json");
+    const contribution = {
+      permissions: { allow: ["Edit(/workspace/**)"] },
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "capture-turn" }] }] },
+      remoteControlAtStartup: false,
+    };
+    await writeFile(sourcePath, `${JSON.stringify(contribution, null, 2)}\n`, "utf8");
+    const desired: DesiredArtifact = {
+      type: "settings",
+      name: "settings.json",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: "settings.json",
+      kind: "file",
+      hash: await hashPath(sourcePath),
+      channel: "managed",
+      meta: { logicalSelector: "settings/settings.json", dependencyRole: "root", owners: ["migration"] },
+    };
+    const configPath = join(targetRoot, "config.json");
+    await writeFile(configPath, `${JSON.stringify({
+      keep: true,
+      permissions: { allow: ["Bash", "Edit(/workspace/**)"] },
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: "observe-prompt" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "capture-turn" }] }],
+      },
+      remoteControlAtStartup: false,
+    }, null, 2)}\n`, "utf8");
+
+    const beforeAdoption = await readFile(configPath, "utf8");
+    const adoption = await createCombinedInstallPlan([desired], jsonAdapter, targetRoot, undefined, localTransport, { forceConflict: true });
+    expect(adoption.hasBlockingChanges).toBe(false);
+    expect(adoption.operations).toMatchObject([{
+      action: "skip",
+      reason: "force adopting exact unmanaged merge contribution",
+      mergeRemoval: contribution,
+    }]);
+    await applyCombinedInstallPlan(adoption);
+    expect(await readFile(configPath, "utf8")).toBe(beforeAdoption);
+
+    const manifest = await readInstallManifest(targetRoot, jsonAdapter.name);
+    if (!manifest) throw new Error("expected adopted generic JSON manifest");
+    expect(manifest.entries[0]?.mergeRemoval).toEqual(contribution);
+    await uninstall(await createOwnershipUninstallPlan(manifest, [], jsonAdapter));
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
+      keep: true,
+      permissions: { allow: ["Bash"] },
+      hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: "observe-prompt" }] }] },
+    });
+  });
+
   it("adopts and removes an exact pre-existing JSON MCP server while preserving siblings", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();

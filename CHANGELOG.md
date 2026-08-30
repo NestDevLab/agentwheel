@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.5
+
+- Allow `--force-conflict` to adopt exact pre-existing settings, hooks, YAML, and OpenClaw JSON merge contributions while preserving strict MCP equality checks.
+
 ## 0.19.4
 
 - Add focused `update --artifact type/name` delivery so one non-skill artifact can move without removing or refreshing sibling package state.

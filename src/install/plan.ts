@@ -260,12 +260,12 @@ async function createPlanFromOperations(
         && !("mergeRemoval" in existing && hasMergeRemovalContent(existing.mergeRemoval));
       const adoptExisting = exists
         && (!existing || incompleteMergeOwnership)
-        && options.forceConflict === true
-        && op.artifactType === "mcp"
-        && (op.mergeStrategy === "json-deep" || op.mergeStrategy === "codex-toml-mcp");
+        && options.forceConflict === true;
       let mergeRemoval: MergeRemoval;
       try {
-        mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, currentContent, { adoptExistingMcp: adoptExisting });
+        mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, currentContent, {
+          adoptExisting: adoptExisting ? (op.artifactType === "mcp" ? "mcp" : "generic") : undefined,
+        });
       } catch (error) {
         if (!(error instanceof MergeAdoptionMismatchError)) throw error;
         operations.push({

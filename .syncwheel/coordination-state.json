@@ -1,12 +1,14 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "21f91afeb9a9c68f018f456d10f0379dd82e792c"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:10:59+00:00",
+  "created_at": "2026-08-30T22:11:41+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "ad3ac53cbe13b3ce58a202a3848b4ce2a8ad7160",
+    "refs/heads/main-integration": "21f91afeb9a9c68f018f456d10f0379dd82e792c",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
@@ -67,10 +69,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "a11c509dabf21d443ebeb34d0a4ab1d08519823b",
+  "parent_state": "cdd7f458f4a3b3ccbc8194b41437d1531a2193ae",
   "projection_status": "partial",
-  "publication_id": "b10f275a-a2ed-4d0a-b254-c9da884a8bfe",
-  "publication_scope": "close:agentwheel-coordination-cleanup",
+  "publication_id": "6dd62b8a-12e5-4653-b16d-22e53b45649a",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [

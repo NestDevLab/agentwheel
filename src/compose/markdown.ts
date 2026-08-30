@@ -123,7 +123,7 @@ async function expandFile(
     });
     if (!included) continue;
     const markerMode = entry.markers === false ? "plain" : "markers";
-    const identity = `${markerMode}\0${composedLineageKey(included.composedFrom)}`;
+    const identity = `${markerMode}\0${included.identity}`;
     if (external.deduplicate) {
       if (appliedComposeIdentities.has(identity)) continue;
     }
@@ -185,7 +185,7 @@ async function expandInclude(
   packageRoot: string,
   artifactPaths: Map<string, string>,
   options: MarkdownIncludeOptions & { optional: boolean; markers: boolean; chain: string[] },
-): Promise<{ rendered: string; composedFrom: ComposedFromEntry[] } | undefined> {
+): Promise<{ rendered: string; composedFrom: ComposedFromEntry[]; identity: string } | undefined> {
   const parsed = parseOpenPackIncludeSelector(selector);
   let sourcePath: string;
   let sourceContent: string | undefined;
@@ -235,9 +235,10 @@ async function expandInclude(
     nodeId: includeNodeId,
   });
   const contentHash = sha256(expanded.content);
+  const identity = `${includeNodeId ?? resolve(includePackageRoot)}\0${parsed.selector}\0${contentHash}`;
   const ownEntry = { selector: displaySelector, hash: contentHash };
   const composedFrom = uniqueComposedFrom([ownEntry, ...expanded.composedFrom]);
-  if (!options.markers) return { rendered: expanded.content, composedFrom };
+  if (!options.markers) return { rendered: expanded.content, composedFrom, identity };
 
   return {
     rendered: [
@@ -246,6 +247,7 @@ async function expandInclude(
       `<!-- END openpack:include ${displaySelector} -->`,
     ].join("\n"),
     composedFrom,
+    identity,
   };
 }
 
@@ -375,13 +377,6 @@ function uniqueComposedFrom(entries: ComposedFromEntry[]): ComposedFromEntry[] {
   if (entries.length === 0) return [];
   const byKey = new Map(entries.map((entry) => [`${entry.selector}\0${entry.hash}`, entry]));
   return [...byKey.values()].sort((a, b) => `${a.selector}:${a.hash}`.localeCompare(`${b.selector}:${b.hash}`));
-}
-
-function composedLineageKey(entries: ComposedFromEntry[]): string {
-  return entries
-    .map((entry) => `${entry.selector}\0${entry.hash}`)
-    .sort((a, b) => a.localeCompare(b))
-    .join("\x01");
 }
 
 function artifactKey(artifact: Artifact): string {

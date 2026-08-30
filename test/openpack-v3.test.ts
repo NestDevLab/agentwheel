@@ -217,13 +217,13 @@ describe("OpenPack v3", () => {
     const workspace = await tempRoot();
     const target = await tempRoot();
     const policy = join(workspace, "policy");
+    const standard = join(workspace, "standard");
     await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove once.\n");
     await writeText(join(policy, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Item and rule composition target.\n---\n\n# Demo\n");
     await writeJson(join(policy, "openpack.json"), {
       schemaVersion: 3,
       name: "test/policy",
       version: "1.0.0",
-      compositionRules: [{ target: "skills/*", include: "fragments/evolution.md" }],
       provides: [
         { type: "fragments", path: "fragments" },
         {
@@ -233,12 +233,23 @@ describe("OpenPack v3", () => {
         },
       ],
     });
+    await writeJson(join(standard, "openpack.json"), {
+      schemaVersion: 3,
+      name: "test/standard",
+      version: "1.0.0",
+      requires: { core: { source: "../policy", select: ["fragments/evolution.md"] } },
+      compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md" }],
+      provides: [],
+    });
     await writeWorkspaceConfig(workspace, {
       schemaVersion: 1, registry: {}, trust: { allow: ["local:*"] }, packages: [], profiles: {}, agents: {},
     });
 
     const result = await createGraphSourcePlan({
-      roots: [{ rootId: "policy", source: policy }],
+      roots: [
+        { rootId: "policy", source: policy },
+        { rootId: "standard", source: standard },
+      ],
       targetRoot: target,
       workspaceRoot: workspace,
       adapter: claudeAdapter,

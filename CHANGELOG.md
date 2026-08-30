@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.10
+
+- Canonicalize composition identities by resolved node, fragment selector, and expanded content so
+  local and aliased references to the same fragment deduplicate without collapsing distinct sources.
+
 ## 0.19.9
 
 - Deduplicate an injected composition rule against an identical earlier item-level compose entry,

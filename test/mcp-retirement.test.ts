@@ -97,12 +97,33 @@ describe("exact MCP retirement", () => {
     expect(await readFile(configPath, "utf8")).toBe(before);
   });
 
-  it("rejects multiple servers and non-MCP root configuration", async () => {
+  it("retires multiple exact servers from one MCP artifact", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();
     const legacy = await mcpArtifact(sourceRoot);
     const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
     source.mcpServers.secondLegacy = { command: "second" };
+    await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
+    const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
+    await writeFile(join(targetRoot, ".claude.json"), `${JSON.stringify({
+      mcpServers: { amf: { command: "canonical-amf" }, ...source.mcpServers },
+    }, null, 2)}\n`, "utf8");
+
+    const plan = await retirementPlan([desired], claudeAdapter, targetRoot, undefined, {
+      workspaceOwner: "workspace-root:/fleet/cutover",
+    });
+    expect(plan.operations).toMatchObject([{ action: "remove", exactMergeRemoval: true }]);
+    await uninstall(plan);
+    expect((JSON.parse(await readFile(join(targetRoot, ".claude.json"), "utf8"))).mcpServers).toEqual({
+      amf: { command: "canonical-amf" },
+    });
+  });
+
+  it("rejects non-MCP root configuration", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const legacy = await mcpArtifact(sourceRoot);
+    const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
     source.unrelated = true;
     await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
     const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
@@ -113,7 +134,7 @@ describe("exact MCP retirement", () => {
 
     await expect(retirementPlan([desired], claudeAdapter, targetRoot, undefined, {
       workspaceOwner: "workspace-root:/fleet/cutover",
-    })).rejects.toThrow(/exactly one MCP server and no non-MCP configuration/);
+    })).rejects.toThrow(/one or more MCP servers and no non-MCP configuration/);
   });
 
   it("revalidates exact content before apply without leaving a journal on a plan/apply race", async () => {
@@ -135,10 +156,14 @@ describe("exact MCP retirement", () => {
     expect(await pathExists(applyJournalPath(targetRoot, claudeAdapter.name, { installationType: "user", stateKey }))).toBe(false);
   });
 
-  it("removes only the exact legacy Codex TOML sections", async () => {
+  it("removes only the exact legacy Codex TOML sections for a multi-server artifact", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();
     const legacy = await mcpArtifact(sourceRoot);
+    const source = JSON.parse(await readFile(legacy.sourcePath, "utf8"));
+    source.mcpServers.secondLegacy = { command: "second-legacy", args: ["--safe"] };
+    await writeFile(legacy.sourcePath, `${JSON.stringify(source, null, 2)}\n`, "utf8");
+    const desired = { ...legacy, hash: await hashPath(legacy.sourcePath) };
     const configPath = join(targetRoot, ".codex", "config.toml");
     await mkdir(dirname(configPath), { recursive: true });
     await writeFile(configPath, [
@@ -155,9 +180,13 @@ describe("exact MCP retirement", () => {
       "[mcp_servers.amf-interactive-recall.env]",
       "HANDOFF_DIR = \"/etc/amf-interactive-recall\"",
       "",
+      "[mcp_servers.secondLegacy]",
+      "command = \"second-legacy\"",
+      "args = [\"--safe\"]",
+      "",
     ].join("\n"), "utf8");
 
-    const plan = await retirementPlan([legacy], codexAdapter, targetRoot, undefined, {
+    const plan = await retirementPlan([desired], codexAdapter, targetRoot, undefined, {
       workspaceOwner: "workspace-root:/fleet/cutover",
     }, "local");
     expect(plan.operations).toMatchObject([{ action: "remove" }]);
@@ -166,6 +195,7 @@ describe("exact MCP retirement", () => {
     expect(current).toContain("[mcp_servers.amf]");
     expect(current).toContain("command = \"canonical-amf\"");
     expect(current).not.toContain("amf-interactive-recall");
+    expect(current).not.toContain("secondLegacy");
   });
 });
 

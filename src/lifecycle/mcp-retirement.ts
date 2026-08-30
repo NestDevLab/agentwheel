@@ -71,8 +71,8 @@ export async function createExactMcpRetirementPlan(
   const servers = operation.mergeRemoval.mcpServers;
   if (removalKeys.length !== 1 || removalKeys[0] !== "mcpServers"
     || !servers || typeof servers !== "object" || Array.isArray(servers)
-    || Object.keys(servers).length !== 1) {
-    throw new Error("Exact MCP retirement requires exactly one MCP server and no non-MCP configuration.");
+    || Object.keys(servers).length === 0) {
+    throw new Error("Exact MCP retirement requires one or more MCP servers and no non-MCP configuration.");
   }
 
   const entry = manifest?.entries[0];

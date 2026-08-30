@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.1
+
+- Allow exact MCP retirement to remove multiple fully verified servers from one artifact while
+  continuing to reject non-MCP root configuration.
+
 ## 0.19.0
 
 - Added OpenPack schema v3 composition rules for deterministic wildcard fragment injection into

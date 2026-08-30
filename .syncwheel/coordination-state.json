@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "21f91afeb9a9c68f018f456d10f0379dd82e792c"
+    "refs/heads/syncwheel/draft/agentwheel-0-20-0-release": "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:11:41+00:00",
+  "created_at": "2026-08-30T22:16:03+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -28,6 +28,7 @@
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/syncwheel/draft/agentwheel-0-20-0": null,
+    "refs/heads/syncwheel/draft/agentwheel-0-20-0-release": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
     "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
@@ -62,17 +63,35 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "agentwheel-0-20-0-release"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/agentwheel-0-20-0-release",
+        "commits": [
+          "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
+        ],
+        "id": "agentwheel-0-20-0-release",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "cdd7f458f4a3b3ccbc8194b41437d1531a2193ae",
+  "manifest_digest": "04826e746cd91e070cfca9c17d58077557669843996602e4cbeb55937d80cb3f",
+  "parent_state": "ddedd71dd262fc4b348acd2274d96da7889c31ff",
   "projection_status": "partial",
-  "publication_id": "6dd62b8a-12e5-4653-b16d-22e53b45649a",
-  "publication_scope": "integration",
+  "publication_id": "cbaad1f9-0899-4b3b-bd1d-9265da19da56",
+  "publication_scope": "stack:agentwheel-0-20-0-release",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [

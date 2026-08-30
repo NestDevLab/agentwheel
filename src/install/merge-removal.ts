@@ -10,6 +10,21 @@ type MergeStrategy = "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-t
 
 export class MergeAdoptionMismatchError extends Error {}
 
+export function assertExactMergeContribution(
+  contribution: MergeRemoval,
+  strategy: MergeStrategy,
+  currentContent: string,
+): void {
+  if (strategy === "codex-toml-mcp") {
+    assertExactMcpMergeContribution(contribution, strategy, currentContent);
+    return;
+  }
+  const mismatch = firstMergeContributionMismatch(parseMergeDestination(currentContent, strategy), contribution);
+  if (mismatch) {
+    throw new MergeAdoptionMismatchError(`exact merge contribution differs or is missing at ${mismatch}`);
+  }
+}
+
 export function assertExactMcpMergeContribution(
   removal: MergeRemoval,
   strategy: MergeStrategy,
@@ -128,6 +143,26 @@ function firstMcpContributionMismatch(current: MergeValue, incoming: MergeValue)
     if (!(key in current) || !sameMcpValue(current[key]!, incomingValue)) return `$.${key}`;
   }
   return undefined;
+}
+
+function firstMergeContributionMismatch(current: MergeValue, contribution: MergeValue, path = "$"): string | undefined {
+  if (isRecord(contribution)) {
+    if (!isRecord(current)) return path;
+    for (const [key, value] of Object.entries(contribution)) {
+      if (!(key in current)) return `${path}.${key}`;
+      const mismatch = firstMergeContributionMismatch(current[key]!, value, `${path}.${key}`);
+      if (mismatch) return mismatch;
+    }
+    return undefined;
+  }
+  if (Array.isArray(contribution)) {
+    if (!Array.isArray(current)) return path;
+    for (const value of contribution) {
+      if (!current.some((candidate) => sameMcpValue(candidate, value))) return path;
+    }
+    return undefined;
+  }
+  return current === contribution ? undefined : path;
 }
 
 function combineMergeValues(existing: MergeValue, incoming: MergeValue): MergeValue {

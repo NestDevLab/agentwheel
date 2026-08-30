@@ -5,6 +5,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { resolveAdapter } from "../adapters/resolve.js";
 import { computeManifestRevision, withManifestRevision } from "../install/manifest.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
+import { assertExactMergeContribution, hasMergeRemovalContent } from "../install/merge-removal.js";
+import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
 import { acquireApplyLock, readApplyJournal, type ApplyLock } from "../install/transaction.js";
 import { installRootForAdapterInstallationType } from "../model/adapter.js";
 import { resolveWorkspaceScope, showRegisteredFleet, type WorkspaceScope } from "../model/fleet.js";
@@ -14,6 +16,7 @@ import { isCompositeWorkspaceProfile, resolveConfigPath, workspaceConfigPath, wo
 import { graphLockPathForTarget } from "./source-plan.js";
 import { workspaceOwnerForRoot } from "./ownership.js";
 import { hashPath, listFiles, pathExists, withFilesystemLock, writeJsonAtomic } from "../utils/fs.js";
+import { localTransport } from "../transport/index.js";
 
 export type FleetNormalizationSource = "user" | `fleet:${string}`;
 
@@ -549,7 +552,7 @@ async function inspectInstalledState(
         throw new Error(`Partial ownership at ${sourceEntry.renderedPath} includes packages outside the normalization selection.`);
       }
       const destinationRenderedPath = renderedEntryPathForRoot(destinationState.installRoot, sourceEntry.entry.path);
-      await assertEquivalentRuntimeBytes(sourceEntry.renderedPath, destinationRenderedPath, sourceEntry.entry.hash);
+      await assertEquivalentRuntimeState(sourceEntry.entry, sourceEntry.renderedPath, destinationRenderedPath);
       plannedDestinationPaths.add(destinationRenderedPath);
       sourceRenderedPaths.push(sourceEntry.renderedPath);
       destinationRenderedPaths.push(destinationRenderedPath);
@@ -741,7 +744,7 @@ async function inspectLegacySelfInstalledState(
       if (!coveredByCurrentGraph && !matchesCurrentGraph && !orphanedOwners.has(entry.entry.workspaceOwner)) {
         throw new Error(`Legacy manifest entry is not covered by its graph lock: ${entry.renderedPath}`);
       }
-      await assertEquivalentRuntimeBytes(entry.renderedPath, entry.renderedPath, entry.entry.hash);
+      await assertEquivalentRuntimeState(entry.entry, entry.renderedPath, entry.renderedPath);
       renderedPaths.add(entry.renderedPath);
       sourceRenderedPaths.push(entry.renderedPath);
       if (coveredByCurrentGraph || matchesCurrentGraph) {
@@ -1244,6 +1247,41 @@ async function assertEquivalentRuntimeBytes(sourcePath: string, destinationPath:
   }
 }
 
+async function assertEquivalentRuntimeState(
+  entry: InstallManifestV2["entries"][number],
+  sourcePath: string,
+  destinationPath: string,
+): Promise<void> {
+  if (entry.mode === "managed-block") {
+    const selector = managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName);
+    for (const path of new Set([sourcePath, destinationPath])) {
+      const state = await readManagedInstructionBlockState(path, selector, localTransport);
+      if (!state.exists || !state.hasBlock || state.drifted || state.hash !== entry.hash) {
+        throw new Error(`Runtime managed-block drift at ${path}; the installed contribution is missing or changed.`);
+      }
+    }
+    return;
+  }
+  if (entry.mergeStrategy) {
+    for (const path of new Set([sourcePath, destinationPath])) {
+      if (!(await pathExists(path))) throw new Error(`Runtime merge destination is missing: ${path}`);
+      const content = await readFile(path, "utf8");
+      if (hasMergeRemovalContent(entry.mergeRemoval)) {
+        assertExactMergeContribution(entry.mergeRemoval!, entry.mergeStrategy, content);
+      } else if (resolve(sourcePath) === resolve(destinationPath) && entry.mergeStrategy !== "codex-toml-mcp") {
+        // Older manifests did not always record a removable contribution. A
+        // same-path ownership-only handoff may preserve that fail-closed state:
+        // uninstall still refuses it, and normalization never rewrites bytes.
+        assertExactMergeContribution({}, entry.mergeStrategy, content);
+      } else {
+        throw new Error(`Installed-state normalization cannot prove incomplete merge ownership at ${path}.`);
+      }
+    }
+    return;
+  }
+  await assertEquivalentRuntimeBytes(sourcePath, destinationPath, entry.hash);
+}
+
 function renderedEntryPathForRoot(root: string, entryPath: string): string {
   const normalizedRoot = resolve(root);
   const candidate = resolve(normalizedRoot, entryPath);
@@ -1383,8 +1421,11 @@ function workspaceOwners(scope: WorkspaceScope): Set<string> {
 }
 
 function assertSimpleVerifiableEntry(entry: InstallManifestV2["entries"][number], path: string): void {
-  if (entry.semanticPlugin || entry.mergeStrategy || entry.mode) {
-    throw new Error(`Installed-state normalization cannot byte-verify semantic, merge, or managed-block entry ${path}.`);
+  // Semantic plugins have no filesystem contribution that normalization can
+  // prove. Files, directories, merge contributions, and managed blocks are
+  // verified by their representation-specific checks below.
+  if (entry.semanticPlugin) {
+    throw new Error(`Installed-state normalization cannot byte-verify semantic plugin entry ${path}.`);
   }
   if (entry.kind !== "file" && entry.kind !== "dir") throw new Error(`Unsupported installed entry kind at ${path}.`);
 }
@@ -1418,7 +1459,9 @@ function graphArtifactIdentity(artifact: GraphLock["canonical"]["artifacts"][num
     dependencyRole: artifact.dependencyRole,
     owners: artifact.owners,
     kind: artifact.kind,
-    sourceHash: artifact.hash,
+    ...(artifact.composedFrom?.length
+      ? { composedFrom: artifact.composedFrom }
+      : { sourceHash: artifact.hash }),
     channel: artifact.channel,
   });
 }
@@ -1433,7 +1476,9 @@ function graphEntryIdentity(entry: InstallManifestV2["entries"][number]): string
     dependencyRole: entry.dependencyRole,
     owners: entry.owners,
     kind: entry.kind,
-    sourceHash: entry.sourceHash,
+    ...(entry.composedFrom?.length
+      ? { composedFrom: entry.composedFrom }
+      : { sourceHash: entry.sourceHash }),
     channel: entry.channel,
   });
 }

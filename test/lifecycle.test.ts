@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { claudeAdapter } from "../src/adapters/claude.js";
 import { applyInstallPlan, createInstallPlan, readInstallManifest } from "../src/install/index.js";
 import { shouldUpdatePackage } from "../src/lifecycle/update.js";
@@ -117,6 +117,65 @@ describe("lifecycle core", () => {
     await mkdir(`${resolved.resolvedPath}.lock`, { recursive: true });
 
     await expect(driver.fetch(resolved)).rejects.toThrow(/Timed out waiting for git cache lock/);
+  });
+
+  it("materializes snapshots without mutating a contaminated cache checkout", async () => {
+    const repo = await tempRoot("agentwheel-git-dirty-src-");
+    await writePackage(repo, { coreRule: "# v1\n" });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    const workspace = await tempRoot("agentwheel-git-dirty-ws-");
+    const cacheRoot = join(workspace, ".agentwheel", "cache");
+    const driver = new GitSourceDriver();
+    const firstResolved = await driver.resolve(`git:${repo}#main`, { cacheRoot, mode: "tracking" });
+    await driver.fetch(firstResolved);
+
+    const collision = join(firstResolved.resolvedPath, "test", "fixtures", "compat", "parser.mjs");
+    await mkdir(join(collision, ".."), { recursive: true });
+    await writeFile(collision, "local cache contamination\n", "utf8");
+    await mkdir(join(repo, "test", "fixtures", "compat"), { recursive: true });
+    await writeFile(join(repo, "test", "fixtures", "compat", "parser.mjs"), "upstream content\n", "utf8");
+    await mkdir(join(repo, "node_modules", "tracked-fixture"), { recursive: true });
+    await writeFile(join(repo, "node_modules", "tracked-fixture", "index.js"), "generated\n", "utf8");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["add", "--force", "node_modules/tracked-fixture/index.js"]);
+    await git(repo, ["commit", "-m", "add colliding fixture"]);
+    const expectedCommit = (await git(repo, ["rev-parse", "HEAD"])).trim();
+
+    const fetched = await driver.fetch(await driver.resolve(`git:${repo}#main`, { cacheRoot, mode: "tracking" }));
+    expect(fetched.resolvedCommit).toBe(expectedCommit);
+    expect(await readFile(join(fetched.resolvedPath, "test", "fixtures", "compat", "parser.mjs"), "utf8"))
+      .toBe("upstream content\n");
+    await expect(readFile(join(fetched.resolvedPath, "node_modules", "tracked-fixture", "index.js"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(collision, "utf8")).toBe("local cache contamination\n");
+  });
+
+  it("refuses to mutate a Git cache owned by another uid", async () => {
+    const currentUid = process.getuid?.();
+    if (currentUid === undefined) return;
+    const repo = await tempRoot("agentwheel-git-owner-src-");
+    await writePackage(repo);
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "initial"]);
+    const workspace = await tempRoot("agentwheel-git-owner-ws-");
+    const driver = new GitSourceDriver();
+    const resolved = await driver.resolve(`git:${repo}#main`, {
+      cacheRoot: join(workspace, ".agentwheel", "cache"),
+    });
+    const getuid = vi.spyOn(process, "getuid").mockReturnValue(currentUid + 1);
+    try {
+      await expect(driver.fetch(resolved)).rejects.toThrow(/owned by uid .* running as uid/);
+    } finally {
+      getuid.mockRestore();
+    }
   });
 
   it("decides update behavior for pinned and tracking packages", () => {

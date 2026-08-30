@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.6
+
+- Resolve Git sources without mutating shared cache checkouts, materialize immutable snapshots from
+  Git trees, and reject cache mutation when the invoking UID does not own the cache root.
+
 ## 0.19.5
 
 - Allow `--force-conflict` to adopt exact pre-existing settings, hooks, YAML, and OpenClaw JSON merge contributions while preserving strict MCP equality checks.

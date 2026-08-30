@@ -1,13 +1,12 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { readPackageManifest } from "../model/package.js";
 import {
   hashPath,
   isAlreadyExists,
-  isIgnoredGeneratedEntry,
   pathExists,
   withFilesystemLock,
 } from "../utils/fs.js";
@@ -45,13 +44,17 @@ export class GitSourceDriver implements SourceDriver {
   async fetch(resolved: ResolvedSource): Promise<ResolvedSource> {
     return withFilesystemLock(`${resolved.resolvedPath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const parsed = parseGitSource(resolved.source);
-      await mkdir(resolve(resolved.resolvedPath, ".."), { recursive: true });
+      const cacheRoot = dirname(resolved.resolvedPath);
+      await mkdir(cacheRoot, { recursive: true });
+      await assertOwnedByCurrentUser(cacheRoot);
+      if (await pathExists(resolved.resolvedPath)) await assertOwnedByCurrentUser(resolved.resolvedPath);
       if (!(await pathExists(join(resolved.resolvedPath, ".git")))) {
         if (resolved.frozenLock) {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
         await rm(resolved.resolvedPath, { recursive: true, force: true });
-        await git([...(await gitAuthArguments(parsed.url)), "clone", parsed.url, resolved.resolvedPath]);
+        await git([...(await gitAuthArguments(parsed.url)), "clone", "--no-checkout", parsed.url, resolved.resolvedPath]);
+        await assertOwnedByCurrentUser(resolved.resolvedPath);
       } else if (!resolved.frozenLock) {
         await git([
           ...(await gitAuthArguments(parsed.url)),
@@ -65,28 +68,12 @@ export class GitSourceDriver implements SourceDriver {
       }
 
       const ref = resolved.requestedRef ?? parsed.ref ?? "HEAD";
-      if (ref === "HEAD") {
-        await git(["-C", resolved.resolvedPath, "checkout", "--detach", "origin/HEAD"]);
-      } else if (/^[0-9a-f]{7,40}$/i.test(ref)) {
-        await git(["-C", resolved.resolvedPath, "checkout", "--detach", ref]);
-      } else {
-        try {
-          await git(["-C", resolved.resolvedPath, "checkout", ref]);
-          await git(["-C", resolved.resolvedPath, "reset", "--hard", `origin/${ref}`]);
-        } catch {
-          await git(["-C", resolved.resolvedPath, "checkout", "--detach", ref]);
-        }
-      }
-
-      await removeGeneratedEntries(resolved.resolvedPath, true);
-      const { stdout } = await git(["-C", resolved.resolvedPath, "rev-parse", "HEAD"]);
-      const resolvedCommit = stdout.trim();
-      const cacheRoot = dirname(resolved.resolvedPath);
+      const resolvedCommit = await resolveCommit(resolved.resolvedPath, ref);
       const snapshot = await withGitCacheMaintenanceLock(
         cacheRoot,
         resolved.cacheLockTimeoutMs ?? 30_000,
         async () => {
-          const path = await snapshotCheckout(resolved.resolvedPath, resolvedCommit);
+          const path = await snapshotCommit(resolved.resolvedPath, resolvedCommit);
           const leasePath = await createGitSnapshotLease(path);
           await pruneGitCache(cacheRoot, {
             currentSnapshot: path,
@@ -154,21 +141,47 @@ function cachePathFor(url: string, cacheRoot?: string): string {
   return join(root, slug || basename(url));
 }
 
-async function git(args: string[]) {
-  return execFileAsync("git", args, { maxBuffer: 1024 * 1024 * 10 });
+async function git(args: string[], env?: NodeJS.ProcessEnv) {
+  return execFileAsync("git", args, { env, maxBuffer: 1024 * 1024 * 10 });
 }
 
-async function snapshotCheckout(checkoutPath: string, commit: string): Promise<string> {
+async function resolveCommit(checkoutPath: string, ref: string): Promise<string> {
+  const candidates = ref === "HEAD"
+    ? ["origin/HEAD"]
+    : /^[0-9a-f]{7,40}$/i.test(ref)
+      ? [ref]
+      : [`origin/${ref}`, ref];
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const { stdout } = await git(["-C", checkoutPath, "rev-parse", "--verify", `${candidate}^{commit}`]);
+      return stdout.trim();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function snapshotCommit(checkoutPath: string, commit: string): Promise<string> {
   const snapshotPath = join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
   if (await pathExists(snapshotPath)) return snapshotPath;
   const tempPath = join(dirname(checkoutPath), `${basename(snapshotPath)}.tmp-${process.pid}-${Date.now()}`);
+  const tempIndexPath = `${tempPath}.index`;
   await rm(tempPath, { recursive: true, force: true });
-  await cp(checkoutPath, tempPath, {
-    recursive: true,
-    dereference: true,
-    filter: (path) => !isIgnoredGeneratedEntry(basename(path)),
-  });
-  await rm(join(tempPath, ".git"), { recursive: true, force: true });
+  await rm(tempIndexPath, { force: true });
+  await mkdir(tempPath, { recursive: true });
+  const env = { ...process.env, GIT_INDEX_FILE: tempIndexPath };
+  try {
+    await git(["-C", checkoutPath, "read-tree", commit], env);
+    await git(["-C", checkoutPath, "checkout-index", "--all", `--prefix=${resolve(tempPath)}${sep}`], env);
+    await removeGeneratedEntries(tempPath, false);
+  } catch (error) {
+    await rm(tempPath, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await rm(tempIndexPath, { force: true });
+  }
   try {
     await rename(tempPath, snapshotPath);
   } catch (error) {
@@ -177,4 +190,16 @@ async function snapshotCheckout(checkoutPath: string, commit: string): Promise<s
     return snapshotPath;
   }
   return snapshotPath;
+}
+
+async function assertOwnedByCurrentUser(path: string): Promise<void> {
+  const currentUid = process.getuid?.();
+  if (currentUid === undefined) return;
+  const ownerUid = (await stat(path)).uid;
+  if (ownerUid !== currentUid) {
+    throw new Error(
+      `Git cache path ${path} is owned by uid ${ownerUid}, but Agentwheel is running as uid ${currentUid}. `
+      + "Run Agentwheel as the cache owner or use a separate cache root.",
+    );
+  }
 }

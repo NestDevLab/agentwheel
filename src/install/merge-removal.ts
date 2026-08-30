@@ -61,11 +61,11 @@ export async function mergeRemovalForInstall(
   sourcePath: string,
   strategy: MergeStrategy,
   currentContent: string | undefined,
-  options: { adoptExistingMcp?: boolean } = {},
+  options: { adoptExisting?: "generic" | "mcp" } = {},
 ): Promise<MergeRemoval> {
   const source = await readMergeSource(sourcePath, strategy);
   if (currentContent === undefined) return source;
-  if (options.adoptExistingMcp) {
+  if (options.adoptExisting) {
     if (strategy === "codex-toml-mcp") {
       const mismatched = mismatchedCodexTomlMcpServers(source as JsonRecord, currentContent);
       if (mismatched.length > 0) {
@@ -73,10 +73,10 @@ export async function mergeRemovalForInstall(
       }
       return source;
     }
-    if (strategy !== "json-deep") {
-      throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: strategy ${strategy} is not supported for MCP adoption`);
-    }
-    const mismatch = firstMcpContributionMismatch(parseMergeDestination(currentContent, strategy), source);
+    const current = parseMergeDestination(currentContent, strategy);
+    const mismatch = options.adoptExisting === "mcp"
+      ? firstMcpContributionMismatch(current, source)
+      : firstMergeContributionMismatch(current, source);
     if (mismatch) {
       throw new MergeAdoptionMismatchError(`cannot adopt merged contribution: destination differs or is missing at ${mismatch}`);
     }

@@ -139,7 +139,10 @@ describe("lifecycle core", () => {
     await writeFile(collision, "local cache contamination\n", "utf8");
     await mkdir(join(repo, "test", "fixtures", "compat"), { recursive: true });
     await writeFile(join(repo, "test", "fixtures", "compat", "parser.mjs"), "upstream content\n", "utf8");
+    await mkdir(join(repo, "node_modules", "tracked-fixture"), { recursive: true });
+    await writeFile(join(repo, "node_modules", "tracked-fixture", "index.js"), "generated\n", "utf8");
     await git(repo, ["add", "-A"]);
+    await git(repo, ["add", "--force", "node_modules/tracked-fixture/index.js"]);
     await git(repo, ["commit", "-m", "add colliding fixture"]);
     const expectedCommit = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
@@ -147,6 +150,8 @@ describe("lifecycle core", () => {
     expect(fetched.resolvedCommit).toBe(expectedCommit);
     expect(await readFile(join(fetched.resolvedPath, "test", "fixtures", "compat", "parser.mjs"), "utf8"))
       .toBe("upstream content\n");
+    await expect(readFile(join(fetched.resolvedPath, "node_modules", "tracked-fixture", "index.js"), "utf8"))
+      .rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(collision, "utf8")).toBe("local cache contamination\n");
   });
 

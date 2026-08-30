@@ -14,6 +14,7 @@ import { gitAuthArguments } from "./auth.js";
 import {
   createGitSnapshotLease,
   pruneGitCache,
+  removeGeneratedEntries,
   withGitCacheMaintenanceLock,
 } from "./cache.js";
 import { LocalSourceDriver } from "./local.js";
@@ -174,6 +175,7 @@ async function snapshotCommit(checkoutPath: string, commit: string): Promise<str
   try {
     await git(["-C", checkoutPath, "read-tree", commit], env);
     await git(["-C", checkoutPath, "checkout-index", "--all", `--prefix=${resolve(tempPath)}${sep}`], env);
+    await removeGeneratedEntries(tempPath, false);
   } catch (error) {
     await rm(tempPath, { recursive: true, force: true });
     throw error;

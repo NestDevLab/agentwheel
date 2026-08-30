@@ -147,8 +147,10 @@ describe("OpenPack v3", () => {
     const repeatTarget = await tempRoot();
     const policy = join(workspace, "policy");
     const standard = join(workspace, "standard");
+    const unmarked = join(workspace, "unmarked");
     const vendor = join(workspace, "vendor");
-    await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove deterministically.\n");
+    await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove deterministically.\n<!-- openpack:include fragments/nested.md -->\n");
+    await writeText(join(policy, "fragments", "nested.md"), "Nested policy.\n");
     await writeText(join(vendor, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Duplicate composition target.\n---\n\n# Demo\n");
     await writeJson(join(policy, "openpack.json"), {
       schemaVersion: 3,
@@ -166,6 +168,14 @@ describe("OpenPack v3", () => {
       compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md" }],
       provides: [],
     });
+    await writeJson(join(unmarked, "openpack.json"), {
+      schemaVersion: 3,
+      name: "test/unmarked",
+      version: "1.0.0",
+      requires: { core: { source: "../policy", select: ["fragments/evolution.md"] } },
+      compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md", markers: false }],
+      provides: [],
+    });
     await writeJson(join(vendor, "openpack.json"), {
       schemaVersion: 2,
       name: "test/vendor",
@@ -180,6 +190,7 @@ describe("OpenPack v3", () => {
       roots: [
         { rootId: "policy", source: policy },
         { rootId: "standard", source: standard },
+        { rootId: "unmarked", source: unmarked },
       ],
       targetRoot: target,
       workspaceRoot: workspace,
@@ -193,6 +204,7 @@ describe("OpenPack v3", () => {
       roots: [
         { rootId: "policy", source: policy },
         { rootId: "standard", source: standard },
+        { rootId: "unmarked", source: unmarked },
       ],
       targetRoot: repeatTarget,
       workspaceRoot: workspace,
@@ -202,7 +214,9 @@ describe("OpenPack v3", () => {
     });
     const repeatedDemo = repeated.bundle.artifacts.find((artifact) => artifact.type === "skills" && artifact.name === "demo");
     const repeatedContent = await readFile(join(repeatedDemo!.stagedPath!, "SKILL.md"), "utf8");
-    expect(content.match(/Improve deterministically\./g)).toHaveLength(1);
+    expect(content.match(/Improve deterministically\./g)).toHaveLength(2);
+    expect(content.match(/Nested policy\./g)).toHaveLength(2);
+    expect(content.match(/BEGIN openpack:include .*fragments\/evolution\.md/g)).toHaveLength(1);
     expect(repeatedContent).toBe(content);
     expect(demo?.composedFrom?.filter((entry) => entry.selector.includes(":fragments/evolution.md"))).toHaveLength(1);
   });

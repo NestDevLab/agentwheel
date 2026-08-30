@@ -44,6 +44,7 @@ export interface ExternalComposeEntry {
   packageRoot: string;
   artifactPaths: Map<string, string>;
   nodeId?: string;
+  deduplicate?: boolean;
 }
 
 export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot: string, options: MarkdownIncludeOptions = {}): Promise<Artifact[]> {
@@ -109,7 +110,7 @@ async function expandFile(
   const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths, options);
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
-  const appliedIncludes = new Set<string>();
+  const appliedCompositionRules = new Set<string>();
 
   for (const external of appendEntries) {
     const { entry } = external;
@@ -121,9 +122,12 @@ async function expandFile(
       chain: [owner],
     });
     if (!included) continue;
-    const identity = JSON.stringify(included.composedFrom);
-    if (appliedIncludes.has(identity)) continue;
-    appliedIncludes.add(identity);
+    if (external.deduplicate) {
+      const markerMode = entry.markers === false ? "plain" : "markers";
+      const identity = `${markerMode}\0${composedLineageKey(included.composedFrom)}`;
+      if (appliedCompositionRules.has(identity)) continue;
+      appliedCompositionRules.add(identity);
+    }
     content = `${content.trimEnd()}\n\n${included.rendered}\n`;
     composedFrom.push(...included.composedFrom);
   }
@@ -368,6 +372,13 @@ function uniqueComposedFrom(entries: ComposedFromEntry[]): ComposedFromEntry[] {
   if (entries.length === 0) return [];
   const byKey = new Map(entries.map((entry) => [`${entry.selector}\0${entry.hash}`, entry]));
   return [...byKey.values()].sort((a, b) => `${a.selector}:${a.hash}`.localeCompare(`${b.selector}:${b.hash}`));
+}
+
+function composedLineageKey(entries: ComposedFromEntry[]): string {
+  return entries
+    .map((entry) => `${entry.selector}\0${entry.hash}`)
+    .sort((a, b) => a.localeCompare(b))
+    .join("\x01");
 }
 
 function artifactKey(artifact: Artifact): string {

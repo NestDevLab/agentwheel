@@ -225,6 +225,7 @@ function matchingCompositionEntries(
       packageRoot: candidate.packageRoot,
       artifactPaths: candidate.artifactPaths,
       nodeId: candidate.ownerNodeId,
+      deduplicate: true,
     });
   }
   return entries;

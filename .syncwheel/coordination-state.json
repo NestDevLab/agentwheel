@@ -1,7 +1,7 @@
 {
   "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T21:51:11+00:00",
+  "created_at": "2026-08-30T21:51:30+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -57,34 +57,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "fleet-qualified-ownership-handoff"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/fleet-qualified-ownership-handoff",
-        "commits": [
-          "127fc7368d93a00fc633346d801059572b66213c"
-        ],
-        "id": "fleet-qualified-ownership-handoff",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "0a8f43e664c16e43d1668b5eb176a9b7aa9edf6c251b3050aebe2e2df0bce437",
-  "parent_state": "d0f70d75fe9344ef081513ca089e5071cacd59df",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "4648e3df71cb8c546bc5c9ffc5c55e7ae28ce859",
   "projection_status": "partial",
-  "publication_id": "8e493103-2ec6-48ef-b424-4fb584b4842a",
-  "publication_scope": "close:merge-managed-self-normalization",
+  "publication_id": "477ddeb1-4574-494b-a732-c0e93bf691b0",
+  "publication_scope": "close:fleet-qualified-ownership-handoff",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -279,6 +262,14 @@
       "ref": "refs/heads/pr/merge-managed-self-normalization",
       "remote_tip": "d1ed81494b942690f2de9e94e86d7583418644e0",
       "stack": "merge-managed-self-normalization"
+    },
+    {
+      "branch": "pr/fleet-qualified-ownership-handoff",
+      "closed_at": "2026-08-30T21:51:22+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/fleet-qualified-ownership-handoff",
+      "remote_tip": "127fc7368d93a00fc633346d801059572b66213c",
+      "stack": "fleet-qualified-ownership-handoff"
     }
   ]
 }

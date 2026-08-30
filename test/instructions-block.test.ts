@@ -200,6 +200,30 @@ describe("managed instruction blocks", () => {
     expect(content).not.toContain("Managed guidance.");
   });
 
+  it("retires an exact legacy managed block whose manifest omitted its mode", async () => {
+    const sourceRoot = await tempRoot();
+    const targetRoot = await tempRoot();
+    const artifact = await instructionArtifact(sourceRoot, "Managed guidance.\n");
+    await applyCombinedInstallPlan(await createCombinedInstallPlan([artifact], managedInstructionsAdapter, targetRoot));
+
+    const dest = join(targetRoot, "AGENTS.md");
+    await writeFile(dest, `# Keep legacy persona\n\n${await readFile(dest, "utf8")}# Keep trailing notes\n`, "utf8");
+    const legacyManifest = await readInstallManifest(targetRoot, managedInstructionsAdapter.name);
+    if (!legacyManifest?.entries[0]) throw new Error("expected managed instruction manifest entry");
+    delete legacyManifest.entries[0].mode;
+
+    const retirementPlan = await createCombinedInstallPlan([], managedInstructionsAdapter, targetRoot, legacyManifest);
+    expect(retirementPlan.hasBlockingChanges).toBe(false);
+    expect(retirementPlan.operations).toMatchObject([{ action: "remove", mode: "managed-block" }]);
+
+    await applyCombinedInstallPlan(retirementPlan);
+    const content = await readFile(dest, "utf8");
+    expect(content).toContain("# Keep legacy persona");
+    expect(content).toContain("# Keep trailing notes");
+    expect(content).not.toContain("openpack:include instructions/AGENTS.md");
+    expect(content).not.toContain("Managed guidance.");
+  });
+
   it("force uninstall removes a drifted managed block while preserving user content", async () => {
     const sourceRoot = await tempRoot();
     const targetRoot = await tempRoot();

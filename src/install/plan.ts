@@ -388,7 +388,10 @@ async function createPlanFromOperations(
     const semanticPlugin = entry.semanticPlugin;
     const destPath = semanticPlugin ? targetRoot : join(targetRoot, entry.path);
     if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
-    const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
+    const inferredMode = semanticPlugin
+      ? undefined
+      : await inferExactLegacyManagedInstructionMode(entry, destPath, transport);
+    const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport, inferredMode);
     if (workspaceOwner && !entryOwnedByWorkspace(entry, workspaceOwner)) {
       operations.push(keepForeignManifestEntryOperation(entry, targetRoot, workspaceOwner, undefined, currentHash));
       continue;
@@ -410,7 +413,7 @@ async function createPlanFromOperations(
         semanticPlugin,
         execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
-        mode: entry.mode,
+        mode: entry.mode ?? inferredMode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
         ...(options.forceDrift
@@ -434,7 +437,7 @@ async function createPlanFromOperations(
         semanticPlugin,
         execute: entry.executed,
         mergeStrategy: entry.mergeStrategy,
-        mode: entry.mode,
+        mode: entry.mode ?? inferredMode,
         composedFrom: entry.composedFrom,
         ...operationMetadataFromEntry(entry),
       });
@@ -677,11 +680,24 @@ async function currentEntryHash(
   entry: PlanningManifestEntry,
   destPath: string,
   transport: TargetTransport,
+  mode = entry.mode,
 ): Promise<string | undefined> {
-  if (entry.mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
+  if (mode !== managedInstructionBlockMode) return transport.hashPath(destPath);
   const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
   const state = await readManagedInstructionBlockState(destPath, selector, transport);
   return state.hash;
+}
+
+async function inferExactLegacyManagedInstructionMode(
+  entry: PlanningManifestEntry,
+  destPath: string,
+  transport: TargetTransport,
+): Promise<typeof managedInstructionBlockMode | undefined> {
+  if (entry.mode || entry.artifactType !== "instructions") return undefined;
+  const selector = managedInstructionSelector("logicalSelector" in entry ? entry.logicalSelector : undefined, entry.artifactType, entry.artifactName);
+  const state = await readManagedInstructionBlockState(destPath, selector, transport);
+  if (!state.hasBlock || state.drifted || state.hash !== entry.hash) return undefined;
+  return managedInstructionBlockMode;
 }
 
 async function canStrictlyAdoptLegacyEntry(

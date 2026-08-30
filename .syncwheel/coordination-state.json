@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/agentwheel-0-20-0-release": "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
+    "refs/heads/release/agentwheel-0.20.0": "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:16:03+00:00",
+  "created_at": "2026-08-30T22:16:26+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -25,6 +25,7 @@
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
+    "refs/heads/release/agentwheel-0.20.0": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/syncwheel/draft/agentwheel-0-20-0": null,
@@ -75,23 +76,22 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/agentwheel-0-20-0-release",
+        "branch": "release/agentwheel-0.20.0",
         "commits": [
           "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
         ],
         "id": "agentwheel-0-20-0-release",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "04826e746cd91e070cfca9c17d58077557669843996602e4cbeb55937d80cb3f",
-  "parent_state": "ddedd71dd262fc4b348acd2274d96da7889c31ff",
+  "manifest_digest": "5102a0c6e508ad051575ec576849fb8d74db19152aed991f8252ded74ef31f44",
+  "parent_state": "ca34ad32839498da22f16abd21e4b1b7f1af6ac5",
   "projection_status": "partial",
-  "publication_id": "cbaad1f9-0899-4b3b-bd1d-9265da19da56",
-  "publication_scope": "stack:agentwheel-0-20-0-release",
+  "publication_id": "8570c6f0-b48a-46ea-aa46-27b0a231a0d5",
+  "publication_scope": "promote:agentwheel-0-20-0-release",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -318,6 +318,14 @@
       "ref": "refs/heads/pr/agentwheel-coordination-cleanup",
       "remote_tip": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
       "stack": "agentwheel-coordination-cleanup"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-0-20-0-release",
+      "closed_at": "2026-08-30T22:16:18+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-0-20-0-release",
+      "remote_tip": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
+      "stack": "agentwheel-0-20-0-release"
     }
   ]
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.9
+
+- Deduplicate an injected composition rule against an identical earlier item-level compose entry,
+  while preserving intentional repetitions declared within the item itself.
+
 ## 0.19.8
 
 - Deduplicate identical resolved composition-rule includes across selected OpenPack roots while

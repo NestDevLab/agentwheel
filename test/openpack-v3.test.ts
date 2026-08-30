@@ -147,7 +147,6 @@ describe("OpenPack v3", () => {
     const repeatTarget = await tempRoot();
     const policy = join(workspace, "policy");
     const standard = join(workspace, "standard");
-    const unmarked = join(workspace, "unmarked");
     const vendor = join(workspace, "vendor");
     await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove deterministically.\n<!-- openpack:include fragments/nested.md -->\n");
     await writeText(join(policy, "fragments", "nested.md"), "Nested policy.\n");
@@ -157,7 +156,10 @@ describe("OpenPack v3", () => {
       name: "test/policy",
       version: "1.0.0",
       requires: { vendor: { source: "../vendor", select: ["skills/demo"] } },
-      compositionRules: [{ target: "skills/*", include: "fragments/evolution.md" }],
+      compositionRules: [
+        { target: "skills/*", include: "fragments/evolution.md" },
+        { target: "skills/*", include: "fragments/evolution.md", markers: false },
+      ],
       provides: [{ type: "fragments", path: "fragments" }],
     });
     await writeJson(join(standard, "openpack.json"), {
@@ -166,14 +168,6 @@ describe("OpenPack v3", () => {
       version: "1.0.0",
       requires: { core: { source: "../policy", select: ["fragments/evolution.md"] } },
       compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md" }],
-      provides: [],
-    });
-    await writeJson(join(unmarked, "openpack.json"), {
-      schemaVersion: 3,
-      name: "test/unmarked",
-      version: "1.0.0",
-      requires: { core: { source: "../policy", select: ["fragments/evolution.md"] } },
-      compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md", markers: false }],
       provides: [],
     });
     await writeJson(join(vendor, "openpack.json"), {
@@ -190,7 +184,6 @@ describe("OpenPack v3", () => {
       roots: [
         { rootId: "policy", source: policy },
         { rootId: "standard", source: standard },
-        { rootId: "unmarked", source: unmarked },
       ],
       targetRoot: target,
       workspaceRoot: workspace,
@@ -204,7 +197,6 @@ describe("OpenPack v3", () => {
       roots: [
         { rootId: "policy", source: policy },
         { rootId: "standard", source: standard },
-        { rootId: "unmarked", source: unmarked },
       ],
       targetRoot: repeatTarget,
       workspaceRoot: workspace,

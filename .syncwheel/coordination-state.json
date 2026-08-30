@@ -1,7 +1,7 @@
 {
   "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T21:50:33+00:00",
+  "created_at": "2026-08-30T21:50:52+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -58,28 +58,12 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "skill-evolution-v01",
         "merge-managed-self-normalization",
         "fleet-qualified-ownership-handoff"
       ],
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/skill-evolution-v01",
-        "commits": [
-          "909890d19c72199120698b2f904f4b74504c2dfa",
-          "235786b9d30b033eb4bc526fc362230f74bdcbcd"
-        ],
-        "id": "skill-evolution-v01",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -111,11 +95,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "cf64edeccc0025ae3e6b01417b2724e847e5319727e205fdfedf42883eb78365",
-  "parent_state": "86975a5ca7b198d09036e4f6696cee15a140a4b2",
+  "manifest_digest": "6761fb5a7b92210d4a5b62c45c17c2963461820f4ca0d01f30b6842a7d955dcf",
+  "parent_state": "276d8fb0abd13061b34e652d32d64ad79b06ea9d",
   "projection_status": "partial",
-  "publication_id": "17610407-0501-4f1b-bbbe-724a1973e394",
-  "publication_scope": "close:orphaned-fleet-ownership-journal-target",
+  "publication_id": "8b8145d7-4566-4b2b-8637-7f8b54a1ab79",
+  "publication_scope": "close:skill-evolution-v01",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -294,6 +278,14 @@
       "ref": "refs/heads/pr/orphaned-fleet-ownership-journal-target",
       "remote_tip": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
       "stack": "orphaned-fleet-ownership-journal-target"
+    },
+    {
+      "branch": "pr/skill-evolution-v01",
+      "closed_at": "2026-08-30T21:50:44+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/skill-evolution-v01",
+      "remote_tip": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
+      "stack": "skill-evolution-v01"
     }
   ]
 }

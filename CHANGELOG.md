@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.4
+
+- Add focused `update --artifact type/name` delivery so one non-skill artifact can move without removing or refreshing sibling package state.
+
 ## 0.19.3
 
 - Honor the explicit `--force-foreign-state` escape hatch for named Fleet plans while retaining the default normalization-first guard.

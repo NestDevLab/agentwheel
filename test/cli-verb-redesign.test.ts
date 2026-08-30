@@ -247,6 +247,74 @@ describe("CLI verb redesign", () => {
     expect(await readFile(configPath, "utf8")).toBe(before);
   });
 
+  it("updates one focused MCP artifact while preserving sibling package state", async () => {
+    const workspace = await tempRoot("agentwheel-focused-mcp-workspace-");
+    const source = await tempRoot("agentwheel-focused-mcp-source-");
+    await mkdir(join(source, "mcp"), { recursive: true });
+    await mkdir(join(source, "skills", "sibling"), { recursive: true });
+    const writeMcp = async (command: string) => writeFile(join(source, "mcp", "focused.json"), `${JSON.stringify({
+      mcpServers: { focused: { command } },
+    }, null, 2)}\n`, "utf8");
+    const writeSibling = async (version: string) => writeFile(join(source, "skills", "sibling", "SKILL.md"), [
+      "---",
+      "name: sibling",
+      `description: Focused artifact sibling ${version}.`,
+      "---",
+      "",
+      `# ${version}`,
+      "",
+    ].join("\n"), "utf8");
+    await writeMcp("focused-v1");
+    await writeSibling("sibling-v1");
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "fixture/focused-mcp",
+      version: "1.0.0",
+      provides: [
+        { type: "mcp", path: "mcp" },
+        { type: "skills", path: "skills" },
+      ],
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [{
+        name: "focused-pack",
+        source,
+        driver: "local",
+        adapter: "codex",
+        installationType: "local",
+        mode: "tracking",
+        select: ["mcp/focused.json", "skills/sibling"],
+      }],
+      registry: {},
+      profiles: {},
+      agents: {
+        runtime: {
+          adapter: "codex",
+          root: workspace,
+          transport: "local",
+          installationType: "local",
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    await runCli(["install", "focused-pack", "--agent", "runtime", "--only-source"], { cwd: workspace });
+    const skillPath = join(workspace, ".agents", "skills", "sibling", "SKILL.md");
+    expect(await readFile(skillPath, "utf8")).toContain("# sibling-v1");
+
+    await writeMcp("focused-v2");
+    await writeSibling("sibling-v2");
+    const update = await runCli([
+      "update", "focused-pack", "--agent", "runtime", "--only-source", "--artifact", "mcp/focused.json",
+    ], { cwd: workspace });
+
+    expect(update.stdout).toContain("UPDATE   MANAGED  mcp/focused.json");
+    expect(update.stdout).toContain("KEEP     MANAGED  skills/sibling");
+    expect(await readFile(join(workspace, ".codex", "config.toml"), "utf8")).toContain("focused-v2");
+    expect(await readFile(skillPath, "utf8")).toContain("# sibling-v1");
+  });
+
   it("installs a new source into every detected runtime with --all-detected", async () => {
     const root = await tempRoot();
     const source = await packageFixture("detected");

@@ -1,7 +1,7 @@
 {
   "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T21:50:13+00:00",
+  "created_at": "2026-08-30T21:50:33+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -58,7 +58,6 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "orphaned-fleet-ownership-journal-target",
         "skill-evolution-v01",
         "merge-managed-self-normalization",
         "fleet-qualified-ownership-handoff"
@@ -66,20 +65,6 @@
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/orphaned-fleet-ownership-journal-target",
-        "commits": [
-          "7f0c58be9a9aa514cd15b762a58a0e5423e50632"
-        ],
-        "id": "orphaned-fleet-ownership-journal-target",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -126,11 +111,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "db3ae3285ed8dd080ea456cead08275917aa8057b321b51e424904a89e2b5bdb",
-  "parent_state": "4ba22e0e812a9af7a9c6278d9d94e36513fa4f10",
+  "manifest_digest": "cf64edeccc0025ae3e6b01417b2724e847e5319727e205fdfedf42883eb78365",
+  "parent_state": "86975a5ca7b198d09036e4f6696cee15a140a4b2",
   "projection_status": "partial",
-  "publication_id": "98019123-5099-441d-b935-61b68a7ab3f1",
-  "publication_scope": "close:orphaned-fleet-ownership-recovery",
+  "publication_id": "17610407-0501-4f1b-bbbe-724a1973e394",
+  "publication_scope": "close:orphaned-fleet-ownership-journal-target",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -301,6 +286,14 @@
       "ref": "refs/heads/pr/orphaned-fleet-ownership-recovery",
       "remote_tip": "b8d2fdae3359c3d728d692f4d428724be6a46203",
       "stack": "orphaned-fleet-ownership-recovery"
+    },
+    {
+      "branch": "pr/orphaned-fleet-ownership-journal-target",
+      "closed_at": "2026-08-30T21:50:25+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/orphaned-fleet-ownership-journal-target",
+      "remote_tip": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
+      "stack": "orphaned-fleet-ownership-journal-target"
     }
   ]
 }

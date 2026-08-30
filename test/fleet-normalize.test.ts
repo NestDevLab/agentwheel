@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -388,6 +389,70 @@ describe("fleet normalization", () => {
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
     expect(manifest.stateKey).toBe(state.destinationStateKey);
     await expect(planFleetNormalization(request)).rejects.toThrow(/already.*normalized|fleet-qualified/i);
+  });
+
+  it.each([
+    ["json-deep merge", {
+      mergeStrategy: "json-deep",
+      mergeRemoval: { hooks: { Stop: [{ command: "amf-hook" }] } },
+    }],
+    ["legacy incomplete json-deep merge", { mergeStrategy: "json-deep" }],
+    ["composed managed block", {
+      mode: "managed-block",
+      composedFrom: [{ selector: "fragments/base.md", hash: "a".repeat(64) }],
+    }],
+  ])("self-normalizes a losslessly verifiable %s entry without rewriting runtime content", async (_label, metadata) => {
+    const state = await legacySelfFixture();
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0] = { ...manifest.entries[0], ...metadata };
+    if ("mergeStrategy" in metadata) {
+      await writeFile(state.runtimeFile, `${JSON.stringify({ hooks: { Stop: [{ command: "amf-hook" }] }, retained: true }, null, 2)}\n`, "utf8");
+    }
+    if ("mode" in metadata) {
+      const body = "<!-- agentwheel-managed: edit fragments, not this block -->\nlegacy runtime bytes\n";
+      const blockHash = createHash("sha256").update(body).digest("hex");
+      manifest.entries[0].hash = blockHash;
+      await writeFile(
+        state.runtimeFile,
+        `unmanaged prefix\n\n<!-- BEGIN openpack:include instructions/AGENTS.md sha256:${blockHash} -->\n${body}<!-- END openpack:include instructions/AGENTS.md -->\n`,
+        "utf8",
+      );
+    }
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    if ("composedFrom" in metadata) {
+      const graph = JSON.parse(await readFile(state.graphLock, "utf8"));
+      graph.canonical.artifacts[0].composedFrom = metadata.composedFrom;
+      graph.canonical.artifacts[0].hash = "b".repeat(64);
+      await writeFile(state.graphLock, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
+    }
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const request = { destinationFleet: "delivery", from: "fleet:delivery" as const, globalRoot: state.home };
+
+    const plan = await planFleetNormalization(request);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(destinationManifest.entries[0]).toMatchObject({
+      ...metadata,
+      workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
+    });
+    await expect(stat(state.manifest)).rejects.toThrow();
+  });
+
+  it("rejects a merge-managed self-normalization when rendered runtime bytes drift", async () => {
+    const state = await legacySelfFixture();
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].mergeStrategy = "json-deep";
+    manifest.entries[0].mergeRemoval = { hooks: { Stop: [{ command: "amf-hook" }] } };
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(state.runtimeFile, `${JSON.stringify({ hooks: {} }, null, 2)}\n`, "utf8");
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery",
+      from: "fleet:delivery",
+      globalRoot: state.home,
+    })).rejects.toThrow(/merge contribution.*missing|differs.*missing/i);
   });
 
   it("self-normalizes local installed state when the fleet also declares a composite profile", async () => {

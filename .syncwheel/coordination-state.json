@@ -1,9 +1,9 @@
 {
   "changed_refs": {
-    "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd"
+    "refs/heads/pr/merge-managed-self-normalization": "f488cd98a4bd25bfab6138e6f18a91d14fff2ae9"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-29T15:58:06+00:00",
+  "created_at": "2026-08-30T02:34:36+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -16,6 +16,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
+    "refs/heads/pr/merge-managed-self-normalization": "f488cd98a4bd25bfab6138e6f18a91d14fff2ae9",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
@@ -60,7 +61,8 @@
       "stacks": [
         "orphaned-fleet-ownership-recovery",
         "orphaned-fleet-ownership-journal-target",
-        "skill-evolution-v01"
+        "skill-evolution-v01",
+        "merge-managed-self-normalization"
       ],
       "strategy": "cherry-pick"
     },
@@ -107,17 +109,29 @@
         "id": "skill-evolution-v01",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/merge-managed-self-normalization",
+        "commits": [],
+        "id": "merge-managed-self-normalization",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "470f5b37f64866fec69e35bf330464f766331bfc29a29494feddcb27b0e773ec",
-  "parent_state": "ca6cfd0e13ecb2fb5795fbceb97710230137a049",
+  "manifest_digest": "f314124d7e52c451d5af278346690b06ee9ed19bec7df102477e10a842b25036",
+  "parent_state": "e36a0d62a8a3a87920c943a7c8ac927fed5ae5b9",
   "projection_status": "partial",
-  "publication_id": "72b60edb-b72e-44b5-ab13-731b6f1b9181",
-  "publication_scope": "stack:skill-evolution-v01",
+  "publication_id": "d3dd84d8-b155-47f8-8416-503ad00bcff6",
+  "publication_scope": "partial",
   "schema_version": 2,
-  "syncwheel_version": "0.34.8",
+  "syncwheel_version": "0.35.1",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

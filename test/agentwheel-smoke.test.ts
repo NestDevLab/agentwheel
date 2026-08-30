@@ -30,9 +30,20 @@ describe("agentwheel-smoke workspace scope", () => {
 
     expect(report.agentwheel.status.args).toEqual(["--fleet", "delivery"]);
   });
+
+  it.each([
+    ["--agent", "ct107-codex"],
+    ["--profile", "codex-standalone"],
+  ])("keeps project config scope for %s", async (selector, value) => {
+    const fixture = await smokeFixture([".agents", "skills", "agentwheel-smoke"], true);
+    const report = await runSmoke(fixture, [selector, value]);
+
+    expect(report.agentwheel.status.args).toEqual(["--fleet", "test-fleet", selector, value]);
+    expect(report.agentwheel.status.ok).toBe(true);
+  });
 });
 
-async function smokeFixture(skillSegments: string[]) {
+async function smokeFixture(skillSegments: string[], projectConfig = false) {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-smoke-"));
   fixtures.push(root);
   const home = join(root, "home");
@@ -46,6 +57,10 @@ async function smokeFixture(skillSegments: string[]) {
   await mkdir(bin, { recursive: true });
   await copyFile(join(process.cwd(), "skills", "agentwheel-smoke", "scripts", "smoke.mjs"), script);
   await writeFile(join(home, ".agentwheel", "config.json"), '{"schemaVersion":1,"packages":[]}\n');
+  if (projectConfig) {
+    await mkdir(join(cwd, ".agentwheel"), { recursive: true });
+    await writeFile(join(cwd, ".agentwheel", "config.json"), '{"schemaVersion":3,"fleetId":"test-fleet","agents":{"ct107-codex":{}},"profiles":{"codex-standalone":{}}}\n');
+  }
   await writeFile(
     join(bin, "agentwheel"),
     '#!/bin/sh\nif [ "$1" = "--version" ]; then echo 0.18.0; else echo "Install manifest: /tmp/fake"; fi\n',

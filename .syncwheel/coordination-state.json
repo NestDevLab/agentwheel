@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:05:02+00:00",
+  "created_at": "2026-08-30T22:10:59+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -62,34 +60,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "agentwheel-coordination-cleanup"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/agentwheel-coordination-cleanup",
-        "commits": [
-          "267abc1b44c3e5cfea7d5d9f2c863322eab3130b"
-        ],
-        "id": "agentwheel-coordination-cleanup",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "8f21a6c8c391ff17aefb6df7762497b462e9ade8cfa42941abc04040ddc8be26",
-  "parent_state": "48e08991dc21069ef017001d8a387ef337a35169",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "a11c509dabf21d443ebeb34d0a4ab1d08519823b",
   "projection_status": "partial",
-  "publication_id": "8b7791ed-e1d9-4ba7-b946-b330f1090061",
-  "publication_scope": "promote:agentwheel-coordination-cleanup",
+  "publication_id": "b10f275a-a2ed-4d0a-b254-c9da884a8bfe",
+  "publication_scope": "close:agentwheel-coordination-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -306,6 +287,14 @@
       "closed_at": "2026-08-30T22:04:54+00:00",
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup",
+      "remote_tip": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
+      "stack": "agentwheel-coordination-cleanup"
+    },
+    {
+      "branch": "pr/agentwheel-coordination-cleanup",
+      "closed_at": "2026-08-30T22:10:51+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/pr/agentwheel-coordination-cleanup",
       "remote_tip": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
       "stack": "agentwheel-coordination-cleanup"
     }

@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/main-integration": "ad3ac53cbe13b3ce58a202a3848b4ce2a8ad7160"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T21:52:49+00:00",
+  "created_at": "2026-08-30T22:02:30+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -26,6 +24,7 @@
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-1": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/syncwheel/draft/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
+    "refs/heads/syncwheel/draft/agentwheel-0-20-0": null,
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -66,10 +65,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "712fd37215c150fc82d1f17f6e924efed71a3611",
+  "parent_state": "b6196374ca7b80e33dc754a189c713b55a9fe8a2",
   "projection_status": "partial",
-  "publication_id": "d57ab45e-9b45-41df-891d-062448ade22b",
-  "publication_scope": "integration",
+  "publication_id": "c29cc207-d7f4-431a-b013-defd1969d38d",
+  "publication_scope": "close:agentwheel-0-20-0",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -272,6 +271,14 @@
       "ref": "refs/heads/pr/fleet-qualified-ownership-handoff",
       "remote_tip": "127fc7368d93a00fc633346d801059572b66213c",
       "stack": "fleet-qualified-ownership-handoff"
+    },
+    {
+      "branch": "syncwheel/draft/agentwheel-0-20-0",
+      "closed_at": "2026-08-30T22:02:22+00:00",
+      "reason": "review-required-split",
+      "ref": "refs/heads/syncwheel/draft/agentwheel-0-20-0",
+      "remote_tip": null,
+      "stack": "agentwheel-0-20-0"
     }
   ]
 }

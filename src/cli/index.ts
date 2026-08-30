@@ -616,6 +616,7 @@ program
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
   .option("--allow-adapter-code", "allow loading local adapter code from configured packages", false)
   .option("--select <type/name>", "temporarily select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
+  .option("--artifact <type/name>", "update only one configured artifact while preserving sibling state")
   .option("--skill <name>", "temporarily select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--dependency <name-or-source>", "update one tracking dependency while keeping unrelated graph nodes locked (repeatable)", collectDependencyOption, [] as string[])
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
@@ -637,15 +638,27 @@ program
     if (options.dependency.length > 0 && (options.frozenLock || options.offline)) {
       throw new Error("--dependency cannot be combined with --frozen-lock or --offline.");
     }
+    if (options.artifact && !name) throw new Error("--artifact requires a configured package argument.");
+    if (options.artifact && (options.select.length > 0 || options.skill.length > 0 || options.dependency.length > 0)) {
+      throw new Error("--artifact cannot be combined with --select, --skill, or --dependency.");
+    }
+    const focusedSelector = options.artifact
+      ? normalizeArtifactSelectors([options.artifact])?.[0]
+      : undefined;
+    const focusedSeparator = focusedSelector?.indexOf("/") ?? -1;
+    const focusedArtifact = focusedSelector && focusedSeparator > 0
+      ? { type: focusedSelector.slice(0, focusedSeparator), name: focusedSelector.slice(focusedSeparator + 1) }
+      : undefined;
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
     if (composite) {
+      if (focusedArtifact) throw new Error("--artifact does not support composite profiles; select one concrete profile or agent.");
       await runCompositeUpdate(composite.workspaceRoot, composite.name, composite.profile, name, normalizedOptions);
       return;
     }
     const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
     for (const target of targets) {
-      await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name }, { mode: "update" });
+      await runConfiguredGraphPackages(target, { ...normalizedOptions, scope: name, focusedArtifact }, { mode: "update" });
     }
   });
 
@@ -1877,7 +1890,7 @@ interface GraphCliOptions {
   adopt?: boolean;
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
-  focusedArtifact?: { type: "skills"; name: string };
+  focusedArtifact?: { type: string; name: string };
   deferForeignStateCheck?: boolean;
 }
 
@@ -2204,7 +2217,7 @@ async function buildGraphPlansForTarget(
         : previousGroupLock
           ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
           : scopeInstallPlanToRoot(result, scopedRootId, manifest);
-      if (targetOptions.focusedArtifact && (targetOptions.forceForeignState !== true || group.target.fleetId)) {
+      if (targetOptions.focusedArtifact && targetOptions.forceForeignState !== true) {
         const focusedPaths = scopedResult.plan.operations
           .filter((operation) => operationMatchesFocusedArtifact(
             operation,

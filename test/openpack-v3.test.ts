@@ -213,6 +213,44 @@ describe("OpenPack v3", () => {
     expect(demo?.composedFrom?.filter((entry) => entry.selector.includes(":fragments/evolution.md"))).toHaveLength(1);
   });
 
+  it("deduplicates an injected rule against an explicit item compose entry", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot();
+    const policy = join(workspace, "policy");
+    await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove once.\n");
+    await writeText(join(policy, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Item and rule composition target.\n---\n\n# Demo\n");
+    await writeJson(join(policy, "openpack.json"), {
+      schemaVersion: 3,
+      name: "test/policy",
+      version: "1.0.0",
+      compositionRules: [{ target: "skills/*", include: "fragments/evolution.md" }],
+      provides: [
+        { type: "fragments", path: "fragments" },
+        {
+          type: "skills",
+          path: "skills",
+          items: { demo: { compose: [{ include: "fragments/evolution.md" }] } },
+        },
+      ],
+    });
+    await writeWorkspaceConfig(workspace, {
+      schemaVersion: 1, registry: {}, trust: { allow: ["local:*"] }, packages: [], profiles: {}, agents: {},
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "policy", source: policy }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "openpack-v3-item-rule-dedupe",
+      yes: true,
+    });
+    const demo = result.bundle.artifacts.find((artifact) => artifact.type === "skills" && artifact.name === "demo");
+    const content = await readFile(join(demo!.stagedPath!, "SKILL.md"), "utf8");
+    expect(content.match(/Improve once\./g)).toHaveLength(1);
+    expect(content.match(/BEGIN openpack:include .*fragments\/evolution\.md/g)).toHaveLength(1);
+  });
+
   it("lets one declared derivative supersede a colliding direct dependency", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot();

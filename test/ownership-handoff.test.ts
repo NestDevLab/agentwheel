@@ -35,6 +35,70 @@ describe("artifact ownership handoff", () => {
     expect((await stat(fixture.artifactPath)).mtimeMs).toBe(beforeStat.mtimeMs);
   });
 
+  it("qualifies same-root merge ownership for a named fleet without rewriting runtime JSON", async () => {
+    const targetRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-fleet-target-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-fleet-workspace-"));
+    roots.push(targetRoot, workspaceRoot);
+    const scope = { installationType: "user", stateKey: "claude.user.legacy" };
+    const settingsPath = join(targetRoot, ".claude", "settings.json");
+    await mkdir(join(targetRoot, ".claude"), { recursive: true });
+    await writeFile(settingsPath, `${JSON.stringify({ hooks: { Stop: [{ command: "amf-hook" }] }, retained: true }, null, 2)}\n`);
+    const manifestHash = "a".repeat(64);
+    await writeInstallManifest({
+      version: 2,
+      adapter: "claude",
+      installationType: "user",
+      stateKey: scope.stateKey,
+      targetRoot,
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      revision: "pending-owner-fixture",
+      legacy: false,
+      entries: [{
+        path: ".claude/settings.json",
+        artifactType: "hooks",
+        artifactName: "hooks.json",
+        installName: "hooks.json",
+        logicalSelector: "hooks/hooks.json",
+        kind: "file",
+        hash: manifestHash,
+        sourceHash: "b".repeat(64),
+        updatedAt: "2026-07-14T00:00:00.000Z",
+        channel: "managed",
+        dependencyRole: "root",
+        owners: ["limen-claude-hooks"],
+        refCount: 1,
+        workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
+        mergeStrategy: "json-deep",
+        mergeRemoval: { hooks: { Stop: [{ command: "amf-hook" }] } },
+      }],
+    }, localTransport);
+    const before = await readFile(settingsPath);
+    const installed = await readInstallManifest(targetRoot, "claude", localTransport, scope);
+    if (!installed || installed.version !== 2) throw new Error("missing fleet handoff fixture manifest");
+    const request = {
+      targetRoot,
+      adapter: "claude",
+      ...scope,
+      artifactType: "hooks",
+      artifactName: "hooks.json",
+      fromWorkspaceRoot: workspaceRoot,
+      toWorkspaceRoot: workspaceRoot,
+      toFleetId: "delivery",
+      expectedHash: manifestHash,
+      expectedRevision: installed.revision,
+    };
+
+    const plan = await planArtifactOwnershipHandoff(request);
+    expect(plan.toOwner).toBe(workspaceOwnerForRoot(workspaceRoot, "delivery"));
+    await applyArtifactOwnershipHandoff(request);
+
+    expect(await readFile(settingsPath)).toEqual(before);
+    const updated = await readInstallManifest(targetRoot, "claude", localTransport, scope);
+    expect(updated?.version).toBe(2);
+    if (!updated || updated.version !== 2) throw new Error("missing updated fleet handoff fixture manifest");
+    expect(updated.entries[0]?.workspaceOwner).toBe(workspaceOwnerForRoot(workspaceRoot, "delivery"));
+  });
+
   it("rejects owner, hash, and revision mismatches without writing", async () => {
     const fixture = await localFixture();
     const before = await readFile(fixture.manifestPath, "utf8");

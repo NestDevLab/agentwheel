@@ -1,7 +1,10 @@
 import { resolve } from "node:path";
 import { readInstallManifest, writeInstallManifest } from "../install/manifest.js";
 import { stateKeyFor, type InstallStateScope } from "../install/paths.js";
+import { assertExactMergeContribution, hasMergeRemovalContent } from "../install/merge-removal.js";
+import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
 import { defaultInstallationType } from "../model/adapter.js";
+import type { InstallManifestEntry } from "../model/manifest.js";
 import { acquireApplyLock, readApplyJournal } from "../install/transaction.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
@@ -15,6 +18,7 @@ export interface OwnershipHandoffRequest extends InstallStateScope {
   artifactName: string;
   fromWorkspaceRoot: string;
   toWorkspaceRoot: string;
+  toFleetId?: string;
   expectedHash?: string;
   expectedRevision?: string;
   transport?: TargetTransport;
@@ -105,7 +109,7 @@ async function validateOwnershipHandoff(
   }
   const entry = matches[0];
   const fromOwner = workspaceOwnerForRoot(request.fromWorkspaceRoot);
-  const toOwner = workspaceOwnerForRoot(request.toWorkspaceRoot);
+  const toOwner = workspaceOwnerForRoot(request.toWorkspaceRoot, request.toFleetId);
   if (fromOwner === toOwner) throw new Error("Ownership handoff requires different workspace roots.");
   if (entry.workspaceOwner !== fromOwner) {
     throw new Error(`Old owner precondition failed for ${entry.path}: expected ${fromOwner}, found ${entry.workspaceOwner}`);
@@ -116,10 +120,7 @@ async function validateOwnershipHandoff(
 
   const destPath = containedArtifactPath(request.targetRoot, entry.path);
   if (!(await transport.pathExists(destPath))) throw new Error(`Managed artifact is missing: ${entry.path}`);
-  const currentHash = await transport.hashPath(destPath);
-  if (currentHash !== entry.hash) {
-    throw new Error(`Managed artifact is drifted at ${entry.path}: manifest ${entry.hash}, current ${currentHash}`);
-  }
+  const currentHash = await verifiedEntryHash(entry, destPath, transport);
   if (request.expectedHash && currentHash !== request.expectedHash) {
     throw new Error(`Current hash precondition failed for ${entry.path}: expected ${request.expectedHash}, found ${currentHash}`);
   }
@@ -136,6 +137,34 @@ async function validateOwnershipHandoff(
     fromOwner,
     toOwner,
   };
+}
+
+async function verifiedEntryHash(
+  entry: InstallManifestEntry,
+  destPath: string,
+  transport: TargetTransport,
+): Promise<string> {
+  if (entry.semanticPlugin) throw new Error(`Ownership handoff cannot verify semantic plugin state at ${destPath}`);
+  if (entry.mode === "managed-block") {
+    const selector = managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName);
+    const state = await readManagedInstructionBlockState(destPath, selector, transport);
+    if (!state.hasBlock || state.drifted || state.hash !== entry.hash) {
+      throw new Error(`Managed artifact is drifted at ${destPath}: managed block is missing or changed`);
+    }
+    return entry.hash;
+  }
+  if (entry.mergeStrategy) {
+    if (!hasMergeRemovalContent(entry.mergeRemoval)) {
+      throw new Error(`Ownership handoff cannot verify incomplete merge ownership at ${destPath}`);
+    }
+    assertExactMergeContribution(entry.mergeRemoval!, entry.mergeStrategy, await transport.readFile(destPath));
+    return entry.hash;
+  }
+  const currentHash = await transport.hashPath(destPath);
+  if (currentHash !== entry.hash) {
+    throw new Error(`Managed artifact is drifted at ${destPath}: manifest ${entry.hash}, current ${currentHash}`);
+  }
+  return currentHash;
 }
 
 function containedArtifactPath(targetRoot: string, relativePath: string): string {

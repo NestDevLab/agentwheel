@@ -20,7 +20,7 @@ if (parsed.error) {
 const config = findConfigs(cwd, home);
 const harness = detectHarness(skillRoot, cwd, home);
 const envHint = detectHarnessFromEnv();
-const agentwheel = inspectAgentwheel(parsed.statusArgs, envHint, harness);
+const agentwheel = inspectAgentwheel(parsed.statusArgs, envHint, harness, config);
 const manifests = findStateFiles(harness.runtimeRoot ?? projectRootFromConfig(config.projectConfig) ?? cwd);
 const assessment = assess({ harness, agentwheel, manifests, config });
 const report = {
@@ -66,12 +66,16 @@ function parseArgs(args) {
   return { json, statusArgs };
 }
 
-function inspectAgentwheel(statusArgs, hint, harness) {
+function inspectAgentwheel(statusArgs, hint, harness, config) {
   const which = run("command", ["-v", "agentwheel"], { shell: true });
   const version = which.ok ? run("agentwheel", ["--version"]) : { ok: false, code: null, stdout: "", stderr: "agentwheel not found" };
   let effectiveStatusArgs = hasWorkspaceScope(statusArgs)
     ? statusArgs
-    : [...defaultWorkspaceScope(harness), ...statusArgs];
+    : config.project?.fleetId
+      ? ["--fleet", config.project.fleetId, ...statusArgs]
+      : config.projectConfig
+        ? statusArgs
+        : [...defaultWorkspaceScope(harness), ...statusArgs];
   let status = which.ok ? run("agentwheel", ["status", ...effectiveStatusArgs]) : { ok: false, code: null, stdout: "", stderr: "agentwheel not found" };
   if (!status.ok && effectiveStatusArgs.length === 0 && /Multiple runtime directories detected/i.test(status.stderr) && hint?.adapter) {
     effectiveStatusArgs = ["--adapter", hint.adapter, "--installation-type", hint.installationType ?? "local"];
@@ -145,6 +149,7 @@ function summarizeConfig(path) {
   try {
     const json = JSON.parse(readFileSync(path, "utf8"));
     return {
+      fleetId: typeof json.fleetId === "string" ? json.fleetId : null,
       packages: Array.isArray(json.packages) ? json.packages.map((entry) => entry.name ?? entry.source ?? "unnamed") : [],
       agents: json.agents && typeof json.agents === "object" ? Object.keys(json.agents) : [],
       profiles: json.profiles && typeof json.profiles === "object" ? Object.keys(json.profiles) : [],

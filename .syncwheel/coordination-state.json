@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/release/agentwheel-0.20.0": "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-30T22:16:26+00:00",
+  "created_at": "2026-08-30T22:30:17+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
@@ -64,34 +62,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "agentwheel-0-20-0-release"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "release/agentwheel-0.20.0",
-        "commits": [
-          "2c4fd0904a8248de2a8b2ed2772088234ca3691a"
-        ],
-        "id": "agentwheel-0-20-0-release",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "5102a0c6e508ad051575ec576849fb8d74db19152aed991f8252ded74ef31f44",
-  "parent_state": "ca34ad32839498da22f16abd21e4b1b7f1af6ac5",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "2d667aba977dd6409375297e3321d0aaa81ee3c0",
   "projection_status": "partial",
-  "publication_id": "8570c6f0-b48a-46ea-aa46-27b0a231a0d5",
-  "publication_scope": "promote:agentwheel-0-20-0-release",
+  "publication_id": "6709279d-c7e4-427b-a17b-3d33dd4b7888",
+  "publication_scope": "close:agentwheel-0-20-0-release",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [
@@ -324,6 +305,14 @@
       "closed_at": "2026-08-30T22:16:18+00:00",
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/agentwheel-0-20-0-release",
+      "remote_tip": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
+      "stack": "agentwheel-0-20-0-release"
+    },
+    {
+      "branch": "release/agentwheel-0.20.0",
+      "closed_at": "2026-08-30T22:30:09+00:00",
+      "reason": "merged-by-squash-patch-equivalent",
+      "ref": "refs/heads/release/agentwheel-0.20.0",
       "remote_tip": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
       "stack": "agentwheel-0-20-0-release"
     }

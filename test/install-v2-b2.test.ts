@@ -944,7 +944,7 @@ const alphaStateKey = `test.local.${"1".repeat(64)}`;
 const betaStateKey = `test.local.${"2".repeat(64)}`;
 
 describe("foreign workspace state at a shared target root", () => {
-  it("partitions an explicit runtime state key by fleet and blocks a same-path cross-fleet install", async () => {
+  it("partitions an explicit runtime state key by fleet and requires an explicit force for a same-path cross-fleet install", async () => {
     const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
     const fleetBeta = await tempRoot("agentwheel-b2-beta-");
     const target = await tempRoot("agentwheel-b2-target-");
@@ -961,13 +961,20 @@ describe("foreign workspace state at a shared target root", () => {
     const betaError = await graphPlan(betaSource, target, fleetBeta, {
       fleetId: "beta",
       stateKey: "shared-runtime",
-      forceForeignState: true,
     }).catch((cause: unknown) => cause);
     const message = betaError instanceof Error ? betaError.message : String(betaError);
     expect(message).toContain("already carries Agentwheel state owned by another workspace");
     expect(message).toContain(workspaceOwnerForRoot(fleetAlpha, "alpha"));
     expect(message).toContain(".runtime/skills/shared-skill");
     expect(message).toContain("fleet normalize");
+
+    const forced = await graphPlan(betaSource, target, fleetBeta, {
+      fleetId: "beta",
+      stateKey: "shared-runtime",
+      forceForeignState: true,
+    });
+    expect(forced.plan.operations.map((operation) => operation.action)).toEqual(["conflict"]);
+    expect(forced.plan.hasBlockingChanges).toBe(true);
   });
 
   it("refuses to plan when another workspace owns a path this run would install", async () => {

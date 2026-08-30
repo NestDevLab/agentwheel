@@ -272,7 +272,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
         replaceConflict: options.replaceConflict,
         warn,
       });
-  if ((options.forceForeignState !== true || options.fleetId) && options.deferForeignStateCheck !== true) {
+  if (options.forceForeignState !== true && options.deferForeignStateCheck !== true) {
     await assertNoForeignWorkspaceState({
       installRoot: resolvedInstallRoot,
       adapter: options.adapter.name,

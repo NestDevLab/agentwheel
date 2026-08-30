@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.3
+
+- Honor the explicit `--force-foreign-state` escape hatch for named Fleet plans while retaining the default normalization-first guard.
+
 ## 0.19.2
 
 - Allow exact MCP retirement to inspect its explicitly selected legacy state while preserving exact owner, revision, hash, and runtime-content preconditions.

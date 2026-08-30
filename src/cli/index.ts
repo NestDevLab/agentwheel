@@ -902,6 +902,7 @@ ownershipCommand
   .argument("<selector>", "exact artifact selector in type/name form")
   .requiredOption("--from-workspace-root <path>", "current owning workspace root")
   .requiredOption("--to-workspace-root <path>", "new owning workspace root")
+  .option("--to-fleet <id>", "qualify the new owner with a registered fleet id")
   .option("--expected-hash <sha256>", "expected current artifact hash; required when applying")
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
   .option("--adapter <adapter>", "built-in adapter")
@@ -934,6 +935,13 @@ ownershipCommand
     const adapter = await resolveAdapterForTarget(target, adapterOptions);
     const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
     const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
+    if (options.toFleet) {
+      const fleet = await showRegisteredFleet(options.toFleet);
+      if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
+        throw new Error(`Destination fleet '${options.toFleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+      }
+    }
     const request = {
       ...state,
       targetRoot: state.installRoot,
@@ -941,7 +949,8 @@ ownershipCommand
       artifactType,
       artifactName,
       fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
-      toWorkspaceRoot: normalizeCliPath(options.toWorkspaceRoot),
+      toWorkspaceRoot,
+      toFleetId: options.toFleet,
       expectedHash: options.expectedHash,
       expectedRevision: options.expectedRevision,
       transport: transportForTarget(target),

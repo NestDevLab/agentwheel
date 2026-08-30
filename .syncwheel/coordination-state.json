@@ -1,12 +1,14 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "ad3ac53cbe13b3ce58a202a3848b4ce2a8ad7160"
+  },
   "coordination_id": "default",
-  "created_at": "2026-08-30T21:51:30+00:00",
+  "created_at": "2026-08-30T21:52:49+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "37d9cb7904d7686a60b3da1d2ab743753207ca9e",
+    "refs/heads/main-integration": "ad3ac53cbe13b3ce58a202a3848b4ce2a8ad7160",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-discovery-intent": "a2cd6ca166dc6f901ac950f2f79578fb5cb5f0e0",
@@ -64,10 +66,10 @@
     "version": 2
   },
   "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "4648e3df71cb8c546bc5c9ffc5c55e7ae28ce859",
+  "parent_state": "712fd37215c150fc82d1f17f6e924efed71a3611",
   "projection_status": "partial",
-  "publication_id": "477ddeb1-4574-494b-a732-c0e93bf691b0",
-  "publication_scope": "close:fleet-qualified-ownership-handoff",
+  "publication_id": "d57ab45e-9b45-41df-891d-062448ade22b",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.36.0",
   "tombstones": [

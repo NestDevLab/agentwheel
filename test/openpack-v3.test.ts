@@ -141,6 +141,78 @@ describe("OpenPack v3", () => {
     expect(await readFile(join(demo!.stagedPath!, "SKILL.md"), "utf8")).toContain("Alias fragment.");
   });
 
+  it("deduplicates the same resolved fragment across composition roots", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot();
+    const repeatTarget = await tempRoot();
+    const policy = join(workspace, "policy");
+    const standard = join(workspace, "standard");
+    const vendor = join(workspace, "vendor");
+    await writeText(join(policy, "fragments", "evolution.md"), "## Evolution\n\nImprove deterministically.\n<!-- openpack:include fragments/nested.md -->\n");
+    await writeText(join(policy, "fragments", "nested.md"), "Nested policy.\n");
+    await writeText(join(vendor, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Duplicate composition target.\n---\n\n# Demo\n");
+    await writeJson(join(policy, "openpack.json"), {
+      schemaVersion: 3,
+      name: "test/policy",
+      version: "1.0.0",
+      requires: { vendor: { source: "../vendor", select: ["skills/demo"] } },
+      compositionRules: [
+        { target: "skills/*", include: "fragments/evolution.md" },
+        { target: "skills/*", include: "fragments/evolution.md", markers: false },
+      ],
+      provides: [{ type: "fragments", path: "fragments" }],
+    });
+    await writeJson(join(standard, "openpack.json"), {
+      schemaVersion: 3,
+      name: "test/standard",
+      version: "1.0.0",
+      requires: { core: { source: "../policy", select: ["fragments/evolution.md"] } },
+      compositionRules: [{ target: "skills/*", include: "core:fragments/evolution.md" }],
+      provides: [],
+    });
+    await writeJson(join(vendor, "openpack.json"), {
+      schemaVersion: 2,
+      name: "test/vendor",
+      version: "1.0.0",
+      provides: [{ type: "skills", path: "skills" }],
+    });
+    await writeWorkspaceConfig(workspace, {
+      schemaVersion: 1, registry: {}, trust: { allow: ["local:*"] }, packages: [], profiles: {}, agents: {},
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [
+        { rootId: "policy", source: policy },
+        { rootId: "standard", source: standard },
+      ],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "openpack-v3-deduplicated-roots",
+      yes: true,
+    });
+    const demo = result.bundle.artifacts.find((artifact) => artifact.type === "skills" && artifact.name === "demo");
+    const content = await readFile(join(demo!.stagedPath!, "SKILL.md"), "utf8");
+    const repeated = await createGraphSourcePlan({
+      roots: [
+        { rootId: "policy", source: policy },
+        { rootId: "standard", source: standard },
+      ],
+      targetRoot: repeatTarget,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "openpack-v3-deduplicated-roots-repeat",
+      yes: true,
+    });
+    const repeatedDemo = repeated.bundle.artifacts.find((artifact) => artifact.type === "skills" && artifact.name === "demo");
+    const repeatedContent = await readFile(join(repeatedDemo!.stagedPath!, "SKILL.md"), "utf8");
+    expect(content.match(/Improve deterministically\./g)).toHaveLength(2);
+    expect(content.match(/Nested policy\./g)).toHaveLength(2);
+    expect(content.match(/BEGIN openpack:include .*fragments\/evolution\.md/g)).toHaveLength(1);
+    expect(repeatedContent).toBe(content);
+    expect(demo?.composedFrom?.filter((entry) => entry.selector.includes(":fragments/evolution.md"))).toHaveLength(1);
+  });
+
   it("lets one declared derivative supersede a colliding direct dependency", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot();

@@ -158,6 +158,21 @@ describe("OpenPack composition", () => {
     await rm(second.root, { recursive: true, force: true });
   });
 
+  it("preserves repeated item-level compose entries", async () => {
+    const source = await createPackage({
+      skill: "# Demo\n",
+      fragments: { "a.md": "Repeated item content\n" },
+      itemCompose: [
+        { include: "fragments/a.md" },
+        { include: "fragments/a.md" },
+      ],
+    });
+    const bundle = await stage(source);
+    const content = await readFile(join(bundle.root, "skills", "demo", "SKILL.md"), "utf8");
+    expect(content.match(/Repeated item content/g)).toHaveLength(2);
+    await rm(bundle.root, { recursive: true, force: true });
+  });
+
   it("lists fragments but never plans them for Claude or Codex install targets", async () => {
     const source = await createPackage({
       skill: "# Demo\n\n<!-- openpack:include fragments/shared.md -->\n",

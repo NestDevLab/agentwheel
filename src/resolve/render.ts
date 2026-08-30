@@ -217,7 +217,8 @@ function matchingCompositionEntries(
     if (rule.runtimes?.length && (!runtime || !rule.runtimes.includes(runtime))) continue;
     if (!globMatches(rule.target, selector) && !globMatches(rule.target, qualifiedSelector)) continue;
     if (rule.exclude?.some((pattern) => globMatches(pattern, selector) || globMatches(pattern, qualifiedSelector))) continue;
-    const key = `${candidate.ownerNodeId}\0${rule.include}`;
+    const markerMode = rule.markers === false ? "plain" : "markers";
+    const key = `${candidate.ownerNodeId}\0${rule.include}\0${markerMode}`;
     if (seen.has(key)) continue;
     seen.add(key);
     entries.push({
@@ -225,6 +226,7 @@ function matchingCompositionEntries(
       packageRoot: candidate.packageRoot,
       artifactPaths: candidate.artifactPaths,
       nodeId: candidate.ownerNodeId,
+      deduplicate: true,
     });
   }
   return entries;

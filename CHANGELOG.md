@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.7
+
+- Safely retire exact legacy managed instruction blocks whose manifests predate persisted
+  `managed-block` mode, while preserving all surrounding user and persona content.
+
 ## 0.19.6
 
 - Resolve Git sources without mutating shared cache checkouts, materialize immutable snapshots from

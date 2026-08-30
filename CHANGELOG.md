@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.8
+
+- Deduplicate identical resolved composition-rule includes across selected OpenPack roots while
+  preserving explicit item-level repetition and distinct marked versus plain rendering modes.
+
 ## 0.19.7
 
 - Safely retire exact legacy managed instruction blocks whose manifests predate persisted

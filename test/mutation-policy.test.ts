@@ -30,7 +30,11 @@ import { revisionProviderConfigSchema } from "../src/model/mutation.js";
 import type { AdapterConfig } from "../src/model/adapter.js";
 import type { GraphLock } from "../src/model/graph-lock.js";
 import { applyCombinedInstallPlan, createCombinedInstallPlan, type DesiredArtifact } from "../src/install/index.js";
+import { writeInstallManifest } from "../src/install/manifest.js";
+import { installManifestPath } from "../src/install/paths.js";
 import { applyJournalPath } from "../src/install/transaction.js";
+import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../src/lifecycle/ownership-retire-stale.js";
+import { workspaceOwnerForRoot } from "../src/model/workspace-owner.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
 import { hashPath, pathExists } from "../src/utils/fs.js";
 
@@ -774,6 +778,108 @@ else {
     expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(expectedHead);
     expect(await pathExists(graphLockPath)).toBe(true);
     expect((await git(repo, ["status", "--short"]))).toContain("?? .agentwheel/locks/");
+  });
+
+  it("recovers receipt-linked runtime-only stale ownership removal without requiring a Git delta", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const beforeHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    const runtimeRoot = await tempRoot("agentwheel-retire-runtime-");
+    const fromRoot = await tempRoot("agentwheel-retire-source-owner-");
+    const fleetRoot = await tempRoot("agentwheel-retire-fleet-owner-");
+    const sourceStateKey = "codex.user.legacy";
+    const destinationStateKey = "codex.user.fleet-delivery.fixture";
+    const runtimePath = join(runtimeRoot, "managed.json");
+    await writeFile(runtimePath, "managed\n", "utf8");
+    const artifactHash = await hashPath(runtimePath);
+    const manifestEntry = (workspaceOwner: string) => ({
+      path: "managed.json",
+      artifactType: "settings" as const,
+      artifactName: "managed.json",
+      installName: "managed.json",
+      logicalSelector: "settings/managed.json",
+      kind: "file" as const,
+      hash: artifactHash,
+      sourceHash: artifactHash,
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      channel: "managed" as const,
+      dependencyRole: "root" as const,
+      owners: ["managed.json"],
+      refCount: 1,
+      workspaceOwner,
+    });
+    const manifest = (stateKey: string, entry: ReturnType<typeof manifestEntry>) => ({
+      version: 2 as const,
+      adapter: "codex",
+      installationType: "user",
+      stateKey,
+      targetRoot: runtimeRoot,
+      generatedAt: "2026-08-31T00:00:00.000Z",
+      revision: "pending-retire-fixture",
+      legacy: false as const,
+      entries: [entry],
+    });
+    await writeInstallManifest(manifest(sourceStateKey, manifestEntry(workspaceOwnerForRoot(fromRoot))));
+    await writeInstallManifest(manifest(destinationStateKey, manifestEntry(workspaceOwnerForRoot(fleetRoot, "delivery"))));
+    const request = {
+      targetRoot: runtimeRoot,
+      adapter: "codex",
+      installationType: "user",
+      sourceStateKey,
+      destinationStateKey,
+      fromWorkspaceRoot: fromRoot,
+      toWorkspaceRoot: fleetRoot,
+      toFleetId: "delivery",
+    };
+    const plan = await planRetireStaleOwnership(request);
+    const sourceManifestPath = installManifestPath(runtimeRoot, "codex", { installationType: "user", stateKey: sourceStateKey });
+    const destinationManifestPath = installManifestPath(runtimeRoot, "codex", { installationType: "user", stateKey: destinationStateKey });
+    const destinationBefore = await readFile(destinationManifestPath);
+    let injected = false;
+    const crashingTransport: TargetTransport = {
+      ...localTransport,
+      rm: async (path) => {
+        await localTransport.rm(path);
+        if (!injected && path === sourceManifestPath) {
+          injected = true;
+          throw new Error("injected receipt-linked manifest removal crash");
+        }
+      },
+    };
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel ownership retire-stale",
+      operationId: "retire-stale-runtime-only",
+      reason: "Recover exact stale manifest ownership without a repository delta",
+      requireCleanWorkingTree: true,
+    });
+    try {
+      await applyRetireStaleOwnership({
+        ...request,
+        planDigest: plan.planDigest,
+        expectedSourceRevision: plan.source.revision,
+        expectedDestinationRevision: plan.destination.revision,
+        expectedInventoryRevision: plan.manifestInventoryRevision,
+        transport: crashingTransport,
+      });
+      throw new Error("expected retirement crash");
+    } catch (error) {
+      await mutation!.fail(error);
+    }
+    const partial = await readMutationReceipt("retire-stale-runtime-only");
+    expect(partial.status).toBe("partial");
+    expect(partial.runtimeJournals).toEqual([expect.objectContaining({
+      path: applyJournalPath(runtimeRoot, "codex", { installationType: "user", stateKey: sourceStateKey }),
+      status: "pending",
+      journalDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+    })]);
+    const recovered = await recoverMutationRuntime("retire-stale-runtime-only");
+    expect(recovered.status).toBe("no-repository-delta");
+    expect(recovered.runtimeJournals[0]?.status).toBe("resolved");
+    expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(beforeHead);
+    await expect(stat(sourceManifestPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(destinationManifestPath)).toEqual(destinationBefore);
+    expect(await readFile(runtimePath, "utf8")).toBe("managed\n");
   });
 
   it("uses receipt revision/digest CAS and rereads recovery state after acquiring the mutation lock", async () => {

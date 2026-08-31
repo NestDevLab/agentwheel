@@ -192,6 +192,22 @@ export async function listApplyJournals(
   return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+export async function listAllApplyJournals(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+): Promise<DiscoveredApplyJournal[]> {
+  const suffix = ".apply-journal.json";
+  const found: DiscoveredApplyJournal[] = [];
+  for (const fileName of await transport.listDir(metadataDir(targetRoot))) {
+    if (!fileName.endsWith(suffix)) continue;
+    const path = join(metadataDir(targetRoot), fileName);
+    const journal = parseApplyJournal(JSON.parse(await transport.readFile(path)));
+    if (journal.adapter === adapter) found.push({ path, journal });
+  }
+  return found.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 export async function readLinkedLocalApplyJournal(
   path: string,
   operationId: string,

@@ -3,7 +3,7 @@
     "refs/heads/main-integration": "da8821a3baaee2378c3c2551ff38df331b44f92a"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-31T14:02:46+00:00",
+  "created_at": "2026-08-31T14:03:09+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
@@ -90,9 +90,9 @@
     "version": 2
   },
   "manifest_digest": "fcf3de6d2a873c15787cd5eaffbb53b3a3716c21a3ad181b4992bf03de740c9e",
-  "parent_state": "ed86f6cb8f5a41b6c289195c33048109d088ce05",
+  "parent_state": "66f132d99f4be772a303fdca93bd76a78c62ac57",
   "projection_status": "partial",
-  "publication_id": "fb41f94f-7cd0-40bf-81c7-ba7f455fce75",
+  "publication_id": "1fb6bf27-5487-4058-841f-57fbd3b3f29f",
   "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.36.1",

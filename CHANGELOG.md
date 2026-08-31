@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.2
+
+- Add a digest-gated `ownership retire-stale` lifecycle that removes only exact stale source
+  manifest entries already covered by a verified Fleet manifest, without rewriting runtime bytes.
+
 ## 0.20.1
 
 - Qualify nested workspace ownership through its single containing registered Fleet and reject

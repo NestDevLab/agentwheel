@@ -45,6 +45,7 @@ import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
+import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
 import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
@@ -989,6 +990,101 @@ ownershipCommand
     console.log(`Hash: ${result.artifactHash}`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
+  });
+
+ownershipCommand
+  .command("retire-stale")
+  .description("retire stale source-manifest ownership already covered by one Fleet manifest")
+  .requiredOption("--from-workspace-root <path>", "exact stale workspace owner root")
+  .requiredOption("--to-workspace-root <path>", "registered destination Fleet root")
+  .requiredOption("--source-state-key <key>", "exact source install-manifest state key")
+  .requiredOption("--fleet <id>", "registered destination Fleet")
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "named destination Fleet agent")
+  .option("--profile <name>", "destination Fleet profile resolving to one target")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
+  .option("--expected-destination-revision <sha256>", "reviewed destination manifest revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed runtime manifest inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata-only retirement", false)
+  .option("--json", "print the complete deterministic plan as JSON", false)
+  .action(async (options) => {
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const fleet = await showRegisteredFleet(options.fleet);
+    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
+    if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
+      throw new Error(`Destination Fleet '${options.fleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+    }
+    const targets = await resolveCliTargets(normalizedOptions);
+    if (targets.length !== 1) {
+      throw new Error(`Stale ownership retirement requires exactly one destination Fleet target, found ${targets.length}.`);
+    }
+    const target = targets[0]!;
+    if (target.fleetId !== options.fleet || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
+      throw new Error(`Resolved target does not belong to destination Fleet '${options.fleet}'.`);
+    }
+    const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
+    const adapter = await resolveAdapterForTarget(target, adapterOptions);
+    const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const request = {
+      targetRoot: state.installRoot,
+      adapter: adapter.name,
+      installationType,
+      sourceStateKey: options.sourceStateKey,
+      destinationStateKey: state.stateKey,
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      toWorkspaceRoot,
+      toFleetId: fleet.id,
+      planDigest: options.planDigest,
+      expectedSourceRevision: options.expectedSourceRevision,
+      expectedDestinationRevision: options.expectedDestinationRevision,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      transport: transportForTarget(target),
+    };
+    const result = options.apply
+      ? await applyRetireStaleOwnership(request)
+      : await planRetireStaleOwnership(request);
+    const targetArgs = options.profile
+      ? ["--profile", options.profile]
+      : target.agentName
+        ? ["--agent", target.agentName]
+        : ["--adapter", adapter.name, "--target-root", target.targetRoot];
+    const applyArgs = [
+      "agentwheel", "ownership", "retire-stale",
+      "--from-workspace-root", request.fromWorkspaceRoot,
+      "--to-workspace-root", request.toWorkspaceRoot,
+      "--source-state-key", request.sourceStateKey,
+      "--fleet", request.toFleetId,
+      ...targetArgs,
+      "--installation-type", installationType,
+      ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),
+      ...(options.adapterModule ? ["--adapter-module", options.adapterModule] : []),
+      ...(options.allowAdapterCode ? ["--allow-adapter-code"] : []),
+      "--plan-digest", result.planDigest,
+      "--expected-source-revision", result.source.revision,
+      "--expected-destination-revision", result.destination.revision,
+      "--expected-inventory-revision", result.manifestInventoryRevision,
+      "--apply",
+    ];
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, applyCommand }, null, 2));
+      return;
+    }
+    console.log(`${options.apply ? "Retired stale ownership" : "Stale ownership retirement plan"}: ${result.selected.length} entr${result.selected.length === 1 ? "y" : "ies"}`);
+    console.log(`Target: ${result.adapter}/${result.installationType} at ${result.targetRoot}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision}`);
+    console.log(`Destination: ${result.destination.stateKey} revision ${result.destination.revision}`);
+    console.log(`Manifest inventory revision: ${result.manifestInventoryRevision}`);
+    for (const entry of result.selected) console.log(`- ${entry.path}: ${entry.sourceEntryDigest} -> ${entry.destinationEntryDigest}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log(`Apply: ${applyCommand}`);
   });
 
 const mcpCommand = program
@@ -4223,6 +4319,10 @@ function normalizeCliPath(value: string): string {
   if (value === "~") return homedir();
   if (value.startsWith("~/")) return resolve(homedir(), value.slice(2));
   return resolve(value);
+}
+
+function shellQuoteArgument(value: string): string {
+  return /^[a-z0-9_./:@%+=,-]+$/i.test(value) ? value : `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function isHomePath(path: string): boolean {

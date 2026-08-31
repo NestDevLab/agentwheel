@@ -170,7 +170,17 @@ async function verifiedEntryHash(
   return currentHash;
 }
 
-function containedArtifactPath(targetRoot: string, relativePath: string): string {
+export async function verifyManifestEntryRuntime(
+  targetRoot: string,
+  entry: InstallManifestEntry,
+  transport: TargetTransport = localTransport,
+): Promise<string> {
+  const path = containedArtifactPath(targetRoot, entry.path);
+  if (!(await transport.pathExists(path))) throw new Error(`Managed artifact is missing: ${entry.path}`);
+  return verifiedEntryHash(entry, path, transport);
+}
+
+export function containedArtifactPath(targetRoot: string, relativePath: string): string {
   if (!relativePath || relativePath.startsWith("/") || relativePath.includes("\0")) {
     throw new Error(`Unsafe managed artifact path: ${relativePath}`);
   }

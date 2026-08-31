@@ -378,6 +378,16 @@ function isForceRemovableKeep(operation: InstallOperation): boolean {
   return operation.action === "keep" && operation.preserveInManifest !== true;
 }
 
+export async function commitManifestMetadataJournal(
+  journal: ApplyJournal,
+  transport: TargetTransport = localTransport,
+): Promise<InstallManifest> {
+  if (journal.mode !== "uninstall" || journal.operations.length !== 0) {
+    throw new Error("Manifest metadata journal must contain no runtime operations.");
+  }
+  return commitJournalState(journal, transport, undefined, journal.createdAt);
+}
+
 async function commitJournalState(
   journal: ApplyJournal,
   transport: TargetTransport,

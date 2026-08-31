@@ -20,7 +20,7 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { containedArtifactPath, verifyManifestEntryRuntime } from "./ownership.js";
 import { managedInstructionSelector } from "../install/instructions-block.js";
-import { mergeContributionAbsent } from "../install/merge-removal.js";
+import { hasMergeRemovalContent, mergeContributionAbsent } from "../install/merge-removal.js";
 
 export interface RetireStaleOwnershipRequest {
   targetRoot: string;
@@ -35,6 +35,7 @@ export interface RetireStaleOwnershipRequest {
   expectedSourceRevision?: string;
   expectedDestinationRevision?: string;
   expectedInventoryRevision?: string;
+  abandonIncompleteMergeOwner?: boolean;
   transport?: TargetTransport;
 }
 
@@ -43,6 +44,7 @@ export interface RetireStaleOwnershipEntry {
   sourceEntryDigest: string;
   destinationEntryDigest: string;
   runtimeHash: string;
+  coverage: "exact" | "abandoned-incomplete-merge";
 }
 
 export interface RetireStaleOwnershipPlan {
@@ -150,15 +152,24 @@ async function observe(
     if (candidates.length !== 1) {
       throw new Error(`Destination Fleet manifest has ambiguous ownership for ${sourceEntry.path}.`);
     }
-    assertRetirableSourceEntry(sourceEntry);
+    assertRetirableSourceEntry(sourceEntry, normalized.abandonIncompleteMergeOwner === true);
     const destinationEntry = candidates[0]!;
-    await assertContributionCoverage(sourceEntry, destinationEntry, normalized.targetRoot, transport);
-    const runtimeHash = await verifyManifestEntryRuntime(normalized.targetRoot, destinationEntry, transport);
+    const coverage = await assertContributionCoverage(
+      sourceEntry,
+      destinationEntry,
+      normalized.targetRoot,
+      transport,
+      normalized.abandonIncompleteMergeOwner === true,
+    );
+    const runtimeHash = coverage === "abandoned-incomplete-merge"
+      ? await transport.hashPath(containedArtifactPath(normalized.targetRoot, destinationEntry.path))
+      : await verifyManifestEntryRuntime(normalized.targetRoot, destinationEntry, transport);
     selected.push({
       path: sourceEntry.path,
       sourceEntryDigest: entryDigest(sourceEntry),
       destinationEntryDigest: entryDigest(destinationEntry),
       runtimeHash,
+      coverage,
     });
   }
   selected.sort((a, b) => a.path.localeCompare(b.path)
@@ -251,11 +262,15 @@ async function requireManifest(
   return manifest;
 }
 
-function assertRetirableSourceEntry(entry: InstallManifestEntry): void {
+function assertRetirableSourceEntry(
+  entry: InstallManifestEntry,
+  abandonIncompleteMergeOwner: boolean,
+): void {
   if (entry.semanticPlugin || entry.semanticCommand || entry.executed) {
     throw new Error(`Cannot retire semantic source ownership at ${entry.path}.`);
   }
-  if (entry.mergeStrategy && !entry.mergeRemoval) {
+  if (entry.mergeStrategy && !hasMergeRemovalContent(entry.mergeRemoval)) {
+    if (abandonIncompleteMergeOwner) return;
     throw new Error(`Cannot retire incomplete merge ownership at ${entry.path}.`);
   }
 }
@@ -265,7 +280,8 @@ async function assertContributionCoverage(
   destination: InstallManifestEntry,
   targetRoot: string,
   transport: TargetTransport,
-): Promise<void> {
+  abandonIncompleteMergeOwner: boolean,
+): Promise<RetireStaleOwnershipEntry["coverage"]> {
   const sourceManagedBlock = source.mode === "managed-block";
   const destinationManagedBlock = destination.mode === "managed-block";
   const sourceMerge = source.mergeStrategy !== undefined;
@@ -277,7 +293,7 @@ async function assertContributionCoverage(
       `Destination Fleet ownership category ${destinationCategory} cannot replace stale source category ${sourceCategory} at ${source.path}.`,
     );
   }
-  if (sourceCategory === "plain") return;
+  if (sourceCategory === "plain") return "exact";
   if (sourceManagedBlock) {
     const sourceSelector = managedInstructionSelector(source.logicalSelector, source.artifactType, source.artifactName);
     const destinationSelector = managedInstructionSelector(destination.logicalSelector, destination.artifactType, destination.artifactName);
@@ -285,21 +301,26 @@ async function assertContributionCoverage(
       || sourceSelector !== destinationSelector) {
       throw new Error(`Destination Fleet does not exactly cover stale source managed block contribution at ${source.path}.`);
     }
-    return;
+    return "exact";
   }
 
   if (source.mergeStrategy && destination.mergeStrategy) {
-    if (!source.mergeRemoval) throw new Error(`Cannot retire incomplete merge ownership at ${source.path}.`);
+    if (!hasMergeRemovalContent(source.mergeRemoval)) {
+      if (abandonIncompleteMergeOwner) return "abandoned-incomplete-merge";
+      throw new Error(`Cannot retire incomplete merge ownership at ${source.path}.`);
+    }
     const exactlyCovered = destination.mergeStrategy === source.mergeStrategy
-      && destination.mergeRemoval
+      && hasMergeRemovalContent(destination.mergeRemoval)
       && contributionSelector(source) === contributionSelector(destination)
       && canonicalJson(source.mergeRemoval) === canonicalJson(destination.mergeRemoval);
-    if (exactlyCovered) return;
+    if (exactlyCovered) return "exact";
     const current = await transport.readFile(containedArtifactPath(targetRoot, source.path));
-    if (!mergeContributionAbsent(source.mergeRemoval, source.mergeStrategy, current)) {
+    if (!mergeContributionAbsent(source.mergeRemoval!, source.mergeStrategy, current)) {
       throw new Error(`Destination Fleet does not exactly cover or replace stale source merge contribution at ${source.path}.`);
     }
+    return "exact";
   }
+  throw new Error(`Unsupported ownership coverage at ${source.path}.`);
 }
 
 function contributionSelector(entry: InstallManifestEntry): string {

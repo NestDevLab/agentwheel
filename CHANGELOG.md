@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.3
+
+- Allow the digest-gated stale-ownership lifecycle to abandon incomplete legacy merge metadata
+  only through an explicit operator opt-in; the complete runtime file hash is leased under the
+  shared lock and runtime bytes remain untouched.
+
 ## 0.20.2
 
 - Add a digest-gated `ownership retire-stale` lifecycle that removes only exact stale source

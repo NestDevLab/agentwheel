@@ -73,9 +73,9 @@ describe("composite profiles", () => {
     });
     expect(JSON.parse(await readFile(argsPath, "utf8"))).toEqual([
       "--no-update-check",
+      "status",
       "--fleet",
       "example-fleet",
-      "status",
       "--profile",
       "standalone",
       "--json",
@@ -93,9 +93,9 @@ describe("composite profiles", () => {
     };
 
     expect(memberCommandArgs(member, ["status", "--profile", "all", "--json"]))
-      .toEqual(["--no-update-check", "--fleet", "example-fleet", "status", "--profile", "all", "--json"]);
+      .toEqual(["--no-update-check", "status", "--fleet", "example-fleet", "--profile", "all", "--json"]);
     expect(memberCommandArgs(member, ["install", "--profile", "all", "--dry-run"]))
-      .toEqual(["--no-update-check", "--fleet", "example-fleet", "install", "--profile", "all", "--dry-run"]);
+      .toEqual(["--no-update-check", "install", "--fleet", "example-fleet", "--profile", "all", "--dry-run"]);
   });
 
   it("validates optional named-fleet member selectors", () => {

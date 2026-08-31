@@ -196,11 +196,10 @@ export async function runMemberAgentwheel(
 }
 
 export function memberCommandArgs(member: WorkspaceProfileMember, args: string[]): string[] {
-  return [
-    "--no-update-check",
-    ...(member.fleet ? ["--fleet", member.fleet] : []),
-    ...args,
-  ];
+  if (!member.fleet) return ["--no-update-check", ...args];
+  const [command, ...commandArgs] = args;
+  if (!command) throw new Error(`Member ${member.id} command is missing.`);
+  return ["--no-update-check", command, "--fleet", member.fleet, ...commandArgs];
 }
 
 function sshArguments(member: WorkspaceProfileMember): string[] {

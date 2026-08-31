@@ -210,8 +210,21 @@ describe("stale ownership retirement", () => {
     const semantic = await createFixture({ sourcePatch: { semanticCommand: ["fixture"] } });
     await expect(planRetireStaleOwnership(semantic.request)).rejects.toThrow(/semantic source ownership/i);
 
-    const incomplete = await createFixture({ sourcePatch: { mergeStrategy: "json-deep" } });
+    const incomplete = await createFixture({
+      runtimeContent: `${JSON.stringify({ destination: true }, null, 2)}\n`,
+      sourcePatch: { mergeStrategy: "json-deep" },
+      destinationPatch: { mergeStrategy: "json-deep" },
+    });
     await expect(planRetireStaleOwnership(incomplete.request)).rejects.toThrow(/incomplete merge ownership/i);
+    const abandonedPlan = await planRetireStaleOwnership({
+      ...incomplete.request,
+      abandonIncompleteMergeOwner: true,
+    });
+    expect(abandonedPlan.selected).toMatchObject([{
+      path: "config/managed.json",
+      coverage: "abandoned-incomplete-merge",
+    }]);
+    expect(abandonedPlan.selected[0]?.runtimeHash).toBe(await localTransport.hashPath(incomplete.runtimePath));
 
     const differentBlock = await createFixture({
       sourcePatch: { mode: "managed-block", logicalSelector: "instructions/source" },
@@ -259,6 +272,7 @@ async function createFixture(options: {
   destinationOwner?: string;
   sourcePatch?: Record<string, unknown>;
   destinationPatch?: Record<string, unknown>;
+  runtimeContent?: string;
 } = {}) {
   const targetRoot = await mkdtemp(join(tmpdir(), "agentwheel-retire-target-"));
   const fromWorkspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-retire-from-"));
@@ -268,7 +282,7 @@ async function createFixture(options: {
   const destinationStateKey = "codex.user.fleet-delivery.fixture";
   const runtimePath = join(targetRoot, "config", "managed.json");
   await mkdir(join(targetRoot, "config"), { recursive: true });
-  await writeFile(runtimePath, "managed\n");
+  await writeFile(runtimePath, options.runtimeContent ?? "managed\n");
   await writeFile(join(targetRoot, "config", "source-only.json"), "source-only\n");
   await writeFile(join(targetRoot, "config", "foreign.json"), "foreign\n");
   const hash = await localTransport.hashPath(runtimePath);

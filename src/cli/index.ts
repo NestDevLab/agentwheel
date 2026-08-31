@@ -1011,6 +1011,7 @@ ownershipCommand
   .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
   .option("--expected-destination-revision <sha256>", "reviewed destination manifest revision; required with --apply")
   .option("--expected-inventory-revision <sha256>", "reviewed runtime manifest inventory revision; required with --apply")
+  .option("--abandon-incomplete-merge-owner", "explicitly retire incomplete legacy merge metadata without changing runtime bytes", false)
   .option("--apply", "apply the exact reviewed metadata-only retirement", false)
   .option("--json", "print the complete deterministic plan as JSON", false)
   .action(async (options) => {
@@ -1045,6 +1046,7 @@ ownershipCommand
       expectedSourceRevision: options.expectedSourceRevision,
       expectedDestinationRevision: options.expectedDestinationRevision,
       expectedInventoryRevision: options.expectedInventoryRevision,
+      abandonIncompleteMergeOwner: options.abandonIncompleteMergeOwner,
       transport: transportForTarget(target),
     };
     const result = options.apply
@@ -1066,6 +1068,7 @@ ownershipCommand
       ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),
       ...(options.adapterModule ? ["--adapter-module", options.adapterModule] : []),
       ...(options.allowAdapterCode ? ["--allow-adapter-code"] : []),
+      ...(options.abandonIncompleteMergeOwner ? ["--abandon-incomplete-merge-owner"] : []),
       "--plan-digest", result.planDigest,
       "--expected-source-revision", result.source.revision,
       "--expected-destination-revision", result.destination.revision,

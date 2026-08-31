@@ -1,9 +1,7 @@
 {
-  "changed_refs": {
-    "refs/heads/main-integration": "da8821a3baaee2378c3c2551ff38df331b44f92a"
-  },
+  "changed_refs": {},
   "coordination_id": "default",
-  "created_at": "2026-08-31T14:03:09+00:00",
+  "created_at": "2026-08-31T14:08:47+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
@@ -66,34 +64,17 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "ownership-retire-stale"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "feat/ownership-retire-stale",
-        "commits": [
-          "114910594f0523ca2193d5fd7d702b59d91f506b"
-        ],
-        "id": "ownership-retire-stale",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
-  "manifest_digest": "fcf3de6d2a873c15787cd5eaffbb53b3a3716c21a3ad181b4992bf03de740c9e",
-  "parent_state": "66f132d99f4be772a303fdca93bd76a78c62ac57",
+  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
+  "parent_state": "299e4cd9d30d740c95ae40a74388003c9fdb7d05",
   "projection_status": "partial",
-  "publication_id": "1fb6bf27-5487-4058-841f-57fbd3b3f29f",
-  "publication_scope": "integration",
+  "publication_id": "c3b2605b-c628-4806-9019-d28cbcc6b918",
+  "publication_scope": "close:ownership-retire-stale",
   "schema_version": 2,
   "syncwheel_version": "0.36.1",
   "tombstones": [
@@ -344,6 +325,14 @@
       "ref": "refs/heads/fix/fleet-composite-ownership",
       "remote_tip": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
       "stack": "fleet-composite-ownership"
+    },
+    {
+      "branch": "feat/ownership-retire-stale",
+      "closed_at": "2026-08-31T14:08:39+00:00",
+      "reason": "merged",
+      "ref": "refs/heads/feat/ownership-retire-stale",
+      "remote_tip": "114910594f0523ca2193d5fd7d702b59d91f506b",
+      "stack": "ownership-retire-stale"
     }
   ]
 }

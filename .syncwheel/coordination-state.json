@@ -1,11 +1,12 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "355a3fccad0403fb0ec7bb66ba881d83218a4dc7"
+    "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b"
   },
   "coordination_id": "default",
-  "created_at": "2026-08-31T12:50:09+00:00",
+  "created_at": "2026-08-31T14:01:25+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
+    "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
@@ -65,17 +66,34 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "ownership-retire-stale"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "feat/ownership-retire-stale",
+        "commits": [
+          "114910594f0523ca2193d5fd7d702b59d91f506b"
+        ],
+        "id": "ownership-retire-stale",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "47a545d206699cf4946429b9af013205974754dd",
+  "manifest_digest": "fcf3de6d2a873c15787cd5eaffbb53b3a3716c21a3ad181b4992bf03de740c9e",
+  "parent_state": "66ca2d1cbb6772ebcb2dd89e1ed08b54c996ffa8",
   "projection_status": "partial",
-  "publication_id": "2108259a-7599-47b7-af73-72d80593f49b",
-  "publication_scope": "integration",
+  "publication_id": "832cb46c-68f8-490d-b0e5-8b4aaa021368",
+  "publication_scope": "stack:ownership-retire-stale",
   "schema_version": 2,
   "syncwheel_version": "0.36.1",
   "tombstones": [

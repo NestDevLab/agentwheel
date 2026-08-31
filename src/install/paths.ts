@@ -13,6 +13,7 @@ export function metadataDir(targetRoot: string): string {
 }
 
 export function stateKeyFor(adapter: string, scope: InstallStateScope = {}): string {
+  assertPathSafeAdapterName(adapter);
   if (scope.stateKey) {
     const explicit = sanitizeStateKey(scope.stateKey);
     const adapterScoped = scope.fleetId && explicit !== adapter && !explicit.startsWith(`${adapter}.`)
@@ -26,6 +27,12 @@ export function stateKeyFor(adapter: string, scope: InstallStateScope = {}): str
   const installationType = scope.installationType ?? defaultInstallationType;
   const fingerprint = scope.targetFingerprint ? `.${scope.targetFingerprint}` : "";
   return sanitizeStateKey(`${adapter}.${installationType}${fingerprint}`);
+}
+
+export function assertPathSafeAdapterName(adapter: string): void {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(adapter)) {
+    throw new Error(`Adapter name '${adapter}' is not a canonical path-safe identifier.`);
+  }
 }
 
 export function installManifestPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {

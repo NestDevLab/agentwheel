@@ -5,6 +5,7 @@ import type { InstallManifest, InstallManifestEntry, InstallManifestV1Entry } fr
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { DesiredArtifact } from "./desired.js";
+import { computeInstallManifestInventoryRevision } from "./manifest.js";
 import { managedInstructionBlockMode, managedInstructionSelector, readManagedInstructionBlockState } from "./instructions-block.js";
 import { hasMergeRemovalContent } from "./merge-removal.js";
 import { createCombinedInstallPlan } from "./plan.js";
@@ -16,6 +17,7 @@ export async function createUninstallPlan(
   manifest: InstallManifest,
   transport: TargetTransport = localTransport,
 ): Promise<InstallPlan> {
+  const runtimeStateRevision = await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport);
   const operations: InstallOperation[] = [];
   for (const entry of manifest.entries) {
     const semanticPlugin = "semanticPlugin" in entry ? entry.semanticPlugin : undefined;
@@ -71,6 +73,9 @@ export async function createUninstallPlan(
     }
   }
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
+  if (runtimeStateRevision !== await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport)) {
+    throw new Error("Runtime manifest inventory changed during uninstall planning; replan needed.");
+  }
   return {
     adapter: manifest.adapter,
     installationType: "installationType" in manifest ? manifest.installationType : defaultInstallationType,
@@ -79,6 +84,7 @@ export async function createUninstallPlan(
     operations,
     hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
     baseRevision: manifest.revision,
+    runtimeStateRevision,
     adapterCode: manifest.adapterCode,
   };
 }
@@ -90,6 +96,7 @@ export async function createOwnershipUninstallPlan(
   transport: TargetTransport = localTransport,
   options: { graphLockDigest?: string } = {},
 ): Promise<InstallPlan> {
+  const runtimeStateRevision = await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport);
   const installationType = "installationType" in manifest ? manifest.installationType : defaultInstallationType;
   const stateKey = "stateKey" in manifest ? manifest.stateKey : undefined;
   const desiredPlan = await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport, { installationType, stateKey });
@@ -185,6 +192,9 @@ export async function createOwnershipUninstallPlan(
   }
 
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
+  if (runtimeStateRevision !== await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport)) {
+    throw new Error("Runtime manifest inventory changed during ownership uninstall planning; replan needed.");
+  }
   return {
     adapter: manifest.adapter,
     installationType,
@@ -193,6 +203,7 @@ export async function createOwnershipUninstallPlan(
     operations,
     hasBlockingChanges: operations.some((operation) => operation.action === "conflict"),
     baseRevision: manifest.revision,
+    runtimeStateRevision,
     adapterCode: manifest.adapterCode,
     graphLockDigest: options.graphLockDigest,
   };

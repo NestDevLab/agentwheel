@@ -18,10 +18,10 @@ import {
   type DesiredArtifact,
 } from "../src/install/index.js";
 import { acquireApplyLock, applyBackupDir, applyJournalPath, applyLockPath } from "../src/install/transaction.js";
-import { createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
+import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
 import { workspaceOwnerForRoot } from "../src/lifecycle/ownership.js";
 import { installManifestPath } from "../src/install/paths.js";
-import type { InstallOperation } from "../src/install/plan.js";
+import type { InstallOperation, InstallPlan } from "../src/install/plan.js";
 import { localTransport } from "../src/transport/index.js";
 import type { TargetTransport } from "../src/transport/index.js";
 import { hashPath, pathExists } from "../src/utils/fs.js";
@@ -492,6 +492,68 @@ describe("transactional apply", () => {
     await second.release();
   });
 
+  it("serializes different state keys that share one adapter runtime", async () => {
+    const target = await tempRoot();
+    const first = await acquireApplyLock(target, adapter.name, undefined, {}, {
+      installationType: "local",
+      stateKey: "fleet-alpha",
+    });
+
+    await expect(acquireApplyLock(target, adapter.name, undefined, {}, {
+      installationType: "local",
+      stateKey: "fleet-beta",
+    })).rejects.toThrow(/Apply lock already exists/);
+
+    await first.release();
+  });
+
+  it("rejects adapter names that could collide after path sanitization", async () => {
+    const target = await tempRoot();
+    expect(() => applyLockPath(target, "foo/bar", { installationType: "user" })).toThrow(/path-safe identifier/);
+    expect(() => applyLockPath(target, "foo-bar", { installationType: "user" })).not.toThrow();
+  });
+
+  it("persists the locked runtime hash after a disjoint merge change", async () => {
+    const target = await tempRoot();
+    const relativePath = ".runtime/config.json";
+    const destPath = join(target, relativePath);
+    await writeText(destPath, `${JSON.stringify({ mcpServers: { current: { command: "current" } } })}\n`);
+    const contentHash = await hashPath(destPath);
+    const plan: InstallPlan = {
+      adapter: adapter.name,
+      installationType: "local",
+      stateKey: "merge-revalidation",
+      targetRoot: target,
+      baseRevision: null,
+      operations: [{
+        action: "skip",
+        artifactType: "mcp",
+        artifactName: "current.json",
+        kind: "file",
+        destPath,
+        relativeDestPath: relativePath,
+        currentHash: contentHash,
+        desiredHash: contentHash,
+        reason: "already merged",
+        channel: "managed",
+        mergeStrategy: "json-deep",
+        mergeRemoval: { mcpServers: { current: { command: "current" } } },
+      }],
+      hasBlockingChanges: false,
+    };
+    await writeText(destPath, `${JSON.stringify({
+      mcpServers: {
+        current: { command: "current" },
+        concurrent: { command: "concurrent" },
+      },
+    })}\n`);
+    const lockedHash = await hashPath(destPath);
+
+    await applyCombinedInstallPlan(plan);
+    const manifest = await readInstallManifest(target, adapter.name, localTransport, { stateKey: "merge-revalidation" });
+    expect(manifest?.entries[0]?.hash).toBe(lockedHash);
+  });
+
   it("uses ssh-shaped exclusive mkdir instead of check-then-act lock probing", async () => {
     const target = await tempRoot();
     const lockPath = applyLockPath(target, adapter.name);
@@ -556,6 +618,33 @@ describe("transactional apply", () => {
     await expect(stat(join(target, ".runtime", "rules", "a.md"))).resolves.toBeTruthy();
     await expect(stat(join(target, ".runtime", "rules", "b.md"))).resolves.toBeTruthy();
     expect(await localTransport.pathExists(applyJournalPath(target, adapter.name))).toBe(false);
+  });
+
+  it("blocks apply and recovery across state keys while any runtime journal is pending", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const first = await writeArtifact(source, "rules/a.md", "A\n");
+    const second = await writeArtifact(source, "rules/b.md", "B\n");
+    const independent = await writeArtifact(source, "rules/c.md", "C\n");
+    const alpha = await createCombinedInstallPlan([first, second], adapter, target, undefined, localTransport, { stateKey: "alpha" });
+    await expect(applyCombinedInstallPlan(alpha, { transport: failOnCopy(2) })).rejects.toThrow(/injected copy failure/);
+
+    const beta = await createCombinedInstallPlan([independent], adapter, target, undefined, localTransport, { stateKey: "beta" });
+    await expect(applyCombinedInstallPlan(beta)).rejects.toThrow(/runtime apply journal.*pending/i);
+    await expect(recoverPendingApply(target, adapter.name, localTransport, { stateKey: "beta" }))
+      .rejects.toThrow(/runtime apply journal.*pending/i);
+
+    await expect(recoverPendingApply(target, adapter.name, localTransport, { stateKey: "alpha" })).resolves.toBeDefined();
+  });
+
+  it("rejects a plan when another state manifest appears before the shared lock", async () => {
+    const source = await tempRoot();
+    const target = await tempRoot();
+    const artifact = await writeArtifact(source, "rules/a.md", "A\n");
+    const plan = await createCombinedInstallPlan([artifact], adapter, target, undefined, localTransport, { stateKey: "beta" });
+    await writeOwnedManifest(target, "alpha", workspaceOwnerForRoot(await tempRoot()), [".runtime/rules/foreign.md"]);
+
+    await expect(applyCombinedInstallPlan(plan)).rejects.toThrow(/manifest inventory changed.*replan/i);
   });
 
   it("rolls back completed operations when recovery no longer has staged sources", async () => {
@@ -944,6 +1033,196 @@ const alphaStateKey = `test.local.${"1".repeat(64)}`;
 const betaStateKey = `test.local.${"2".repeat(64)}`;
 
 describe("foreign workspace state at a shared target root", () => {
+  it("allows verified disjoint MCP merge contributions across workspace owners and rejects overlapping servers", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const relativePath = ".runtime/config.json";
+    const content = `${JSON.stringify({
+      mcpServers: {
+        alpha: { command: "alpha-mcp" },
+        beta: { command: "beta-mcp" },
+      },
+    }, null, 2)}\n`;
+    await writeText(join(target, relativePath), content);
+    const runtimeHash = await hashPath(join(target, relativePath));
+    await localTransport.writeJsonAtomic(installManifestPath(target, foreignStateAdapter.name, { stateKey: alphaStateKey }), {
+      version: 2,
+      adapter: foreignStateAdapter.name,
+      installationType: "local",
+      stateKey: alphaStateKey,
+      targetRoot: target,
+      generatedAt: new Date().toISOString(),
+      revision: "fixture-revision-0000",
+      entries: [{
+        path: relativePath,
+        artifactType: "mcp",
+        artifactName: "alpha.json",
+        installName: "alpha.json",
+        logicalSelector: "mcp/alpha.json",
+        kind: "file",
+        hash: runtimeHash,
+        sourceHash: runtimeHash,
+        updatedAt: new Date().toISOString(),
+        channel: "managed",
+        packageName: "fixture/alpha",
+        dependencyRole: "root",
+        owners: ["fixture/alpha"],
+        refCount: 1,
+        workspaceOwner: workspaceOwnerForRoot(fleetAlpha),
+        mergeStrategy: "json-deep",
+        mergeRemoval: { mcpServers: { alpha: { command: "alpha-mcp" } } },
+      }],
+    });
+    const operation: InstallOperation = {
+      action: "update",
+      artifactType: "mcp",
+      artifactName: "beta.json",
+      kind: "file",
+      destPath: join(target, relativePath),
+      relativeDestPath: relativePath,
+      currentHash: runtimeHash,
+      desiredHash: runtimeHash,
+      reason: "merge source changed",
+      channel: "managed",
+      mergeStrategy: "json-deep",
+      mergeRemoval: { mcpServers: { beta: { command: "beta-mcp" } } },
+    };
+    const plan: InstallPlan = {
+      adapter: foreignStateAdapter.name,
+      installationType: "local",
+      stateKey: betaStateKey,
+      targetRoot: target,
+      baseRevision: null,
+      operations: [operation],
+      hasBlockingChanges: false,
+    };
+    const options = {
+      workspaceRoot: projectBeta,
+      workspaceOwner: workspaceOwnerForRoot(projectBeta),
+      globalRoot: await tempRoot("agentwheel-b2-home-"),
+    };
+
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).resolves.toBeUndefined();
+    plan.operations[0] = {
+      ...operation,
+      mergeRemoval: { mcpServers: { alpha: { command: "different-alpha" } } },
+    };
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(
+      /already carries Agentwheel state owned by another workspace/,
+    );
+  });
+
+  it("requires explicit normalization even when the current workspace claim is exact", async () => {
+    const foreign = await tempRoot("agentwheel-b2-foreign-");
+    const current = await tempRoot("agentwheel-b2-current-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const relativePath = ".runtime/skills/shared-skill";
+    await writeText(join(target, relativePath, "SKILL.md"), "current\n");
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(foreign), [relativePath]);
+    const runtimeHash = await hashPath(join(target, relativePath));
+    const plan: InstallPlan = {
+      adapter: foreignStateAdapter.name,
+      installationType: "local",
+      stateKey: betaStateKey,
+      targetRoot: target,
+      baseRevision: null,
+      operations: [{
+        action: "skip",
+        artifactType: "skills",
+        artifactName: "shared-skill",
+        kind: "dir",
+        destPath: join(target, relativePath),
+        relativeDestPath: relativePath,
+        currentHash: runtimeHash,
+        manifestHash: runtimeHash,
+        desiredHash: runtimeHash,
+        reason: "already up to date",
+        channel: "managed",
+      }],
+      hasBlockingChanges: false,
+    };
+    const options = {
+      workspaceRoot: current,
+      workspaceOwner: workspaceOwnerForRoot(current),
+      globalRoot: await tempRoot("agentwheel-b2-home-"),
+    };
+
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(/another workspace/);
+    plan.operations[0] = { ...plan.operations[0]!, manifestHash: "f".repeat(64) };
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(/another workspace/);
+  });
+
+  it("requires explicit normalization for an inert claim from an empty workspace", async () => {
+    const foreign = await tempRoot("agentwheel-b2-foreign-");
+    const current = await tempRoot("agentwheel-b2-current-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const relativePath = ".runtime/config.json";
+    await writeText(join(target, relativePath), "{}\n");
+    await writeText(join(foreign, ".agentwheel", "config.json"), `${JSON.stringify({ schemaVersion: 1, packages: [] })}\n`);
+    await localTransport.writeJsonAtomic(installManifestPath(target, foreignStateAdapter.name, { stateKey: alphaStateKey }), {
+      version: 2,
+      adapter: foreignStateAdapter.name,
+      installationType: "local",
+      stateKey: alphaStateKey,
+      targetRoot: target,
+      generatedAt: new Date().toISOString(),
+      revision: "fixture-revision-0000",
+      entries: [{
+        path: relativePath,
+        artifactType: "mcp",
+        artifactName: "retired.json",
+        installName: "retired.json",
+        logicalSelector: "mcp/retired.json",
+        kind: "file",
+        hash: "0".repeat(64),
+        sourceHash: "0".repeat(64),
+        updatedAt: new Date().toISOString(),
+        channel: "managed",
+        packageName: "fixture/retired",
+        dependencyRole: "root",
+        owners: ["fixture/retired"],
+        refCount: 1,
+        workspaceOwner: workspaceOwnerForRoot(foreign),
+        mergeStrategy: "json-deep",
+        mergeRemoval: { mcpServers: {} },
+      }],
+    });
+    const plan: InstallPlan = {
+      adapter: foreignStateAdapter.name,
+      installationType: "local",
+      stateKey: betaStateKey,
+      targetRoot: target,
+      baseRevision: null,
+      operations: [{
+        action: "update",
+        artifactType: "mcp",
+        artifactName: "current.json",
+        kind: "file",
+        destPath: join(target, relativePath),
+        relativeDestPath: relativePath,
+        desiredHash: "1".repeat(64),
+        reason: "merge source changed",
+        channel: "managed",
+        mergeStrategy: "json-deep",
+        mergeRemoval: { mcpServers: { current: { command: "current" } } },
+      }],
+      hasBlockingChanges: false,
+    };
+    const options = {
+      workspaceRoot: current,
+      workspaceOwner: workspaceOwnerForRoot(current),
+      globalRoot: await tempRoot("agentwheel-b2-home-"),
+    };
+
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(/another workspace/);
+    await writeText(join(foreign, ".agentwheel", "config.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      packages: [{ name: "active", source: "/active", adapter: "test", mode: "pinned" }],
+    })}\n`);
+    await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(/another workspace/);
+  });
+
   it("partitions an explicit runtime state key by fleet and requires an explicit force for a same-path cross-fleet install", async () => {
     const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
     const fleetBeta = await tempRoot("agentwheel-b2-beta-");
@@ -977,7 +1256,7 @@ describe("foreign workspace state at a shared target root", () => {
     expect(forced.plan.hasBlockingChanges).toBe(true);
   });
 
-  it("refuses to plan when another workspace owns a path this run would install", async () => {
+  it("blocks planning when an exact current claim is shadowed by foreign ownership", async () => {
     const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
     const projectBeta = await tempRoot("agentwheel-b2-beta-");
     const target = await tempRoot("agentwheel-b2-target-");
@@ -994,9 +1273,7 @@ describe("foreign workspace state at a shared target root", () => {
       ".runtime/skills/alpha-only-skill",
     ]);
 
-    await expect(graphPlan(source, target, projectBeta)).rejects.toThrow(
-      /already carries Agentwheel state owned by another workspace/,
-    );
+    await expect(graphPlan(source, target, projectBeta)).rejects.toThrow(/another workspace/);
   });
 
   it("names the foreign owner, its manifest, entry count, colliding path and the ways out", async () => {
@@ -1066,6 +1343,18 @@ describe("foreign workspace state at a shared target root", () => {
 
     const result = await graphPlan(source, target, fleetAlpha);
     expect(result.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
+  });
+
+  it("requires normalization for a nested legacy owner once the current owner is Fleet-qualified", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const source = await skillSource(fleetAlpha, "shared-skill");
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(join(fleetAlpha, "var", "rollouts", "legacy")), [
+      ".runtime/skills/shared-skill",
+    ]);
+
+    await expect(graphPlan(source, target, fleetAlpha, { fleetId: "alpha" }))
+      .rejects.toThrow(/fleet normalize|another workspace/i);
   });
 
   it("refuses nested owners when the resolving root is the global config directory", async () => {

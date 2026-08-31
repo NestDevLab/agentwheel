@@ -65,7 +65,7 @@ import {
   type SearchType,
 } from "../model/catalogue.js";
 import { pruneGitCache, releaseGitSnapshotLease } from "../source/cache.js";
-import { listRegisteredFleets, registerFleet, resolveWorkspaceScope, showRegisteredFleet } from "../model/fleet.js";
+import { listRegisteredFleets, registerFleet, resolveWorkspaceOwnershipScope, resolveWorkspaceScope, showRegisteredFleet } from "../model/fleet.js";
 import { applyFleetNormalization, planFleetNormalization, recoverFleetNormalization, type FleetNormalizationSource } from "../lifecycle/fleet-normalize.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { GovernedMutation, checkMutationProvider, mutationPolicyForWorkspace, recoverMutationRuntime, resumeMutation } from "../mutation/coordinator.js";
@@ -2313,10 +2313,13 @@ async function buildGraphPlansForTarget(
             focusedArtifactOwnerKeys(result.bundle.graphLock, previousGroupLock, scopedRootId, targetOptions.focusedArtifact!),
           ))
           .map((operation) => operation.relativeDestPath);
+        const ownership = await resolveWorkspaceOwnershipScope(group.target.workspaceRoot, {
+          fleetId: group.target.fleetId,
+        });
         await assertNoForeignWorkspaceStateForPlan(scopedResult.plan, {
           transport,
           workspaceRoot: group.target.workspaceRoot,
-          workspaceOwner: workspaceOwnerForRoot(group.target.workspaceRoot, group.target.fleetId),
+          workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
           plannedPaths: focusedPaths,
         });
       }
@@ -3052,6 +3055,8 @@ function keepManifestEntryOperation(
     semanticPlugin: entry.semanticPlugin,
     execute: entry.executed,
     mergeStrategy: entry.mergeStrategy,
+    mergeRemoval: "mergeRemoval" in entry ? entry.mergeRemoval : undefined,
+    mergeCreatedDestination: "mergeCreatedDestination" in entry ? entry.mergeCreatedDestination : undefined,
     composedFrom: entry.composedFrom,
     installName: fresh?.installName ?? ("installName" in entry ? entry.installName : entry.artifactName),
     logicalSelector: fresh?.logicalSelector ?? ("logicalSelector" in entry ? entry.logicalSelector : `${entry.artifactType}/${entry.artifactName}`),

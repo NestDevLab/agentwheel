@@ -8,6 +8,7 @@ import {
   listRegisteredFleets,
   registerFleet,
   resolveWorkspaceScope,
+  resolveWorkspaceOwnershipScope,
   showRegisteredFleet,
 } from "../src/model/fleet.js";
 import { readMergedWorkspaceConfig, readWorkspaceConfig, workspaceConfigSchema } from "../src/model/workspace.js";
@@ -115,6 +116,51 @@ describe("named fleet config and resolution", () => {
       root: empty,
       config: { schemaVersion: 1, packages: [] },
     });
+  });
+
+  it("qualifies nested workspace ownership with its single containing registered fleet", async () => {
+    const home = await tempRoot("agentwheel-fleet-owner-home-");
+    const fleet = await tempRoot("agentwheel-fleet-owner-root-");
+    const nested = join(fleet, "profiles", "management");
+    const unrelated = await tempRoot("agentwheel-fleet-owner-unrelated-");
+    await mkdir(nested, { recursive: true });
+    await writeConfig(home, {
+      schemaVersion: 3,
+      fleets: { delivery: { root: fleet, requiredPackages: ["core"] } },
+    });
+    await writeConfig(fleet, {
+      schemaVersion: 3,
+      fleetId: "delivery",
+      packages: [pkg("core")],
+    });
+
+    await expect(resolveWorkspaceOwnershipScope(fleet, { globalRoot: home })).resolves.toEqual({
+      root: fleet,
+      fleetId: "delivery",
+    });
+    await expect(resolveWorkspaceOwnershipScope(nested, { globalRoot: home })).resolves.toEqual({
+      root: fleet,
+      fleetId: "delivery",
+    });
+    await expect(resolveWorkspaceOwnershipScope(unrelated, { globalRoot: home })).resolves.toEqual({ root: unrelated });
+  });
+
+  it("refuses ambiguous ownership when registered fleets overlap", async () => {
+    const home = await tempRoot("agentwheel-fleet-owner-home-");
+    const fleet = await tempRoot("agentwheel-fleet-owner-root-");
+    const nestedFleet = join(fleet, "profiles", "nested-fleet");
+    const workspace = join(nestedFleet, "profile");
+    await mkdir(workspace, { recursive: true });
+    await writeConfig(home, {
+      schemaVersion: 3,
+      fleets: {
+        outer: { root: fleet, requiredPackages: ["outer"] },
+        inner: { root: nestedFleet, requiredPackages: ["inner"] },
+      },
+    });
+
+    await expect(resolveWorkspaceOwnershipScope(workspace, { globalRoot: home }))
+      .rejects.toThrow(/multiple registered fleets.*(?:outer.*inner|inner.*outer)/is);
   });
 
   it("allows fleet identity only through a registered --fleet selection", async () => {

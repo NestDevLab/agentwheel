@@ -7,7 +7,7 @@ import { computeManifestRevision, withManifestRevision } from "../install/manife
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
 import { assertExactMergeContribution, hasMergeRemovalContent } from "../install/merge-removal.js";
 import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
-import { acquireApplyLock, readApplyJournal, type ApplyLock } from "../install/transaction.js";
+import { acquireApplyLock, applyLockPath, listApplyJournals, type ApplyLock } from "../install/transaction.js";
 import { installRootForAdapterInstallationType } from "../model/adapter.js";
 import { resolveWorkspaceScope, showRegisteredFleet, type WorkspaceScope } from "../model/fleet.js";
 import { computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
@@ -1752,6 +1752,7 @@ async function acquireJournalManifestLocks(manifests: Array<{
   try {
     const unique = new Map<string, typeof manifests[number]>();
     for (const item of manifests) unique.set(item.path, item);
+    const acquiredPaths = new Set<string>();
     for (const item of [...unique.values()].sort((a, b) => a.path.localeCompare(b.path))) {
       const raw = await readOptionalRecord(item.path) ?? item.before ?? item.after;
       if (!raw && !(item.targetRoot && item.adapter && item.installationType && item.stateKey)) {
@@ -1764,9 +1765,13 @@ async function acquireJournalManifestLocks(manifests: Array<{
       const installationType = manifest?.installationType ?? item.installationType!;
       const stateKey = manifest?.stateKey ?? item.stateKey!;
       const scope = { installationType, stateKey };
-      const lock = await acquireApplyLock(targetRoot, adapter, undefined, {}, scope);
-      locks.push(lock);
-      if (await readApplyJournal(targetRoot, adapter, undefined, scope)) {
+      const lockPath = applyLockPath(targetRoot, adapter, scope);
+      if (!acquiredPaths.has(lockPath)) {
+        const lock = await acquireApplyLock(targetRoot, adapter, undefined, {}, scope);
+        locks.push(lock);
+        acquiredPaths.add(lockPath);
+      }
+      if ((await listApplyJournals(targetRoot, adapter, undefined, { installationType })).length > 0) {
         throw new Error(`Cannot normalize while an Agentwheel apply journal is pending for ${item.path}.`);
       }
     }

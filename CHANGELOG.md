@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.20.1
+
+- Qualify nested workspace ownership through its single containing registered Fleet and reject
+  ambiguous overlapping Fleet registrations.
+- Repair exact incomplete merge ownership metadata automatically without rewriting runtime files.
+- Let verified disjoint MCP contributions coexist across workspace manifests while continuing to
+  block overlapping or stale foreign ownership until an explicit Fleet normalization.
+- Serialize all state keys sharing one adapter/runtime apply destination and revalidate exact merge
+  contributions and skip hashes under that shared lock before persisting ownership metadata.
+- Lease the complete runtime manifest inventory and block every state key while any compatible
+  apply journal is pending, preventing cross-state plans and crash recovery from racing.
+
 ## 0.20.0
 
 - Added schema-v4 governed mutation policies with required reasons, durable sanitized receipts,

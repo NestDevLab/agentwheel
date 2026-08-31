@@ -40,22 +40,31 @@ export async function listInstallManifests(
 ): Promise<DiscoveredInstallManifest[]> {
   const dir = metadataDir(targetRoot);
   const suffix = ".install-manifest.json";
-  const prefix = `${adapter}.`;
   const found: DiscoveredInstallManifest[] = [];
   for (const fileName of await transport.listDir(dir)) {
     if (!fileName.endsWith(suffix)) continue;
     const stateKey = fileName.slice(0, -suffix.length);
-    if (stateKey !== adapter && !stateKey.startsWith(prefix)) continue;
     const path = join(dir, fileName);
     try {
       const raw = JSON.parse(await transport.readFile(path));
       const parsed = installManifestSchema.parse(raw);
+      if (parsed.adapter !== adapter) continue;
       found.push({ path, fileName, stateKey, manifest: { ...parsed, revision: computeManifestRevision(raw) } });
     } catch (error) {
       throw new Error(`Unreadable install manifest at ${path}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return found.sort((a, b) => a.fileName.localeCompare(b.fileName));
+}
+
+export async function computeInstallManifestInventoryRevision(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+): Promise<string> {
+  const inventory = (await listInstallManifests(targetRoot, adapter, transport))
+    .map((item) => [item.fileName, item.manifest.revision]);
+  return createHash("sha256").update(JSON.stringify(inventory)).digest("hex");
 }
 
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {

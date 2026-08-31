@@ -8,7 +8,8 @@ import { canonicalGraphLockJson, computeTargetFingerprint, readGraphLock, writeG
 import { createCombinedInstallPlan, createInstallPlan, readInstallManifest, recoverPendingApply } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
 import type { DesiredArtifact } from "../install/desired.js";
-import type { InstallPlan } from "../install/plan.js";
+import type { InstallOperation, InstallPlan } from "../install/plan.js";
+import { assertExactMergeContribution, hasMergeRemovalContent, type MergeRemoval } from "../install/merge-removal.js";
 import { readApplyJournal } from "../install/transaction.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { RegistryClient } from "../registry/client.js";
@@ -29,6 +30,7 @@ import { normalizeArtifactSelectors } from "../model/selection.js";
 import { parseWorkspaceOwner, workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { listInstallManifests } from "../install/manifest.js";
 import { createExactMcpRetirementPlan } from "./mcp-retirement.js";
+import { resolveWorkspaceOwnershipScope } from "../model/fleet.js";
 
 export interface SourcePlanOptions {
   source: string;
@@ -245,7 +247,11 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
   const graphLockDigest = digestGraphLock(bundle.graphLock);
   const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
   const manifest = await readInstallManifest(resolvedInstallRoot, options.adapter.name, transport, { installationType: resolvedInstallationType, stateKey });
-  const workspaceOwner = workspaceOwnerForRoot(workspaceRoot, options.fleetId);
+  const ownership = await resolveWorkspaceOwnershipScope(workspaceRoot, {
+    fleetId: options.fleetId,
+    globalRoot: options.globalRoot,
+  });
+  const workspaceOwner = workspaceOwnerForRoot(ownership.root, ownership.fleetId);
   const plan = options.retireExactMcp
     ? await createExactMcpRetirementPlan(
         desiredArtifacts,
@@ -282,6 +288,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
       globalRoot: options.globalRoot,
       stateKey,
       plannedPaths: plan.operations.map((operation) => operation.relativeDestPath),
+      plannedOperations: plan.operations,
     });
   }
 
@@ -320,6 +327,7 @@ export async function assertNoForeignWorkspaceStateForPlan(
     globalRoot: options.globalRoot,
     stateKey: plan.stateKey,
     plannedPaths: options.plannedPaths ?? plan.operations.map((operation) => operation.relativeDestPath),
+    plannedOperations: plan.operations,
   });
 }
 
@@ -393,6 +401,7 @@ interface ForeignStateCheck {
   globalRoot?: string;
   stateKey: string;
   plannedPaths: string[];
+  plannedOperations: InstallOperation[];
 }
 
 interface ForeignStateOwner {
@@ -416,6 +425,13 @@ interface ForeignStateOwner {
 async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<void> {
   const planned = new Set(check.plannedPaths);
   if (planned.size === 0) return;
+  const plannedOperations = new Map<string, InstallOperation[]>();
+  for (const operation of check.plannedOperations) {
+    if (!planned.has(operation.relativeDestPath)) continue;
+    const operations = plannedOperations.get(operation.relativeDestPath) ?? [];
+    operations.push(operation);
+    plannedOperations.set(operation.relativeDestPath, operations);
+  }
 
   const manifests = await listInstallManifests(check.installRoot, check.adapter, check.transport);
   const root = resolve(check.workspaceRoot);
@@ -431,7 +447,16 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
       if (ownedByWorkspace(owner, check.workspaceOwner, root, ownsSubWorkspaces)) continue;
       const bucket = byOwner.get(owner) ?? { entryCount: 0, collidingPaths: [] };
       bucket.entryCount += 1;
-      if (planned.has(manifestEntry.path)) bucket.collidingPaths.push(manifestEntry.path);
+      if (planned.has(manifestEntry.path)
+        && !(await isDisjointVerifiedMergeContribution(
+          check,
+          manifestEntry.path,
+          manifestEntry.mergeStrategy,
+          manifestEntry.mergeRemoval,
+          plannedOperations.get(manifestEntry.path) ?? [],
+        ))) {
+        bucket.collidingPaths.push(manifestEntry.path);
+      }
       byOwner.set(owner, bucket);
     }
     for (const [owner, bucket] of byOwner) {
@@ -456,6 +481,50 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
       ? "Reconcile the owners with an explicit agentwheel fleet normalize operation before planning this fleet."
       : "Re-run from the owning workspace, or pass --force-foreign-state to plan against it anyway.",
   ].join("\n"));
+}
+
+async function isDisjointVerifiedMergeContribution(
+  check: ForeignStateCheck,
+  relativePath: string,
+  foreignStrategy: InstallOperation["mergeStrategy"],
+  foreignRemoval: MergeRemoval | undefined,
+  operations: InstallOperation[],
+): Promise<boolean> {
+  if (!foreignStrategy || !hasMergeRemovalContent(foreignRemoval) || operations.length !== 1) return false;
+  const operation = operations[0]!;
+  if (operation.mergeStrategy !== foreignStrategy || !hasMergeRemovalContent(operation.mergeRemoval)) return false;
+  if (!disjointMcpMergeContributions(foreignStrategy, foreignRemoval!, operation.mergeRemoval!)) return false;
+  try {
+    const content = await check.transport.readFile(join(check.installRoot, relativePath));
+    assertExactMergeContribution(foreignRemoval!, foreignStrategy, content);
+    assertExactMergeContribution(operation.mergeRemoval!, foreignStrategy, content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function disjointMcpMergeContributions(
+  strategy: NonNullable<InstallOperation["mergeStrategy"]>,
+  left: MergeRemoval,
+  right: MergeRemoval,
+): boolean {
+  const leftNames = mcpServerNames(strategy, left);
+  const rightNames = mcpServerNames(strategy, right);
+  if (!leftNames || !rightNames) return false;
+  return [...leftNames].every((name) => !rightNames.has(name));
+}
+
+function mcpServerNames(
+  strategy: NonNullable<InstallOperation["mergeStrategy"]>,
+  removal: MergeRemoval,
+): Set<string> | undefined {
+  if (strategy !== "codex-toml-mcp" && strategy !== "json-deep") return undefined;
+  const keys = Object.keys(removal);
+  if (strategy === "json-deep" && (keys.length !== 1 || keys[0] !== "mcpServers")) return undefined;
+  const servers = removal.mcpServers ?? (strategy === "codex-toml-mcp" ? removal : undefined);
+  if (!servers || Array.isArray(servers) || typeof servers !== "object") return undefined;
+  return new Set(Object.keys(servers));
 }
 
 function globalConfigRoot(globalRoot?: string): string {

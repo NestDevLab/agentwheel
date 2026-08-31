@@ -1,6 +1,6 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import {
@@ -36,6 +36,11 @@ export interface WorkspaceScopeRequest {
 
 export interface FleetRegistration extends RegisteredFleet {
   id: string;
+}
+
+export interface WorkspaceOwnershipScope {
+  root: string;
+  fleetId?: string;
 }
 
 export interface RegisterFleetRequest {
@@ -150,6 +155,35 @@ export async function showRegisteredFleet(idInput: string, options: { globalRoot
   return registration;
 }
 
+export async function resolveWorkspaceOwnershipScope(
+  workspaceRootInput: string,
+  options: { fleetId?: string; globalRoot?: string } = {},
+): Promise<WorkspaceOwnershipScope> {
+  const workspaceRoot = await canonicalizeDirectory(resolve(workspaceRootInput), "Workspace ownership root");
+  if (options.fleetId) {
+    return { root: workspaceRoot, fleetId: fleetIdSchema.parse(options.fleetId) };
+  }
+
+  const syntacticallyContaining = (await listRegisteredFleets({ globalRoot: options.globalRoot }))
+    .filter((fleet) => containsPath(resolve(fleet.root), workspaceRoot));
+  const registered = await Promise.all(syntacticallyContaining
+    .map(async (fleet) => ({
+      ...fleet,
+      root: await canonicalizeDirectory(fleet.root, `Registered fleet '${fleet.id}' root`),
+    })));
+  const containing = registered.filter((fleet) => containsPath(fleet.root, workspaceRoot));
+  if (containing.length > 1) {
+    throw new Error(
+      `Workspace ${workspaceRoot} is contained by multiple registered fleets: `
+      + containing.map((fleet) => `'${fleet.id}' at ${fleet.root}`).join(", ")
+      + ". Resolve the overlapping registrations before planning ownership.",
+    );
+  }
+  const fleet = containing[0];
+  if (fleet) assertFleetContract(fleet.id, fleet, await readRequiredConfig(fleet.root, `fleet '${fleet.id}'`));
+  return fleet ? { root: fleet.root, fleetId: fleet.id } : { root: workspaceRoot };
+}
+
 async function readRequiredConfig(root: string, label: string): Promise<WorkspaceConfig> {
   const path = workspaceConfigPath(root);
   if (!(await pathExists(path))) throw missingScopeError(label);
@@ -216,4 +250,9 @@ function assertNonFleetScope(kind: "user" | "local", config: WorkspaceConfig): v
 
 function sortedUnique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function containsPath(parent: string, candidate: string): boolean {
+  const path = relative(parent, candidate);
+  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }

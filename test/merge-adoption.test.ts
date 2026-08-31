@@ -379,12 +379,10 @@ describe("exact merged contribution adoption", () => {
     }]);
 
     const beforeRepair = await readFile(join(targetRoot, "config.json"), "utf8");
-    const repair = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, manifest, localTransport, {
-      forceConflict: true,
-    });
+    const repair = await createCombinedInstallPlan([legacy], jsonAdapter, targetRoot, manifest, localTransport);
     expect(repair.operations).toMatchObject([{
       action: "skip",
-      reason: "force repairing exact incomplete merge ownership",
+      reason: "repairing exact incomplete merge ownership",
       mergeRemoval: JSON.parse(await readFile(legacy.sourcePath, "utf8")),
     }]);
     await applyCombinedInstallPlan(repair);
@@ -594,13 +592,12 @@ describe("exact merged contribution adoption", () => {
 
     const beforeRepair = await readFile(configPath, "utf8");
     const repair = await createCombinedInstallPlan([legacy], codexAdapter, targetRoot, incompleteManifest, localTransport, {
-      forceConflict: true,
       installationType: "local",
     });
     expect(repair.hasBlockingChanges).toBe(false);
     expect(repair.operations).toMatchObject([{
       action: "skip",
-      reason: "force repairing exact incomplete merge ownership",
+      reason: "repairing exact incomplete merge ownership",
       mergeRemoval: JSON.parse(await readFile(legacy.sourcePath, "utf8")),
     }]);
     await applyCombinedInstallPlan(repair);

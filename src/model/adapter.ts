@@ -39,7 +39,7 @@ const targetRegistryInputSchema = z.union([
 ]);
 
 export const adapterSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/i, "adapter name must be a canonical path-safe identifier"),
   displayName: z.string().min(1).optional(),
   targets: z
     .partialRecord(

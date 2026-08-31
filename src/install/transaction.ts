@@ -72,7 +72,8 @@ export interface AbortedApplyJournal {
 }
 
 export function applyLockPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
-  return join(metadataDir(targetRoot), `${stateKeyFor(adapter, scope)}.apply-lock`);
+  const installationType = scope.installationType ?? "local";
+  return join(metadataDir(targetRoot), `${stateKeyFor(adapter, { installationType })}.runtime-apply-lock`);
 }
 
 export function applyJournalPath(targetRoot: string, adapter: string, scope: InstallStateScope = {}): string {
@@ -165,6 +166,30 @@ export async function readApplyJournal(
   const path = applyJournalPath(targetRoot, adapter, scope);
   if (!(await transport.pathExists(path))) return undefined;
   return parseApplyJournal(JSON.parse(await transport.readFile(path)));
+}
+
+export interface DiscoveredApplyJournal {
+  path: string;
+  journal: ApplyJournal;
+}
+
+export async function listApplyJournals(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport = localTransport,
+  scope: Pick<InstallStateScope, "installationType"> = {},
+): Promise<DiscoveredApplyJournal[]> {
+  const installationType = scope.installationType ?? "local";
+  const suffix = ".apply-journal.json";
+  const found: DiscoveredApplyJournal[] = [];
+  for (const fileName of await transport.listDir(metadataDir(targetRoot))) {
+    if (!fileName.endsWith(suffix)) continue;
+    const path = join(metadataDir(targetRoot), fileName);
+    const journal = parseApplyJournal(JSON.parse(await transport.readFile(path)));
+    if (journal.adapter !== adapter || (journal.installationType ?? "local") !== installationType) continue;
+    found.push({ path, journal });
+  }
+  return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export async function readLinkedLocalApplyJournal(

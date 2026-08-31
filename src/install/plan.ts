@@ -21,6 +21,7 @@ import type { TargetTransport } from "../transport/index.js";
 import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.js";
 import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
+import { computeInstallManifestInventoryRevision } from "./manifest.js";
 import { normalizeOwners } from "./desired.js";
 import {
   claudeInstructionBridgesAgents,
@@ -95,6 +96,7 @@ export interface InstallPlan {
   operations: InstallOperation[];
   hasBlockingChanges: boolean;
   baseRevision: string | null;
+  runtimeStateRevision?: string;
   migrationReport?: MigrationReport;
   graphLockDigest?: string;
   adapterCode?: {
@@ -116,6 +118,7 @@ export interface CombinedInstallPlanOptions {
   replaceConflict?: boolean;
   warn?: (message: string) => void;
   suppressAdapterTargetWarnings?: boolean;
+  runtimeStateRevision?: string;
 }
 
 export async function createInstallPlan(
@@ -135,6 +138,7 @@ export async function createInstallPlan(
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
+  const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   const desired: InstallOperation[] = [];
 
   for (const artifact of installableArtifacts) {
@@ -151,7 +155,7 @@ export async function createInstallPlan(
 
   await addProgrammaticOperations(desired, adapter, installRoot);
 
-  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
+  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType, runtimeStateRevision });
 }
 
 async function renderPlanArtifacts(bundle: StagedBundle, adapter: AdapterConfig): Promise<Artifact[]> {
@@ -176,6 +180,7 @@ export async function createCombinedInstallPlan(
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
   const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
+  const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   for (const artifact of installableArtifacts) {
     if (artifact.meta.dependencyRole !== "root" && isGuardedMergeTarget(artifact.type)) {
       throw new Error(`Dependency-provided ${artifact.type} artifacts cannot be installed until per-subentry ownership exists: ${artifact.type}/${artifact.name}`);
@@ -191,7 +196,7 @@ export async function createCombinedInstallPlan(
   }
 
   await addProgrammaticOperations(desired, adapter, installRoot);
-  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType });
+  return createPlanFromOperations(desired, adapter, installRoot, manifest, transport, { ...options, installationType, runtimeStateRevision });
 }
 
 async function createPlanFromOperations(
@@ -259,8 +264,7 @@ async function createPlanFromOperations(
         && !("mergeCreatedDestination" in existing && existing.mergeCreatedDestination === true)
         && !("mergeRemoval" in existing && hasMergeRemovalContent(existing.mergeRemoval));
       const adoptExisting = exists
-        && (!existing || incompleteMergeOwnership)
-        && options.forceConflict === true;
+        && (incompleteMergeOwnership || (!existing && options.forceConflict === true));
       let mergeRemoval: MergeRemoval;
       try {
         mergeRemoval = await mergeRemovalForInstall(op.sourcePath!, op.mergeStrategy, currentContent, {
@@ -293,7 +297,7 @@ async function createPlanFromOperations(
           currentHash,
           manifestHash: existing?.hash,
           reason: existing
-            ? "force repairing exact incomplete merge ownership"
+            ? "repairing exact incomplete merge ownership"
             : "force adopting exact unmanaged merge contribution",
         });
         continue;
@@ -446,6 +450,10 @@ async function createPlanFromOperations(
 
   for (const operation of operations) assertOperationContained(operation, targetRoot);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
+  const runtimeStateRevision = await computeInstallManifestInventoryRevision(targetRoot, adapter.name, transport);
+  if (options.runtimeStateRevision && runtimeStateRevision !== options.runtimeStateRevision) {
+    throw new Error("Runtime manifest inventory changed during planning; replan needed.");
+  }
   return {
     adapter: adapter.name,
     installationType: options.installationType ?? defaultInstallationType,
@@ -454,6 +462,7 @@ async function createPlanFromOperations(
     operations,
     hasBlockingChanges: operations.some((op) => op.action === "drift" || op.action === "conflict"),
     baseRevision: options.baseRevision ?? manifest?.revision ?? null,
+    runtimeStateRevision,
     migrationReport: migration.report,
     graphLockDigest: options.graphLockDigest,
     adapterCode: adapter.programmatic ? { modulePath: adapter.programmatic.modulePath, hash: adapter.programmatic.hash } : undefined,

@@ -11,13 +11,15 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
-import { canonicalInstallManifestJson, readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
 import {
   acquireApplyLock,
+  applyJournalPath,
   assertGovernedRuntimeTransportSupported,
   assertApplyJournalRecoveryAllowed,
+  listApplyJournals,
   localPathExists,
   readApplyJournal,
   recordBackup,
@@ -30,7 +32,7 @@ import {
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
-import { assertExactMcpMergeContribution, assertMergedSourceContribution, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
+import { assertExactMcpMergeContribution, assertExactMergeContribution, assertMergedSourceContribution, hasMergeRemovalContent, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
@@ -95,6 +97,7 @@ export async function recoverPendingApply(
   assertGovernedRuntimeTransportSupported(transport);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
+    await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
     assertApplyJournalRecoveryAllowed(journal);
@@ -143,6 +146,35 @@ export async function recoverPendingApply(
   }
 }
 
+async function assertRuntimeJournalGate(
+  targetRoot: string,
+  adapter: string,
+  transport: TargetTransport,
+  scope: { installationType?: string; stateKey?: string },
+  allowRequestedJournal = false,
+): Promise<void> {
+  const pending = await listApplyJournals(targetRoot, adapter, transport, {
+    installationType: scope.installationType,
+  });
+  if (pending.length === 0) return;
+  const requestedPath = applyJournalPath(targetRoot, adapter, scope);
+  if (allowRequestedJournal && pending.length === 1 && pending[0]!.path === requestedPath) return;
+  throw new Error(
+    `Cannot mutate ${adapter}/${scope.installationType ?? "local"} at ${targetRoot} while runtime apply journal(s) are pending: `
+    + pending.map((item) => item.path).join(", "),
+  );
+}
+
+async function assertRuntimeStateRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  if (!plan.runtimeStateRevision) return;
+  const current = await computeInstallManifestInventoryRevision(plan.targetRoot, plan.adapter, transport);
+  if (current !== plan.runtimeStateRevision) {
+    throw new Error(
+      `Runtime manifest inventory changed after planning: expected ${plan.runtimeStateRevision}, found ${current}; replan needed.`,
+    );
+  }
+}
+
 async function applyPlanTransactionally(
   plan: InstallPlan,
   options: ApplyOptions & { sourceLock?: SourceLock } = {},
@@ -158,6 +190,8 @@ async function applyPlanTransactionally(
 
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock, scope);
   try {
+    await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
+    await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
     const now = new Date().toISOString();
     const graphLockDigest = options.graphLockDigest ?? plan.graphLockDigest;
@@ -252,7 +286,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const preserved = [...preservedKept, ...skipped].filter((operation) => operation.preserveInManifest !== false);
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
-  const finalManifest = withManifestRevision({
+  let finalManifest = withManifestRevision({
     version: 2,
     adapter: plan.adapter,
     installationType: plan.installationType,
@@ -277,8 +311,25 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
 
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, resolvedOptions.lock, scope);
   try {
+    await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
+    await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
     await assertExactMergeRemovalPreconditions(removable, transport);
+    const revalidatedSkips = new Map<string, InstallManifestEntry>();
+    for (const operation of skipped) {
+      const entry = await applyOperation(operation, {
+        transport,
+        now,
+        graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
+      });
+      if (entry) revalidatedSkips.set(operation.relativeDestPath, entry);
+    }
+    if (revalidatedSkips.size > 0) {
+      finalManifest = withManifestRevision({
+        ...finalManifest,
+        entries: finalManifest.entries.map((entry) => revalidatedSkips.get(entry.path) ?? entry),
+      });
+    }
     const mutation = mutationMetadataForApplyJournal();
     const journal: ApplyJournal = {
       version: mutation ? 2 : 1,
@@ -518,9 +569,33 @@ async function applyOperation(
     if (!operation.desiredHash) {
       throw new Error(`Invalid skip operation missing hash: ${operation.relativeDestPath}`);
     }
+    let verifiedCurrentHash = operation.currentHash;
+    if (operation.mode === managedInstructionBlockMode) {
+      const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
+      if (!(await managedInstructionBlockLanded(operation.destPath, selector, operation.desiredHash, transport))) {
+        throw new Error(`Managed block changed after planning: ${operation.relativeDestPath}`);
+      }
+      verifiedCurrentHash = operation.desiredHash;
+    } else if (operation.mergeStrategy && hasMergeRemovalContent(operation.mergeRemoval)) {
+      if (!(await transport.pathExists(operation.destPath))) {
+        throw new Error(`Merge skip destination disappeared after planning: ${operation.relativeDestPath}`);
+      }
+      assertExactMergeContribution(operation.mergeRemoval!, operation.mergeStrategy, await transport.readFile(operation.destPath));
+      verifiedCurrentHash = await transport.hashPath(operation.destPath);
+    } else if (!operation.semanticPlugin && !operation.programmaticOperation) {
+      if (!(await transport.pathExists(operation.destPath))) {
+        throw new Error(`Skip destination disappeared after planning: ${operation.relativeDestPath}`);
+      }
+      const currentHash = await transport.hashPath(operation.destPath);
+      const expectedHash = operation.currentHash ?? operation.desiredHash;
+      if (currentHash !== expectedHash) {
+        throw new Error(`Skip destination changed after planning: ${operation.relativeDestPath}`);
+      }
+      verifiedCurrentHash = currentHash;
+    }
     return manifestEntryForOperation(operation, {
       now,
-      hash: (operation.mergeStrategy || operation.mode === managedInstructionBlockMode) && operation.currentHash ? operation.currentHash : operation.desiredHash,
+      hash: (operation.mergeStrategy || operation.mode === managedInstructionBlockMode) && verifiedCurrentHash ? verifiedCurrentHash : operation.desiredHash,
       sourceHash: operation.desiredHash,
       graphLockDigest: context.graphLockDigest,
     });

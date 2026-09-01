@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.4
+
+- Preserve an explicitly configured named Fleet selector when a composite profile invokes a member
+  Agentwheel CLI for status, plan, install, or update.
+
 ## 0.20.3
 
 - Allow the digest-gated stale-ownership lifecycle to abandon incomplete legacy merge metadata

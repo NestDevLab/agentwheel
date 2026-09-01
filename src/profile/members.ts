@@ -105,7 +105,7 @@ async function invokeMemberStatus(
   options: { refresh: boolean; offline: boolean },
   cliEntry = process.argv[1]!,
 ): Promise<StatusReport> {
-  const args = ["--no-update-check", "status", "--profile", member.profile, "--json"];
+  const args = memberCommandArgs(member, ["status", "--profile", member.profile, "--json"]);
   if (options.refresh) args.push("--refresh");
   if (options.offline) args.push("--offline");
   const env = { ...process.env, AGENTWHEEL_COMPOSITE_CHAIN: JSON.stringify(chain) };
@@ -165,7 +165,7 @@ export async function runMemberAgentwheel(
     if (member.transport === "local") {
       const result = await execFileAsync(
         process.execPath,
-        [process.argv[1]!, "--no-update-check", ...args],
+        [process.argv[1]!, ...memberCommandArgs(member, args)],
         {
           cwd: resolve(parentWorkspace, member.workspace),
           env,
@@ -179,8 +179,7 @@ export async function runMemberAgentwheel(
       "&&",
       `AGENTWHEEL_COMPOSITE_CHAIN=${shellQuote(JSON.stringify(chain))}`,
       "agentwheel",
-      "--no-update-check",
-      ...args.map(shellQuote),
+      ...memberCommandArgs(member, args).map(shellQuote),
     ];
     const result = await execFileAsync("ssh", [...sshArguments(member), remoteArgs.join(" ")], {
       env,
@@ -194,6 +193,13 @@ export async function runMemberAgentwheel(
     }
     throw new Error(`Member ${member.id} command failed: ${detail}`);
   }
+}
+
+export function memberCommandArgs(member: WorkspaceProfileMember, args: string[]): string[] {
+  if (!member.fleet) return ["--no-update-check", ...args];
+  const [command, ...commandArgs] = args;
+  if (!command) throw new Error(`Member ${member.id} command is missing.`);
+  return ["--no-update-check", command, "--fleet", member.fleet, ...commandArgs];
 }
 
 function sshArguments(member: WorkspaceProfileMember): string[] {

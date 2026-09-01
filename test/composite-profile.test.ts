@@ -1,9 +1,9 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { workspaceConfigSchema } from "../src/model/workspace.js";
-import { assertNoCompositeCycle, collectCompositeMembers } from "../src/profile/members.js";
+import { assertNoCompositeCycle, collectCompositeMembers, memberCommandArgs } from "../src/profile/members.js";
 
 describe("composite profiles", () => {
   it("rejects mixed profiles, duplicate member ids, and cycles", () => {
@@ -31,8 +31,14 @@ describe("composite profiles", () => {
     const root = await mkdtemp(join(tmpdir(), "agentwheel-composite-"));
     const memberRoot = join(root, "member");
     const cliEntry = join(root, "member-cli.mjs");
+    const argsPath = join(root, "member-args.json");
     await mkdir(memberRoot, { recursive: true });
-    await writeFile(cliEntry, `process.stdout.write(JSON.stringify(${JSON.stringify(memberReport(memberRoot))}));\n`, "utf8");
+    await writeFile(cliEntry, [
+      `import { writeFileSync } from "node:fs";`,
+      `writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)));`,
+      `process.stdout.write(JSON.stringify(${JSON.stringify(memberReport(memberRoot))}));`,
+      "",
+    ].join("\n"), "utf8");
 
     const members = await collectCompositeMembers({
       cliVersion: "0.14.13",
@@ -40,7 +46,13 @@ describe("composite profiles", () => {
       workspaceRoot: root,
       profileName: "cluster",
       profileTtlSeconds: 86_400,
-      members: [{ id: "leaf", workspace: memberRoot, profile: "standalone", transport: "local" }],
+      members: [{
+        id: "leaf",
+        workspace: memberRoot,
+        profile: "standalone",
+        fleet: "example-fleet",
+        transport: "local",
+      }],
       refresh: true,
     });
 
@@ -59,6 +71,55 @@ describe("composite profiles", () => {
       latestOverall: "2.0.0",
       policy: "^1.0.0",
     });
+    expect(JSON.parse(await readFile(argsPath, "utf8"))).toEqual([
+      "--no-update-check",
+      "status",
+      "--fleet",
+      "example-fleet",
+      "--profile",
+      "standalone",
+      "--json",
+      "--refresh",
+    ]);
+  });
+
+  it("passes an explicit named fleet to every member command", () => {
+    const member = {
+      id: "leaf",
+      workspace: "/srv/fleet-control",
+      profile: "all",
+      fleet: "example-fleet",
+      transport: "local" as const,
+    };
+
+    expect(memberCommandArgs(member, ["status", "--profile", "all", "--json"]))
+      .toEqual(["--no-update-check", "status", "--fleet", "example-fleet", "--profile", "all", "--json"]);
+    expect(memberCommandArgs(member, ["install", "--profile", "all", "--dry-run"]))
+      .toEqual(["--no-update-check", "install", "--fleet", "example-fleet", "--profile", "all", "--dry-run"]);
+  });
+
+  it("validates optional named-fleet member selectors", () => {
+    const base = { schemaVersion: 1 as const, packages: [], registry: {}, trust: {}, agents: {} };
+    const config = workspaceConfigSchema.parse({
+      ...base,
+      profiles: {
+        cluster: {
+          members: [{ id: "leaf", workspace: ".", profile: "all", fleet: "example-fleet" }],
+        },
+      },
+    });
+
+    expect(config.profiles.cluster).toMatchObject({
+      members: [{ fleet: "example-fleet" }],
+    });
+    expect(() => workspaceConfigSchema.parse({
+      ...base,
+      profiles: {
+        cluster: {
+          members: [{ id: "leaf", workspace: ".", profile: "all", fleet: "invalid fleet" }],
+        },
+      },
+    })).toThrow();
   });
 });
 

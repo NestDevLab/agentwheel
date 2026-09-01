@@ -207,7 +207,8 @@ Agentwheel CLI locally or over SSH:
           "id": "control",
           "transport": "local",
           "workspace": ".",
-          "profile": "all"
+          "profile": "all",
+          "fleet": "example-fleet"
         },
         {
           "id": "selfhost",
@@ -226,6 +227,8 @@ Agentwheel CLI locally or over SSH:
 A profile contains either `runtimes` or `members`, never both. Composite profiles may contain
 other composite profiles; cycles and duplicate member IDs fail validation. `status`, `plan`,
 `install`, and `update` use the same `--profile` interface for both profile kinds.
+Set a member's `fleet` when that autonomous workspace declares a `fleetId`; Agentwheel then passes
+the corresponding `--fleet` selector to status, plan, install, and update member invocations.
 
 Member status is a versioned JSON protocol. A compatible CLI version mismatch is a warning;
 an incompatible schema blocks plan and apply. Member snapshots use a 24-hour TTL by default.

@@ -113,6 +113,7 @@ export const workspaceProfileMemberSchema = z.object({
   id: z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i),
   workspace: z.string().min(1),
   profile: z.string().min(1),
+  fleet: fleetIdSchema.optional(),
   transport: z.enum(["local", "ssh"]).default("local"),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),

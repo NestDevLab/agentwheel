@@ -22,6 +22,7 @@ Create `~/.agentwheel/auth.json` and map repository patterns to a local `gh` acc
 
 Repository patterns use the normalized `host/owner/repository` form and support `*` wildcards.
 For example, `github.com/NestDevLab/*` matches all repositories owned by `NestDevLab`.
+Local Git paths do not participate in account routing and continue without a credential override.
 
 When Agentwheel clones or fetches a matching repository, it invokes:
 

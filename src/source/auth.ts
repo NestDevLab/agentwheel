@@ -32,6 +32,7 @@ export async function matchingGitAuthProfile(url: string): Promise<GitAuthProfil
   if (!config) return undefined;
 
   const repository = repositoryKey(url);
+  if (!repository) return undefined;
   return Object.values(config.profiles).find((profile) =>
     profile.repositories.some((pattern) => matchesRepository(pattern, repository)),
   );
@@ -68,9 +69,14 @@ function parseGitAuthConfig(value: unknown, path: string): GitAuthConfig {
   return { profiles };
 }
 
-function repositoryKey(url: string): string {
-  const parsed = new URL(url);
-  return `${parsed.host}/${parsed.pathname.replace(/^\//, "").replace(/\.git$/, "")}`.toLowerCase();
+function repositoryKey(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.host) return undefined;
+    return `${parsed.host}/${parsed.pathname.replace(/^\//, "").replace(/\.git$/, "")}`.toLowerCase();
+  } catch {
+    return undefined;
+  }
 }
 
 function matchesRepository(pattern: string, repository: string): boolean {

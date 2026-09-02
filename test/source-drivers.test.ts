@@ -78,6 +78,30 @@ describe("local Git auth profiles", () => {
     }
   });
 
+  it("ignores local Git sources when auth profiles are configured", async () => {
+    const config = await tempRoot("agentwheel-auth-config-");
+    const configPath = join(config, "auth.json");
+    await writeFile(configPath, JSON.stringify({
+      profiles: {
+        "github-yehonal": {
+          provider: "gh",
+          account: "Yehonal",
+          repositories: ["github.com/*"],
+        },
+      },
+    }));
+
+    const previousConfig = process.env.AGENTWHEEL_AUTH_CONFIG;
+    process.env.AGENTWHEEL_AUTH_CONFIG = configPath;
+    try {
+      await expect(matchingGitAuthProfile("/tmp/local-agent-pack")).resolves.toBeUndefined();
+      await expect(matchingGitAuthProfile("../local-agent-pack")).resolves.toBeUndefined();
+    } finally {
+      if (previousConfig === undefined) delete process.env.AGENTWHEEL_AUTH_CONFIG;
+      else process.env.AGENTWHEEL_AUTH_CONFIG = previousConfig;
+    }
+  });
+
   it("builds a scoped credential helper without exposing the token in Git arguments", async () => {
     const config = await tempRoot("agentwheel-auth-config-");
     const configPath = join(config, "auth.json");

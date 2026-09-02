@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.5
+
+- Keep user-level GitHub auth profiles from treating local Git paths as remote URLs.
+
 ## 0.20.4
 
 - Preserve an explicitly configured named Fleet selector when a composite profile invokes a member

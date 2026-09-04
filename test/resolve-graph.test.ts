@@ -496,6 +496,60 @@ describe("dependency graph resolver", () => {
     expect(depNode?.selected).toEqual(["rules/new.md"]);
   });
 
+  it("refreshes a tracking dependency when the root expands its selection", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const depRepo = join(workspace, "dep-repo");
+    await writeText(join(depRepo, "rules", "existing.md"), "# Existing\n");
+    await writeOpenPack(depRepo, {
+      name: "acme/tracking-dep",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await git(depRepo, ["init", "-b", "main"]);
+    await git(depRepo, ["config", "user.name", "Test"]);
+    await git(depRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v1"]);
+
+    await writeOpenPack(root, {
+      name: "acme/root",
+      requires: {
+        dep: { source: `git:file://${depRepo}#main`, mode: "tracking", select: ["rules/existing.md"] },
+      },
+    });
+    const first = await resolveDependencyGraph([{ rootId: "root", source: root }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-first"),
+    });
+    const lock = createGraphLock(first);
+
+    await writeText(join(depRepo, "rules", "added.md"), "# Added\n");
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v2"]);
+    const latestCommit = (await git(depRepo, ["rev-parse", "HEAD"])).trim();
+    await writeOpenPack(root, {
+      name: "acme/root",
+      requires: {
+        dep: {
+          source: `git:file://${depRepo}#main`,
+          mode: "tracking",
+          select: ["rules/added.md", "rules/existing.md"],
+        },
+      },
+    });
+
+    const refreshed = await resolveDependencyGraph([{ rootId: "root", source: root }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+    });
+    const depNode = refreshed.nodes.find((node) => node.name === "acme/tracking-dep");
+
+    expect(depNode?.resolvedCommit).toBe(latestCommit);
+    expect(depNode?.selected).toEqual(["rules/added.md", "rules/existing.md"]);
+  });
+
   it("keeps frozen lock behavior when a locked root source changes", async () => {
     const workspace = await tempRoot();
     const oldRoot = join(workspace, "old-root");

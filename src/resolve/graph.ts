@@ -986,6 +986,11 @@ function lockedNodeForRequirement(
     throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
   }
   const node = matches[0]!;
+  if (!hard && requirement.mode === "tracking") {
+    const requested = normalizeArtifactSelectors(requirement.select) ?? [];
+    const lockedSelection = new Set(node.selected);
+    if (requested.some((selector) => !lockedSelection.has(selector))) return undefined;
+  }
   return {
     node,
     requestedRef: lockedSourceRef(node),

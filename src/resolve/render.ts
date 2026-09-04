@@ -23,6 +23,7 @@ export interface GraphRenderTargetContext {
   adapter?: AdapterConfig;
   installationType?: string;
   targetFingerprint?: string;
+  noDeps?: boolean;
   warn?: (message: string) => void;
 }
 
@@ -71,7 +72,10 @@ export async function renderGraphForTarget(
     const runtimeArtifacts = targetContext.adapter
       ? filterArtifactsByRuntime(staged.artifacts, targetContext.adapter.name, runtimeSelectedSet)
       : staged.artifacts;
-    const expandedArtifacts = await expandMarkdownIncludes(runtimeArtifacts, staged.root, {
+    const compositionArtifacts = targetContext.noDeps
+      ? filterArtifactsBySelection(runtimeArtifacts, rawNode.node.selected)
+      : runtimeArtifacts;
+    const expandedArtifacts = await expandMarkdownIncludes(compositionArtifacts, staged.root, {
       nodeId: rawNode.node.id,
       originNodeId: rawNode.node.id,
       additionalComposeEntries: (artifact) => matchingCompositionEntries(

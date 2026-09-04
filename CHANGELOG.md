@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.8
+
+- Compose only selected artifacts under `--no-deps`, without changing normal dependency graph or
+  include-edge provenance behavior.
+
 ## 0.20.7
 
 - Filter runtime-ineligible artifacts before expanding OpenPack composition while preserving

@@ -982,14 +982,31 @@ describe("CLI verb redesign", () => {
   it("honors --no-deps in graph planning", async () => {
     const root = await tempRoot();
     const dep = await packageFixture("dep");
-    const source = await packageFixture("root", {
+    const source = await tempRoot("agentwheel-no-deps-selection-");
+    await mkdir(join(source, "instructions"), { recursive: true });
+    await mkdir(join(source, "skills", "app"), { recursive: true });
+    await writeFile(join(source, "instructions", "AGENTS.md"), "# Root\n", "utf8");
+    await writeFile(join(source, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill.\n---\n\n# App\n", "utf8");
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "root",
+      version: "1.0.0",
       requires: { dep: { source: dep, select: ["instructions/AGENTS.md"] } },
-    });
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/AGENTS.md",
+          items: { "AGENTS.md": { compose: [{ include: "dep:instructions/AGENTS.md" }] } },
+        },
+        { type: "skills", path: "skills" },
+      ],
+    }, null, 2)}\n`, "utf8");
 
-    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root, "--only-source", "--no-deps"]);
+    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root, "--only-source", "--skill", "app", "--no-deps"]);
     expect(stdout).toContain("WARN    --no-deps ignored dependencies");
     expect(stdout).toContain("RESOLVE root@");
     expect(stdout).not.toContain("RESOLVE dep@");
+    expect(stdout).toContain("skills/app");
   });
 
   it("uses the graph lock for install and re-resolves tracking packages on update", async () => {

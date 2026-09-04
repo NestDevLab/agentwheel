@@ -1,33 +1,71 @@
 {
-  "version": 2,
+  "channels": [],
+  "coordination": {
+    "gc": {
+      "backup_keep": 2,
+      "backup_retention_days": 30,
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
+  },
   "defaults": {
-    "canonical_remote": "origin",
-    "publication_remote": "origin",
     "base_branch": "main",
     "base_ref": "origin/main",
+    "canonical_remote": "origin",
     "integration_membership": "required",
+    "publication_remote": "origin",
     "replay_mode": "auto"
   },
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [],
+    "stacks": [
+      "mgt-0244-owner-diagnostics",
+      "no-deps-selected-composition"
+    ],
     "strategy": "cherry-pick"
   },
-  "stacks": [],
+  "repository_mode": "delivery",
+  "stacks": [
+    {
+      "base": "origin/main",
+      "branch": "pr/mgt-0244-owner-diagnostics",
+      "commits": [
+        "39102ee31d1cb1accc3dcec101a83c02a400efbc"
+      ],
+      "id": "mgt-0244-owner-diagnostics",
+      "integration_branch": "main-integration",
+      "meta": {},
+      "publication": {
+        "enabled": true
+      },
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
+    },
+    {
+      "base": "origin/main",
+      "branch": "fix/no-deps-selected-composition",
+      "commits": [
+        "329728952803c2e350b7454d9e89db66a1cf8750"
+      ],
+      "id": "no-deps-selected-composition",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Limit no-deps rendering to selected runtime-eligible artifacts"
+      },
+      "publication": {
+        "enabled": true
+      },
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
-  "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
-    "gc": {
-      "worktree_grace_days": 7,
-      "backup_retention_days": 30,
-      "backup_keep": 2
-    }
-  },
-  "repository_mode": "delivery",
-  "channels": []
+  "version": 2
 }

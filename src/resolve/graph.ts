@@ -129,6 +129,12 @@ interface FrozenNodeMatch {
   cacheIdentity?: string;
 }
 
+class TrackingRefreshRestart extends Error {
+  constructor(readonly normalizedSource: string) {
+    super(`Restart graph resolution with a fresh tracking source: ${normalizedSource}`);
+  }
+}
+
 interface NodeState {
   node: ResolvedNode;
   resolved: ResolvedSource;
@@ -160,8 +166,9 @@ export async function resolveDependencyGraph(
   const nodesByKey = new Map<string, NodeState>();
   const rootResults: ResolvedGraphRoot[] = [];
   const edgeMap = new Map<string, GraphLockEdge>();
+  const trackingRefreshSources = new Set<string>();
   assertDependencyUpdateSelectors(options.previousLock, options.dependencyUpdateSelectors);
-  const queue: Requirement[] = roots.map((root, index) => {
+  const rootRequirements = (): Requirement[] => roots.map((root, index) => {
     const rootId = root.rootId ?? `root-${index + 1}`;
     return {
       source: root.source,
@@ -184,6 +191,7 @@ export async function resolveDependencyGraph(
       suggestionAliases: sortedUnique([...(root.suggestionAliases ?? []), ...(options.suggestionAliases ?? [])]),
     };
   });
+  const queue = rootRequirements();
 
   let iterations = 0;
   const cap = Math.max(64, roots.length * 64);
@@ -193,10 +201,20 @@ export async function resolveDependencyGraph(
     }
 
     const batch = queue.splice(0, queue.length);
-    const trackingRefreshSources = await trackingRefreshSourcesForBatch(batch, options);
-    const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
-      processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap, trackingRefreshSources));
-    queue.push(...next.flat());
+    try {
+      const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
+        processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap, trackingRefreshSources));
+      queue.push(...next.flat());
+    } catch (error) {
+      if (!(error instanceof TrackingRefreshRestart)) throw error;
+      trackingRefreshSources.add(error.normalizedSource);
+      fetchCache.clear();
+      nodesByKey.clear();
+      rootResults.length = 0;
+      edgeMap.clear();
+      queue.push(...rootRequirements());
+      iterations = 0;
+    }
   }
 
   const rawNodes = [...nodesByKey.values()]
@@ -266,9 +284,6 @@ async function processRequirement(
   try {
     const lockLabel = options.offline ? "Offline" : options.frozenLock ? "Frozen lock" : "Locked install";
     let lockedByReference = lockedNodeForRequirementReference(requirement, options, lockLabel);
-    if (lockedByReference && trackingRefreshSources.has(lockedByReference.node.normalizedSource)) {
-      lockedByReference = undefined;
-    }
     let normalized = lockedByReference
       ? normalizedSourceFromLockedNode(lockedByReference.node)
       : await normalizeDependencySource(requirement.source, {
@@ -298,9 +313,21 @@ async function processRequirement(
         requirement.updateClosure = true;
       }
     }
-    const frozen = lockedByReference ?? (trackingRefreshSources.has(normalized.normalizedSource)
-      ? undefined
-      : lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel));
+    const hardLock = options.frozenLock === true || options.offline === true;
+    if (!hardLock && requirement.mode === "tracking" && !requirement.useLock
+      && !trackingRefreshSources.has(normalized.normalizedSource)) {
+      throw new TrackingRefreshRestart(normalized.normalizedSource);
+    }
+    let frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
+    if (!hardLock && requirement.mode === "tracking" && frozen
+      && !trackingRefreshSources.has(normalized.normalizedSource)
+      && !lockedNodeCoversRequirementSelection(frozen.node, requirement, options)) {
+      throw new TrackingRefreshRestart(frozen.node.normalizedSource);
+    }
+    if (requirement.mode === "tracking" && trackingRefreshSources.has(normalized.normalizedSource)) {
+      lockedByReference = undefined;
+      frozen = undefined;
+    }
     let fetched: FetchedPackage;
     try {
       fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen);
@@ -328,6 +355,13 @@ async function processRequirement(
     );
     if (selectionImport) selectionImport = { ...selectionImport, effective: selected };
     let state = nodesByKey.get(nodeKey);
+    if (state && (state.node.resolvedCommit !== fetched.resolved.resolvedCommit
+      || state.node.sourceHash !== fetched.sourceHash)) {
+      throw new Error(
+        `Conflicting locked and refreshed snapshots for ${normalized.normalizedSource}; `
+        + "the same package cannot be resolved as both pinned and tracking in one graph.",
+      );
+    }
     if (!state) {
       const id = graphNodeId(fetched.name, fetched.version, normalized.normalizedSource, fetched.resolved.resolvedCommit, fetched.sourceHash);
       state = {
@@ -406,6 +440,7 @@ async function processRequirement(
 
     return await collectDependencyNeeds(state, fetched, options, requirement.chain);
   } catch (error) {
+    if (error instanceof TrackingRefreshRestart) throw error;
     if (requirement.optional) {
       const message = error instanceof Error ? error.message : String(error);
       options.warn?.(`optional dependency skipped: ${message}`);
@@ -993,7 +1028,6 @@ function lockedNodeForRequirement(
     throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
   }
   const node = matches[0]!;
-  if (!hard && !lockedNodeCoversRequirementSelection(node, requirement)) return undefined;
   return {
     node,
     requestedRef: lockedSourceRef(node),
@@ -1001,53 +1035,31 @@ function lockedNodeForRequirement(
   };
 }
 
-async function trackingRefreshSourcesForBatch(
-  requirements: Requirement[],
+function lockedNodeCoversRequirementSelection(
+  node: GraphLockNode,
+  requirement: Requirement,
   options: ResolveGraphOptions,
-): Promise<Set<string>> {
-  const refresh = new Set<string>();
-  if (options.frozenLock || options.offline || !options.previousLock) return refresh;
-
-  await Promise.all(requirements.map(async (requirement) => {
-    if (requirement.mode !== "tracking") return;
-    if (!requirement.useLock) {
-      const normalized = await normalizeDependencySource(requirement.source, {
-        declaringPackageRoot: requirement.declaringPackageRoot,
-        workspaceRoot: options.workspaceRoot,
-        ref: requirement.ref,
-        registryClient: options.registryClient,
-      });
-      refresh.add(normalized.normalizedSource);
-      return;
-    }
-    const byReference = lockedNodeForRequirementReference(requirement, options, "Locked install");
-    if (byReference) {
-      if (!lockedNodeCoversRequirementSelection(byReference.node, requirement)) {
-        refresh.add(byReference.node.normalizedSource);
-      }
-      return;
-    }
-    const normalized = await normalizeDependencySource(requirement.source, {
-      declaringPackageRoot: requirement.declaringPackageRoot,
-      workspaceRoot: options.workspaceRoot,
-      ref: requirement.ref,
-      registryClient: options.registryClient,
-    });
-    const matches = options.previousLock!.canonical.nodes.filter(
-      (node) => node.normalizedSource === normalized.normalizedSource,
-    );
-    if (matches.length === 1 && !lockedNodeCoversRequirementSelection(matches[0]!, requirement)) {
-      refresh.add(normalized.normalizedSource);
-    }
-  }));
-  return refresh;
-}
-
-function lockedNodeCoversRequirementSelection(node: GraphLockNode, requirement: Requirement): boolean {
+): boolean {
   if (requirement.mode !== "tracking") return true;
+  if (requirement.selection) {
+    const lockedRoot = requirement.rootId
+      ? options.previousLock?.canonical.roots.find((root) => root.rootId === requirement.rootId)
+      : undefined;
+    const lockedSelection = lockedRoot?.selectionImport;
+    if (!lockedSelection
+      || lockedSelection.exportName !== requirement.selection.export
+      || selectorListKey(lockedSelection.additions) !== selectorListKey(requirement.selection.add ?? [])
+      || selectorListKey(lockedSelection.exclusions) !== selectorListKey(requirement.selection.exclude ?? [])) {
+      return false;
+    }
+  }
   const requested = normalizeArtifactSelectors(requirement.select) ?? [];
   const lockedSelection = new Set(node.selected);
   return requested.every((selector) => lockedSelection.has(selector));
+}
+
+function selectorListKey(selectors: string[]): string {
+  return sortedUnique(normalizeArtifactSelectors(selectors) ?? []).join("\0");
 }
 
 function lockedNodeForRequirementReference(
@@ -1271,12 +1283,18 @@ function sortedUnique(values: string[]): string[] {
 async function mapLimit<T, U>(items: T[], limit: number, fn: (item: T) => Promise<U>): Promise<U[]> {
   const out: U[] = new Array(items.length);
   let index = 0;
+  let failure: unknown;
   const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (index < items.length) {
+    while (index < items.length && failure === undefined) {
       const current = index++;
-      out[current] = await fn(items[current]!);
+      try {
+        out[current] = await fn(items[current]!);
+      } catch (error) {
+        failure ??= error;
+      }
     }
   });
   await Promise.all(workers);
+  if (failure !== undefined) throw failure;
   return out;
 }

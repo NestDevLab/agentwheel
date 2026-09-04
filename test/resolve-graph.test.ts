@@ -550,6 +550,124 @@ describe("dependency graph resolver", () => {
     expect(depNode?.selected).toEqual(["rules/added.md", "rules/existing.md"]);
   });
 
+  it("refreshes a referenced tracking dependency when a stable root selection expands", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const depRepo = join(workspace, "dep-repo");
+    await writeText(join(root, "skills", "existing", "SKILL.md"), "# Existing\n");
+    await writeText(join(root, "skills", "expanded", "SKILL.md"), "# Expanded\n");
+    await writeText(join(depRepo, "rules", "existing.md"), "# Existing\n");
+    await writeOpenPack(depRepo, {
+      name: "acme/tracking-dep",
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await git(depRepo, ["init", "-b", "main"]);
+    await git(depRepo, ["config", "user.name", "Test"]);
+    await git(depRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v1"]);
+    await writeOpenPack(root, {
+      name: "acme/root",
+      requires: { dep: { source: `git:file://${depRepo}#main`, mode: "tracking" } },
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: {
+          existing: { requires: ["dep:rules/existing.md"] },
+          expanded: { requires: ["dep:rules/added.md"] },
+        },
+      }],
+    });
+
+    const first = await resolveDependencyGraph([{ rootId: "root", source: root, select: ["skills/existing"] }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-first"),
+    });
+    const lock = createGraphLock(first);
+    await writeText(join(depRepo, "rules", "added.md"), "# Added\n");
+    await git(depRepo, ["add", "-A"]);
+    await git(depRepo, ["commit", "-m", "v2"]);
+    const latestCommit = (await git(depRepo, ["rev-parse", "HEAD"])).trim();
+
+    for (const hardMode of [{ frozenLock: true }, { offline: true }]) {
+      await expect(resolveDependencyGraph([{ rootId: "root", source: root, select: ["skills/expanded"] }], {
+        workspaceRoot: workspace,
+        cacheRoot: join(workspace, "cache-first"),
+        previousLock: lock,
+        lockedResolution: true,
+        ...hardMode,
+      })).rejects.toThrow(/Selected artifact not found in package: rules\/added\.md/);
+    }
+
+    const refreshed = await resolveDependencyGraph([{ rootId: "root", source: root, select: ["skills/expanded"] }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+    });
+    const depNode = refreshed.nodes.find((node) => node.name === "acme/tracking-dep");
+
+    expect(depNode?.resolvedCommit).toBe(latestCommit);
+    expect(depNode?.selected).toEqual(["rules/added.md"]);
+  });
+
+  it.each([["locked", "fresh"], ["fresh", "locked"]] as const)(
+    "refreshes shared tracking consumers in %s-first root order",
+    async (firstKind, secondKind) => {
+      const workspace = await tempRoot();
+      const lockedRoot = join(workspace, "locked-root");
+      const oldFreshRoot = join(workspace, "old-fresh-root");
+      const freshRoot = join(workspace, "fresh-root");
+      const depRepo = join(workspace, "dep-repo");
+      await writeText(join(depRepo, "rules", "existing.md"), "# Existing\n");
+      await writeOpenPack(depRepo, {
+        name: "acme/shared-tracking-dep",
+        provides: [{ type: "rules", path: "rules" }],
+      });
+      await git(depRepo, ["init", "-b", "main"]);
+      await git(depRepo, ["config", "user.name", "Test"]);
+      await git(depRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+      await git(depRepo, ["add", "-A"]);
+      await git(depRepo, ["commit", "-m", "v1"]);
+      for (const [path, name, selector] of [
+        [lockedRoot, "acme/locked-root", "rules/existing.md"],
+        [oldFreshRoot, "acme/fresh-root", "rules/existing.md"],
+        [freshRoot, "acme/fresh-root", "rules/added.md"],
+      ] as const) {
+        await writeOpenPack(path, {
+          name,
+          requires: { dep: { source: `git:file://${depRepo}#main`, mode: "tracking", select: [selector] } },
+        });
+      }
+      const initial = await resolveDependencyGraph([
+        { rootId: "locked", source: lockedRoot },
+        { rootId: "fresh", source: oldFreshRoot },
+      ], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first") });
+      const lock = createGraphLock(initial);
+      await writeText(join(depRepo, "rules", "added.md"), "# Added\n");
+      await git(depRepo, ["add", "-A"]);
+      await git(depRepo, ["commit", "-m", "v2"]);
+      const latestCommit = (await git(depRepo, ["rev-parse", "HEAD"])).trim();
+      const roots = {
+        locked: { rootId: "locked", source: lockedRoot },
+        fresh: { rootId: "fresh", source: freshRoot },
+      } as const;
+
+      const refreshed = await resolveDependencyGraph([roots[firstKind], roots[secondKind]], {
+        workspaceRoot: workspace,
+        cacheRoot: join(workspace, `cache-${firstKind}-first`),
+        previousLock: lock,
+        lockedResolution: true,
+        concurrency: 4,
+      });
+      const depNodes = refreshed.nodes.filter((node) => node.name === "acme/shared-tracking-dep");
+
+      expect(depNodes).toHaveLength(1);
+      expect(depNodes[0]?.resolvedCommit).toBe(latestCommit);
+      expect(depNodes[0]?.selected).toEqual(["rules/added.md", "rules/existing.md"]);
+    },
+  );
+
   it("keeps frozen lock behavior when a locked root source changes", async () => {
     const workspace = await tempRoot();
     const oldRoot = join(workspace, "old-root");

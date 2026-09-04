@@ -193,8 +193,9 @@ export async function resolveDependencyGraph(
     }
 
     const batch = queue.splice(0, queue.length);
+    const trackingRefreshSources = await trackingRefreshSourcesForBatch(batch, options);
     const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
-      processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap));
+      processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap, trackingRefreshSources));
     queue.push(...next.flat());
   }
 
@@ -260,10 +261,14 @@ async function processRequirement(
   nodesByKey: Map<string, NodeState>,
   rootResults: ResolvedGraphRoot[],
   edgeMap: Map<string, GraphLockEdge>,
+  trackingRefreshSources: Set<string>,
 ): Promise<Requirement[]> {
   try {
     const lockLabel = options.offline ? "Offline" : options.frozenLock ? "Frozen lock" : "Locked install";
     let lockedByReference = lockedNodeForRequirementReference(requirement, options, lockLabel);
+    if (lockedByReference && trackingRefreshSources.has(lockedByReference.node.normalizedSource)) {
+      lockedByReference = undefined;
+    }
     let normalized = lockedByReference
       ? normalizedSourceFromLockedNode(lockedByReference.node)
       : await normalizeDependencySource(requirement.source, {
@@ -293,7 +298,9 @@ async function processRequirement(
         requirement.updateClosure = true;
       }
     }
-    const frozen = lockedByReference ?? lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel);
+    const frozen = lockedByReference ?? (trackingRefreshSources.has(normalized.normalizedSource)
+      ? undefined
+      : lockedNodeForRequirement(normalized.normalizedSource, requirement, options, lockLabel));
     let fetched: FetchedPackage;
     try {
       fetched = await fetchPackage(normalized, requirement.mode, options, fetchCache, frozen);
@@ -986,16 +993,61 @@ function lockedNodeForRequirement(
     throw new Error(`${label} has multiple nodes for ${normalizedSource}; cannot choose a cached source deterministically.`);
   }
   const node = matches[0]!;
-  if (!hard && requirement.mode === "tracking") {
-    const requested = normalizeArtifactSelectors(requirement.select) ?? [];
-    const lockedSelection = new Set(node.selected);
-    if (requested.some((selector) => !lockedSelection.has(selector))) return undefined;
-  }
+  if (!hard && !lockedNodeCoversRequirementSelection(node, requirement)) return undefined;
   return {
     node,
     requestedRef: lockedSourceRef(node),
     cacheIdentity: node.cacheIdentity,
   };
+}
+
+async function trackingRefreshSourcesForBatch(
+  requirements: Requirement[],
+  options: ResolveGraphOptions,
+): Promise<Set<string>> {
+  const refresh = new Set<string>();
+  if (options.frozenLock || options.offline || !options.previousLock) return refresh;
+
+  await Promise.all(requirements.map(async (requirement) => {
+    if (requirement.mode !== "tracking") return;
+    if (!requirement.useLock) {
+      const normalized = await normalizeDependencySource(requirement.source, {
+        declaringPackageRoot: requirement.declaringPackageRoot,
+        workspaceRoot: options.workspaceRoot,
+        ref: requirement.ref,
+        registryClient: options.registryClient,
+      });
+      refresh.add(normalized.normalizedSource);
+      return;
+    }
+    const byReference = lockedNodeForRequirementReference(requirement, options, "Locked install");
+    if (byReference) {
+      if (!lockedNodeCoversRequirementSelection(byReference.node, requirement)) {
+        refresh.add(byReference.node.normalizedSource);
+      }
+      return;
+    }
+    const normalized = await normalizeDependencySource(requirement.source, {
+      declaringPackageRoot: requirement.declaringPackageRoot,
+      workspaceRoot: options.workspaceRoot,
+      ref: requirement.ref,
+      registryClient: options.registryClient,
+    });
+    const matches = options.previousLock!.canonical.nodes.filter(
+      (node) => node.normalizedSource === normalized.normalizedSource,
+    );
+    if (matches.length === 1 && !lockedNodeCoversRequirementSelection(matches[0]!, requirement)) {
+      refresh.add(normalized.normalizedSource);
+    }
+  }));
+  return refresh;
+}
+
+function lockedNodeCoversRequirementSelection(node: GraphLockNode, requirement: Requirement): boolean {
+  if (requirement.mode !== "tracking") return true;
+  const requested = normalizeArtifactSelectors(requirement.select) ?? [];
+  const lockedSelection = new Set(node.selected);
+  return requested.every((selector) => lockedSelection.has(selector));
 }
 
 function lockedNodeForRequirementReference(

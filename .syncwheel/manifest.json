@@ -34,7 +34,7 @@
       "base": "origin/main",
       "branch": "pr/mgt-0244-owner-diagnostics",
       "commits": [
-        "39102ee31d1cb1accc3dcec101a83c02a400efbc"
+        "c6035202bad9dbfb10dfcb26657c4424c5f61538"
       ],
       "id": "mgt-0244-owner-diagnostics",
       "integration_branch": "main-integration",

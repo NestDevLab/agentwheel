@@ -135,6 +135,8 @@ class TrackingRefreshRestart extends Error {
   }
 }
 
+class SnapshotConflictError extends Error {}
+
 interface NodeState {
   node: ResolvedNode;
   resolved: ResolvedSource;
@@ -164,6 +166,7 @@ export async function resolveDependencyGraph(
   const graphRoot = await mkdtemp(join(tmpdir(), "agentwheel-graph-"));
   const fetchCache = new Map<string, Promise<FetchedPackage>>();
   const nodesByKey = new Map<string, NodeState>();
+  const nodesBySource = new Map<string, NodeState>();
   const rootResults: ResolvedGraphRoot[] = [];
   const edgeMap = new Map<string, GraphLockEdge>();
   const trackingRefreshSources = new Set<string>();
@@ -203,13 +206,14 @@ export async function resolveDependencyGraph(
     const batch = queue.splice(0, queue.length);
     try {
       const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
-        processRequirement(requirement, options, fetchCache, nodesByKey, rootResults, edgeMap, trackingRefreshSources));
+        processRequirement(requirement, options, fetchCache, nodesByKey, nodesBySource, rootResults, edgeMap, trackingRefreshSources));
       queue.push(...next.flat());
     } catch (error) {
       if (!(error instanceof TrackingRefreshRestart)) throw error;
       trackingRefreshSources.add(error.normalizedSource);
       fetchCache.clear();
       nodesByKey.clear();
+      nodesBySource.clear();
       rootResults.length = 0;
       edgeMap.clear();
       queue.push(...rootRequirements());
@@ -277,6 +281,7 @@ async function processRequirement(
   options: ResolveGraphOptions,
   fetchCache: Map<string, Promise<FetchedPackage>>,
   nodesByKey: Map<string, NodeState>,
+  nodesBySource: Map<string, NodeState>,
   rootResults: ResolvedGraphRoot[],
   edgeMap: Map<string, GraphLockEdge>,
   trackingRefreshSources: Set<string>,
@@ -354,14 +359,15 @@ async function processRequirement(
       requirement.chain,
     );
     if (selectionImport) selectionImport = { ...selectionImport, effective: selected };
-    let state = nodesByKey.get(nodeKey);
-    if (state && (state.node.resolvedCommit !== fetched.resolved.resolvedCommit
-      || state.node.sourceHash !== fetched.sourceHash)) {
-      throw new Error(
+    const sourceState = nodesBySource.get(normalized.normalizedSource);
+    if (sourceState && (sourceState.node.resolvedCommit !== fetched.resolved.resolvedCommit
+      || sourceState.node.sourceHash !== fetched.sourceHash)) {
+      throw new SnapshotConflictError(
         `Conflicting locked and refreshed snapshots for ${normalized.normalizedSource}; `
         + "the same package cannot be resolved as both pinned and tracking in one graph.",
       );
     }
+    let state = nodesByKey.get(nodeKey) ?? sourceState;
     if (!state) {
       const id = graphNodeId(fetched.name, fetched.version, normalized.normalizedSource, fetched.resolved.resolvedCommit, fetched.sourceHash);
       state = {
@@ -396,8 +402,10 @@ async function processRequirement(
         updateClosure: false,
       };
       nodesByKey.set(nodeKey, state);
+      nodesBySource.set(normalized.normalizedSource, state);
     }
 
+    if (requirement.mode === "tracking") state.node.mode = "tracking";
     state.depth = Math.min(state.depth, requirement.depth);
     state.fullPackageSelected = state.fullPackageSelected || (requirement.select === undefined && !requirement.selection);
     state.includeSuggestions = state.includeSuggestions || requirement.includeSuggestions === true;
@@ -413,7 +421,7 @@ async function processRequirement(
         source: fetched.resolved.source,
         normalizedSource: normalized.normalizedSource,
         graphNodeId: state.node.id,
-        mode: state.node.mode,
+        mode: requirement.mode,
         selected: state.node.selected,
         aliases: requirement.aliases,
         overrides: requirement.overrides,
@@ -440,7 +448,7 @@ async function processRequirement(
 
     return await collectDependencyNeeds(state, fetched, options, requirement.chain);
   } catch (error) {
-    if (error instanceof TrackingRefreshRestart) throw error;
+    if (error instanceof TrackingRefreshRestart || error instanceof SnapshotConflictError) throw error;
     if (requirement.optional) {
       const message = error instanceof Error ? error.message : String(error);
       options.warn?.(`optional dependency skipped: ${message}`);
@@ -1046,20 +1054,20 @@ function lockedNodeCoversRequirementSelection(
       ? options.previousLock?.canonical.roots.find((root) => root.rootId === requirement.rootId)
       : undefined;
     const lockedSelection = lockedRoot?.selectionImport;
+    const requestedAdditions = normalizeArtifactSelectors(requirement.selection.add) ?? [];
+    const requestedExclusions = normalizeArtifactSelectors(requirement.selection.exclude) ?? [];
+    const lockedAdditions = new Set<string>(lockedSelection?.additions ?? []);
+    const requestedExclusionSet = new Set<string>(requestedExclusions);
     if (!lockedSelection
       || lockedSelection.exportName !== requirement.selection.export
-      || selectorListKey(lockedSelection.additions) !== selectorListKey(requirement.selection.add ?? [])
-      || selectorListKey(lockedSelection.exclusions) !== selectorListKey(requirement.selection.exclude ?? [])) {
+      || !requestedAdditions.every((selector) => lockedAdditions.has(selector))
+      || !lockedSelection.exclusions.every((selector) => requestedExclusionSet.has(selector))) {
       return false;
     }
   }
   const requested = normalizeArtifactSelectors(requirement.select) ?? [];
   const lockedSelection = new Set(node.selected);
   return requested.every((selector) => lockedSelection.has(selector));
-}
-
-function selectorListKey(selectors: string[]): string {
-  return sortedUnique(normalizeArtifactSelectors(selectors) ?? []).join("\0");
 }
 
 function lockedNodeForRequirementReference(

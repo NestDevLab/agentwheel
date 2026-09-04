@@ -781,6 +781,199 @@ describe("dependency graph resolver", () => {
     },
   );
 
+  it.each([
+    { firstKind: "pinned", secondKind: "tracking", concurrency: 1 },
+    { firstKind: "tracking", secondKind: "pinned", concurrency: 1 },
+    { firstKind: "pinned", secondKind: "tracking", concurrency: 4 },
+    { firstKind: "tracking", secondKind: "pinned", concurrency: 4 },
+  ] as const)(
+    "rejects optional mixed snapshots in $firstKind-first order at concurrency $concurrency",
+    async ({ firstKind, secondKind, concurrency }) => {
+      const workspace = await tempRoot();
+      const pinnedRoot = join(workspace, "pinned-root");
+      const trackingRoot = join(workspace, "tracking-root");
+      const sharedRepo = join(workspace, "shared-repo");
+      await writeText(join(sharedRepo, "rules", "existing.md"), "# Existing\n");
+      await writeOpenPack(sharedRepo, { name: "acme/optional-mixed", provides: [{ type: "rules", path: "rules" }] });
+      await git(sharedRepo, ["init", "-b", "main"]);
+      await git(sharedRepo, ["config", "user.name", "Test"]);
+      await git(sharedRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+      await git(sharedRepo, ["add", "-A"]);
+      await git(sharedRepo, ["commit", "-m", "v1"]);
+      await writeOpenPack(pinnedRoot, {
+        name: "acme/pinned-root",
+        requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "pinned", select: ["rules/existing.md"] } },
+      });
+      await writeOpenPack(trackingRoot, {
+        name: "acme/tracking-root",
+        requires: {
+          shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", optional: true, select: ["rules/existing.md"] },
+        },
+      });
+      const initial = await resolveDependencyGraph([
+        { rootId: "pinned", source: pinnedRoot },
+        { rootId: "tracking", source: trackingRoot },
+      ], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first") });
+      const lock = createGraphLock(initial);
+      await writeText(join(sharedRepo, "rules", "added.md"), "# Added\n");
+      await git(sharedRepo, ["add", "-A"]);
+      await git(sharedRepo, ["commit", "-m", "v2"]);
+      await writeOpenPack(trackingRoot, {
+        name: "acme/tracking-root",
+        requires: {
+          shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", optional: true, select: ["rules/added.md"] },
+        },
+      });
+      const roots = {
+        pinned: { rootId: "pinned", source: pinnedRoot },
+        tracking: { rootId: "tracking", source: trackingRoot },
+      } as const;
+
+      await expect(resolveDependencyGraph([roots[firstKind], roots[secondKind]], {
+        workspaceRoot: workspace,
+        cacheRoot: join(workspace, `cache-optional-${firstKind}-${concurrency}`),
+        previousLock: lock,
+        lockedResolution: true,
+        concurrency,
+      })).rejects.toThrow(/conflicting locked and refreshed snapshots/i);
+    },
+  );
+
+  it.each([
+    { firstKind: "pinned", secondKind: "tracking", concurrency: 1 },
+    { firstKind: "tracking", secondKind: "pinned", concurrency: 1 },
+    { firstKind: "pinned", secondKind: "tracking", concurrency: 4 },
+    { firstKind: "tracking", secondKind: "pinned", concurrency: 4 },
+  ] as const)(
+    "preserves shared pinned and tracking modes in $firstKind-first order at concurrency $concurrency",
+    async ({ firstKind, secondKind, concurrency }) => {
+      const workspace = await tempRoot();
+      const pinnedRoot = join(workspace, "pinned-root");
+      const trackingRoot = join(workspace, "tracking-root");
+      const sharedRepo = join(workspace, "shared-repo");
+      await writeText(join(sharedRepo, "rules", "existing.md"), "# Existing\n");
+      await writeOpenPack(sharedRepo, { name: "acme/shared-modes", provides: [{ type: "rules", path: "rules" }] });
+      await git(sharedRepo, ["init", "-b", "main"]);
+      await git(sharedRepo, ["config", "user.name", "Test"]);
+      await git(sharedRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+      await git(sharedRepo, ["add", "-A"]);
+      await git(sharedRepo, ["commit", "-m", "v1"]);
+      await writeOpenPack(pinnedRoot, {
+        name: "acme/pinned-root",
+        requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "pinned" } },
+      });
+      await writeOpenPack(trackingRoot, {
+        name: "acme/tracking-root",
+        requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking" } },
+      });
+      const roots = {
+        pinned: { rootId: "pinned", source: pinnedRoot },
+        tracking: { rootId: "tracking", source: trackingRoot },
+      } as const;
+
+      const graph = await resolveDependencyGraph([roots[firstKind], roots[secondKind]], {
+        workspaceRoot: workspace,
+        cacheRoot: join(workspace, `cache-modes-${firstKind}-${concurrency}`),
+        concurrency,
+      });
+      const shared = graph.nodes.find((node) => node.name === "acme/shared-modes");
+      const sharedEdges = graph.edges.filter((edge) => edge.to === shared?.id);
+
+      expect(shared?.mode).toBe("tracking");
+      expect(sharedEdges.map((edge) => edge.mode).sort()).toEqual(["pinned", "tracking"]);
+
+      const direct = await resolveDependencyGraph([
+        { rootId: "pinned", source: `git:file://${sharedRepo}#main`, mode: "pinned" },
+        { rootId: "tracking", source: `git:file://${sharedRepo}#main`, mode: "tracking" },
+      ], {
+        workspaceRoot: workspace,
+        cacheRoot: join(workspace, `cache-direct-modes-${firstKind}-${concurrency}`),
+        concurrency,
+      });
+      expect(Object.fromEntries(direct.roots.map((root) => [root.rootId, root.mode]))).toEqual({
+        pinned: "pinned",
+        tracking: "tracking",
+      });
+    },
+  );
+
+  it("rejects mixed snapshots when the refreshed package name changes", async () => {
+    const workspace = await tempRoot();
+    const pinnedRoot = join(workspace, "pinned-root");
+    const trackingRoot = join(workspace, "tracking-root");
+    const sharedRepo = join(workspace, "shared-repo");
+    await writeText(join(sharedRepo, "rules", "existing.md"), "# Existing\n");
+    await writeOpenPack(sharedRepo, { name: "acme/original-name", provides: [{ type: "rules", path: "rules" }] });
+    await git(sharedRepo, ["init", "-b", "main"]);
+    await git(sharedRepo, ["config", "user.name", "Test"]);
+    await git(sharedRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(sharedRepo, ["add", "-A"]);
+    await git(sharedRepo, ["commit", "-m", "v1"]);
+    await writeOpenPack(pinnedRoot, {
+      name: "acme/pinned-root",
+      requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "pinned", select: ["rules/existing.md"] } },
+    });
+    await writeOpenPack(trackingRoot, {
+      name: "acme/tracking-root",
+      requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", select: ["rules/existing.md"] } },
+    });
+    const initial = await resolveDependencyGraph([
+      { rootId: "pinned", source: pinnedRoot },
+      { rootId: "tracking", source: trackingRoot },
+    ], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first") });
+    const lock = createGraphLock(initial);
+    await writeText(join(sharedRepo, "rules", "added.md"), "# Added\n");
+    await writeOpenPack(sharedRepo, { name: "acme/renamed", provides: [{ type: "rules", path: "rules" }] });
+    await git(sharedRepo, ["add", "-A"]);
+    await git(sharedRepo, ["commit", "-m", "v2"]);
+    await writeOpenPack(trackingRoot, {
+      name: "acme/tracking-root",
+      requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", select: ["rules/added.md"] } },
+    });
+
+    await expect(resolveDependencyGraph([
+      { rootId: "pinned", source: pinnedRoot },
+      { rootId: "tracking", source: trackingRoot },
+    ], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+      concurrency: 1,
+    })).rejects.toThrow(/conflicting locked and refreshed snapshots/i);
+  });
+
+  it("rejects mixed snapshots for a manifestless source", async () => {
+    const workspace = await tempRoot();
+    const repo = join(workspace, "plain-repo");
+    await writeText(join(repo, "README.md"), "v1\n");
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v1"]);
+    const source = `git:file://${repo}#main`;
+    const initial = await resolveDependencyGraph([
+      { rootId: "pinned", source, mode: "pinned" },
+      { rootId: "tracking", source, mode: "tracking" },
+    ], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first"), concurrency: 1 });
+    const lock = createGraphLock(initial);
+    await writeText(join(repo, "README.md"), "v2\n");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v2"]);
+
+    await expect(resolveDependencyGraph([
+      { rootId: "pinned", source, mode: "pinned" },
+      { rootId: "tracking", source, mode: "tracking", useLock: false },
+    ], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+      concurrency: 1,
+    })).rejects.toThrow(/conflicting locked and refreshed snapshots/i);
+  });
+
   it("refreshes a tracking dependency closure when a root changes source and selection", async () => {
     const workspace = await tempRoot();
     const oldRoot = join(workspace, "old-root");
@@ -862,6 +1055,64 @@ describe("dependency graph resolver", () => {
 
     expect(refreshed.nodes[0]?.resolvedCommit).toBe(latestCommit);
     expect(refreshed.roots[0]?.selected).toEqual(["skills/added", "skills/existing"]);
+  });
+
+  it.each([
+    ["removed addition", ["skills/existing"], { add: ["skills/extra"] }, {}, ["skills/existing"]],
+    ["added exclusion", ["skills/existing", "skills/extra"], {}, { exclude: ["skills/extra"] }, ["skills/existing"]],
+  ] as const)("keeps the locked tracking snapshot when an imported selection is contracted by %s", async (_case, inherited, initialMods, nextMods, expected) => {
+    const workspace = await tempRoot();
+    const repo = join(workspace, "selection-repo");
+    await writeText(join(repo, "skills", "existing", "SKILL.md"), "# Existing\n");
+    await writeText(join(repo, "skills", "extra", "SKILL.md"), "# Extra\n");
+    await writeOpenPack(repo, { name: "acme/selection-contraction", provides: [{ type: "skills", path: "skills" }] });
+    await writeJson(join(repo, ".agentwheel", "config.json"), {
+      schemaVersion: 2,
+      exports: { selections: { default: { select: inherited } } },
+      packages: [], profiles: {}, agents: {}, registry: {}, trust: {},
+    });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v1"]);
+    const lockedCommit = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    const source = `git:file://${repo}#main`;
+    const initialSelection = initialMods as { add?: readonly string[]; exclude?: readonly string[] };
+    const nextSelection = nextMods as { add?: readonly string[]; exclude?: readonly string[] };
+    const initial = await resolveDependencyGraph([{
+      rootId: "root",
+      source,
+      mode: "tracking",
+      selection: {
+        export: "default",
+        add: initialSelection.add ? [...initialSelection.add] : undefined,
+        exclude: initialSelection.exclude ? [...initialSelection.exclude] : undefined,
+      },
+    }], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first") });
+    const lock = createGraphLock(initial);
+    await writeText(join(repo, "skills", "new", "SKILL.md"), "# New\n");
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "v2"]);
+
+    const resolved = await resolveDependencyGraph([{
+      rootId: "root",
+      source,
+      mode: "tracking",
+      selection: {
+        export: "default",
+        add: nextSelection.add ? [...nextSelection.add] : undefined,
+        exclude: nextSelection.exclude ? [...nextSelection.exclude] : undefined,
+      },
+    }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, `cache-${_case.replace(" ", "-")}`),
+      previousLock: lock,
+      lockedResolution: true,
+    });
+
+    expect(resolved.nodes[0]?.resolvedCommit).toBe(lockedCommit);
+    expect(resolved.roots[0]?.selected).toEqual(expected);
   });
 
   it("keeps optional tracking normalization failures non-blocking", async () => {

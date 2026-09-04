@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.7
+
+- Filter runtime-ineligible artifacts before expanding OpenPack composition while preserving
+  include-edge provenance for eligible artifacts.
+
 ## 0.20.6
 
 - Refresh a soft locked tracking dependency when a root selects artifacts outside the locked selection.

@@ -1,0 +1,12 @@
+{
+  "changed_refs": [
+    "refs/heads/fix/no-deps-selected-composition",
+    "refs/heads/main-integration"
+  ],
+  "claimed_at": "2026-09-04T18:33:39+00:00",
+  "coordination_id": "default",
+  "operation_token": "51852e9c-5eef-4442-8146-c223dd1e8276",
+  "publication_scope": "stack:no-deps-selected-composition",
+  "source_ref": "refs/heads/fix/no-deps-selected-composition",
+  "syncwheel_version": "0.43.3"
+}

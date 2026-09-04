@@ -1,22 +1,27 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
+    "refs/heads/main-integration": "fd43a38af98b38db2d893909356cebdec8c6aab2"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
+    "refs/heads/fix/no-deps-selected-composition": "a9fb570df496974ec3d9db925dd4c9774c95a011",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
-    "refs/heads/main-integration": "db3d63e5fe549dd0166b9613f09ae975690da728",
+    "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "dc8b97348f2dcdcbd40ebc0a00fe9f1b6c0d5faf"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-04T18:17:10+00:00",
+  "created_at": "2026-09-04T18:33:39+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
+    "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
     "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "73fd23198386281bfc58d0482b47e5db1ef5a7b4",
+    "refs/heads/main-integration": "fd43a38af98b38db2d893909356cebdec8c6aab2",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
@@ -74,7 +79,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "mgt-0244-owner-diagnostics"
+        "mgt-0244-owner-diagnostics",
+        "no-deps-selected-composition"
       ],
       "strategy": "cherry-pick"
     },
@@ -92,16 +98,30 @@
         "id": "mgt-0244-owner-diagnostics",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "fix/no-deps-selected-composition",
+        "commits": [
+          "329728952803c2e350b7454d9e89db66a1cf8750"
+        ],
+        "id": "no-deps-selected-composition",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
-  "manifest_digest": "388d138150c36bae1e4a629a14477639f9f044f26dc6aab9d251c2749cc6e7fb",
-  "operation_token": "37ed637c-3851-4d43-98b4-6d524fc0cad8",
-  "parent_state": "d8c21d74668ae0c463824431518ea8c62f9709a7",
+  "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
+  "operation_token": "51852e9c-5eef-4442-8146-c223dd1e8276",
+  "parent_state": "67325d3c9d2a6046279d9e2ead060ac453db58da",
   "projection_status": "partial",
-  "publication_id": "5a46a182-2648-43c9-9b99-04e680c327e9",
-  "publication_scope": "close:runtime-filter-composition",
+  "publication_id": "c5c40c49-d45a-4e09-a49f-9da8c8bf1bfe",
+  "publication_scope": "stack:no-deps-selected-composition",
   "schema_version": 2,
   "syncwheel_version": "0.43.3",
   "tombstones": [

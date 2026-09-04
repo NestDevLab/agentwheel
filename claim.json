@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/fix/runtime-filter-composition"
+  ],
+  "claimed_at": "2026-09-04T17:51:17+00:00",
+  "coordination_id": "default",
+  "operation_token": "73ed7bce-92d8-478a-8787-67cd784ff349",
+  "publication_scope": "stack:runtime-filter-composition",
+  "source_ref": "refs/heads/fix/runtime-filter-composition",
+  "syncwheel_version": "0.43.3"
+}

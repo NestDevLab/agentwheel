@@ -1,11 +1,10 @@
 {
   "changed_refs": [
-    "refs/heads/branch/agentwheel-resolver-selection-refresh",
-    "refs/heads/main-integration"
+    "refs/heads/branch/agentwheel-resolver-selection-refresh"
   ],
-  "claimed_at": "2026-09-04T13:32:06+00:00",
+  "claimed_at": "2026-09-04T13:32:31+00:00",
   "coordination_id": "default",
-  "operation_token": "6b04b255-62f4-4fb1-9f19-b3dd7b557325",
+  "operation_token": "a5da7cdb-5da6-4832-8ef4-0a78caefaaa8",
   "publication_scope": "stack:resolver-transitive-selection-refresh",
   "source_ref": "refs/heads/branch/agentwheel-resolver-selection-refresh",
   "syncwheel_version": "0.43.3"

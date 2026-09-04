@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.6
+
+- Refresh a soft locked tracking dependency when a root selects artifacts outside the locked selection.
+
 ## 0.20.5
 
 - Keep user-level GitHub auth profiles from treating local Git paths as remote URLs.

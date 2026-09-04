@@ -32,6 +32,7 @@ export const graphLockRootSchema = z.object({
   graphNodeId: z.string().min(1),
   mode: z.enum(["pinned", "tracking"]),
   selected: z.array(z.string().min(1)),
+  fullPackageSelected: z.boolean().optional(),
   aliases: z.record(z.string(), z.string().min(1)).optional(),
   overrides: z.array(z.string().min(1)).optional(),
   selectionImport: z.object({

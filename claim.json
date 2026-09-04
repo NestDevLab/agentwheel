@@ -3,9 +3,9 @@
     "refs/heads/branch/agentwheel-resolver-selection-refresh",
     "refs/heads/main-integration"
   ],
-  "claimed_at": "2026-09-04T10:50:48+00:00",
+  "claimed_at": "2026-09-04T12:16:12+00:00",
   "coordination_id": "default",
-  "operation_token": "f3737055-c609-40ec-80c9-96b19c078a2f",
+  "operation_token": "9ffa747f-7d19-453b-b33d-070fd758995c",
   "publication_scope": "stack:resolver-transitive-selection-refresh",
   "source_ref": "refs/heads/main-integration",
   "syncwheel_version": "0.43.2"

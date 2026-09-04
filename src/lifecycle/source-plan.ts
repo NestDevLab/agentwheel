@@ -234,6 +234,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     adapter: options.adapter,
     installationType,
     targetFingerprint,
+    noDeps: options.noDeps,
     warn,
   });
   const desiredArtifacts = filterArtifactsByAdapterTargets(

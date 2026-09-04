@@ -199,6 +199,73 @@ describe("OpenPack phase C", () => {
     })).rejects.toThrow(/Dependency alias not found .*core/);
   });
 
+  it("does not resolve compose aliases for unselected artifacts under --no-deps", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-no-deps-selection-target-");
+    const root = join(workspace, "private-core");
+    const publicCore = join(workspace, "public-core");
+
+    await writeText(join(root, "instructions", "codex-standalone.md"), "# Codex standalone\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill for tests.\n---\n\n# App\n");
+    await writeText(join(publicCore, "fragments", "base.md"), "Public base\n");
+    await writeOpenPack(publicCore, {
+      name: "phase-c/public-core",
+      provides: [{ type: "fragments", path: "fragments" }],
+    });
+    await writeOpenPack(root, {
+      name: "phase-c/private-core",
+      requires: {
+        pub: { source: "../public-core", select: ["fragments/base.md"] },
+      },
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/codex-standalone.md",
+          runtimes: ["codex"],
+          items: {
+            "codex-standalone.md": { compose: [{ include: "pub:fragments/base.md" }] },
+          },
+        },
+        { type: "skills", path: "skills", runtimes: ["codex"] },
+      ],
+    });
+
+    const noDeps = await createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-no-deps-selection",
+      noDeps: true,
+      yes: true,
+    });
+    expect(noDeps.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+    expect(noDeps.bundle.graphLock.canonical.includeEdges).toEqual([]);
+
+    const normal = await createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-normal-selection",
+      yes: true,
+    });
+    expect(normal.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+    expect(normal.bundle.graphLock.canonical.includeEdges).toMatchObject([
+      { alias: "pub", selector: "fragments/base.md" },
+    ]);
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["instructions/codex-standalone.md"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-no-deps-selected-compose",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Dependency alias not found .*pub/);
+  });
+
   it("reports cross-package include cycles with the full chain", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-c-cycle-target-");

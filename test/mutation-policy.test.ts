@@ -533,7 +533,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
       });
       runtimeSideEffects += 1;
       await mutation?.complete();
-    })()).rejects.toThrow(/requires a clean working tree.*install\.graph-lock\.json/i);
+    })()).rejects.toThrow(/requires a clean working tree.*install\.graph-lock\.json.*Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
     expect(runtimeSideEffects).toBe(0);
     expect(requiresCleanMutationPreflight("add")).toBe(false);
   });
@@ -1231,7 +1231,7 @@ if (request.action === "check") {
     await mkdir(lockPath, { recursive: true });
 
     await expect(acquireMutationLock(repo, "lock-race-contender"))
-      .rejects.toThrow(/another Agentwheel mutation owns/i);
+      .rejects.toThrow(/another Agentwheel mutation owns.*Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
     await expect(stat(lockPath)).resolves.toBeTruthy();
     await expect(stat(join(lockPath, "owner.json"))).rejects.toThrow();
     expect(mutationStateRoot()).toBe(stateRoot);

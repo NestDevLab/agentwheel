@@ -296,6 +296,19 @@ agentwheel status --all
 agentwheel status --profile daily
 ```
 
+### Blocked by another session
+
+Governed installs that require a clean repository still refuse every dirty checkout before runtime
+writes. When the local Agent Mesh graph has an exact opaque resource claim, the refusal identifies
+the one live session and its start time. `owner unknown` is intentional when claims are missing,
+inactive, malformed, or ambiguous; candidate sessions may be listed, but Agentwheel never chooses
+between them. Inspect the session graph or ask the rollout coordinator to identify or clear the
+owner before retrying. Do not delete a lock or bypass the clean-tree block from this diagnostic.
+
+Repository-lock contention also reports the stored operation, PID, runtime UUID, and creation time
+when available, and names a graph session only for one exact live UUID match. The graph reports
+identity and ownership; it is not a lock manager and never authorizes proceeding.
+
 For a named fleet, prefer `agentwheel status --fleet <fleet-id> --profile <name>` over
 direct agent status; profile status uses the same runtime resolution, adapter
 config, installation type, and graph lock fingerprinting as

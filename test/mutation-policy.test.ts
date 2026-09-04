@@ -591,6 +591,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
     expect(message).toContain(".agentwheel/config.json");
     expect(message).toContain(".agentwheel/locks/install.graph-lock.json");
     expect(message).not.toContain("notes.txt");
+    expect(message).toMatch(/Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
   });
 
   it("reports a dynamically declared dirty path without unrelated dirt", async () => {
@@ -620,6 +621,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
     const message = (declarationError as Error).message;
     expect(message).toContain(".agentwheel/locks/install.graph-lock.json");
     expect(message).not.toContain("notes.txt");
+    expect(message).toMatch(/Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
     await mutation!.fail(declarationError);
   });
 
@@ -1316,7 +1318,7 @@ if (request.action === "check") {
     await mkdir(lockPath, { recursive: true });
 
     await expect(acquireMutationLock(repo, "lock-race-contender"))
-      .rejects.toThrow(/another Agentwheel mutation owns/i);
+      .rejects.toThrow(/another Agentwheel mutation owns.*Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
     await expect(stat(lockPath)).resolves.toBeTruthy();
     await expect(stat(join(lockPath, "owner.json"))).rejects.toThrow();
     expect(mutationStateRoot()).toBe(stateRoot);

@@ -30,6 +30,7 @@ import {
   snapshotRepository,
   type RepositorySnapshot,
 } from "./repository.js";
+import { describeDirtyPathOwnershipByPath } from "./session-ownership.js";
 
 export interface BeginMutationOptions {
   workspaceRoot: string;
@@ -112,18 +113,22 @@ export class GovernedMutation {
         runtimeJournals: [],
         status: "prepared",
       });
+      const blockedPathDescriptions = baseline && repository && baseline.changed.size > 0
+        ? await describeDirtyPathOwnershipByPath(repository.root, [...baseline.changed.keys()])
+        : new Map<string, string>();
       const dirtyDeclaredPaths = baseline && repository
         ? dirtyRepositoryPaths(repository.root, baseline, options.anticipatedPaths ?? [])
         : [];
       if (dirtyDeclaredPaths.length > 0) {
         throw new Error(
-          `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}.`,
+          `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}. ${dirtyDeclaredPaths.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
         );
       }
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,
         baseline?.changed.keys(),
+        blockedPathDescriptions,
       );
       for (const path of options.anticipatedPaths ?? []) declareMutationPath(path);
       if (policy.revisioning.mode === "commit-after-verify" && repository) {

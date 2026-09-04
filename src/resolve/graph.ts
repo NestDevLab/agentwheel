@@ -195,23 +195,24 @@ export async function resolveDependencyGraph(
       suggestionAliases: sortedUnique([...(root.suggestionAliases ?? []), ...(options.suggestionAliases ?? [])]),
     };
   });
-  const queue = rootRequirements();
+  const requiredQueue = rootRequirements();
+  const optionalQueue: Requirement[] = [];
 
   let iterations = 0;
   const cap = Math.max(64, roots.length * 64);
-  while (queue.length > 0) {
+  while (requiredQueue.length > 0 || optionalQueue.length > 0) {
     if (++iterations > cap) {
       throw new Error(`Dependency graph did not reach a fixed point after ${cap} iterations.`);
     }
 
+    const queue = requiredQueue.length > 0 ? requiredQueue : optionalQueue;
     const batch = queue.splice(0, queue.length);
     try {
-      const next: Requirement[][] = [];
-      for (const requirements of [batch.filter((item) => !item.optional), batch.filter((item) => item.optional)]) {
-        next.push(...await mapLimit(requirements, options.concurrency ?? 4, async (requirement) =>
-          processRequirement(requirement, options, fetchCache, nodesByKey, nodesBySource, rootResults, edgeMap, trackingRefreshSources)));
+      const next = (await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
+        processRequirement(requirement, options, fetchCache, nodesByKey, nodesBySource, rootResults, edgeMap, trackingRefreshSources))).flat();
+      for (const requirement of next) {
+        (requirement.optional ? optionalQueue : requiredQueue).push(requirement);
       }
-      queue.push(...next.flat());
     } catch (error) {
       if (!(error instanceof TrackingRefreshRestart)) throw error;
       trackingRefreshSources.add(error.normalizedSource);
@@ -219,7 +220,9 @@ export async function resolveDependencyGraph(
       nodesBySource.clear();
       rootResults.length = 0;
       edgeMap.clear();
-      queue.push(...rootRequirements());
+      requiredQueue.length = 0;
+      optionalQueue.length = 0;
+      requiredQueue.push(...rootRequirements());
       iterations = 0;
     }
   }

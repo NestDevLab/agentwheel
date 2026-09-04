@@ -845,6 +845,67 @@ describe("dependency graph resolver", () => {
     },
   );
 
+  it("prioritizes a deeper required snapshot over a shallower optional refresh", async () => {
+    const workspace = await tempRoot();
+    const optionalRoot = join(workspace, "optional-root");
+    const requiredRoot = join(workspace, "required-root");
+    const middle = join(workspace, "middle");
+    const sharedRepo = join(workspace, "shared-repo");
+    await writeText(join(sharedRepo, "rules", "existing.md"), "# Existing\n");
+    await writeOpenPack(sharedRepo, { name: "acme/depth-priority", provides: [{ type: "rules", path: "rules" }] });
+    await git(sharedRepo, ["init", "-b", "main"]);
+    await git(sharedRepo, ["config", "user.name", "Test"]);
+    await git(sharedRepo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(sharedRepo, ["add", "-A"]);
+    await git(sharedRepo, ["commit", "-m", "v1"]);
+    await writeOpenPack(optionalRoot, {
+      name: "acme/optional-root",
+      requires: {
+        shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", optional: true, select: ["rules/existing.md"] },
+      },
+    });
+    await writeOpenPack(middle, {
+      name: "acme/middle",
+      requires: { shared: { source: `git:file://${sharedRepo}#main`, mode: "pinned", select: ["rules/existing.md"] } },
+    });
+    await writeOpenPack(requiredRoot, {
+      name: "acme/required-root",
+      requires: { middle: { source: middle } },
+    });
+    const initial = await resolveDependencyGraph([
+      { rootId: "optional", source: optionalRoot },
+      { rootId: "required", source: requiredRoot },
+    ], { workspaceRoot: workspace, cacheRoot: join(workspace, "cache-first") });
+    const lock = createGraphLock(initial);
+    const lockedCommit = lock.canonical.nodes.find((node) => node.name === "acme/depth-priority")?.resolvedCommit;
+    await writeText(join(sharedRepo, "rules", "added.md"), "# Added\n");
+    await git(sharedRepo, ["add", "-A"]);
+    await git(sharedRepo, ["commit", "-m", "v2"]);
+    await writeOpenPack(optionalRoot, {
+      name: "acme/optional-root",
+      requires: {
+        shared: { source: `git:file://${sharedRepo}#main`, mode: "tracking", optional: true, select: ["rules/added.md"] },
+      },
+    });
+
+    const warnings: string[] = [];
+    const resolved = await resolveDependencyGraph([
+      { rootId: "optional", source: optionalRoot },
+      { rootId: "required", source: requiredRoot },
+    ], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache-second"),
+      previousLock: lock,
+      lockedResolution: true,
+      warn: (message) => warnings.push(message),
+    });
+
+    const shared = resolved.nodes.find((node) => node.name === "acme/depth-priority");
+    expect(shared?.resolvedCommit).toBe(lockedCommit);
+    expect(shared?.selected).toEqual(["rules/existing.md"]);
+    expect(warnings).toEqual([expect.stringMatching(/optional dependency skipped: Conflicting locked and refreshed snapshots/)]);
+  });
+
   it.each([1, 4])("refreshes a shared tracking dependency closure after a later consumer enables updates at concurrency %s", async (concurrency) => {
     const workspace = await tempRoot();
     const stableRoot = join(workspace, "stable-root");

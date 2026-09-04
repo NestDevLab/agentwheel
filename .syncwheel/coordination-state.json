@@ -1,14 +1,11 @@
 {
-  "changed_refs": {
-    "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
-    "refs/heads/main-integration": "73fd23198386281bfc58d0482b47e5db1ef5a7b4"
-  },
+  "changed_refs": {},
   "claims": {
-    "refs/heads/branch/agentwheel-resolver-selection-refresh": "8017ef729bae2b19d0d0a1f0537f8653b8000473",
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/main-integration": "db3d63e5fe549dd0166b9613f09ae975690da728"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-04T13:50:05+00:00",
+  "created_at": "2026-09-04T14:10:24+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -72,41 +69,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "resolver-transitive-selection-refresh"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "branch/agentwheel-resolver-selection-refresh",
-        "commits": [
-          "4207386e0c74d6db558109327503265616d194db",
-          "7e40d8ebd9f37f9a2ffb5a04bc436fb0588c016d",
-          "0a5197b375a7b9add858600b43ff2d07ffdaca99",
-          "be5671bdd4304b2e2bc62840749a099d7c96709a",
-          "5340cacab4a46b729cbcb6245bb0775687d32355",
-          "f42006c6342e9a7dc787560ed06d00f56e274a69",
-          "4f526d30c8dd48349aaca007014b10080c21493c"
-        ],
-        "id": "resolver-transitive-selection-refresh",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "388d138150c36bae1e4a629a14477639f9f044f26dc6aab9d251c2749cc6e7fb",
-  "operation_token": "9b18bd99-1f2b-4746-8c5e-693130c6cd38",
-  "parent_state": "eec9aaedd4a5e8e36e55d58715f58b33000ff371",
+  "operation_token": "c3ff8806-877e-4e1e-ad39-f3885e37ab0b",
+  "parent_state": "1bb10afe9b84b3c37e64a57bf16db8bfa41c5952",
   "projection_status": "partial",
-  "publication_id": "38660892-8835-456a-8d9f-88f6bfb3469d",
-  "publication_scope": "stack:resolver-transitive-selection-refresh",
+  "publication_id": "fa1c1854-45ae-435d-89d4-5a7b57c5d5eb",
+  "publication_scope": "close:resolver-transitive-selection-refresh",
   "schema_version": 2,
   "syncwheel_version": "0.43.3",
   "tombstones": [
@@ -365,6 +339,14 @@
       "ref": "refs/heads/feat/ownership-retire-stale",
       "remote_tip": "114910594f0523ca2193d5fd7d702b59d91f506b",
       "stack": "ownership-retire-stale"
+    },
+    {
+      "branch": "branch/agentwheel-resolver-selection-refresh",
+      "closed_at": "2026-09-04T14:10:13+00:00",
+      "reason": "merged",
+      "ref": "refs/heads/branch/agentwheel-resolver-selection-refresh",
+      "remote_tip": null,
+      "stack": "resolver-transitive-selection-refresh"
     }
   ]
 }

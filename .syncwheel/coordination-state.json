@@ -1,20 +1,22 @@
 {
   "changed_refs": {
-    "refs/heads/pr/mgt-0244-owner-diagnostics": "c6035202bad9dbfb10dfcb26657c4424c5f61538"
+    "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
+    "refs/heads/fix/runtime-filter-composition": "3e1ce08f6ac88ffb4f1e95662d6da8bd1f06093f",
     "refs/heads/main-integration": "db3d63e5fe549dd0166b9613f09ae975690da728",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "dc8b97348f2dcdcbd40ebc0a00fe9f1b6c0d5faf"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-04T17:21:07+00:00",
+  "created_at": "2026-09-04T17:51:17+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
+    "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
     "refs/heads/main-integration": "73fd23198386281bfc58d0482b47e5db1ef5a7b4",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
@@ -74,7 +76,8 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "mgt-0244-owner-diagnostics"
+        "mgt-0244-owner-diagnostics",
+        "runtime-filter-composition"
       ],
       "strategy": "cherry-pick"
     },
@@ -92,16 +95,32 @@
         "id": "mgt-0244-owner-diagnostics",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "fix/runtime-filter-composition",
+        "commits": [
+          "7fda48303dc866dbaf3f7ba22f2c3218ed2aa317",
+          "c8ebbad66ea613cb28206a9847429f1b28ad53ed",
+          "1c655d28928f8d227cc629c3d2414884d9ed096d"
+        ],
+        "id": "runtime-filter-composition",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "388d138150c36bae1e4a629a14477639f9f044f26dc6aab9d251c2749cc6e7fb",
-  "operation_token": "f40cec96-15d6-48c9-8a48-fbe3bcc59273",
-  "parent_state": "627d7b3f744584e5578533ee0acf53f3cb4dd410",
+  "operation_token": "73ed7bce-92d8-478a-8787-67cd784ff349",
+  "parent_state": "a87f9b541da3e9204b84cc8504908173b3b87c4e",
   "projection_status": "partial",
-  "publication_id": "c79c30f5-69f5-439f-95dd-e8398ebaf970",
-  "publication_scope": "stack:mgt-0244-owner-diagnostics",
+  "publication_id": "2216fea1-9547-44d3-a90e-a3a34faf52f0",
+  "publication_scope": "stack:runtime-filter-composition",
   "schema_version": 2,
   "syncwheel_version": "0.43.3",
   "tombstones": [

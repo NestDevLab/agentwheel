@@ -30,6 +30,7 @@ import {
   snapshotRepository,
   type RepositorySnapshot,
 } from "./repository.js";
+import { describeDirtyPathOwnership } from "./session-ownership.js";
 
 export interface BeginMutationOptions {
   workspaceRoot: string;
@@ -116,8 +117,10 @@ export class GovernedMutation {
         && options.requireCleanWorkingTree
         && baseline
         && baseline.changed.size > 0) {
+        const changedPaths = [...baseline.changed.keys()].sort();
+        const ownership = await describeDirtyPathOwnership(repository!.root, changedPaths);
         throw new Error(
-          `This governed command computes declarative paths during planning and requires a clean working tree before runtime mutation; found: ${[...baseline.changed.keys()].sort().join(", ")}.`,
+          `This governed command computes declarative paths during planning and requires a clean working tree before runtime mutation; found: ${changedPaths.join(", ")}. ${ownership}`,
         );
       }
       beginMutationPathDeclarations(

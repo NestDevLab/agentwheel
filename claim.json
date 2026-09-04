@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/mgt-0244-owner-diagnostics"
+  ],
+  "claimed_at": "2026-09-04T17:21:06+00:00",
+  "coordination_id": "default",
+  "operation_token": "f40cec96-15d6-48c9-8a48-fbe3bcc59273",
+  "publication_scope": "stack:mgt-0244-owner-diagnostics",
+  "source_ref": "refs/heads/pr/mgt-0244-owner-diagnostics",
+  "syncwheel_version": "0.43.3"
+}

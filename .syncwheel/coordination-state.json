@@ -1,16 +1,22 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "568a02c483117c15ed27f67f965707e4369fccf6"
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "4207386e0c74d6db558109327503265616d194db",
+    "refs/heads/main-integration": "29a365e14d1ebebe79f225c08cbc435c638faf84"
+  },
+  "claims": {
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "7701818cb74b8602526d5705441c036355e184f7",
+    "refs/heads/main-integration": "b1fb005e427c652257a6c76415e3ba851558b14c"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-01T17:31:48+00:00",
+  "created_at": "2026-09-04T10:44:37+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "4207386e0c74d6db558109327503265616d194db",
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "568a02c483117c15ed27f67f965707e4369fccf6",
+    "refs/heads/main-integration": "29a365e14d1ebebe79f225c08cbc435c638faf84",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
@@ -66,19 +72,37 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "resolver-transitive-selection-refresh"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "branch/agentwheel-resolver-selection-refresh",
+        "commits": [
+          "4207386e0c74d6db558109327503265616d194db"
+        ],
+        "id": "resolver-transitive-selection-refresh",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
-  "manifest_digest": "0569c2c175f330871568b5afcd0445f5fd731d9e4a7f601beeb2c283fe896962",
-  "parent_state": "c4882d06346ced5394b0de30bdde5c0547701129",
-  "projection_status": "convergent",
-  "publication_id": "ee33b980-5be4-4103-a461-b4d57cbf642e",
-  "publication_scope": "full",
+  "manifest_digest": "13b54403d1e5b0bcb2c0981842dc05b6981d95162246cd73ac3377dcccf0062c",
+  "operation_token": "3d16157a-7106-4a60-bf33-26173b6e6c48",
+  "parent_state": "9eb0aa32410d917d1070b0b3083673efcd38d5da",
+  "projection_status": "partial",
+  "publication_id": "9deb40f1-84ad-4541-b61b-0a156bff12e2",
+  "publication_scope": "stack:resolver-transitive-selection-refresh",
   "schema_version": 2,
-  "syncwheel_version": "0.37.0",
+  "syncwheel_version": "0.43.2",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

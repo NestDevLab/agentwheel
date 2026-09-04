@@ -59,6 +59,7 @@ export interface ResolvedGraphRoot {
   graphNodeId: GraphNodeId;
   mode: "pinned" | "tracking";
   selected: string[];
+  fullPackageSelected: boolean;
   selectionImport?: ResolvedSelectionImport;
   aliases?: Record<string, string>;
   overrides?: string[];
@@ -205,13 +206,15 @@ export async function resolveDependencyGraph(
 
     const batch = queue.splice(0, queue.length);
     try {
-      const next = await mapLimit(batch, options.concurrency ?? 4, async (requirement) =>
-        processRequirement(requirement, options, fetchCache, nodesByKey, nodesBySource, rootResults, edgeMap, trackingRefreshSources));
+      const next: Requirement[][] = [];
+      for (const requirements of [batch.filter((item) => !item.optional), batch.filter((item) => item.optional)]) {
+        next.push(...await mapLimit(requirements, options.concurrency ?? 4, async (requirement) =>
+          processRequirement(requirement, options, fetchCache, nodesByKey, nodesBySource, rootResults, edgeMap, trackingRefreshSources)));
+      }
       queue.push(...next.flat());
     } catch (error) {
       if (!(error instanceof TrackingRefreshRestart)) throw error;
       trackingRefreshSources.add(error.normalizedSource);
-      fetchCache.clear();
       nodesByKey.clear();
       nodesBySource.clear();
       rootResults.length = 0;
@@ -255,6 +258,7 @@ export function createGraphLock(
     graphNodeId: root.graphNodeId,
     mode: root.mode,
     selected: root.selected,
+    fullPackageSelected: root.fullPackageSelected,
     aliases: root.aliases,
     overrides: root.overrides,
     selectionImport: root.selectionImport,
@@ -423,6 +427,7 @@ async function processRequirement(
         graphNodeId: state.node.id,
         mode: requirement.mode,
         selected: state.node.selected,
+        fullPackageSelected: requirement.select === undefined && !requirement.selection,
         aliases: requirement.aliases,
         overrides: requirement.overrides,
         selectionImport,
@@ -448,7 +453,7 @@ async function processRequirement(
 
     return await collectDependencyNeeds(state, fetched, options, requirement.chain);
   } catch (error) {
-    if (error instanceof TrackingRefreshRestart || error instanceof SnapshotConflictError) throw error;
+    if (error instanceof TrackingRefreshRestart) throw error;
     if (requirement.optional) {
       const message = error instanceof Error ? error.message : String(error);
       options.warn?.(`optional dependency skipped: ${message}`);
@@ -478,17 +483,19 @@ async function collectDependencyNeeds(
     warnNoDepsOnce(state, [...dependencyEntries.map(([alias]) => alias), ...suggestionEntries.map(([alias]) => alias)], options.warn);
   } else {
     for (const [alias, dependency] of dependencyEntries) {
-      if (state.processedPackageAliases.has(alias)) continue;
+      const processedKey = closureProcessingKey(alias, state.updateClosure);
+      if (state.processedPackageAliases.has(processedKey)) continue;
       if (!dependency.select?.length && !(state.fullPackageSelected && dependency.select === undefined)) continue;
-      state.processedPackageAliases.add(alias);
+      state.processedPackageAliases.add(processedKey);
       if (!dependencyTargetsRuntime(dependency.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
       requirements.push(dependencyRequirement(state, fetched, alias, dependency, dependency.select, chain, options));
     }
     for (const [alias, suggestion] of suggestionEntries) {
-      if (state.processedSuggestions.has(alias)) continue;
+      const processedKey = closureProcessingKey(alias, state.updateClosure);
+      if (state.processedSuggestions.has(processedKey)) continue;
       if (!shouldIncludeSuggestionAlias(alias, suggestionOptions, state.fullPackageSelected)) continue;
       if (!suggestion.select?.length && !(state.fullPackageSelected && suggestion.select === undefined) && !explicitSuggestionAlias(alias, suggestionOptions)) continue;
-      state.processedSuggestions.add(alias);
+      state.processedSuggestions.add(processedKey);
       if (!dependencyTargetsRuntime(suggestion.runtimes, options.runtime, state.node.id, alias, options.warn)) continue;
       requirements.push(suggestionRequirement(state, fetched, alias, suggestion, suggestion.select, chain, suggestionOptions));
     }
@@ -499,12 +506,12 @@ async function collectDependencyNeeds(
 
   while (true) {
     const pending = [...state.selected]
-      .filter((selector) => !state.processedNeeds.has(selector))
+      .filter((selector) => !state.processedNeeds.has(closureProcessingKey(selector, state.updateClosure)))
       .sort((a, b) => a.localeCompare(b));
     if (pending.length === 0) break;
 
     for (const parentSelector of pending) {
-      state.processedNeeds.add(parentSelector);
+      state.processedNeeds.add(closureProcessingKey(parentSelector, state.updateClosure));
       const artifact = artifactsBySelector.get(parentSelector);
       if (!artifact) continue;
       if (!artifactTargetsRuntime(artifact.runtimes, options.runtime, state.node.id, parentSelector, options.warn)) continue;
@@ -699,7 +706,7 @@ function matchingDependencyUpdateEdges(lock: GraphLock, selector: string): Graph
   const nodes = new Map(lock.canonical.nodes.map((node) => [node.id, node]));
   return lock.canonical.edges.filter((edge) => {
     const node = nodes.get(edge.to);
-    if (!node || node.mode !== "tracking") return false;
+    if (!node || edge.mode !== "tracking") return false;
     return selector === edge.alias
       || selector === edge.source
       || selector === edge.normalizedSource
@@ -1049,21 +1056,25 @@ function lockedNodeCoversRequirementSelection(
   options: ResolveGraphOptions,
 ): boolean {
   if (requirement.mode !== "tracking") return true;
+  const lockedRoot = requirement.rootId
+    ? options.previousLock?.canonical.roots.find((root) => root.rootId === requirement.rootId)
+    : undefined;
+  if (requirement.depth === 0 && requirement.select === undefined && !requirement.selection) {
+    return lockedRoot?.fullPackageSelected === true;
+  }
   if (requirement.selection) {
-    const lockedRoot = requirement.rootId
-      ? options.previousLock?.canonical.roots.find((root) => root.rootId === requirement.rootId)
-      : undefined;
     const lockedSelection = lockedRoot?.selectionImport;
     const requestedAdditions = normalizeArtifactSelectors(requirement.selection.add) ?? [];
     const requestedExclusions = normalizeArtifactSelectors(requirement.selection.exclude) ?? [];
-    const lockedAdditions = new Set<string>(lockedSelection?.additions ?? []);
-    const requestedExclusionSet = new Set<string>(requestedExclusions);
     if (!lockedSelection
-      || lockedSelection.exportName !== requirement.selection.export
-      || !requestedAdditions.every((selector) => lockedAdditions.has(selector))
-      || !lockedSelection.exclusions.every((selector) => requestedExclusionSet.has(selector))) {
+      || lockedSelection.exportName !== requirement.selection.export) {
       return false;
     }
+    const requestedExclusionSet = new Set<string>(requestedExclusions);
+    const requestedEffective = sortedUnique([...lockedSelection.inherited, ...requestedAdditions])
+      .filter((selector) => !requestedExclusionSet.has(selector));
+    const lockedSelectors = new Set(node.selected);
+    return requestedEffective.every((selector) => lockedSelectors.has(selector));
   }
   const requested = normalizeArtifactSelectors(requirement.select) ?? [];
   const lockedSelection = new Set(node.selected);
@@ -1286,6 +1297,10 @@ export function graphNodeId(name: string, version: string, normalizedSource: str
 
 function sortedUnique(values: string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function closureProcessingKey(value: string, updateClosure: boolean): string {
+  return `${updateClosure ? "update" : "locked"}\0${value}`;
 }
 
 async function mapLimit<T, U>(items: T[], limit: number, fn: (item: T) => Promise<U>): Promise<U[]> {

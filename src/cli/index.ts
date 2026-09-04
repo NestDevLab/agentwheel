@@ -2577,7 +2577,7 @@ function dependencyUpdateNodeIds(lock: Awaited<ReturnType<typeof readGraphLock>>
   for (const selector of selectors) {
     for (const edge of lock.canonical.edges) {
       const node = nodes.get(edge.to);
-      if (!node || node.mode !== "tracking") continue;
+      if (!node || edge.mode !== "tracking") continue;
       if (selector === edge.alias || selector === edge.source || selector === edge.normalizedSource
         || selector === node.id || selector === node.name || selector === node.source || selector === node.normalizedSource) {
         selected.add(edge.to);
@@ -2609,7 +2609,7 @@ function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphL
     }
     for (const edge of lock.canonical.edges) {
       const node = nodes.get(edge.to);
-      if (!node || node.mode !== "tracking") continue;
+      if (!node || edge.mode !== "tracking") continue;
       if (selector === edge.alias || selector === edge.source || selector === edge.normalizedSource
         || selector === node.id || selector === node.name || selector === node.source || selector === node.normalizedSource) {
         names.add(node.name);

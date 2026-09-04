@@ -1,21 +1,22 @@
 {
   "changed_refs": {
-    "refs/heads/branch/agentwheel-resolver-selection-refresh": "f42006c6342e9a7dc787560ed06d00f56e274a69"
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
+    "refs/heads/main-integration": "73fd23198386281bfc58d0482b47e5db1ef5a7b4"
   },
   "claims": {
-    "refs/heads/branch/agentwheel-resolver-selection-refresh": "bc247b8d676855e128802dc55e6dc74baddb6df0",
-    "refs/heads/main-integration": "e8514651666ee0e4700a5af237323994a7453ae1"
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "8017ef729bae2b19d0d0a1f0537f8653b8000473",
+    "refs/heads/main-integration": "db3d63e5fe549dd0166b9613f09ae975690da728"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-04T13:32:31+00:00",
+  "created_at": "2026-09-04T13:50:05+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
-    "refs/heads/branch/agentwheel-resolver-selection-refresh": "f42006c6342e9a7dc787560ed06d00f56e274a69",
+    "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "2395c4a584175a4653f80745afbd45a1dde81844",
+    "refs/heads/main-integration": "73fd23198386281bfc58d0482b47e5db1ef5a7b4",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
@@ -90,7 +91,8 @@
           "0a5197b375a7b9add858600b43ff2d07ffdaca99",
           "be5671bdd4304b2e2bc62840749a099d7c96709a",
           "5340cacab4a46b729cbcb6245bb0775687d32355",
-          "f42006c6342e9a7dc787560ed06d00f56e274a69"
+          "f42006c6342e9a7dc787560ed06d00f56e274a69",
+          "4f526d30c8dd48349aaca007014b10080c21493c"
         ],
         "id": "resolver-transitive-selection-refresh",
         "integration_branch": "main-integration",
@@ -99,11 +101,11 @@
     ],
     "version": 2
   },
-  "manifest_digest": "941677ceeabecfdf1913c71683473d52d136ec9d75442e697e618cdfed13840b",
-  "operation_token": "a5da7cdb-5da6-4832-8ef4-0a78caefaaa8",
-  "parent_state": "c59cc6e7fddb5fa02e133e2967c656bf9a87baca",
+  "manifest_digest": "388d138150c36bae1e4a629a14477639f9f044f26dc6aab9d251c2749cc6e7fb",
+  "operation_token": "9b18bd99-1f2b-4746-8c5e-693130c6cd38",
+  "parent_state": "eec9aaedd4a5e8e36e55d58715f58b33000ff371",
   "projection_status": "partial",
-  "publication_id": "de254210-5442-4920-a19a-80e529b8adf2",
+  "publication_id": "38660892-8835-456a-8d9f-88f6bfb3469d",
   "publication_scope": "stack:resolver-transitive-selection-refresh",
   "schema_version": 2,
   "syncwheel_version": "0.43.3",

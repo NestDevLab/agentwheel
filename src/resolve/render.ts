@@ -67,7 +67,12 @@ export async function renderGraphForTarget(
 
   for (const staged of [...stagedNodes.values()].sort((a, b) => a.rawNode.node.id.localeCompare(b.rawNode.node.id))) {
     const rawNode = staged.rawNode;
-    const expandedArtifacts = await expandMarkdownIncludes(staged.artifacts, staged.root, {
+    const selectedArtifacts = filterArtifactsBySelection(staged.artifacts, rawNode.node.selected);
+    const runtimeSelectedSet = new Set(normalizeArtifactSelectors(rawNode.node.selected) ?? []);
+    const runtimeArtifacts = targetContext.adapter
+      ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
+      : selectedArtifacts;
+    const expandedArtifacts = await expandMarkdownIncludes(runtimeArtifacts, staged.root, {
       nodeId: rawNode.node.id,
       originNodeId: rawNode.node.id,
       additionalComposeEntries: (artifact) => matchingCompositionEntries(
@@ -117,12 +122,7 @@ export async function renderGraphForTarget(
       },
     });
 
-    const selectedArtifacts = filterArtifactsBySelection(expandedArtifacts, rawNode.node.selected);
-    const runtimeSelectedSet = new Set(normalizeArtifactSelectors(rawNode.node.selected) ?? []);
-    const runtimeArtifacts = targetContext.adapter
-      ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
-      : selectedArtifacts;
-    const claudeRenderedArtifacts = await renderClaudeSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
+    const claudeRenderedArtifacts = await renderClaudeSubagents(expandedArtifacts, staged.root, targetContext.adapter);
     const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, staged.root, targetContext.adapter);
     const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);
     const runtimeRenderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, staged.root, targetContext.adapter);

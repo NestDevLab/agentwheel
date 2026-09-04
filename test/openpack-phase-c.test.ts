@@ -152,6 +152,53 @@ describe("OpenPack phase C", () => {
     })).rejects.toThrow(/Dependency alias not found .*core/);
   });
 
+  it("does not resolve compose aliases for runtime-ineligible artifacts", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-runtime-filter-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "instructions", "AGENTS.md"), "# OpenClaw instructions\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill for tests.\n---\n\n# App\n");
+    await writeOpenPack(root, {
+      name: "phase-c/runtime-filter",
+      requires: {
+        core: { source: "../unavailable-core", select: ["fragments/base.md"] },
+      },
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/AGENTS.md",
+          runtimes: ["openclaw"],
+          items: {
+            "AGENTS.md": { compose: [{ include: "core:fragments/base.md" }] },
+          },
+        },
+        { type: "skills", path: "skills", runtimes: ["codex", "claude"] },
+      ],
+    });
+
+    const codex = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-runtime-filter-codex",
+      noDeps: true,
+      yes: true,
+    });
+    expect(codex.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["instructions/AGENTS.md"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-c-runtime-filter-openclaw",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Dependency alias not found .*core/);
+  });
+
   it("reports cross-package include cycles with the full chain", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-c-cycle-target-");

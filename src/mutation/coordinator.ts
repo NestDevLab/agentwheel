@@ -112,14 +112,6 @@ export class GovernedMutation {
         runtimeJournals: [],
         status: "prepared",
       });
-      if (policy.revisioning.mode === "commit-after-verify"
-        && options.requireCleanWorkingTree
-        && baseline
-        && baseline.changed.size > 0) {
-        throw new Error(
-          `This governed command computes declarative paths during planning and requires a clean working tree before runtime mutation; found: ${[...baseline.changed.keys()].sort().join(", ")}.`,
-        );
-      }
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,

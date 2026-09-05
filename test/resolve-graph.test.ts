@@ -1570,7 +1570,49 @@ describe("dependency graph resolver", () => {
     });
 
     await expect(resolveDependencyGraph([{ rootId: "main", source: root }], { workspaceRoot: workspace }))
-      .rejects.toThrow(/Direct dependency artifact collision for rules\/collide.md.*aliasing, deselecting one artifact, or overriding/s);
+      .rejects.toThrow(/Direct dependency artifact collision for rules\/collide.md.*Content hashes differ:.*sha256:.*aliasing, deselecting one artifact, or overriding/s);
+  });
+
+  it("coalesces byte-identical direct artifacts selected from different package snapshots", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const toolkit = join(workspace, "toolkit");
+    await writeText(join(toolkit, "skills", "shared", "SKILL.md"), "# Shared\n");
+    await writeOpenPack(toolkit, {
+      name: "acme/toolkit",
+      version: "0.1.0",
+      provides: [{ type: "skills", path: "skills" }],
+    });
+    await git(toolkit, ["init", "-b", "main"]);
+    await git(toolkit, ["config", "user.name", "Test"]);
+    await git(toolkit, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(toolkit, ["add", "-A"]);
+    await git(toolkit, ["commit", "-m", "v1"]);
+    const firstCommit = (await git(toolkit, ["rev-parse", "HEAD"])).trim();
+    await writeText(join(toolkit, "README.md"), "Unrelated package change.\n");
+    await git(toolkit, ["add", "README.md"]);
+    await git(toolkit, ["commit", "-m", "unrelated"]);
+    const secondCommit = (await git(toolkit, ["rev-parse", "HEAD"])).trim();
+    await writeOpenPack(root, {
+      name: "acme/root",
+      requires: {
+        first: { source: `git:file://${toolkit}#${firstCommit}`, select: ["skills/shared"] },
+        second: { source: `git:file://${toolkit}#${secondCommit}`, select: ["skills/shared"] },
+      },
+    });
+
+    const graph = await resolveDependencyGraph([{ rootId: "main", source: root }], {
+      workspaceRoot: workspace,
+      cacheRoot: join(workspace, "cache"),
+    });
+    const toolkitNodes = graph.nodes.filter((node) => node.name === "acme/toolkit");
+    expect(toolkitNodes).toHaveLength(2);
+    expect(new Set(toolkitNodes.map((node) => node.version))).toEqual(new Set(["0.1.0"]));
+
+    const bundle = await renderGraphForTarget(graph, { workspaceRoot: workspace, adapter: openClawAdapter });
+    const shared = bundle.artifacts.filter((artifact) => artifact.type === "skills" && artifact.name === "shared");
+    expect(shared).toHaveLength(1);
+    expect(shared[0]?.owners).toEqual([...new Set(toolkitNodes.flatMap((node) => node.requiredBy))].sort((a, b) => a.localeCompare(b)));
   });
 
   it("serializes byte-identical canonical lock sections for the same graph", async () => {

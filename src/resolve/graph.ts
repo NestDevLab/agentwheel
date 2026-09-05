@@ -1272,6 +1272,11 @@ function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
   for (const [selector, owners] of bySelector) {
     const uniqueOwners = [...new Map(owners.map((owner) => [owner.node.id, owner])).values()];
     if (uniqueOwners.length <= 1) continue;
+    const selectedArtifacts = uniqueOwners.map((owner) => ({
+      owner,
+      artifact: owner.artifacts.find((candidate) => artifactSelectorKey(candidate) === selector)!,
+    }));
+    if (new Set(selectedArtifacts.map(({ artifact }) => artifact.hash)).size === 1) continue;
     const replacements = uniqueOwners.filter((owner) => {
       const artifact = owner.artifacts.find((candidate) => artifactSelectorKey(candidate) === selector);
       return uniqueOwners.every((other) => {
@@ -1283,6 +1288,7 @@ function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
     throw new Error(
       `Direct dependency artifact collision for ${selector}: `
       + `${uniqueOwners.map((owner) => `${owner.node.id} required by ${owner.node.requiredBy.join(", ")}`).join("; ")}. `
+      + `Content hashes differ: ${selectedArtifacts.map(({ owner, artifact }) => `${owner.node.id}=sha256:${artifact.hash}`).join("; ")}. `
       + "Resolve by aliasing, deselecting one artifact, or overriding the dependency selection.",
     );
   }

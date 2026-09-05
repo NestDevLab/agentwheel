@@ -292,8 +292,9 @@ interface WorkspaceOverride {
 }
 
 function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[]; overrides: GraphLockOverride[] } {
-  const superseded = supersededLogicalSelectors(artifacts);
-  const effectiveArtifacts = artifacts.filter((artifact) => !superseded.has(artifact.logicalSelector));
+  const equivalentArtifacts = coalesceEquivalentDirectArtifacts(artifacts);
+  const superseded = supersededLogicalSelectors(equivalentArtifacts);
+  const effectiveArtifacts = equivalentArtifacts.filter((artifact) => !superseded.has(artifact.logicalSelector));
   const aliases = workspaceAliases(graph);
   validateAliasScopes(graph, effectiveArtifacts, aliases);
   const decisions = new Map<string, GraphLockNamespacing>();
@@ -340,6 +341,42 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     installName: finalInstallNames.get(`${override.graphNodeId}\0${override.type}\0${override.name}`) ?? override.installName,
   }));
   return { artifacts: out, namespacing: [...decisions.values()], overrides: finalOverrides };
+}
+
+function coalesceEquivalentDirectArtifacts(artifacts: ResolvedArtifact[]): ResolvedArtifact[] {
+  const equivalent = new Map<string, ResolvedArtifact[]>();
+  const passthrough: ResolvedArtifact[] = [];
+  for (const artifact of artifacts) {
+    if (artifact.dependencyRole !== "direct") {
+      passthrough.push(artifact);
+      continue;
+    }
+    const key = `${artifact.type}\0${artifact.name}\0${artifact.hash}`;
+    const group = equivalent.get(key) ?? [];
+    group.push(artifact);
+    equivalent.set(key, group);
+  }
+
+  for (const group of equivalent.values()) {
+    const sorted = [...group].sort((left, right) => left.logicalSelector.localeCompare(right.logicalSelector));
+    const canonical = sorted[0]!;
+    passthrough.push({
+      ...canonical,
+      owners: [...new Set(sorted.flatMap((artifact) => artifact.owners))].sort((left, right) => left.localeCompare(right)),
+      composedFrom: mergeComposedFrom(sorted),
+    });
+  }
+  return passthrough;
+}
+
+function mergeComposedFrom(artifacts: ResolvedArtifact[]): ResolvedArtifact["composedFrom"] {
+  const entries = new Map<string, NonNullable<ResolvedArtifact["composedFrom"]>[number]>();
+  for (const entry of artifacts.flatMap((artifact) => artifact.composedFrom ?? [])) {
+    entries.set(`${entry.selector}\0${entry.hash}`, entry);
+  }
+  return entries.size > 0
+    ? [...entries.values()].sort((left, right) => `${left.selector}\0${left.hash}`.localeCompare(`${right.selector}\0${right.hash}`))
+    : undefined;
 }
 
 function supersededLogicalSelectors(artifacts: ResolvedArtifact[]): Set<string> {
@@ -535,7 +572,11 @@ function reachableNodeIds(graph: ResolvedGraph, rootNodeId: string): Set<string>
 }
 
 function installNameCollisionError(group: ResolvedArtifact[]): Error {
-  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}: ${group.map((artifact) => artifact.logicalSelector).sort().join(" vs ")}`);
+  const details = group
+    .map((artifact) => `${artifact.logicalSelector}=sha256:${artifact.hash}`)
+    .sort()
+    .join("; ");
+  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}. Artifact content hashes: ${details}`);
 }
 
 function namespaceDecision(artifact: ResolvedArtifact, reason: GraphLockNamespacing["reason"]): GraphLockNamespacing {

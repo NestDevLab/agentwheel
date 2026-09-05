@@ -564,6 +564,38 @@ describe.sequential("mutation policy and revision provider v1", () => {
   it("reports only declared dirty path conflicts, not unrelated dirty files", async () => {
     const { repo, globalRoot } = await governedRepo();
     const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
+    const configPath = workspaceConfigPath(repo);
+    await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
+    await writeFile(graphLockPath, "{\"version\":1}\n", "utf8");
+    await git(repo, ["add", "-f", ".agentwheel/locks/install.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "add graph lock"]);
+    await writeFile(graphLockPath, "{\"version\":1,\"dirty\":true}\n", "utf8");
+    await writeFile(configPath, `${(await readFile(configPath, "utf8")).trim()}\n `, "utf8");
+    await writeFile(join(repo, "notes.txt"), "unrelated dirty\n", "utf8");
+
+    let precheckError: unknown;
+    try {
+      await GovernedMutation.begin({
+        workspaceRoot: repo,
+        globalRoot,
+        commandName: "agentwheel install",
+        reason: "Report only dirty paths declared by the install plan",
+        anticipatedPaths: [graphLockPath, configPath],
+        requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
+      });
+    } catch (error) {
+      precheckError = error;
+    }
+    expect(precheckError).toBeInstanceOf(Error);
+    const message = (precheckError as Error).message;
+    expect(message).toContain(".agentwheel/config.json");
+    expect(message).toContain(".agentwheel/locks/install.graph-lock.json");
+    expect(message).not.toContain("notes.txt");
+  });
+
+  it("reports a dynamically declared dirty path without unrelated dirt", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
     await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
     await writeFile(graphLockPath, "{\"version\":1}\n", "utf8");
     await git(repo, ["add", "-f", ".agentwheel/locks/install.graph-lock.json"]);
@@ -575,7 +607,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
       workspaceRoot: repo,
       globalRoot,
       commandName: "agentwheel install",
-      reason: "Report only dirty paths declared by the install plan",
+      reason: "Report a dynamically declared dirty install path",
       requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
     });
     let declarationError: unknown;

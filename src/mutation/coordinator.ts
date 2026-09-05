@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { mutationPolicySchema, type MutationPolicy } from "../model/mutation.js";
 import { readWorkspaceConfig } from "../model/workspace.js";
 import {
@@ -112,6 +112,14 @@ export class GovernedMutation {
         runtimeJournals: [],
         status: "prepared",
       });
+      const dirtyDeclaredPaths = baseline && repository
+        ? dirtyRepositoryPaths(repository.root, baseline, options.anticipatedPaths ?? [])
+        : [];
+      if (dirtyDeclaredPaths.length > 0) {
+        throw new Error(
+          `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}.`,
+        );
+      }
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,
@@ -285,6 +293,22 @@ export class GovernedMutation {
     endMutationPathDeclarations();
     await this.lock.release();
   }
+}
+
+function dirtyRepositoryPaths(
+  repositoryRoot: string,
+  baseline: RepositorySnapshot,
+  paths: string[],
+): string[] {
+  const conflicts = new Set<string>();
+  for (const path of paths) {
+    const absolute = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
+    const relativePath = relative(repositoryRoot, absolute);
+    if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) continue;
+    const normalized = relativePath.split(sep).join("/");
+    if (baseline.changed.has(normalized)) conflicts.add(normalized);
+  }
+  return [...conflicts].sort((left, right) => left.localeCompare(right));
 }
 
 let activeMutation: GovernedMutation | undefined;

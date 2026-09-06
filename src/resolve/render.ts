@@ -69,12 +69,12 @@ export async function renderGraphForTarget(
   for (const staged of [...stagedNodes.values()].sort((a, b) => a.rawNode.node.id.localeCompare(b.rawNode.node.id))) {
     const rawNode = staged.rawNode;
     const runtimeSelectedSet = new Set(normalizeArtifactSelectors(rawNode.node.selected) ?? []);
+    const selectionValidatedArtifacts = filterArtifactsBySelection(staged.artifacts, rawNode.node.selected);
+    const preRuntimeArtifacts = targetContext.noDeps ? selectionValidatedArtifacts : staged.artifacts;
     const runtimeArtifacts = targetContext.adapter
-      ? filterArtifactsByRuntime(staged.artifacts, targetContext.adapter.name, runtimeSelectedSet)
-      : staged.artifacts;
-    const compositionArtifacts = targetContext.noDeps
-      ? filterArtifactsBySelection(runtimeArtifacts, rawNode.node.selected)
-      : runtimeArtifacts;
+      ? filterArtifactsByRuntime(preRuntimeArtifacts, targetContext.adapter.name, runtimeSelectedSet)
+      : preRuntimeArtifacts;
+    const compositionArtifacts = runtimeArtifacts;
     const expandedArtifacts = await expandMarkdownIncludes(compositionArtifacts, staged.root, {
       nodeId: rawNode.node.id,
       originNodeId: rawNode.node.id,
@@ -125,7 +125,12 @@ export async function renderGraphForTarget(
       },
     });
 
-    const selectedArtifacts = filterArtifactsBySelection(expandedArtifacts, rawNode.node.selected);
+    const selectedArtifacts = filterArtifactsBySelection(
+      expandedArtifacts,
+      rawNode.node.selected,
+      undefined,
+      { validationArtifacts: staged.artifacts },
+    );
     const claudeRenderedArtifacts = await renderClaudeSubagents(selectedArtifacts, staged.root, targetContext.adapter);
     const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, staged.root, targetContext.adapter);
     const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);

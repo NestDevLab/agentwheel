@@ -30,12 +30,17 @@ export function skillNamesToSelectors(skills?: string[]): ArtifactSelector[] | u
   return normalizeArtifactSelectors(undefined, skills);
 }
 
-export function filterArtifactsBySelection(artifacts: Artifact[], selectors?: string[], legacySkills?: string[]): Artifact[] {
+export function filterArtifactsBySelection(
+  artifacts: Artifact[],
+  selectors?: string[],
+  legacySkills?: string[],
+  options: { validationArtifacts?: Artifact[] } = {},
+): Artifact[] {
   const selected = normalizeArtifactSelectors(selectors, legacySkills);
   if (!selected?.length) return artifacts;
 
   const selectedSet = new Set(selected);
-  const available = new Set(artifacts.flatMap(artifactSelectorAliases));
+  const available = new Set((options.validationArtifacts ?? artifacts).flatMap(artifactSelectorAliases));
   const missing = selected.filter((selector) => !available.has(selector));
   if (missing.length > 0) {
     throw new Error(`Selected artifact not found in package: ${missing.join(", ")}`);

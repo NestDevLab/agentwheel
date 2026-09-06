@@ -910,7 +910,7 @@ function artifactTargetsRuntime(
   warn?: (message: string) => void,
 ): boolean {
   if (!runtimes?.length || !runtime || runtimes.includes(runtime)) return true;
-  warn?.(`skip artifact ${nodeId}:${selector} (not targeted: runtimes=[${runtimes.join(",")}])`);
+  warn?.(`skip artifact ${nodeId}:${selector} (selected but not targeted: runtimes=[${runtimes.join(",")}])`);
   return false;
 }
 

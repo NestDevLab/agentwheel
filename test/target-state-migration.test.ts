@@ -122,6 +122,108 @@ describe("released target-state migration", () => {
     expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
   });
 
+  it("preserves mixed foreign contributions and unrelated manifests byte for byte", async () => {
+    const fixture = await migrationFixture();
+    const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const foreignPath = join(fixture.targetRoot, ".agents", "skills", "foreign-contribution");
+    const foreignFile = join(foreignPath, "SKILL.md");
+    const foreignBytes = "# Foreign contribution\n\nPreserve these exact bytes.\n";
+    await mkdir(foreignPath, { recursive: true });
+    await writeFile(foreignFile, foreignBytes, "utf8");
+    const foreignHash = await fixture.transport.hashPath(foreignPath);
+    const foreignEntry = {
+      ...legacy.manifest.entries[0]!,
+      path: ".agents/skills/foreign-contribution",
+      artifactName: "foreign-contribution",
+      installName: "foreign-contribution",
+      logicalSelector: "skills/foreign-contribution",
+      hash: foreignHash,
+      sourceHash: foreignHash,
+      owners: ["foreign/package"],
+      refCount: 1,
+      workspaceOwner: "workspace-root:/fixture/foreign-scope|fleet-id:delivery",
+      graphLockDigest: "e".repeat(64),
+    };
+    await writeInstallManifest({
+      ...legacy.manifest,
+      revision: "pending-mixed-state",
+      entries: [...legacy.manifest.entries, foreignEntry],
+    }, fixture.transport);
+    const mixedManifest = await readInstallManifest(
+      fixture.targetRoot,
+      targetAdapter.name,
+      fixture.transport,
+      legacy.scope,
+    );
+    if (!mixedManifest || mixedManifest.version !== 2) throw new Error("missing mixed legacy manifest");
+    const unrelatedStateKey = await seedUnrelatedManifest(fixture, mixedManifest);
+    const unrelatedPath = installManifestPath(fixture.targetRoot, targetAdapter.name, {
+      installationType: "local",
+      stateKey: unrelatedStateKey,
+    });
+    const unrelatedBytes = await readFile(unrelatedPath, "utf8");
+
+    const evolved = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }));
+    await applyFixturePlan(fixture, evolved);
+
+    expect(await readFile(foreignFile, "utf8")).toBe(foreignBytes);
+    expect(await readFile(unrelatedPath, "utf8")).toBe(unrelatedBytes);
+    const migrated = await readInstallManifest(fixture.targetRoot, targetAdapter.name, fixture.transport, {
+      installationType: "local",
+      stateKey: evolved.plan.stateKey,
+    });
+    if (!migrated || migrated.version !== 2) throw new Error("missing migrated manifest");
+    expect(migrated.entries.find((entry) => entry.path === foreignEntry.path)).toMatchObject({
+      hash: foreignHash,
+      sourceHash: foreignHash,
+      owners: foreignEntry.owners,
+      workspaceOwner: foreignEntry.workspaceOwner,
+      graphLockDigest: foreignEntry.graphLockDigest,
+    });
+  });
+
+  it("fails closed when stable and legacy manifests coexist with different contribution state", async () => {
+    const fixture = await migrationFixture();
+    const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const stableDraft = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }));
+    if (!stableDraft.plan.stateKey) throw new Error("missing stable state key");
+    await writeInstallManifest({
+      ...legacy.manifest,
+      stateKey: stableDraft.plan.stateKey,
+      revision: "pending-stable-state",
+      entries: legacy.manifest.entries.map((entry) => ({
+        ...entry,
+        sourceHash: "d".repeat(64),
+        graphLockDigest: stableDraft.graphLockDigest,
+      })),
+    }, fixture.transport);
+    await writeGraphLock(stableDraft.graphLockPath, stableDraft.bundle.graphLock);
+    const stableManifestPath = installManifestPath(fixture.targetRoot, targetAdapter.name, {
+      installationType: "local",
+      stateKey: stableDraft.plan.stateKey,
+    });
+    const before = await persistentStateSnapshot([
+      legacy.manifestPath,
+      legacy.graphLockPath,
+      stableManifestPath,
+      stableDraft.graphLockPath,
+    ]);
+
+    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }))).rejects.toThrow(/stable.*legacy.*(coexist|disagree)|legacy.*stable.*(coexist|disagree)/i);
+
+    expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
+  });
+
   it("fails closed when a correlated manifest digest does not match its legacy graph lock", async () => {
     const fixture = await migrationFixture();
     const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {

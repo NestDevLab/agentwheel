@@ -309,7 +309,7 @@ describe("released target-state migration", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
-  it("uses a valid graph-only legacy candidate for frozen resolution without adopting manifest ownership", async () => {
+  it("refuses a graph-only legacy candidate because its runtime identity and ownership cannot be proven", async () => {
     const fixture = await migrationFixture();
     const legacyDraft = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
       adapterCodeHash: "a".repeat(64),
@@ -318,15 +318,40 @@ describe("released target-state migration", () => {
     assertInsideFixture(legacyPath, [fixture.workspaceRoot]);
     await writeGraphLock(legacyPath, legacyDraft.bundle.graphLock);
 
-    const evolved = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
       adapterCodeHash: "b".repeat(64),
-    }), { frozenLock: true });
+    }), { frozenLock: true })).rejects.toThrow(/graph.only.*(manifest|identity|ownership)|cannot prove.*(identity|ownership)/i);
 
-    expect(evolved.plan.baseRevision).toBeNull();
-    expect(evolved.plan.operations.map((operation) => operation.action)).toEqual(["create"]);
-    await applyFixturePlan(fixture, evolved);
-    await expect(stat(legacyPath)).rejects.toThrow();
-    await expect(stat(evolved.graphLockPath)).resolves.toBeDefined();
+    await expect(stat(legacyPath)).resolves.toBeDefined();
+  });
+
+  it("does not adopt a graph-only legacy candidate from an unprovable SSH endpoint", async () => {
+    const fixture = await migrationFixture();
+    const endpointA = fingerprintParts(fixture.targetRoot, {
+      transport: "ssh",
+      transportDescription: "first endpoint",
+      ssh: { host: "runtime-a.example", user: "agent", port: 22 },
+      adapterCodeHash: "a".repeat(64),
+    });
+    const endpointB = fingerprintParts(fixture.targetRoot, {
+      transport: "ssh",
+      transportDescription: "second endpoint",
+      ssh: { host: "runtime-b.example", user: "agent", port: 22 },
+      adapterCodeHash: "b".repeat(64),
+    });
+    const endpointATransport = sshFixtureTransport(fixture.transport, "ssh first endpoint");
+    const endpointBTransport = sshFixtureTransport(fixture.transport, "ssh second endpoint");
+    const legacyDraft = await graphPlan(fixture, endpointA, { transport: endpointATransport });
+    const legacyPath = legacyGraphPath(fixture.workspaceRoot, legacyDraft.targetFingerprint);
+    assertInsideFixture(legacyPath, [fixture.workspaceRoot]);
+    await writeGraphLock(legacyPath, legacyDraft.bundle.graphLock);
+
+    await expect(graphPlan(fixture, endpointB, {
+      frozenLock: true,
+      transport: endpointBTransport,
+    })).rejects.toThrow(/graph.only.*(manifest|endpoint|identity)|cannot prove.*(endpoint|identity|ownership)/i);
+
+    await expect(stat(legacyPath)).resolves.toBeDefined();
   });
 
   it("detects manifest inventory movement after planning before creating a journal", async () => {

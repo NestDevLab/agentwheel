@@ -958,8 +958,24 @@ describe("CLI verb redesign", () => {
       artifactCount: 1,
     });
     expect(status.targets[0].artifacts).toEqual([
-      expect.objectContaining({ selector: `skills/${state.skillName}`, installed: true }),
+      expect.objectContaining({
+        name: state.skillName,
+        installName: state.skillName,
+        installed: true,
+      }),
     ]);
+  });
+
+  it("keeps deps why output shape for current target state", async () => {
+    const state = await targetStateCommandFixture({ legacy: false });
+
+    const why = await runCli([
+      "deps", "why", `skills/${state.skillName}`,
+      "--adapter", "codex", "--installation-type", "local", "--target-root", state.workspace,
+    ]);
+
+    expect(why.stdout).toContain(`WHY ${state.logicalSelector}`);
+    expect(why.stdout).toContain(`PATH    ${state.relativeRuntimePath}`);
   });
 
   it("explains an installed artifact from correlated released state", async () => {
@@ -970,8 +986,8 @@ describe("CLI verb redesign", () => {
       "--adapter", "codex", "--installation-type", "local", "--target-root", state.workspace,
     ]);
 
-    expect(why.stdout).toContain(`WHY skills/${state.skillName}`);
-    expect(why.stdout).toContain(`PATH    ${join(state.workspace, ".agents", "skills", state.skillName)}`);
+    expect(why.stdout).toContain(`WHY ${state.logicalSelector}`);
+    expect(why.stdout).toContain(`PATH    ${state.relativeRuntimePath}`);
   });
 
   it("previews full uninstall from correlated released state without changing it", async () => {
@@ -2663,17 +2679,23 @@ async function runCli(args: string[], options: { env?: Record<string, string>; c
   }
 }
 
-interface ReleasedTargetStateFixture {
+interface TargetStateCommandFixture {
   workspace: string;
   packageName: string;
   skillName: string;
+  logicalSelector: string;
+  relativeRuntimePath: string;
   runtimePath: string;
   legacyGraphPath: string;
   legacyManifestPath: string;
   configPath: string;
 }
 
-async function releasedTargetStateFixture(): Promise<ReleasedTargetStateFixture> {
+async function releasedTargetStateFixture(): Promise<TargetStateCommandFixture> {
+  return targetStateCommandFixture({ legacy: true });
+}
+
+async function targetStateCommandFixture(options: { legacy: boolean }): Promise<TargetStateCommandFixture> {
   const workspace = await tempRoot("agentwheel-released-target-state-");
   const packageName = "released-target-state-pack";
   const skillName = "released-target-state-skill";
@@ -2689,6 +2711,8 @@ async function releasedTargetStateFixture(): Promise<ReleasedTargetStateFixture>
   const [currentGraphPath] = (await filesBelow(graphRoot)).filter((path) => path.endsWith(".graph-lock.json"));
   if (!currentGraphPath) throw new Error("fixture install did not create a graph lock");
   const graphLock = JSON.parse(await readFile(currentGraphPath, "utf8"));
+  const logicalSelector = graphLock.canonical.artifacts[0]?.logicalSelector;
+  if (!logicalSelector) throw new Error("fixture graph lock does not contain one artifact selector");
   const legacyFingerprint = computeTargetFingerprint({
     adapter: "codex",
     installationType: "local",
@@ -2697,7 +2721,7 @@ async function releasedTargetStateFixture(): Promise<ReleasedTargetStateFixture>
   });
   expect(graphLock.canonical.targetFingerprint).toBe(legacyFingerprint);
   const legacyGraphPath = join(graphRoot, `${legacyFingerprint}.graph-lock.json`);
-  if (currentGraphPath !== legacyGraphPath) {
+  if (options.legacy && currentGraphPath !== legacyGraphPath) {
     await writeFile(legacyGraphPath, `${JSON.stringify(graphLock, null, 2)}\n`, "utf8");
     await rm(currentGraphPath);
   }
@@ -2709,7 +2733,9 @@ async function releasedTargetStateFixture(): Promise<ReleasedTargetStateFixture>
   const legacyStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: legacyFingerprint });
   const legacyManifestPath = join(metadataRoot, `${legacyStateKey}.install-manifest.json`);
   const manifest = JSON.parse(await readFile(currentManifestPath, "utf8"));
-  if (currentManifestPath !== legacyManifestPath) {
+  const relativeRuntimePath = manifest.entries[0]?.path;
+  if (!relativeRuntimePath) throw new Error("fixture install manifest does not contain one artifact path");
+  if (options.legacy && currentManifestPath !== legacyManifestPath) {
     await writeFile(legacyManifestPath, `${JSON.stringify({ ...manifest, stateKey: legacyStateKey }, null, 2)}\n`, "utf8");
     await rm(currentManifestPath);
   }
@@ -2718,14 +2744,16 @@ async function releasedTargetStateFixture(): Promise<ReleasedTargetStateFixture>
     workspace,
     packageName,
     skillName,
+    logicalSelector,
+    relativeRuntimePath,
     runtimePath: join(workspace, ".agents", "skills", skillName, "SKILL.md"),
-    legacyGraphPath,
-    legacyManifestPath,
+    legacyGraphPath: options.legacy ? legacyGraphPath : currentGraphPath,
+    legacyManifestPath: options.legacy ? legacyManifestPath : currentManifestPath,
     configPath: join(workspace, ".agentwheel", "config.json"),
   };
 }
 
-async function releasedTargetStateSnapshot(state: ReleasedTargetStateFixture): Promise<Record<string, string>> {
+async function releasedTargetStateSnapshot(state: TargetStateCommandFixture): Promise<Record<string, string>> {
   return Object.fromEntries(await Promise.all([
     state.runtimePath,
     state.legacyGraphPath,

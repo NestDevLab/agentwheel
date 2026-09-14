@@ -185,6 +185,129 @@ describe("released target state CLI consumers", () => {
     await expect(stat(fixture.released.stableManifestPath)).resolves.toBeTruthy();
     await expect(stat(fixture.released.stableGraphPath)).resolves.toBeTruthy();
   }, 30_000);
+
+  it("fully uninstalls released state and leaves status and reinstall planning usable", async () => {
+    const fixture = await installedReleasedSkill("released-full-uninstall-pack", "released-full-uninstall-skill");
+
+    const removed = await runCli([
+      "uninstall", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace,
+    ]);
+
+    expect(removed.stdout).toContain("Removed 1 managed file");
+    await expect(readFile(skillPath(fixture.workspace, fixture.skillName), "utf8")).rejects.toThrow();
+    for (const path of releasedPersistentPaths(fixture.released)) {
+      await expect(stat(path)).rejects.toThrow();
+    }
+
+    const status = await runCli([
+      "status", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace,
+    ]);
+    expect(status.stdout).toContain("Install manifest: missing");
+    expect(status.stdout).not.toContain("unavailable");
+    const replan = await runCli([
+      "install", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace, "--dry-run",
+    ]);
+    expect(replan.stdout).toContain("CREATE");
+    expect(replan.stdout).toContain(fixture.skillName);
+    for (const path of releasedPersistentPaths(fixture.released)) {
+      await expect(stat(path)).rejects.toThrow();
+    }
+  }, 30_000);
+
+  it("migrates remaining released state transactionally during package uninstall", async () => {
+    const workspace = await tempRoot("agentwheel-cli-released-package-uninstall-");
+    const alpha = await localSkillPackage("released-uninstall-alpha", "released-uninstall-alpha-skill", "alpha-v1");
+    const beta = await localSkillPackage("released-uninstall-beta", "released-uninstall-beta-skill", "beta-v1");
+    await runCli(["add", alpha, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await runCli(["add", beta, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace]);
+    await installWorkspace(workspace);
+    const released = await moveInstalledStateToReleasedPaths(workspace);
+
+    const removed = await runCli([
+      "uninstall", "released-uninstall-alpha", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+
+    expect(removed.stdout).toContain("Removed 1 managed file");
+    await expect(readFile(skillPath(workspace, "released-uninstall-alpha-skill"), "utf8")).rejects.toThrow();
+    await expect(readFile(skillPath(workspace, "released-uninstall-beta-skill"), "utf8")).resolves.toContain("beta-v1");
+    for (const path of [released.legacyManifestPath, released.legacySourceLockPath, released.legacyGraphPath]) {
+      await expect(stat(path)).rejects.toThrow();
+    }
+    const stableManifest = await readJson(released.stableManifestPath);
+    expect(stableManifest.entries.map((entry: { artifactName: string }) => entry.artifactName))
+      .toEqual(["released-uninstall-beta-skill"]);
+    await expect(stat(released.stableGraphPath)).resolves.toBeTruthy();
+
+    const status = await runCli([
+      "status", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+    ]);
+    expect(status.stdout).toContain("released-uninstall-beta\tpinned\t*\t1.0.0\t1.0.0");
+    expect(status.stdout).toContain("Artifacts: 1 locked, 1 installed");
+    expect(status.stdout).toContain("Pending install work: none");
+    const replan = await runCli([
+      "install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace, "--dry-run",
+    ]);
+    expect(replan.stdout).toContain("SKIP");
+    expect(replan.stdout).toContain("released-uninstall-beta-skill");
+  }, 30_000);
+
+  it("lists a released journal after its manifest was removed by an interrupted commit", async () => {
+    const fixture = await installedReleasedSkill("released-orphan-list-pack", "released-orphan-list-skill");
+    await writeReleasedJournal(fixture.released);
+    await rm(fixture.released.legacyManifestPath);
+    const before = await persistentFileBytes([
+      fixture.released.legacyGraphPath,
+      fixture.released.legacyJournalPath,
+    ]);
+
+    const listed = await runCli([
+      "journal", "list", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace,
+    ]);
+
+    expect(listed.stdout).toContain("PENDING codex/local");
+    expect(listed.stdout).toContain(`stateKey: ${fixture.released.legacyStateKey}`);
+    expect(await persistentFileBytes([...before.keys()])).toEqual(before);
+  }, 30_000);
+
+  it("aborts a released journal after its manifest was removed without consuming the graph lock", async () => {
+    const fixture = await installedReleasedSkill("released-orphan-abort-pack", "released-orphan-abort-skill");
+    await writeReleasedJournal(fixture.released);
+    await rm(fixture.released.legacyManifestPath);
+    const graphBefore = await readFile(fixture.released.legacyGraphPath, "utf8");
+
+    const aborted = await runCli([
+      "journal", "abort", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace,
+    ]);
+
+    expect(aborted.stdout).toContain("Archived codex/local pending journal:");
+    await expect(stat(fixture.released.legacyJournalPath)).rejects.toThrow();
+    await expect(readFile(fixture.released.legacyGraphPath, "utf8")).resolves.toBe(graphBefore);
+    const archives = await readdir(join(fixture.workspace, ".agentwheel", "archive"));
+    expect(archives.some((name) => name.startsWith(`${fixture.released.legacyStateKey}.apply-journal.failed-`))).toBe(true);
+  }, 30_000);
+
+  it("recovers and migrates a released journal after its manifest was removed by an interrupted commit", async () => {
+    const fixture = await installedReleasedSkill("released-orphan-recover-pack", "released-orphan-recover-skill");
+    await writeReleasedJournal(fixture.released);
+    await rm(fixture.released.legacyManifestPath);
+
+    const install = await runCli([
+      "install", "--adapter", "codex", "--installation-type", "local", "--target-root", fixture.workspace,
+    ]);
+
+    expect(install.stdout).toContain("Applied codex");
+    for (const path of [
+      fixture.released.legacyManifestPath,
+      fixture.released.legacySourceLockPath,
+      fixture.released.legacyGraphPath,
+      fixture.released.legacyJournalPath,
+    ]) {
+      await expect(stat(path)).rejects.toThrow();
+    }
+    await expect(stat(fixture.released.stableManifestPath)).resolves.toBeTruthy();
+    await expect(stat(fixture.released.stableGraphPath)).resolves.toBeTruthy();
+    await expect(readFile(skillPath(fixture.workspace, fixture.skillName), "utf8")).resolves.toContain("released-v1");
+  }, 30_000);
 });
 
 describe("foreign target state keep semantics", () => {
@@ -238,6 +361,37 @@ describe("foreign target state keep semantics", () => {
       "install", "--profile", "all", "--target-root", observerWorkspace, "--dry-run",
     ])).rejects.toMatchObject({ stderr: expect.stringMatching(/another workspace|Refusing to plan/i) });
   }, 30_000);
+
+  it("reports mixed own and exact foreign state as installed without claiming the foreign entry", async () => {
+    const runtime = await tempRoot("agentwheel-cli-mixed-status-runtime-");
+    const ownerWorkspace = await tempRoot("agentwheel-cli-mixed-status-owner-");
+    const observerWorkspace = await tempRoot("agentwheel-cli-mixed-status-observer-");
+    const foreignSource = await localSkillPackage("mixed-status-foreign", "mixed-status-foreign-skill", "foreign-v1");
+    const ownSource = await localSkillPackage("mixed-status-own", "mixed-status-own-skill", "own-v1");
+    await writeProfileConfig(ownerWorkspace, runtime, [packageConfig("mixed-status-foreign", foreignSource)]);
+    await writeProfileConfig(observerWorkspace, runtime, [
+      packageConfig("mixed-status-foreign", foreignSource),
+      packageConfig("mixed-status-own", ownSource),
+    ]);
+    await runCli(["install", "--profile", "all", "--target-root", ownerWorkspace]);
+    const ownerManifest = await manifestOwnedBy(runtime, workspaceOwnerForRoot(ownerWorkspace));
+    const ownerBefore = await readFile(ownerManifest.path, "utf8");
+    await runCli(["install", "--profile", "all", "--target-root", observerWorkspace]);
+    const observerManifest = await manifestOwnedBy(runtime, workspaceOwnerForRoot(observerWorkspace));
+    const observerBefore = await readFile(observerManifest.path, "utf8");
+
+    const status = await runCli(["status", "--profile", "all", "--target-root", observerWorkspace]);
+
+    expect(status.stdout).toContain("Install manifest: 2 entries");
+    expect(status.stdout).toContain("mixed-status-foreign\tpinned\t*\t1.0.0\t1.0.0");
+    expect(status.stdout).toContain("mixed-status-own\tpinned\t*\t1.0.0\t1.0.0");
+    expect(status.stdout).toContain("Artifacts: 2 locked, 2 installed");
+    expect(status.stdout).toContain("Pending install work: none");
+    await expect(readFile(ownerManifest.path, "utf8")).resolves.toBe(ownerBefore);
+    await expect(readFile(observerManifest.path, "utf8")).resolves.toBe(observerBefore);
+    expect(observerManifest.manifest.entries.map((entry: { artifactName: string }) => entry.artifactName))
+      .toEqual(["mixed-status-own-skill"]);
+  }, 30_000);
 });
 
 interface ReleasedPaths {
@@ -248,6 +402,8 @@ interface ReleasedPaths {
   stableGraphPath: string;
   legacyGraphPath: string;
   legacyJournalPath: string;
+  stableSourceLockPath: string;
+  legacySourceLockPath: string;
 }
 
 async function installedReleasedSkill(packageName: string, skillName: string) {
@@ -307,7 +463,20 @@ async function moveInstalledStateToReleasedPaths(workspace: string): Promise<Rel
     stableGraphPath,
     legacyGraphPath,
     legacyJournalPath: join(metadataRoot, `${legacyStateKey}.apply-journal.json`),
+    stableSourceLockPath,
+    legacySourceLockPath,
   };
+}
+
+function releasedPersistentPaths(state: ReleasedPaths): string[] {
+  return [
+    state.stableManifestPath,
+    state.legacyManifestPath,
+    state.stableSourceLockPath,
+    state.legacySourceLockPath,
+    state.stableGraphPath,
+    state.legacyGraphPath,
+  ];
 }
 
 async function writeReleasedJournal(state: ReleasedPaths): Promise<void> {
@@ -359,6 +528,10 @@ async function releasedStateBytes(state: ReleasedPaths): Promise<Record<string, 
     state.legacyManifestPath,
     state.legacyGraphPath,
   ].map(async (path) => [path, await readFile(path, "utf8")] as const)));
+}
+
+async function persistentFileBytes(paths: string[]): Promise<Map<string, string>> {
+  return new Map(await Promise.all(paths.map(async (path) => [path, await readFile(path, "utf8")] as const)));
 }
 
 async function addTrackingPackage(workspace: string, source: string, name: string): Promise<void> {

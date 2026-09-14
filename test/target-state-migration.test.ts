@@ -373,6 +373,106 @@ describe("released target-state migration", () => {
     await expect(stat(legacy.graphLockPath)).resolves.toBeDefined();
   });
 
+  it.each(["graph lock", "source lock"] as const)(
+    "refuses a destination %s created after migration planning before creating a journal",
+    async (resource) => {
+      const fixture = await migrationFixture();
+      const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+        adapterCodeHash: "a".repeat(64),
+      }));
+      const evolved = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+        adapterCodeHash: "b".repeat(64),
+      }));
+      if (!evolved.plan.stateKey) throw new Error("missing stable state key");
+      const stableScope = { installationType: "local", stateKey: evolved.plan.stateKey };
+      const destinationPath = resource === "graph lock"
+        ? evolved.graphLockPath
+        : sourceLockPath(fixture.targetRoot, targetAdapter.name, stableScope);
+      if (resource === "graph lock") {
+        await writeGraphLock(destinationPath, divergentGraphLock(evolved.bundle.graphLock, "9.9.1"));
+      } else {
+        await writeSourceLock(
+          fixture.targetRoot,
+          targetAdapter.name,
+          divergentSourceLock(fixture, "c"),
+          fixture.transport,
+          stableScope,
+        );
+      }
+      const destinationBytes = await readFile(destinationPath, "utf8");
+      const legacyBefore = await persistentStateSnapshot([
+        legacy.manifestPath,
+        legacy.graphLockPath,
+        sourceLockPath(fixture.targetRoot, targetAdapter.name, legacy.scope),
+      ]);
+
+      await expect(applyFixturePlan(fixture, evolved)).rejects.toThrow(/destination|target state|graph lock|source lock|replan/i);
+
+      await expect(stat(applyJournalPath(fixture.targetRoot, targetAdapter.name, stableScope))).rejects.toThrow();
+      await expect(readFile(destinationPath, "utf8")).resolves.toBe(destinationBytes);
+      expect(await persistentStateSnapshot([...legacyBefore.keys()])).toEqual(legacyBefore);
+    },
+  );
+
+  it("refuses a destination graph lock modified after stable-state planning before creating a journal", async () => {
+    const fixture = await migrationFixture();
+    const parts = fingerprintParts(fixture.targetRoot, { adapterCodeHash: "a".repeat(64) });
+    const installed = await graphPlan(fixture, parts);
+    await applyFixturePlan(fixture, installed);
+    const planned = await graphPlan(fixture, parts);
+    if (!planned.plan.stateKey) throw new Error("missing stable state key");
+    const stableScope = { installationType: "local", stateKey: planned.plan.stateKey };
+    const manifestPath = installManifestPath(fixture.targetRoot, targetAdapter.name, stableScope);
+    const manifestBytes = await readFile(manifestPath, "utf8");
+    await writeGraphLock(planned.graphLockPath, divergentGraphLock(planned.bundle.graphLock, "9.9.2"));
+    const graphBytes = await readFile(planned.graphLockPath, "utf8");
+
+    await expect(applyFixturePlan(fixture, planned)).rejects.toThrow(/destination|target state|graph lock|replan/i);
+
+    await expect(stat(applyJournalPath(fixture.targetRoot, targetAdapter.name, stableScope))).rejects.toThrow();
+    await expect(readFile(planned.graphLockPath, "utf8")).resolves.toBe(graphBytes);
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(manifestBytes);
+  });
+
+  it("refuses a destination source lock modified after migration planning before creating a journal", async () => {
+    const fixture = await migrationFixture();
+    const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const parts = fingerprintParts(fixture.targetRoot, { adapterCodeHash: "b".repeat(64) });
+    const draft = await graphPlan(fixture, parts);
+    if (!draft.plan.stateKey) throw new Error("missing stable state key");
+    const stableScope = { installationType: "local", stateKey: draft.plan.stateKey };
+    await writeSourceLock(
+      fixture.targetRoot,
+      targetAdapter.name,
+      divergentSourceLock(fixture, "c"),
+      fixture.transport,
+      stableScope,
+    );
+    const planned = await graphPlan(fixture, parts);
+    await writeSourceLock(
+      fixture.targetRoot,
+      targetAdapter.name,
+      divergentSourceLock(fixture, "d"),
+      fixture.transport,
+      stableScope,
+    );
+    const destinationPath = sourceLockPath(fixture.targetRoot, targetAdapter.name, stableScope);
+    const destinationBytes = await readFile(destinationPath, "utf8");
+    const legacyBefore = await persistentStateSnapshot([
+      legacy.manifestPath,
+      legacy.graphLockPath,
+      sourceLockPath(fixture.targetRoot, targetAdapter.name, legacy.scope),
+    ]);
+
+    await expect(applyFixturePlan(fixture, planned)).rejects.toThrow(/destination|target state|source lock|replan/i);
+
+    await expect(stat(applyJournalPath(fixture.targetRoot, targetAdapter.name, stableScope))).rejects.toThrow();
+    await expect(readFile(destinationPath, "utf8")).resolves.toBe(destinationBytes);
+    expect(await persistentStateSnapshot([...legacyBefore.keys()])).toEqual(legacyBefore);
+  });
+
   it("recovers an interrupted legacy-state commit without losing contributions", async () => {
     const fixture = await migrationFixture();
     const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
@@ -501,6 +601,25 @@ describe("persistent target semantics", () => {
     expect(renamed.graphLockPath).toBe(first.graphLockPath);
     expect(other.plan.stateKey).not.toBe(first.plan.stateKey);
     expect(other.graphLockPath).not.toBe(first.graphLockPath);
+  });
+
+  it("refuses an SSH target that relies on transport description instead of a structured endpoint", async () => {
+    const fixture = await migrationFixture();
+    const transport = sshFixtureTransport(fixture.transport, "ssh agent@runtime.example");
+
+    await expect(graphPlan(fixture, undefined, { transport }))
+      .rejects.toThrow(/SSH.*(endpoint|host).*(required|prove)|cannot prove.*SSH/i);
+  });
+
+  it("refuses an SSH target identity whose structured endpoint has no host", async () => {
+    const fixture = await migrationFixture();
+    const transport = sshFixtureTransport(fixture.transport, "ssh missing host");
+
+    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      transport: "ssh",
+      transportDescription: "ssh missing host",
+      ssh: { user: "agent", port: 22 },
+    }), { transport })).rejects.toThrow(/SSH.*(endpoint|host).*(required|prove)|cannot prove.*SSH/i);
   });
 });
 
@@ -672,6 +791,26 @@ function sourceLockFixture(fixture: MigrationFixture): SourceLock {
       kind: "dir",
       hash: "b".repeat(64),
     }],
+  };
+}
+
+function divergentSourceLock(fixture: MigrationFixture, hashCharacter: string): SourceLock {
+  return {
+    ...sourceLockFixture(fixture),
+    sourceHash: hashCharacter.repeat(64),
+  };
+}
+
+function divergentGraphLock(
+  lock: Awaited<ReturnType<typeof graphPlan>>["bundle"]["graphLock"],
+  version: string,
+): Awaited<ReturnType<typeof graphPlan>>["bundle"]["graphLock"] {
+  return {
+    ...lock,
+    canonical: {
+      ...lock.canonical,
+      nodes: lock.canonical.nodes.map((node, index) => index === 0 ? { ...node, version } : node),
+    },
   };
 }
 

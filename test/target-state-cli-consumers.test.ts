@@ -313,6 +313,28 @@ async function moveInstalledStateToReleasedPaths(workspace: string): Promise<Rel
 async function writeReleasedJournal(state: ReleasedPaths): Promise<void> {
   const manifest = await readJson(state.legacyManifestPath);
   const graphLock = await readJson(state.legacyGraphPath);
+  const operations = manifest.entries.map((entry: Record<string, any>) => ({
+    action: "skip",
+    artifactType: entry.artifactType,
+    artifactName: entry.artifactName,
+    installName: entry.installName,
+    logicalSelector: entry.logicalSelector,
+    graphNodeId: entry.graphNodeId,
+    dependencyRole: entry.dependencyRole,
+    owners: entry.owners,
+    workspaceOwner: entry.workspaceOwner,
+    kind: entry.kind,
+    destPath: join(manifest.targetRoot, entry.path),
+    relativeDestPath: entry.path,
+    desiredHash: entry.sourceHash,
+    currentHash: entry.hash,
+    manifestHash: entry.hash,
+    reason: "already up to date",
+    channel: entry.channel,
+    packageName: entry.packageName,
+    composedFrom: entry.composedFrom,
+    graphLockDigest: entry.graphLockDigest,
+  }));
   await writeFile(state.legacyJournalPath, `${JSON.stringify({
     version: 1,
     mode: "apply",
@@ -324,7 +346,7 @@ async function writeReleasedJournal(state: ReleasedPaths): Promise<void> {
     graphLockDigest: manifest.entries[0]?.graphLockDigest,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:01.000Z",
-    operations: [],
+    operations,
     completed: [],
     manifest,
     graphLockPath: state.legacyGraphPath,

@@ -80,6 +80,71 @@ describe("released target-state migration", () => {
     await expect(stat(legacy.graphLockPath)).rejects.toThrow();
   });
 
+  it("migrates the released graph path when an explicit state key keeps the manifest path stable", async () => {
+    const fixture = await migrationFixture();
+    const stateKey = `${targetAdapter.name}.local.explicit`;
+    const planFor = (adapterCodeHash: string) => createGraphSourcePlan({
+      roots: [{ rootId: "fixture", source: fixture.sourceRoot, mode: "pinned" }],
+      targetRoot: fixture.targetRoot,
+      workspaceRoot: fixture.workspaceRoot,
+      globalRoot: fixture.globalRoot,
+      adapter: targetAdapter,
+      transport: fixture.transport,
+      installationType: "local",
+      stateKey,
+      targetKey: "runtime-agent",
+      targetFingerprintParts: fingerprintParts(fixture.targetRoot, {
+        fleetId: undefined,
+        stateKey,
+        adapterCodeHash,
+      }),
+      trustStorePath: join(fixture.globalRoot, ".agentwheel", "trust.json"),
+      readOnly: true,
+      isTTY: false,
+    });
+
+    const released = await planFor("a".repeat(64));
+    expect(released.plan.stateKey).toBe(stateKey);
+    const releasedGraphPath = legacyGraphPath(fixture.workspaceRoot, released.targetFingerprint);
+    expect(releasedGraphPath).not.toBe(released.graphLockPath);
+    await applyCombinedInstallPlan(
+      { ...released.plan, targetStateFilePreconditions: undefined },
+      {
+        transport: fixture.transport,
+        graphLockDigest: released.graphLockDigest,
+        graphLock: { path: releasedGraphPath, lock: released.bundle.graphLock },
+      },
+    );
+
+    const evolved = await planFor("b".repeat(64));
+    expect(evolved.plan.stateKey).toBe(stateKey);
+    await applyCombinedInstallPlan(evolved.plan, {
+      transport: fixture.transport,
+      graphLockDigest: evolved.graphLockDigest,
+      graphLock: { path: evolved.graphLockPath, lock: evolved.bundle.graphLock },
+    });
+
+    const releasedStillExists = await stat(releasedGraphPath).then(() => true, () => false);
+    await expect(stat(evolved.graphLockPath)).resolves.toBeDefined();
+    let repeated: Awaited<ReturnType<typeof planFor>> | undefined;
+    let repeatedError: unknown;
+    try {
+      repeated = await planFor("b".repeat(64));
+    } catch (error) {
+      repeatedError = error;
+    }
+    expect.soft(releasedStillExists).toBe(false);
+    expect(repeatedError).toBeUndefined();
+    if (!repeated) return;
+    expect(repeated.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+    await applyCombinedInstallPlan(repeated.plan, {
+      transport: fixture.transport,
+      graphLockDigest: repeated.graphLockDigest,
+      graphLock: { path: repeated.graphLockPath, lock: repeated.bundle.graphLock },
+    });
+    await expect(stat(releasedGraphPath)).rejects.toThrow();
+  });
+
   it("refuses two correlated legacy candidates before changing persistent state", async () => {
     const fixture = await migrationFixture();
     const first = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {

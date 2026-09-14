@@ -734,7 +734,14 @@ async function seedLegacyState(fixture: MigrationFixture, parts: unknown): Promi
   const stateKey = legacyStateKey(draft.targetFingerprint);
   const scope = { installationType: "local", stateKey };
   const graphLockPath = legacyGraphPath(fixture.workspaceRoot, draft.targetFingerprint);
-  const legacyPlan = { ...draft.plan, stateKey, baseRevision: null };
+  // Released plans predate stable target-state file preconditions; this fixture
+  // retargets the draft only to seed that historical on-disk layout.
+  const legacyPlan = {
+    ...draft.plan,
+    stateKey,
+    baseRevision: null,
+    targetStateFilePreconditions: undefined,
+  };
   assertInsideFixture(graphLockPath, [fixture.workspaceRoot]);
   await applyCombinedInstallPlan(legacyPlan, {
     transport: fixture.transport,

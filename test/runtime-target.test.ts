@@ -291,7 +291,21 @@ describe("runtime target resolution", () => {
       transport: "local",
       ssh: undefined,
     });
-    const stateKey = stateKeyFor("openclaw", { installationType: "local", targetFingerprint: fingerprint });
+    const stateFingerprint = computeTargetFingerprint({
+      identityVersion: 1,
+      contributionScope: { workspaceRoot: project, targetKey: "alpha" },
+      target: {
+        adapter: "openclaw",
+        installationType: "local",
+        agentName: "alpha",
+        transport: "local",
+        installRoot: alpha,
+        endpoint: { kind: "local" },
+      },
+    });
+    const legacyStateKey = stateKeyFor("openclaw", { installationType: "local", targetFingerprint: fingerprint });
+    const stateKey = stateKeyFor("openclaw", { installationType: "local", targetFingerprint: stateFingerprint });
+    expect(stateKey).not.toBe(legacyStateKey);
     await expect(stat(join(alpha, ".agentwheel", `${stateKey}.install-manifest.json`))).resolves.toBeTruthy();
   });
 

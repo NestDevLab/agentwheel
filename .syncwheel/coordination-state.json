@@ -1,17 +1,14 @@
 {
-  "changed_refs": {
-    "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
-    "refs/heads/main-integration": "fd43a38af98b38db2d893909356cebdec8c6aab2"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
-    "refs/heads/fix/no-deps-selected-composition": "a9fb570df496974ec3d9db925dd4c9774c95a011",
+    "refs/heads/fix/no-deps-selected-composition": "4683d675710eb369ff05bb2e10223d1e39fccc44",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "dc8b97348f2dcdcbd40ebc0a00fe9f1b6c0d5faf"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-04T18:33:39+00:00",
+  "created_at": "2026-09-16T07:27:14+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -79,8 +76,7 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "mgt-0244-owner-diagnostics",
-        "no-deps-selected-composition"
+        "mgt-0244-owner-diagnostics"
       ],
       "strategy": "cherry-pick"
     },
@@ -98,32 +94,18 @@
         "id": "mgt-0244-owner-diagnostics",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "fix/no-deps-selected-composition",
-        "commits": [
-          "329728952803c2e350b7454d9e89db66a1cf8750"
-        ],
-        "id": "no-deps-selected-composition",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "51852e9c-5eef-4442-8146-c223dd1e8276",
-  "parent_state": "67325d3c9d2a6046279d9e2ead060ac453db58da",
+  "operation_token": "8a304615-bee9-4847-8572-3030b00b22c4",
+  "parent_state": "ee79838541b081fb7da3e6b38dd5e6ca255c9d79",
   "projection_status": "partial",
-  "publication_id": "c5c40c49-d45a-4e09-a49f-9da8c8bf1bfe",
-  "publication_scope": "stack:no-deps-selected-composition",
+  "publication_id": "9dee1a41-57b5-42d7-b587-e8036972700c",
+  "publication_scope": "close:no-deps-selected-composition",
   "schema_version": 2,
-  "syncwheel_version": "0.43.3",
+  "syncwheel_version": "0.43.7",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",
@@ -396,6 +378,14 @@
       "ref": "refs/heads/fix/runtime-filter-composition",
       "remote_tip": null,
       "stack": "runtime-filter-composition"
+    },
+    {
+      "branch": "fix/no-deps-selected-composition",
+      "closed_at": "2026-09-16T07:27:04+00:00",
+      "reason": "merged-by-squash-tree-equivalent",
+      "ref": "refs/heads/fix/no-deps-selected-composition",
+      "remote_tip": null,
+      "stack": "no-deps-selected-composition"
     }
   ]
 }

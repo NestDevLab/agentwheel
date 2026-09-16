@@ -1,14 +1,17 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/mgt-0287-aw1-state-continuity": "23073a419881f543f7d51b99e8408461e21fef99"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
-    "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12"
+    "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
+    "refs/heads/pr/mgt-0287-aw1-state-continuity": "0135f757650ebeb31d7f21105b37de99d712226b"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-16T17:56:52+00:00",
+  "created_at": "2026-09-16T18:01:15+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -30,6 +33,7 @@
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
+    "refs/heads/pr/mgt-0287-aw1-state-continuity": "23073a419881f543f7d51b99e8408461e21fef99",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
@@ -75,18 +79,44 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "mgt-0287-aw1-state-continuity"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": "e61f0d8b8fcea901b31a0ea303da623c16de566d",
+        "branch": "pr/mgt-0287-aw1-state-continuity",
+        "commits": [
+          "8a55b6f6db6ca2eba0443e301174a085bae5cb84",
+          "f7fb93fbefb658115ed386983751fd5b3e666c64",
+          "6ae3fc7c2d885981c96f23298bdad87f8896564c",
+          "aa3c3baf62a45b6e61bee319fe56df391a6c3bb6",
+          "c863501b7bae7d706dba453ac48fcae29ea23e33",
+          "54a4eccaf6569396e5f5f4dd0115f05ac8a07d67",
+          "5c0acc24924912d9a9dc7dc6a2a26d118b39ad25",
+          "083ab01501a2bac322e7a3a75e2beafd2f752af2",
+          "5c77505a1b0c76fd1e3ff069eb4ea32415143f3a",
+          "2d4fbd934d03d7ab5f8c2abb25d979d426498efe",
+          "a328b02b65cf19bb7634952b4c51b4d255a88488",
+          "d2564f686429dcd330101f41c4b5a9977d61ed3a",
+          "d8408005c00aa3fa726fa73f15d18bc8934daaea",
+          "23073a419881f543f7d51b99e8408461e21fef99"
+        ],
+        "id": "mgt-0287-aw1-state-continuity",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "4b4b2dd5-7312-445a-ad97-6f5b69cd7216",
-  "parent_state": "1c56eb31ad8c92ac016123ae93d9428a8ac924b5",
+  "operation_token": "f34e0b0c-c89d-4d16-bd15-8a3529146a33",
+  "parent_state": "5fd97337ad2411466936b465f68d0c4ba0fa3f4f",
   "projection_status": "partial",
-  "publication_id": "98eb6223-a041-457b-b0c2-3d982788b59a",
-  "publication_scope": "close:mgt-0244-owner-diagnostics",
+  "publication_id": "5c70e127-f771-4e95-889f-001538270a42",
+  "publication_scope": "stack:mgt-0287-aw1-state-continuity",
   "schema_version": 2,
   "syncwheel_version": "0.43.7",
   "tombstones": [

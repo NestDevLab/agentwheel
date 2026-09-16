@@ -1,12 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/fix/no-deps-selected-composition",
-    "refs/heads/main-integration"
-  ],
-  "claimed_at": "2026-09-04T18:33:39+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-16T07:27:14+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "51852e9c-5eef-4442-8146-c223dd1e8276",
-  "publication_scope": "stack:no-deps-selected-composition",
+  "operation_token": "8a304615-bee9-4847-8572-3030b00b22c4",
+  "publication_scope": "close:no-deps-selected-composition",
+  "reason": "merged-by-squash-tree-equivalent",
   "source_ref": "refs/heads/fix/no-deps-selected-composition",
-  "syncwheel_version": "0.43.3"
+  "syncwheel_version": "0.43.7"
 }

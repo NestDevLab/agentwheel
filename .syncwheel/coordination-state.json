@@ -2,13 +2,13 @@
   "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
-    "refs/heads/fix/no-deps-selected-composition": "4683d675710eb369ff05bb2e10223d1e39fccc44",
+    "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "dc8b97348f2dcdcbd40ebc0a00fe9f1b6c0d5faf"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-16T07:27:14+00:00",
+  "created_at": "2026-09-16T07:57:53+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -99,10 +99,10 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "8a304615-bee9-4847-8572-3030b00b22c4",
-  "parent_state": "ee79838541b081fb7da3e6b38dd5e6ca255c9d79",
+  "operation_token": "bce86b5b-6207-4d1d-9e8e-0df269cc28d7",
+  "parent_state": "175edc3429a537c8e628a1844cbbf718649e8baf",
   "projection_status": "partial",
-  "publication_id": "9dee1a41-57b5-42d7-b587-e8036972700c",
+  "publication_id": "23111489-5d9f-42ec-a75e-1aa6ec33e7c1",
   "publication_scope": "close:no-deps-selected-composition",
   "schema_version": 2,
   "syncwheel_version": "0.43.7",
@@ -381,8 +381,8 @@
     },
     {
       "branch": "fix/no-deps-selected-composition",
-      "closed_at": "2026-09-16T07:27:04+00:00",
-      "reason": "merged-by-squash-tree-equivalent",
+      "closed_at": "2026-09-16T07:57:43+00:00",
+      "reason": "abandoned",
       "ref": "refs/heads/fix/no-deps-selected-composition",
       "remote_tip": null,
       "stack": "no-deps-selected-composition"

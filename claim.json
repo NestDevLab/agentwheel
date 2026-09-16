@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/mgt-0244-owner-diagnostics"
-  ],
-  "claimed_at": "2026-09-16T07:59:31+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-16T17:56:52+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "58c15401-7216-4f37-9bc0-afefdfd2814d",
-  "publication_scope": "stack:mgt-0244-owner-diagnostics",
+  "operation_token": "4b4b2dd5-7312-445a-ad97-6f5b69cd7216",
+  "publication_scope": "close:mgt-0244-owner-diagnostics",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/mgt-0244-owner-diagnostics",
   "syncwheel_version": "0.43.7"
 }

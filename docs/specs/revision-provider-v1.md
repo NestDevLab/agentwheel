@@ -83,6 +83,30 @@ Receipts use these terminal or actionable states: `succeeded`, `revisioning-skip
 `no-repository-delta`, `commit-pending`, `precheck-failed`, `partial`, and `postcheck-failed`.
 Inspect them with `agentwheel mutation list` and `agentwheel mutation show <operation-id>`.
 
+### Session ownership diagnostics
+
+A clean-tree or repository-lock refusal remains a hard safety block. Agentwheel augments that
+refusal from the read-only Agent Mesh graph projection when available; the graph never grants a
+lease, removes a lock, or decides whether a caller may proceed.
+
+Dirty repository paths are joined to graph nodes through opaque refs only:
+
+```text
+agentwheel-resource:<sha256(git-common-dir + NUL + normalized repository-relative path)>
+```
+
+The ref cannot be resolved back to a private path from graph state. Agentwheel names an owner only
+when exactly one `active`, `waiting`, or `blocked` node has the exact ref. Duplicate live claims
+remain `owner unknown` and list candidates; `quiet` and `closed` claims are inactive. A missing or
+malformed projection, an inactive-only match, or no match also remains `owner unknown` and directs
+the caller to inspect the session graph or ask the rollout coordinator before retrying. None of
+these cases weakens the refusal.
+
+New repository-lock metadata records the current runtime UUID when a supported harness exposes it.
+On contention, the error includes structured operation, PID, runtime UUID, and creation-time facts,
+then correlates the UUID to a session only on one exact live match. Older locks without a runtime
+UUID remain valid and blocking; their diagnostic explains how to identify the owner safely.
+
 ## Wire contract
 
 Every request is a strict JSON object with:

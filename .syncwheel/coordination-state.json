@@ -1,14 +1,16 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
-    "refs/heads/pr/mgt-0244-owner-diagnostics": "dc8b97348f2dcdcbd40ebc0a00fe9f1b6c0d5faf"
+    "refs/heads/pr/mgt-0244-owner-diagnostics": "70576bc705701c9837b9c09b94b4447362bd9a48"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-16T07:57:53+00:00",
+  "created_at": "2026-09-16T07:59:31+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -29,7 +31,7 @@
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
-    "refs/heads/pr/mgt-0244-owner-diagnostics": "c6035202bad9dbfb10dfcb26657c4424c5f61538",
+    "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
@@ -89,7 +91,7 @@
         },
         "branch": "pr/mgt-0244-owner-diagnostics",
         "commits": [
-          "c6035202bad9dbfb10dfcb26657c4424c5f61538"
+          "c119803d993b86cbe3ed9b1f37194a0878f7418e"
         ],
         "id": "mgt-0244-owner-diagnostics",
         "integration_branch": "main-integration",
@@ -99,11 +101,11 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "bce86b5b-6207-4d1d-9e8e-0df269cc28d7",
-  "parent_state": "175edc3429a537c8e628a1844cbbf718649e8baf",
+  "operation_token": "58c15401-7216-4f37-9bc0-afefdfd2814d",
+  "parent_state": "8709c38a246b37fd54ef0af566a8246420163298",
   "projection_status": "partial",
-  "publication_id": "23111489-5d9f-42ec-a75e-1aa6ec33e7c1",
-  "publication_scope": "close:no-deps-selected-composition",
+  "publication_id": "40281616-7be9-40a5-abb5-9fb3b588f9af",
+  "publication_scope": "stack:mgt-0244-owner-diagnostics",
   "schema_version": 2,
   "syncwheel_version": "0.43.7",
   "tombstones": [

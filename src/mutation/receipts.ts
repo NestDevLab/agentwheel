@@ -5,6 +5,11 @@ import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { revisionProviderConfigSchema } from "../model/mutation.js";
 import { revisionPathSchema, revisionProviderResultSchema, mutationOperationIdSchema } from "./protocol.js";
+import {
+  describeMutationLockOwner,
+  runtimeUuidForCurrentProcess,
+  type MutationLockOwnerFacts,
+} from "./session-ownership.js";
 
 const preexistingPathSchema = z.object({
   path: z.string().min(1).max(4096),
@@ -75,6 +80,17 @@ export type MutationReceiptStatus = z.infer<typeof receiptStatusSchema>;
 export interface MutationLock {
   path: string;
   release(): Promise<void>;
+}
+
+export class MutationLockContentionError extends Error {
+  constructor(
+    public readonly lockPath: string,
+    public readonly owner: MutationLockOwnerFacts | undefined,
+    diagnostic: string,
+  ) {
+    super(`Another Agentwheel mutation owns the repository lock at ${lockPath}. ${diagnostic}`);
+    this.name = "MutationLockContentionError";
+  }
 }
 
 export function mutationStateRoot(): string {
@@ -181,7 +197,8 @@ export async function acquireMutationLock(repositoryRoot: string, operationId: s
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
     if (!(await reapStaleLock(lockPath))) {
-      throw new Error(`Another Agentwheel mutation owns the repository lock at ${lockPath}.`);
+      const owner = await readMutationLockOwner(lockPath);
+      throw new MutationLockContentionError(lockPath, owner, await describeMutationLockOwner(owner));
     }
     await mkdir(lockPath, { mode: 0o700 });
   }
@@ -190,6 +207,7 @@ export async function acquireMutationLock(repositoryRoot: string, operationId: s
     version: 1,
     operationId,
     pid: process.pid,
+    runtimeUuid: runtimeUuidForCurrentProcess(),
     repositoryRoot: resolve(repositoryRoot),
     createdAt: new Date().toISOString(),
   });
@@ -202,6 +220,26 @@ export async function acquireMutationLock(repositoryRoot: string, operationId: s
       await rm(lockPath, { recursive: true, force: true });
     },
   };
+}
+
+async function readMutationLockOwner(lockPath: string): Promise<MutationLockOwnerFacts | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(join(lockPath, "owner.json"), "utf8")) as Record<string, unknown>;
+    const owner: MutationLockOwnerFacts = {};
+    if (typeof parsed.operationId === "string" && /^[a-z0-9][a-z0-9_-]{0,62}$/i.test(parsed.operationId)) {
+      owner.operationId = parsed.operationId;
+    }
+    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0) owner.pid = parsed.pid;
+    if (typeof parsed.runtimeUuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.runtimeUuid)) {
+      owner.runtimeUuid = parsed.runtimeUuid.toLowerCase();
+    }
+    if (typeof parsed.createdAt === "string" && !Number.isNaN(Date.parse(parsed.createdAt))) {
+      owner.createdAt = parsed.createdAt;
+    }
+    return Object.keys(owner).length > 0 ? owner : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function receiptPath(operationId: string): string {

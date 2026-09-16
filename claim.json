@@ -1,11 +1,11 @@
 {
   "changed_refs": [],
-  "claimed_at": "2026-09-16T07:27:14+00:00",
+  "claimed_at": "2026-09-16T07:57:53+00:00",
   "closed": true,
   "coordination_id": "default",
-  "operation_token": "8a304615-bee9-4847-8572-3030b00b22c4",
+  "operation_token": "bce86b5b-6207-4d1d-9e8e-0df269cc28d7",
   "publication_scope": "close:no-deps-selected-composition",
-  "reason": "merged-by-squash-tree-equivalent",
+  "reason": "abandoned",
   "source_ref": "refs/heads/fix/no-deps-selected-composition",
   "syncwheel_version": "0.43.7"
 }

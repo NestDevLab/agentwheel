@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/mgt-0287-aw1-state-continuity"
   ],
-  "claimed_at": "2026-09-16T18:01:15+00:00",
+  "claimed_at": "2026-09-16T19:14:34+00:00",
   "coordination_id": "default",
-  "operation_token": "f34e0b0c-c89d-4d16-bd15-8a3529146a33",
+  "operation_token": "16679e47-629b-4c1d-8af9-96f74570bc6e",
   "publication_scope": "stack:mgt-0287-aw1-state-continuity",
   "source_ref": "refs/heads/pr/mgt-0287-aw1-state-continuity",
-  "syncwheel_version": "0.43.7"
+  "syncwheel_version": "0.43.9"
 }

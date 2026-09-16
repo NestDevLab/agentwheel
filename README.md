@@ -396,6 +396,37 @@ current directory, then fallback to the current directory. `--all-detected` is a
 for applying to every runtime marker found in the current directory or `--target-root`; `--all` remains
 reserved for configured agents.
 
+### Target state identity
+
+Graph-backed installs keep two target fingerprints with different purposes:
+
+- The full target fingerprint records rendering inputs in the graph lock. Adapter code, adapter
+  configuration, and adapter module changes therefore remain visible and can produce a real update.
+- The stable state fingerprint selects the graph lock, install manifest, source lock, and apply
+  journal. It is derived from the contribution scope and effective destination, including the
+  normalized install root and a structured local or SSH endpoint. Adapter implementation evolution
+  that resolves to the same destination reuses the installed state instead of orphaning it.
+
+Changing an artifact destination within the same effective install root is handled as a planned
+transition from the old path to the new path. Changing the effective install root, local/SSH kind, or
+SSH endpoint selects a different target state. SSH state identity requires an explicit host; a display
+label is not endpoint identity.
+
+State created by an older Agentwheel release may be named with the full target fingerprint. For a
+local target, Agentwheel adopts that state only when one canonical graph lock, its v2 install
+manifest, the contribution owner, target details, and graph-lock digest all agree. A supported
+install or uninstall carries an explicit migration and revalidates the old and new state under the
+shared apply lock before replacing the legacy paths. An explicit `stateKey` remains the manifest and
+source-lock key while its legacy graph-lock path moves. Ownership handoff and retirement require a
+full install to migrate first. Status, dependency inspection, uninstall, and journal commands use
+the same discovery rules.
+
+Agentwheel refuses ambiguous candidates, a graph lock without its correlated manifest, or
+disagreeing stable and legacy state, and preserves those files for manual reconciliation. A pending
+apply journal that embeds and exactly correlates the missing manifest and graph state remains
+discoverable for recovery. Legacy SSH state is also preserved and refused because the old records do
+not prove which endpoint owned it.
+
 ## Core Ideas
 
 **Three places, one direction:**

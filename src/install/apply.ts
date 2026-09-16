@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
@@ -11,7 +12,7 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
-import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
 import {
@@ -193,6 +194,8 @@ async function applyPlanTransactionally(
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
+    await assertTargetStateFilePreconditions(plan, transport, options.graphLock?.path);
+    await assertStateMigrationPreconditions(plan, transport);
     const now = new Date().toISOString();
     const graphLockDigest = options.graphLockDigest ?? plan.graphLockDigest;
     const mutation = mutationMetadataForApplyJournal();
@@ -221,9 +224,16 @@ async function applyPlanTransactionally(
         adapterCode: plan.adapterCode,
         entries: [],
       },
-      sourceLock: options.sourceLock,
+      sourceLock: options.sourceLock ?? plan.stateMigration?.sourceLock ?? undefined,
       graphLockPath: options.graphLock?.path,
       graphLock: options.graphLock?.lock,
+      graphLockRemovePath: plan.stateMigration
+        && plan.stateMigration.fromGraphLockPath !== options.graphLock?.path
+        ? plan.stateMigration.fromGraphLockPath
+        : undefined,
+      stateRemoveKey: plan.stateMigration?.fromStateKey !== plan.stateKey
+        ? plan.stateMigration?.fromStateKey
+        : undefined,
     };
     await writeApplyJournal(journal, transport);
 
@@ -314,6 +324,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
+    await assertTargetStateFilePreconditions(plan, transport, resolvedOptions.graphLock?.path);
+    await assertStateMigrationPreconditions(plan, transport);
     await assertExactMergeRemovalPreconditions(removable, transport);
     const revalidatedSkips = new Map<string, InstallManifestEntry>();
     for (const operation of skipped) {
@@ -346,9 +358,16 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       operations: resolvedOptions.keepFiles ? [] : removable,
       completed: [],
       manifest: finalManifest,
+      sourceLock: plan.stateMigration?.sourceLock ?? undefined,
       graphLockPath: resolvedOptions.graphLock?.path,
       graphLock: resolvedOptions.graphLock?.lock,
-      graphLockRemovePath: resolvedOptions.removeGraphLockPath,
+      graphLockRemovePath: resolvedOptions.removeGraphLockPath
+        ?? (plan.stateMigration?.fromGraphLockPath !== resolvedOptions.graphLock?.path
+          ? plan.stateMigration?.fromGraphLockPath
+          : undefined),
+      stateRemoveKey: plan.stateMigration?.fromStateKey !== plan.stateKey
+        ? plan.stateMigration?.fromStateKey
+        : undefined,
       workspaceConfigPath: resolvedOptions.workspaceConfig?.path,
       workspaceConfig: resolvedOptions.workspaceConfig?.data,
     };
@@ -413,6 +432,12 @@ async function commitJournalState(
     await writeInstallManifest(manifest, transport);
   }
   if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
+  if (journal.stateRemoveKey && journal.stateRemoveKey !== journal.stateKey) {
+    await removeStateFiles(journal.targetRoot, journal.adapter, transport, {
+      installationType: journal.installationType,
+      stateKey: journal.stateRemoveKey,
+    });
+  }
   if (journal.graphLockRemovePath) {
     declareMutationPath(journal.graphLockRemovePath);
     await rm(journal.graphLockRemovePath, { force: true });
@@ -464,6 +489,15 @@ async function assertCommittedJournalState(
   }
   if (journal.graphLockRemovePath && await pathExists(journal.graphLockRemovePath)) {
     throw new Error(`Graph-lock removal postcheck failed for ${journal.graphLockRemovePath}.`);
+  }
+  if (journal.stateRemoveKey && journal.stateRemoveKey !== journal.stateKey) {
+    const removedScope = { installationType: journal.installationType, stateKey: journal.stateRemoveKey };
+    if (await readInstallManifest(journal.targetRoot, journal.adapter, transport, removedScope)) {
+      throw new Error(`Legacy manifest removal postcheck failed for state ${journal.stateRemoveKey}.`);
+    }
+    if (await readSourceLock(journal.targetRoot, journal.adapter, transport, removedScope)) {
+      throw new Error(`Legacy source-lock removal postcheck failed for state ${journal.stateRemoveKey}.`);
+    }
   }
   if (journal.workspaceConfigPath && journal.workspaceConfig) {
     const actual = JSON.parse(await readFile(journal.workspaceConfigPath, "utf8"));
@@ -614,6 +648,16 @@ async function applyOperation(
   if (operation.action === "keep") {
     if (!operation.manifestHash || !operation.desiredHash) {
       throw new Error(`Invalid keep operation missing manifest/source hash: ${operation.relativeDestPath}`);
+    }
+    if (operation.preserveInManifest === false) {
+      if (!(await transport.pathExists(operation.destPath))) {
+        throw new Error(`Foreign keep destination disappeared after planning: ${operation.relativeDestPath}`);
+      }
+      const currentHash = await transport.hashPath(operation.destPath);
+      if (currentHash !== operation.currentHash || currentHash !== operation.manifestHash || currentHash !== operation.desiredHash) {
+        throw new Error(`Foreign keep destination changed after planning: ${operation.relativeDestPath}`);
+      }
+      return undefined;
     }
     return manifestEntryForOperation(operation, {
       now,
@@ -967,11 +1011,89 @@ function manifestEntryForOperation(
 async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
   const current = await readInstallManifest(plan.targetRoot, plan.adapter, transport, {
     installationType: plan.installationType,
-    stateKey: plan.stateKey,
+    stateKey: plan.stateMigration?.fromStateKey ?? plan.stateKey,
   });
   const currentRevision = current?.revision ?? null;
   if (currentRevision !== plan.baseRevision) {
     throw new Error(`Install manifest changed since planning for ${plan.adapter}; replan needed`);
+  }
+}
+
+async function assertTargetStateFilePreconditions(
+  plan: InstallPlan,
+  transport: TargetTransport,
+  graphLockWritePath?: string,
+): Promise<void> {
+  const expected = plan.targetStateFilePreconditions;
+  if (!expected) return;
+  if (graphLockWritePath && resolve(graphLockWritePath) !== resolve(expected.graphLockPath)) {
+    throw new Error(
+      `Graph-lock destination changed after planning: expected ${expected.graphLockPath}, found ${graphLockWritePath}; replan needed.`,
+    );
+  }
+  let graphLockRevision: string | null = null;
+  if (await pathExists(expected.graphLockPath)) {
+    try {
+      const graphLock = await readGraphLock(expected.graphLockPath);
+      graphLockRevision = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+    } catch (error) {
+      throw new Error(
+        `Destination graph lock changed after planning at ${expected.graphLockPath}; replan needed: `
+        + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+  if (graphLockRevision !== expected.graphLockRevision) {
+    throw new Error(
+      `Destination graph lock changed after planning: expected ${expected.graphLockRevision ?? "missing"}, `
+      + `found ${graphLockRevision ?? "missing"}; replan needed.`,
+    );
+  }
+  let sourceLockRevision: string | null;
+  try {
+    sourceLockRevision = computeSourceLockRevision(await readSourceLock(plan.targetRoot, plan.adapter, transport, {
+      installationType: plan.installationType,
+      stateKey: plan.stateKey,
+    }));
+  } catch (error) {
+    throw new Error(
+      `Destination source lock changed after planning for ${plan.adapter}; replan needed: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+  if (sourceLockRevision !== expected.sourceLockRevision) {
+    throw new Error(
+      `Destination source lock changed after planning: expected ${expected.sourceLockRevision ?? "missing"}, `
+      + `found ${sourceLockRevision ?? "missing"}; replan needed.`,
+    );
+  }
+}
+
+async function assertStateMigrationPreconditions(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  const migration = plan.stateMigration;
+  if (!migration) return;
+  let graphLock: GraphLock;
+  try {
+    graphLock = await readGraphLock(migration.fromGraphLockPath);
+  } catch (error) {
+    throw new Error(
+      `Legacy graph lock changed since planning at ${migration.fromGraphLockPath}; replan needed: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+  const graphDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+  if (graphDigest !== migration.fromGraphLockDigest) {
+    throw new Error(
+      `Legacy graph lock changed since planning: expected ${migration.fromGraphLockDigest}, found ${graphDigest}; replan needed.`,
+    );
+  }
+  if (!migration.fromStateKey) return;
+  const currentSourceLock = await readSourceLock(plan.targetRoot, plan.adapter, transport, {
+    installationType: plan.installationType,
+    stateKey: migration.fromStateKey,
+  });
+  if (canonicalJson(currentSourceLock ?? null) !== canonicalJson(migration.sourceLock ?? null)) {
+    throw new Error(`Legacy source lock changed since planning for ${plan.adapter}; replan needed.`);
   }
 }
 

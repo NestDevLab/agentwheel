@@ -67,6 +67,12 @@ export async function computeInstallManifestInventoryRevision(
   return createHash("sha256").update(JSON.stringify(inventory)).digest("hex");
 }
 
+export function computeSourceLockRevision(lock: SourceLock | undefined): string | null {
+  return lock
+    ? createHash("sha256").update(canonicalJson(lock)).digest("hex")
+    : null;
+}
+
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {
   const next = withManifestRevision(manifest);
   await transport.writeJsonAtomic(installManifestPath(next.targetRoot, next.adapter, {

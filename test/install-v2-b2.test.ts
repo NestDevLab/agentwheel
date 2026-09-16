@@ -1223,7 +1223,7 @@ describe("foreign workspace state at a shared target root", () => {
     await expect(assertNoForeignWorkspaceStateForPlan(plan, options)).rejects.toThrow(/another workspace/);
   });
 
-  it("partitions an explicit runtime state key by fleet and requires an explicit force for a same-path cross-fleet install", async () => {
+  it("partitions an explicit runtime state key by fleet and keeps an exact cross-fleet artifact outside the new manifest", async () => {
     const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
     const fleetBeta = await tempRoot("agentwheel-b2-beta-");
     const target = await tempRoot("agentwheel-b2-target-");
@@ -1236,16 +1236,26 @@ describe("foreign workspace state at a shared target root", () => {
     });
     expect(alpha.plan.stateKey).not.toBe("shared-runtime");
     await applyCombinedInstallPlan(alpha.plan);
+    const alphaManifestPath = installManifestPath(target, foreignStateAdapter.name, { stateKey: alpha.plan.stateKey });
+    const alphaManifestBytes = await readFile(alphaManifestPath, "utf8");
 
-    const betaError = await graphPlan(betaSource, target, fleetBeta, {
+    const beta = await graphPlan(betaSource, target, fleetBeta, {
       fleetId: "beta",
       stateKey: "shared-runtime",
-    }).catch((cause: unknown) => cause);
-    const message = betaError instanceof Error ? betaError.message : String(betaError);
-    expect(message).toContain("already carries Agentwheel state owned by another workspace");
-    expect(message).toContain(workspaceOwnerForRoot(fleetAlpha, "alpha"));
-    expect(message).toContain(".runtime/skills/shared-skill");
-    expect(message).toContain("fleet normalize");
+    });
+    expect(beta.plan.stateKey).not.toBe(alpha.plan.stateKey);
+    expect(beta.plan.operations).toMatchObject([{
+      action: "keep",
+      relativeDestPath: ".runtime/skills/shared-skill",
+      preserveInManifest: false,
+    }]);
+    expect(beta.plan.hasBlockingChanges).toBe(false);
+    await applyCombinedInstallPlan(beta.plan);
+    await expect(readFile(alphaManifestPath, "utf8")).resolves.toBe(alphaManifestBytes);
+    const betaManifest = await readInstallManifest(target, foreignStateAdapter.name, localTransport, {
+      stateKey: beta.plan.stateKey,
+    });
+    expect(betaManifest?.entries).toEqual([]);
 
     const forced = await graphPlan(betaSource, target, fleetBeta, {
       fleetId: "beta",

@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/legacy-recovery-report"
+    "refs/heads/pr/legacy-recovery-report"
   ],
-  "claimed_at": "2026-09-18T17:22:21+00:00",
+  "claimed_at": "2026-09-18T17:22:54+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "3582af19-022c-408d-b886-41c4909273d3",
-  "publication_scope": "stack:legacy-recovery-report",
+  "operation_token": "55ce370e-f7ea-4f2f-82e9-5f385b686542",
+  "publication_scope": "promote:legacy-recovery-report",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/legacy-recovery-report",
   "syncwheel_version": "0.43.15"
 }

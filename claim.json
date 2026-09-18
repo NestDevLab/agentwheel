@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation"
+  ],
+  "claimed_at": "2026-09-18T17:12:06+00:00",
+  "coordination_id": "default",
+  "operation_token": "f67493a8-b911-4abe-915e-997118dd4ff4",
+  "publication_scope": "create:mgt-0244-integration-preservation",
+  "source_ref": "refs/heads/syncwheel/draft/mgt-0244-integration-preservation",
+  "syncwheel_version": "0.43.15"
+}

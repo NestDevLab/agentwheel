@@ -1,13 +1,13 @@
 {
   "changed_refs": {
-    "refs/heads/pr/legacy-recovery-report": "71e30080265fd45dbf700a8d7b774b6bc96c307b"
+    "refs/heads/pr/legacy-recovery-report": "82aaec52ded6ee7e7112ec7ff55e0bec2a075b16"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
-    "refs/heads/pr/legacy-recovery-report": "6b91a1a7e42477711eecd0cb2d74596b4a687d1b",
+    "refs/heads/pr/legacy-recovery-report": "47344330130350e9b498716c60f0e6516b9b439a",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -16,7 +16,7 @@
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-18T17:29:38+00:00",
+  "created_at": "2026-09-18T17:32:25+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -36,7 +36,7 @@
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
-    "refs/heads/pr/legacy-recovery-report": "71e30080265fd45dbf700a8d7b774b6bc96c307b",
+    "refs/heads/pr/legacy-recovery-report": "82aaec52ded6ee7e7112ec7ff55e0bec2a075b16",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "f235868bf89b9828ee11ab5edd72db47ac9749e1",
@@ -132,7 +132,8 @@
         "branch": "pr/legacy-recovery-report",
         "commits": [
           "09d69cd7b695835b4bd20b91eb02d7fc111e5d52",
-          "71e30080265fd45dbf700a8d7b774b6bc96c307b"
+          "71e30080265fd45dbf700a8d7b774b6bc96c307b",
+          "82aaec52ded6ee7e7112ec7ff55e0bec2a075b16"
         ],
         "id": "legacy-recovery-report",
         "integration_branch": "main-integration",
@@ -142,10 +143,10 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "44656d5f-6109-4a5c-acb4-499741c090ac",
-  "parent_state": "5e433b493e9117c5b063e283f96201532c183788",
+  "operation_token": "9a588057-d65b-4cb9-bc82-24f7f7220c58",
+  "parent_state": "5314bc709b22ac7b3216c90e59e26098bcd1dd00",
   "projection_status": "partial",
-  "publication_id": "6ef52303-21ec-4219-87c0-94d1e56f8c5a",
+  "publication_id": "43fa4e20-afd8-4eca-836c-6119972c87cc",
   "publication_scope": "stack:legacy-recovery-report",
   "schema_version": 2,
   "syncwheel_version": "0.43.15",

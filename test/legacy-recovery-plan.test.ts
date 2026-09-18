@@ -84,6 +84,7 @@ describe("read-only legacy recovery evidence", () => {
   it("does not treat an intentionally excluded runtime as an incomplete graph", async () => {
     const f = await fixture();
     f.graphPlan.warnings.push("skip artifact example:commands/other (selected but not targeted: runtimes=[hermes])");
+    f.graphPlan.warnings.push("skip dependency example:hooks/other (not targeted: runtimes=[claude])");
     const report = await f.run();
     expect(report.resolutionWarnings).toEqual([]);
     expect(report.complete).toBe(true);

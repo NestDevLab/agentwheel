@@ -115,7 +115,7 @@ export async function planLegacyRecovery(input: {
   }
   for (const item of manifests) for (const entry of item.manifest.entries) paths.add(entry.path);
   const resolutionWarnings = graphPlan.warnings.filter((warning) =>
-    !/^skip artifact .+ \(selected but not targeted: runtimes=\[[^\]]+\]\)$/.test(warning));
+    !/^skip (?:artifact|dependency) .+ \((?:selected but )?not targeted: runtimes=\[[^\]]+\]\)$/.test(warning));
   const complete = resolutionWarnings.length === 0;
   const output: RecoveryPath[] = [];
   for (const path of [...paths].sort()) {

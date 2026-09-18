@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -7,10 +9,11 @@
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9"
+    "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
+    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "c77aef171cf18173daa4ad5491f03f5562681c09"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-18T12:14:51+00:00",
+  "created_at": "2026-09-18T12:31:05+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -49,6 +52,7 @@
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
+    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
@@ -79,18 +83,34 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "legacy-state-candidate-correlation"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/legacy-state-candidate-correlation",
+        "commits": [],
+        "id": "legacy-state-candidate-correlation",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "e1bfcdd2-4627-434a-a982-09d7e3dfc400",
-  "parent_state": "892c80a90ca3d1dce58833f61137d1d18bb3d6f6",
+  "operation_token": "5290d2dc-8bdb-443f-b4b3-f94061970ab3",
+  "parent_state": "674abe9201ee453e379207c6e944a6b7d5da47f8",
   "projection_status": "partial",
-  "publication_id": "a539788d-8b39-47d4-8d29-a0492d4089c8",
-  "publication_scope": "close:agentwheel-0-20-9-release",
+  "publication_id": "cd3dfbd8-4c24-416d-96b1-26d81c7cd7cb",
+  "publication_scope": "create:legacy-state-candidate-correlation",
   "schema_version": 2,
   "syncwheel_version": "0.43.14",
   "tombstones": [

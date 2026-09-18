@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/legacy-recovery-report"
+  ],
+  "claimed_at": "2026-09-18T17:14:46+00:00",
+  "coordination_id": "default",
+  "operation_token": "5e69998b-e5c2-4da0-94be-bccc5296efa5",
+  "publication_scope": "create:legacy-recovery-report",
+  "source_ref": "refs/heads/syncwheel/draft/legacy-recovery-report",
+  "syncwheel_version": "0.43.15"
+}

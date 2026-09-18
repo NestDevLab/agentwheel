@@ -95,6 +95,9 @@ export interface GraphSourcePlanOptions {
   forceForeignState?: boolean;
   deferForeignStateCheck?: boolean;
   fleetId?: string;
+  cacheRoot?: string;
+  registryCachePath?: string;
+  freshGraphOnly?: boolean;
 }
 
 export interface GraphSourcePlanResult {
@@ -178,6 +181,9 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
 export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Promise<GraphSourcePlanResult> {
   if (options.roots.length === 0) {
     throw new Error("At least one source is required for a graph plan.");
+  }
+  if (options.freshGraphOnly && options.readOnly !== true) {
+    throw new Error("Fresh graph recovery is read-only and cannot be used for install planning.");
   }
   const workspaceRoot = options.workspaceRoot ?? options.targetRoot;
   const transport = options.transport ?? localTransport;
@@ -277,12 +283,16 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     });
     return { priorState, stableLock, stableSourceLock };
   };
-  const { priorState, stableLock, stableSourceLock } = await readPriorState();
+  // Evidence-only recovery must resolve current sources even when historical state is inconsistent.
+  // The caller inventories that state separately; it cannot authorize install planning here.
+  const { priorState, stableLock, stableSourceLock } = options.freshGraphOnly
+    ? { priorState: {} as PriorTargetState, stableLock: undefined, stableSourceLock: undefined }
+    : await readPriorState();
   const previousLock = priorState.graphLock;
-  const registryClient = new RegistryClient({ workspaceRoot, offline: lockMode, offlineLabel: lockLabel, warn });
+  const registryClient = new RegistryClient({ workspaceRoot, cachePath: options.registryCachePath, offline: lockMode, offlineLabel: lockLabel, warn });
   const graph = await resolveDependencyGraph(options.roots, {
     workspaceRoot,
-    cacheRoot: join(workspaceRoot, ".agentwheel", "cache"),
+    cacheRoot: options.cacheRoot ?? join(workspaceRoot, ".agentwheel", "cache"),
     registryClient,
     noDeps: options.noDeps,
     includeSuggestions: options.includeSuggestions,

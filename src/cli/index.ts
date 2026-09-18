@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
@@ -47,6 +47,7 @@ import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
+import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
 import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
@@ -995,6 +996,65 @@ ownershipCommand
     console.log(`Hash: ${result.artifactHash}`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
+  });
+
+ownershipCommand
+  .command("recovery-plan")
+  .description("write a read-only per-path legacy ownership evidence report")
+  .requiredOption("--fleet <id>", "registered Fleet containing the current source graph")
+  .requiredOption("--report <path>", "new private JSON report path")
+  .option("--agent <name>", "one named Fleet target")
+  .option("--profile <name>", "Fleet profile resolving to one target")
+  .action(async (options) => {
+    const targets = await resolveCliTargets({ fleet: options.fleet, agent: options.agent, profile: options.profile });
+    if (targets.length !== 1) throw new Error(`Recovery planning requires one Fleet target, found ${targets.length}.`);
+    const target = targets[0]!;
+    if (target.fleetId !== options.fleet) throw new Error("Resolved target does not belong to the selected Fleet.");
+    const adapter = await resolveAdapterForTarget(target, {});
+    const transport = transportForTarget(target);
+    const requestedReport = normalizeCliPath(options.report);
+    const reportPath = join(await realpath(dirname(requestedReport)), basename(requestedReport));
+    const reportInsideTarget = relative(resolve(target.targetRoot), reportPath);
+    if (reportInsideTarget === "" || (!reportInsideTarget.startsWith("..") && !isAbsolute(reportInsideTarget))) {
+      throw new Error("Recovery report must be outside the runtime target root.");
+    }
+    const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    if (config.packages.length === 0) throw new Error("Fleet has no configured source packages.");
+    const stage = await mkdtemp(join(tmpdir(), "agentwheel-recovery-"));
+    const priorTmpdir = process.env.TMPDIR;
+    try {
+      process.env.TMPDIR = stage;
+      const graphPlan = await createGraphSourcePlan({
+        roots: config.packages.map((pkg) => ({
+          rootId: pkg.name, source: pkg.source, mode: pkg.mode, version: pkg.version,
+          ref: pkg.requestedRef, select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
+          selection: pkg.selection, aliases: pkg.aliases, overrides: pkg.overrides,
+          includeSuggestions: pkg.withSuggestions, suggestionAliases: pkg.suggestions,
+          useLock: false,
+        })),
+        targetRoot: target.targetRoot, workspaceRoot: target.workspaceRoot, fleetId: target.fleetId,
+        adapter, transport, targetKey: targetKeyForTarget(target, adapter.name),
+        targetFingerprintParts: targetFingerprintParts(target, adapter, adapterOptionsForTarget(target, {}), installationType),
+        installationType, stateKey: target.stateKey, readOnly: true, yes: true, freshGraphOnly: true,
+        deferForeignStateCheck: true, cacheRoot: join(stage, "source-cache"),
+        registryCachePath: join(stage, "registry.json"),
+      });
+      const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh");
+      const report = await planLegacyRecovery({
+        graphPlan, installRoot, workspaceRoot: target.workspaceRoot,
+        fleetId: target.fleetId, explicitStateKey: target.stateKey,
+        targetKey: targetKeyForTarget(target, adapter.name), adapter: adapter.name, installationType,
+        historicalLocks: await inventoryHistoricalLocks(target.workspaceRoot), transport,
+      });
+      await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+      console.log(`Recovery report: ${reportPath}`);
+      console.log(JSON.stringify(report.counts));
+    } finally {
+      if (priorTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = priorTmpdir;
+      await rm(stage, { recursive: true, force: true });
+    }
   });
 
 ownershipCommand

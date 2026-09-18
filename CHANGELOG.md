@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.10
+
+- Add a read-only per-path legacy ownership recovery report that preserves unresolved claims
+  for explicit review before any Fleet change.
+
 ## 0.20.9
 
 - Preserve managed target state when adapter output, graph representation, or ownership changes,

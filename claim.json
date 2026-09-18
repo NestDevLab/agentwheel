@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/release/agentwheel-0.20.9"
+  ],
+  "claimed_at": "2026-09-18T11:57:05+00:00",
+  "coordination_id": "default",
+  "operation_token": "71cc78ce-551c-4c44-9133-668ecc46583a",
+  "publication_scope": "stack:agentwheel-0-20-9-release",
+  "source_ref": "refs/heads/release/agentwheel-0.20.9",
+  "syncwheel_version": "0.43.14"
+}

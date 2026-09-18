@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/legacy-recovery-report"
   ],
-  "claimed_at": "2026-09-18T17:22:54+00:00",
+  "claimed_at": "2026-09-18T17:29:38+00:00",
   "coordination_id": "default",
-  "operation_token": "55ce370e-f7ea-4f2f-82e9-5f385b686542",
-  "publication_scope": "promote:legacy-recovery-report",
+  "operation_token": "44656d5f-6109-4a5c-acb4-499741c090ac",
+  "publication_scope": "stack:legacy-recovery-report",
   "source_ref": "refs/heads/pr/legacy-recovery-report",
   "syncwheel_version": "0.43.15"
 }

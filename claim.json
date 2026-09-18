@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation"
+  ],
+  "claimed_at": "2026-09-18T12:31:05+00:00",
+  "coordination_id": "default",
+  "operation_token": "5290d2dc-8bdb-443f-b4b3-f94061970ab3",
+  "publication_scope": "create:legacy-state-candidate-correlation",
+  "source_ref": "refs/heads/syncwheel/draft/legacy-state-candidate-correlation",
+  "syncwheel_version": "0.43.14"
+}

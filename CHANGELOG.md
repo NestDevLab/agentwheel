@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.9
+
+- Preserve managed target state when adapter output, graph representation, or ownership changes,
+  including legacy migration, fleet normalization, and transactional recovery.
+- Reject ambiguous or foreign ownership during target-state migration instead of silently
+  misclassifying managed files.
+
 ## 0.20.8
 
 - Compose only selected artifacts under `--no-deps`, without changing normal dependency graph or

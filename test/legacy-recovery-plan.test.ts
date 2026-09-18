@@ -81,6 +81,15 @@ describe("read-only legacy recovery evidence", () => {
     expect(report.paths[0]?.category).toBe("unresolved");
   });
 
+  it("does not treat an intentionally excluded runtime as an incomplete graph", async () => {
+    const f = await fixture();
+    f.graphPlan.warnings.push("skip artifact example:commands/other (selected but not targeted: runtimes=[hermes])");
+    const report = await f.run();
+    expect(report.resolutionWarnings).toEqual([]);
+    expect(report.complete).toBe(true);
+    expect(report.paths[0]?.category).toBe("current-graph-exact-match");
+  });
+
   it("checks a managed block rather than the enclosing file hash", async () => {
     const f = await fixture();
     const source = join(f.root, "source.md");

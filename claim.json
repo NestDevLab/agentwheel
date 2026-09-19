@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation"
-  ],
-  "claimed_at": "2026-09-18T12:31:05+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-19T22:20:27+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "5290d2dc-8bdb-443f-b4b3-f94061970ab3",
-  "publication_scope": "create:legacy-state-candidate-correlation",
+  "operation_token": "33f20baa-55e4-427f-88ab-d3999f2c4b57",
+  "publication_scope": "close:legacy-state-candidate-correlation",
+  "reason": "abandoned",
   "source_ref": "refs/heads/syncwheel/draft/legacy-state-candidate-correlation",
-  "syncwheel_version": "0.43.14"
+  "syncwheel_version": "0.43.20"
 }

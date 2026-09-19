@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/legacy-state-recovery-02011"
-  ],
-  "claimed_at": "2026-09-19T09:01:36+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-19T09:20:35+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "bc0fc938-fb56-4893-a428-751965f901c3",
-  "publication_scope": "stack:retire-incomplete-lock",
+  "operation_token": "f919fefd-eeb6-4755-951d-0c66deeda16a",
+  "publication_scope": "close:retire-incomplete-lock",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/legacy-state-recovery-02011",
   "syncwheel_version": "0.43.17"
 }

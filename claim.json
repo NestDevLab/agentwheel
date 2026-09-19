@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/legacy-graph-only-recovery"
+    "refs/heads/pr/legacy-graph-only-recovery"
   ],
-  "claimed_at": "2026-09-19T22:27:11+00:00",
+  "claimed_at": "2026-09-19T22:27:41+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "d56b8751-653e-4629-9ad4-31f06ae39870",
-  "publication_scope": "stack:legacy-graph-only-recovery",
+  "operation_token": "d171ed67-f7b7-4424-8719-f5a8593849fb",
+  "publication_scope": "promote:legacy-graph-only-recovery",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
   "syncwheel_version": "0.43.20"
 }

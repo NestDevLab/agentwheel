@@ -306,6 +306,27 @@ describe("released target-state migration", () => {
     }))).rejects.toThrow(/graph.lock.*digest|digest.*graph.lock/i);
 
     expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
+
+    const warnings: string[] = [];
+    const recovered = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }), {
+      recoverLegacyState: true,
+      forceConflict: true,
+      replaceConflict: true,
+      warn: (message) => warnings.push(message),
+    });
+    expect(recovered.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+    expect(warnings).toEqual([
+      expect.stringMatching(/legacy target state.*graph-lock digest.*preserving it outside/i),
+    ]);
+    await applyFixturePlan(fixture, recovered);
+
+    expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
+    const repeated = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }));
+    expect(repeated.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
   });
 
   it("refuses a correlated manifest whose internal target root differs from the requested runtime", async () => {
@@ -774,6 +795,10 @@ async function graphPlan(
     adapter?: AdapterConfig;
     frozenLock?: boolean;
     transport?: TargetTransport;
+    recoverLegacyState?: boolean;
+    forceConflict?: boolean;
+    replaceConflict?: boolean;
+    warn?: (message: string) => void;
   } = {},
 ) {
   return createGraphSourcePlan({
@@ -791,6 +816,10 @@ async function graphPlan(
     readOnly: true,
     isTTY: false,
     frozenLock: options.frozenLock,
+    recoverLegacyState: options.recoverLegacyState,
+    forceConflict: options.forceConflict,
+    replaceConflict: options.replaceConflict,
+    warn: options.warn,
   });
 }
 

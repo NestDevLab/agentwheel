@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.11
+
+- Add explicit legacy-state recovery for plan/install so a reviewed Fleet can create stable state
+  while preserving invalid historical candidates and retaining normal conflict controls.
+- Reap cache locks only when their recorded owner PID is no longer alive.
+
 ## 0.20.10
 
 - Add a read-only per-path legacy ownership recovery report that preserves unresolved claims

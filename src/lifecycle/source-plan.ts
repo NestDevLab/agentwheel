@@ -690,6 +690,16 @@ export async function resolvePriorTargetState(options: PriorTargetStateOptions):
   }
 
   if (options.stableLock) return { graphLock: options.stableLock };
+  if (candidates.length > 0 && options.recoverLegacyState) {
+    for (const candidate of candidates) {
+      options.warn?.(
+        `Legacy graph-only target state for ${options.adapter} at ${candidate.graphLockPath} `
+        + "has no correlated install manifest; runtime identity and ownership cannot be proven. "
+        + "Preserving it outside the recovered stable state.",
+      );
+    }
+    return {};
+  }
   if (candidates.length > 1) {
     throw new Error(`Ambiguous legacy target state for ${options.adapter}: multiple graph-only candidates were found.`);
   }

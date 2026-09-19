@@ -411,6 +411,48 @@ describe("released target-state migration", () => {
     await expect(stat(legacyPath)).resolves.toBeDefined();
   });
 
+  it("recovers stable state while preserving multiple graph-only legacy candidates", async () => {
+    const fixture = await migrationFixture();
+    const first = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const second = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }));
+    const firstPath = legacyGraphPath(fixture.workspaceRoot, first.targetFingerprint);
+    const secondPath = legacyGraphPath(fixture.workspaceRoot, second.targetFingerprint);
+    assertInsideFixture(firstPath, [fixture.workspaceRoot]);
+    assertInsideFixture(secondPath, [fixture.workspaceRoot]);
+    await writeGraphLock(firstPath, first.bundle.graphLock);
+    await writeGraphLock(secondPath, second.bundle.graphLock);
+    const before = await persistentStateSnapshot([firstPath, secondPath]);
+
+    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "c".repeat(64),
+    }))).rejects.toThrow(/multiple graph-only candidates/i);
+
+    const warnings: string[] = [];
+    const recovered = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "c".repeat(64),
+    }), {
+      recoverLegacyState: true,
+      forceConflict: true,
+      replaceConflict: true,
+      warn: (message) => warnings.push(message),
+    });
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings.every((message) => /graph-only.*preserving it outside/i.test(message))).toBe(true);
+    await applyFixturePlan(fixture, recovered);
+    expect(await persistentStateSnapshot([firstPath, secondPath])).toEqual(before);
+    await expect(stat(recovered.graphLockPath)).resolves.toBeDefined();
+
+    const repeated = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "c".repeat(64),
+    }));
+    expect(repeated.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+  });
+
   it("does not adopt a graph-only legacy candidate from an unprovable SSH endpoint", async () => {
     const fixture = await migrationFixture();
     const endpointA = fingerprintParts(fixture.targetRoot, {

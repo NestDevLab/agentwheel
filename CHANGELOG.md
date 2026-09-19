@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.12
+
+- Let explicit legacy-state recovery create stable target state while preserving multiple
+  graph-only candidates whose runtime identity and ownership cannot be proven.
+
 ## 0.20.11
 
 - Add explicit legacy-state recovery for plan/install so a reviewed Fleet can create stable state

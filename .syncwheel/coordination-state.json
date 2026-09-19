@@ -8,7 +8,7 @@
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
-    "refs/heads/pr/legacy-state-recovery-02011": "4e8864d1b873ac8f94dce413113309a53e271194",
+    "refs/heads/pr/legacy-state-recovery-02011": "d09f86d79a479353e0a51bcfbd8a9874479654dd",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -18,7 +18,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-19T09:00:13+00:00",
+  "created_at": "2026-09-19T09:01:36+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -145,11 +145,11 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "9c4c2c0d-ac61-4f27-9837-be7b2dd3933a",
-  "parent_state": "97fcaecb024e3d9efd1cd7c779afd133e3657f0b",
+  "operation_token": "bc0fc938-fb56-4893-a428-751965f901c3",
+  "parent_state": "f7007162b3b28f848163b37b95a54278c7be8701",
   "projection_status": "partial",
-  "publication_id": "13218b91-239a-4883-a733-17d75f0dea86",
-  "publication_scope": "promote:retire-incomplete-lock",
+  "publication_id": "ef441e18-d386-4222-a0d8-200436d21085",
+  "publication_scope": "stack:retire-incomplete-lock",
   "schema_version": 2,
   "syncwheel_version": "0.43.17",
   "tombstones": [

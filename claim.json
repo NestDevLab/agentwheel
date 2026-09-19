@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery"
   ],
-  "claimed_at": "2026-09-19T22:21:57+00:00",
+  "claimed_at": "2026-09-19T22:27:11+00:00",
   "coordination_id": "default",
-  "operation_token": "9581385e-1284-4cfb-81f0-5fe9a7f064d8",
-  "publication_scope": "create:legacy-graph-only-recovery",
+  "operation_token": "d56b8751-653e-4629-9ad4-31f06ae39870",
+  "publication_scope": "stack:legacy-graph-only-recovery",
   "source_ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
   "syncwheel_version": "0.43.20"
 }

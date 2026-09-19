@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/retire-incomplete-lock": "6388dfb9a4c5d4a8f2f258a7060bcb504790da73"
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "e1f0ec77402b25dfad44c85762e56152a957a3cd"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -14,10 +14,10 @@
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "c77aef171cf18173daa4ad5491f03f5562681c09",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f",
-    "refs/heads/syncwheel/draft/retire-incomplete-lock": "a5c7b2cfe843769e951de4c8701f1894a66be3d7"
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "6cd31e6c5e0eef3f7aba12aa990033548c675ac6"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-19T08:40:54+00:00",
+  "created_at": "2026-09-19T08:59:41+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -62,7 +62,7 @@
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
-    "refs/heads/syncwheel/draft/retire-incomplete-lock": "6388dfb9a4c5d4a8f2f258a7060bcb504790da73",
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
@@ -132,7 +132,9 @@
           "role": "canonical"
         },
         "branch": "syncwheel/draft/retire-incomplete-lock",
-        "commits": [],
+        "commits": [
+          "e1f0ec77402b25dfad44c85762e56152a957a3cd"
+        ],
         "id": "retire-incomplete-lock",
         "integration_branch": "main-integration",
         "state": "draft",
@@ -142,11 +144,11 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "c16c46c5-6301-430c-871b-7c71bd9fff16",
-  "parent_state": "fb2137104250ee23164715610bb48f380d2ae202",
+  "operation_token": "e2287a9c-2e73-4a0b-8f1a-04fad49b147b",
+  "parent_state": "bdc995be1b4a4e277c97e4ddef673484b99230a5",
   "projection_status": "partial",
-  "publication_id": "2778b27e-4621-4c29-a291-31fcf7f38927",
-  "publication_scope": "create:retire-incomplete-lock",
+  "publication_id": "1f49ca4c-1457-4b78-8881-985a21daf46e",
+  "publication_scope": "stack:retire-incomplete-lock",
   "schema_version": 2,
   "syncwheel_version": "0.43.17",
   "tombstones": [

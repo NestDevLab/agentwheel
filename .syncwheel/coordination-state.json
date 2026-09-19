@@ -11,12 +11,12 @@
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
-    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "c77aef171cf18173daa4ad5491f03f5562681c09",
+    "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-19T09:20:35+00:00",
+  "created_at": "2026-09-19T22:20:28+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -92,25 +92,11 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "legacy-state-candidate-correlation",
         "mgt-0244-integration-preservation"
       ],
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "syncwheel/draft/legacy-state-candidate-correlation",
-        "commits": [],
-        "id": "legacy-state-candidate-correlation",
-        "integration_branch": "main-integration",
-        "state": "draft",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -128,13 +114,13 @@
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "f919fefd-eeb6-4755-951d-0c66deeda16a",
-  "parent_state": "4c0009906901686593e5d958f461bf4d0fbc9510",
+  "operation_token": "33f20baa-55e4-427f-88ab-d3999f2c4b57",
+  "parent_state": "98ff107fcc08f2d15ff53e235559ef6859b19b0e",
   "projection_status": "partial",
-  "publication_id": "9d10e698-ce99-41c3-9e70-3ad9356c52ec",
-  "publication_scope": "close:retire-incomplete-lock",
+  "publication_id": "eae1fbeb-bf3f-4b1b-b595-a213d092fa3c",
+  "publication_scope": "close:legacy-state-candidate-correlation",
   "schema_version": 2,
-  "syncwheel_version": "0.43.17",
+  "syncwheel_version": "0.43.20",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",
@@ -471,6 +457,14 @@
       "ref": "refs/heads/pr/legacy-state-recovery-02011",
       "remote_tip": null,
       "stack": "retire-incomplete-lock"
+    },
+    {
+      "branch": "syncwheel/draft/legacy-state-candidate-correlation",
+      "closed_at": "2026-09-19T22:20:18+00:00",
+      "reason": "abandoned",
+      "ref": "refs/heads/syncwheel/draft/legacy-state-candidate-correlation",
+      "remote_tip": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
+      "stack": "legacy-state-candidate-correlation"
     }
   ]
 }

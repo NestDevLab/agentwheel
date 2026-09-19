@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.10"
+  version: "0.20.11"
 ---
 
 # agentwheel
@@ -618,3 +618,17 @@ nothing else is stale. If it differs, regenerate only the affected graph locks (
 leave them uncommitted: lock commits belong to the approved install. `update --dependency` cannot
 recompute an edge whose root node id changed (e.g. after renaming the root package's artifacts);
 regenerate the locks instead.
+
+If target-state discovery rejects an invalid historical graph-lock/manifest pair, first write and
+review `agentwheel ownership recovery-plan`. For a complete local report, preview a stable-state
+recovery with the exact Fleet target:
+
+```bash
+agentwheel plan --fleet <fleet-id> --agent <agent> \
+  --recover-legacy-state --force-conflict --replace-conflict
+```
+
+`--recover-legacy-state` preserves the invalid historical files and only bypasses their use as the
+planning base. `--force-conflict` adopts exact existing content; `--replace-conflict` permits the
+reviewed plan to update differing unmanaged content. Apply only the same reviewed target and flags.
+After the first stable install, rerun the ordinary plan without recovery flags and require a no-op.

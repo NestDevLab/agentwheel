@@ -427,6 +427,22 @@ apply journal that embeds and exactly correlates the missing manifest and graph 
 discoverable for recovery. Legacy SSH state is also preserved and refused because the old records do
 not prove which endpoint owned it.
 
+After reviewing `agentwheel ownership recovery-plan`, use `--recover-legacy-state` only for an
+invalid local candidate whose historical files must remain preserved. The recovery plan ignores
+that candidate when constructing the new stable state; it does not authorize runtime replacement.
+Adopting matching unmanaged files still requires `--force-conflict`, while replacing differing files
+still requires `--replace-conflict`. Review the resulting plan before applying the same flags:
+
+```bash
+agentwheel plan --fleet example-fleet --agent lab-claude \
+  --recover-legacy-state --force-conflict --replace-conflict
+agentwheel install --fleet example-fleet --agent lab-claude \
+  --recover-legacy-state --force-conflict --replace-conflict
+```
+
+Once the stable manifest exists, normal status and planning use it while retaining the invalid
+historical candidate for explicit later cleanup.
+
 ## Core Ideas
 
 **Three places, one direction:**

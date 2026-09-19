@@ -98,6 +98,7 @@ export interface GraphSourcePlanOptions {
   cacheRoot?: string;
   registryCachePath?: string;
   freshGraphOnly?: boolean;
+  recoverLegacyState?: boolean;
 }
 
 export interface GraphSourcePlanResult {
@@ -280,6 +281,8 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
       stableManifest,
       stableLock,
       transport,
+      recoverLegacyState: options.recoverLegacyState,
+      warn,
     });
     return { priorState, stableLock, stableSourceLock };
   };
@@ -517,6 +520,8 @@ export interface PriorTargetStateOptions {
   stableManifest?: InstallManifest;
   stableLock?: GraphLock;
   transport: TargetTransport;
+  recoverLegacyState?: boolean;
+  warn?: (message: string) => void;
 }
 
 export interface TargetApplyJournalResolution {
@@ -638,7 +643,10 @@ interface LegacyStateCandidate {
 }
 
 export async function resolvePriorTargetState(options: PriorTargetStateOptions): Promise<PriorTargetState> {
-  const candidates = await discoverLegacyStateCandidates(options);
+  const candidates = await discoverLegacyStateCandidates({
+    ...options,
+    recoverLegacyState: options.recoverLegacyState === true || options.stableManifest !== undefined,
+  });
   const correlated = candidates.filter((candidate) => candidate.manifest);
 
   if (options.stableManifest) {
@@ -711,36 +719,29 @@ async function discoverLegacyStateCandidates(options: PriorTargetStateOptions): 
     const fingerprint = name.slice(0, -suffix.length);
     if (!/^[a-f0-9]{64}$/u.test(fingerprint)) continue;
     const graphLockPath = join(directory, name);
-    let graphLock: GraphLock;
     try {
+      let graphLock: GraphLock;
       graphLock = await readGraphLock(graphLockPath);
-    } catch (error) {
-      throw new Error(
-        `Legacy graph lock at ${graphLockPath} is invalid or unsupported: `
-        + (error instanceof Error ? error.message : String(error)),
-      );
-    }
-    if (graphLock.canonical.targetFingerprint !== fingerprint) {
-      throw new Error(
-        `Legacy graph lock fingerprint does not match its filename at ${graphLockPath}.`,
-      );
-    }
-    if (options.transport.kind === "ssh") {
-      throw new Error(
-        `Legacy SSH target state at ${graphLockPath} does not record its original endpoint; `
-        + "Agentwheel cannot prove endpoint identity, so the graph lock was preserved.",
-      );
-    }
-    const graphLockDigest = digestGraphLock(graphLock);
-    const candidateStateKey = stateKeyFor(options.adapter, {
-      installationType: options.installationType,
-      stateKey: options.explicitStateKey,
-      targetFingerprint: fingerprint,
-      fleetId: options.fleetId,
-    });
-    let manifest: InstallManifest | undefined;
-    let sourceLock: SourceLock | undefined;
-    try {
+      if (graphLock.canonical.targetFingerprint !== fingerprint) {
+        throw new Error(
+          `Legacy graph lock fingerprint does not match its filename at ${graphLockPath}.`,
+        );
+      }
+      if (options.transport.kind === "ssh") {
+        throw new Error(
+          `Legacy SSH target state at ${graphLockPath} does not record its original endpoint; `
+          + "Agentwheel cannot prove endpoint identity, so the graph lock was preserved.",
+        );
+      }
+      const graphLockDigest = digestGraphLock(graphLock);
+      const candidateStateKey = stateKeyFor(options.adapter, {
+        installationType: options.installationType,
+        stateKey: options.explicitStateKey,
+        targetFingerprint: fingerprint,
+        fleetId: options.fleetId,
+      });
+      let manifest: InstallManifest | undefined;
+      let sourceLock: SourceLock | undefined;
       manifest = await readInstallManifest(options.installRoot, options.adapter, options.transport, {
         installationType: options.installationType,
         stateKey: candidateStateKey,
@@ -749,33 +750,33 @@ async function discoverLegacyStateCandidates(options: PriorTargetStateOptions): 
         installationType: options.installationType,
         stateKey: candidateStateKey,
       });
-    } catch (error) {
-      throw new Error(
-        `Legacy target state for ${graphLockPath} is invalid: `
-        + (error instanceof Error ? error.message : String(error)),
-      );
-    }
-    if (!manifest) {
-      if (sourceLock) {
-        throw new Error(`Legacy source lock for ${graphLockPath} has no correlated install manifest.`);
+      if (!manifest) {
+        if (sourceLock) {
+          throw new Error(`Legacy source lock for ${graphLockPath} has no correlated install manifest.`);
+        }
+        candidates.push({ stateKey: candidateStateKey, graphLockPath, graphLockDigest, graphLock });
+        continue;
       }
-      candidates.push({ stateKey: candidateStateKey, graphLockPath, graphLockDigest, graphLock });
-      continue;
+      const validated = validateLegacyManifestCandidate(manifest, {
+        ...options,
+        candidateStateKey,
+        graphLockDigest,
+        graphLockPath,
+      });
+      candidates.push({
+        stateKey: candidateStateKey,
+        graphLockPath,
+        graphLockDigest,
+        graphLock,
+        manifest: validated,
+        sourceLock,
+      });
+    } catch (error) {
+      const message = `Legacy target state for ${graphLockPath} is invalid: `
+        + (error instanceof Error ? error.message : String(error));
+      if (!options.recoverLegacyState) throw new Error(message);
+      options.warn?.(`${message} Preserving it outside the recovered stable state.`);
     }
-    const validated = validateLegacyManifestCandidate(manifest, {
-      ...options,
-      candidateStateKey,
-      graphLockDigest,
-      graphLockPath,
-    });
-    candidates.push({
-      stateKey: candidateStateKey,
-      graphLockPath,
-      graphLockDigest,
-      graphLock,
-      manifest: validated,
-      sourceLock,
-    });
   }
   return candidates;
 }

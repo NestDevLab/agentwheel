@@ -454,6 +454,7 @@ program
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -496,6 +497,7 @@ program
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
@@ -2137,6 +2139,7 @@ interface GraphCliOptions {
   forceConflict?: boolean;
   forceForeignState?: boolean;
   replaceConflict?: boolean;
+  recoverLegacyState?: boolean;
   format?: string;
   reportFormat?: PlanOutputFormat;
   suppressEmptyMessage?: boolean;
@@ -2357,6 +2360,7 @@ async function buildGraphPlansForTarget(
     const priorGroupState = await resolveCliTargetState(group.target, {
       ...targetOptions,
       installationType: group.installationType,
+      recoverLegacyState: targetOptions.recoverLegacyState,
     });
     const previousGroupLock = priorGroupState.graphLock;
     const dependencyUpdateRootNames = new Set<string>();
@@ -2478,6 +2482,7 @@ async function buildGraphPlansForTarget(
       replaceConflict: targetOptions.replaceConflict,
       retireExactMcp: targetOptions.retireExactMcp,
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
+      recoverLegacyState: targetOptions.recoverLegacyState,
     });
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const manifest = result.previousManifest;
@@ -3498,7 +3503,7 @@ interface ResolvedCliTargetState {
 
 async function resolveCliTargetState(
   target: RuntimeTarget,
-  options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; warn?: (message: string) => void },
+  options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; recoverLegacyState?: boolean; warn?: (message: string) => void },
 ): Promise<ResolvedCliTargetState> {
   const adapterOptions = adapterOptionsForTarget(target, options);
   const adapter = await resolveAdapterForTarget(target, adapterOptions);
@@ -3530,6 +3535,8 @@ async function resolveCliTargetState(
     stableManifest,
     stableLock,
     transport,
+    recoverLegacyState: options.recoverLegacyState,
+    warn: options.warn,
   });
   return {
     adapter,

@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/legacy-state-recovery-02011"
   ],
-  "claimed_at": "2026-09-19T09:00:13+00:00",
+  "claimed_at": "2026-09-19T09:01:36+00:00",
   "coordination_id": "default",
-  "operation_token": "9c4c2c0d-ac61-4f27-9837-be7b2dd3933a",
-  "publication_scope": "promote:retire-incomplete-lock",
+  "operation_token": "bc0fc938-fb56-4893-a428-751965f901c3",
+  "publication_scope": "stack:retire-incomplete-lock",
   "source_ref": "refs/heads/pr/legacy-state-recovery-02011",
   "syncwheel_version": "0.43.17"
 }

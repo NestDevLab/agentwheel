@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/syncwheel/draft/retire-incomplete-lock"
   ],
-  "claimed_at": "2026-09-19T08:40:53+00:00",
+  "claimed_at": "2026-09-19T08:59:40+00:00",
   "coordination_id": "default",
-  "operation_token": "c16c46c5-6301-430c-871b-7c71bd9fff16",
-  "publication_scope": "create:retire-incomplete-lock",
+  "operation_token": "e2287a9c-2e73-4a0b-8f1a-04fad49b147b",
+  "publication_scope": "stack:retire-incomplete-lock",
   "source_ref": "refs/heads/syncwheel/draft/retire-incomplete-lock",
   "syncwheel_version": "0.43.17"
 }

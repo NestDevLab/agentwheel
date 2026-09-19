@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/legacy-graph-only-recovery"
+  ],
+  "claimed_at": "2026-09-19T22:27:40+00:00",
+  "coordination_id": "default",
+  "operation_token": "d171ed67-f7b7-4424-8719-f5a8593849fb",
+  "publication_scope": "promote:legacy-graph-only-recovery",
+  "source_ref": "refs/heads/pr/legacy-graph-only-recovery",
+  "syncwheel_version": "0.43.20"
+}

@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation"
-  ],
-  "claimed_at": "2026-09-18T17:12:06+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-19T22:21:13+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "f67493a8-b911-4abe-915e-997118dd4ff4",
-  "publication_scope": "create:mgt-0244-integration-preservation",
+  "operation_token": "2b504b53-a726-4a2e-9248-ce7a0678c64a",
+  "publication_scope": "close:mgt-0244-integration-preservation",
+  "reason": "abandoned",
   "source_ref": "refs/heads/syncwheel/draft/mgt-0244-integration-preservation",
-  "syncwheel_version": "0.43.15"
+  "syncwheel_version": "0.43.20"
 }

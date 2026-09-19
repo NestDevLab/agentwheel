@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "6388dfb9a4c5d4a8f2f258a7060bcb504790da73"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -11,10 +13,11 @@
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "c77aef171cf18173daa4ad5491f03f5562681c09",
-    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f"
+    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f",
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "a5c7b2cfe843769e951de4c8701f1894a66be3d7"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-18T17:54:34+00:00",
+  "created_at": "2026-09-19T08:40:54+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -59,6 +62,7 @@
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
+    "refs/heads/syncwheel/draft/retire-incomplete-lock": "6388dfb9a4c5d4a8f2f258a7060bcb504790da73",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4"
   },
   "manifest": {
@@ -89,7 +93,8 @@
       "branch": "main-integration",
       "stacks": [
         "legacy-state-candidate-correlation",
-        "mgt-0244-integration-preservation"
+        "mgt-0244-integration-preservation",
+        "retire-incomplete-lock"
       ],
       "strategy": "cherry-pick"
     },
@@ -119,18 +124,31 @@
         "integration_branch": "main-integration",
         "state": "draft",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/retire-incomplete-lock",
+        "commits": [],
+        "id": "retire-incomplete-lock",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "338af783-f52d-429b-8ffb-5551cf2f743e",
-  "parent_state": "a01b3f9e15b4a65881be29339e7badef6ff6e215",
+  "operation_token": "c16c46c5-6301-430c-871b-7c71bd9fff16",
+  "parent_state": "fb2137104250ee23164715610bb48f380d2ae202",
   "projection_status": "partial",
-  "publication_id": "383a6b2e-3ee2-45db-a23c-94e417fe137f",
-  "publication_scope": "close:legacy-recovery-report",
+  "publication_id": "2778b27e-4621-4c29-a291-31fcf7f38927",
+  "publication_scope": "create:retire-incomplete-lock",
   "schema_version": 2,
-  "syncwheel_version": "0.43.15",
+  "syncwheel_version": "0.43.17",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

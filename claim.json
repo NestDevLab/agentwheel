@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/retire-incomplete-lock"
+    "refs/heads/pr/legacy-state-recovery-02011"
   ],
-  "claimed_at": "2026-09-19T08:59:40+00:00",
+  "claimed_at": "2026-09-19T09:00:13+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "e2287a9c-2e73-4a0b-8f1a-04fad49b147b",
-  "publication_scope": "stack:retire-incomplete-lock",
+  "operation_token": "9c4c2c0d-ac61-4f27-9837-be7b2dd3933a",
+  "publication_scope": "promote:retire-incomplete-lock",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/retire-incomplete-lock",
   "syncwheel_version": "0.43.17"
 }

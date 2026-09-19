@@ -12,11 +12,11 @@
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
-    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "85d3b5aef22c00f503ebef0795bb6c4d266b280f",
+    "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-19T22:20:28+00:00",
+  "created_at": "2026-09-19T22:21:13+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -91,34 +91,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "mgt-0244-integration-preservation"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "syncwheel/draft/mgt-0244-integration-preservation",
-        "commits": [],
-        "id": "mgt-0244-integration-preservation",
-        "integration_branch": "main-integration",
-        "state": "draft",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "33f20baa-55e4-427f-88ab-d3999f2c4b57",
-  "parent_state": "98ff107fcc08f2d15ff53e235559ef6859b19b0e",
+  "operation_token": "2b504b53-a726-4a2e-9248-ce7a0678c64a",
+  "parent_state": "67538ea12a94cf47b12d469fb609b7e2c1b1eb5c",
   "projection_status": "partial",
-  "publication_id": "eae1fbeb-bf3f-4b1b-b595-a213d092fa3c",
-  "publication_scope": "close:legacy-state-candidate-correlation",
+  "publication_id": "dbe2bcd3-ab8c-486e-a1ef-e4a6cca366d1",
+  "publication_scope": "close:mgt-0244-integration-preservation",
   "schema_version": 2,
   "syncwheel_version": "0.43.20",
   "tombstones": [
@@ -465,6 +449,14 @@
       "ref": "refs/heads/syncwheel/draft/legacy-state-candidate-correlation",
       "remote_tip": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
       "stack": "legacy-state-candidate-correlation"
+    },
+    {
+      "branch": "syncwheel/draft/mgt-0244-integration-preservation",
+      "closed_at": "2026-09-19T22:21:03+00:00",
+      "reason": "abandoned",
+      "ref": "refs/heads/syncwheel/draft/mgt-0244-integration-preservation",
+      "remote_tip": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
+      "stack": "mgt-0244-integration-preservation"
     }
   ]
 }

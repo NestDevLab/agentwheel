@@ -41,5 +41,15 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Real CLI fleet install, update, and recovery
+        run: python3 scripts/cli-dogfood.py --evidence-dir "${{ runner.temp }}/cli-dogfood"
+
+      - name: Upload CLI timings and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-dogfood
+          path: ${{ runner.temp }}/cli-dogfood/commands.jsonl
+
       - name: Test
         run: pnpm test

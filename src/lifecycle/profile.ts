@@ -32,6 +32,7 @@ export interface ProfileSyncOptions {
   forceConflict?: boolean;
   forceForeignState?: boolean;
   replaceConflict?: boolean;
+  recoverLegacyState?: boolean;
   noDeps?: boolean;
   includeSuggestions?: boolean;
   suggestionAliases?: string[];
@@ -143,6 +144,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       forceConflict: options.forceConflict,
       forceForeignState: options.forceForeignState,
       replaceConflict: options.replaceConflict,
+      recoverLegacyState: options.recoverLegacyState,
     });
     try {
       const result: ProfileSyncResult = {

@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration"
+  ],
+  "claimed_at": "2026-09-20T22:19:29+00:00",
+  "coordination_id": "default",
+  "operation_token": "755f6c83-532d-4147-8203-af7dbdbabc81",
+  "publication_scope": "create:fleet-qualified-state-key-migration",
+  "source_ref": "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration",
+  "syncwheel_version": "0.43.25"
+}

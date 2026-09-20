@@ -1,10 +1,13 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "502d2a05d1fb60fcfed8c5b6a3a4ed25fdd89a3b",
+    "refs/heads/pr/dogfood-profile-recovery": "b0b2b2b661aa6d155dbe5b66cffbb07c15b1eed4",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -23,7 +26,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:57:05+00:00",
+  "created_at": "2026-09-20T23:31:54+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -41,6 +44,7 @@
     "refs/heads/pr/agentwheel-discovery-intent-0-18-1": "16c061171466c65afb05a109e4d1f84fa51e996a",
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
+    "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
     "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -105,18 +109,35 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "dogfood-profile-recovery"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/dogfood-profile-recovery",
+        "commits": [
+          "e0f8233988cf7cd26cebf2efc6dd0450a5c0df66"
+        ],
+        "id": "dogfood-profile-recovery",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "ecf3f3e4-0750-4ce8-9762-beb6f96f99be",
-  "parent_state": "03ec33e83f4e474065e7da5c5c23bb845c6ed6a1",
+  "operation_token": "a3528a44-9b92-4b43-86fe-2014b68ed2c5",
+  "parent_state": "7d04d63e613d35e1dce210c5f772853a0bef5e4d",
   "projection_status": "partial",
-  "publication_id": "e0b3ed2e-7725-4963-a3cf-5c035743daca",
-  "publication_scope": "close:stable-legacy-state-recovery",
+  "publication_id": "1bda8372-7311-4345-be38-f09a360c0f85",
+  "publication_scope": "stack:dogfood-profile-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [

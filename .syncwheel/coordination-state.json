@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -13,7 +11,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/pr/stable-legacy-state-recovery": "4092c0e9c5bfbb1407adb6b2b92542c587f85f55",
+    "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
@@ -25,7 +23,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:44:49+00:00",
+  "created_at": "2026-09-20T22:57:05+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -107,35 +105,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "stable-legacy-state-recovery"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/stable-legacy-state-recovery",
-        "commits": [
-          "fb11ba0e325d25b1d5d297e8bfcbf9574beb923c"
-        ],
-        "id": "stable-legacy-state-recovery",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "95f16493-cde9-4cf7-8a2f-9dc8b867dde4",
-  "parent_state": "37b15c2b8fae38c4163ec9d3522cafeedfddf10e",
+  "operation_token": "ecf3f3e4-0750-4ce8-9762-beb6f96f99be",
+  "parent_state": "03ec33e83f4e474065e7da5c5c23bb845c6ed6a1",
   "projection_status": "partial",
-  "publication_id": "3aadeec1-b465-47b9-9ef5-890af572d685",
-  "publication_scope": "partial",
+  "publication_id": "e0b3ed2e-7725-4963-a3cf-5c035743daca",
+  "publication_scope": "close:stable-legacy-state-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [
@@ -537,6 +518,14 @@
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/stable-legacy-state-recovery",
       "remote_tip": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
+      "stack": "stable-legacy-state-recovery"
+    },
+    {
+      "branch": "pr/stable-legacy-state-recovery",
+      "closed_at": "2026-09-20T22:56:55+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/stable-legacy-state-recovery",
+      "remote_tip": null,
       "stack": "stable-legacy-state-recovery"
     }
   ]

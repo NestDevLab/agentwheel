@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { mutationPolicySchema, type MutationPolicy } from "../model/mutation.js";
 import { readWorkspaceConfig } from "../model/workspace.js";
 import {
@@ -30,7 +30,7 @@ import {
   snapshotRepository,
   type RepositorySnapshot,
 } from "./repository.js";
-import { describeDirtyPathOwnership } from "./session-ownership.js";
+import { describeDirtyPathOwnershipByPath } from "./session-ownership.js";
 
 export interface BeginMutationOptions {
   workspaceRoot: string;
@@ -113,20 +113,22 @@ export class GovernedMutation {
         runtimeJournals: [],
         status: "prepared",
       });
-      if (policy.revisioning.mode === "commit-after-verify"
-        && options.requireCleanWorkingTree
-        && baseline
-        && baseline.changed.size > 0) {
-        const changedPaths = [...baseline.changed.keys()].sort();
-        const ownership = await describeDirtyPathOwnership(repository!.root, changedPaths);
+      const blockedPathDescriptions = baseline && repository && baseline.changed.size > 0
+        ? await describeDirtyPathOwnershipByPath(repository.root, [...baseline.changed.keys()])
+        : new Map<string, string>();
+      const dirtyDeclaredPaths = baseline && repository
+        ? dirtyRepositoryPaths(repository.root, baseline, options.anticipatedPaths ?? [])
+        : [];
+      if (dirtyDeclaredPaths.length > 0) {
         throw new Error(
-          `This governed command computes declarative paths during planning and requires a clean working tree before runtime mutation; found: ${changedPaths.join(", ")}. ${ownership}`,
+          `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}. ${dirtyDeclaredPaths.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
         );
       }
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,
         baseline?.changed.keys(),
+        blockedPathDescriptions,
       );
       for (const path of options.anticipatedPaths ?? []) declareMutationPath(path);
       if (policy.revisioning.mode === "commit-after-verify" && repository) {
@@ -296,6 +298,22 @@ export class GovernedMutation {
     endMutationPathDeclarations();
     await this.lock.release();
   }
+}
+
+function dirtyRepositoryPaths(
+  repositoryRoot: string,
+  baseline: RepositorySnapshot,
+  paths: string[],
+): string[] {
+  const conflicts = new Set<string>();
+  for (const path of paths) {
+    const absolute = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
+    const relativePath = relative(repositoryRoot, absolute);
+    if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) continue;
+    const normalized = relativePath.split(sep).join("/");
+    if (baseline.changed.has(normalized)) conflicts.add(normalized);
+  }
+  return [...conflicts].sort((left, right) => left.localeCompare(right));
 }
 
 let activeMutation: GovernedMutation | undefined;

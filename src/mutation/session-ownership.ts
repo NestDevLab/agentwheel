@@ -115,23 +115,28 @@ export async function lookupRuntimeOwner(runtimeUuid: string): Promise<SessionOw
 }
 
 export async function describeDirtyPathOwnership(repositoryRoot: string, paths: string[]): Promise<string> {
+  const descriptions = await describeDirtyPathOwnershipByPath(repositoryRoot, paths);
+  return paths.map((path) => descriptions.get(path)!).join(" ");
+}
+
+export async function describeDirtyPathOwnershipByPath(repositoryRoot: string, paths: string[]): Promise<Map<string, string>> {
   let refs: Map<string, string>;
   try {
     refs = await resourceRefsForRepositoryPaths(repositoryRoot, paths);
   } catch {
-    return unknownNextAction("resource identity could not be computed");
+    return new Map(paths.map((path) => [path, `${path}: ${unknownNextAction("resource identity could not be computed")}`]));
   }
   const ownership = await lookupResourceOwners(refs.values());
-  return paths.map((path) => {
+  return new Map<string, string>(paths.map((path): [string, string] => {
     const match = ownership.get(refs.get(path)!);
     if (match?.kind === "unique") {
-      return `${path}: belongs to ${describeSession(match.owner)}. Wait for that session's handoff or ask the rollout coordinator before retrying.`;
+      return [path, `${path}: belongs to ${describeSession(match.owner)}. Wait for that session's handoff or ask the rollout coordinator before retrying.`];
     }
     if (match?.kind === "ambiguous") {
-      return `${path}: owner unknown because multiple live sessions claim this resource. Candidates: ${match.candidates.map(describeSession).join("; ")}. Ask the rollout coordinator to disambiguate the candidates before retrying; do not remove the safety block.`;
+      return [path, `${path}: owner unknown because multiple live sessions claim this resource. Candidates: ${match.candidates.map(describeSession).join("; ")}. Ask the rollout coordinator to disambiguate the candidates before retrying; do not remove the safety block.`];
     }
-    return `${path}: ${unknownNextAction(reasonText(match?.kind === "unknown" ? match.reason : "no-live-match"))}`;
-  }).join(" ");
+    return [path, `${path}: ${unknownNextAction(reasonText(match?.kind === "unknown" ? match.reason : "no-live-match"))}`];
+  }));
 }
 
 export async function describeMutationLockOwner(owner: MutationLockOwnerFacts | undefined): Promise<string> {

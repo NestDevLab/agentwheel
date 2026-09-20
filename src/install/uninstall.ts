@@ -218,7 +218,7 @@ async function currentEntryHash(entry: ManifestEntry, destPath: string, transpor
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
 > {
   if ("owners" in entry) {
     return {
@@ -227,6 +227,7 @@ function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: strin
       graphNodeId: entry.graphNodeId,
       dependencyRole: entry.dependencyRole,
       owners: ownersOverride ?? entry.owners,
+      workspaceOwner: entry.workspaceOwner,
       graphLockDigest: entry.graphLockDigest,
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,

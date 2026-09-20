@@ -1,4 +1,13 @@
 {
+  "authority": {
+    "allow": [
+      "source_change"
+    ],
+    "deny": [
+      "destructive_rewrite"
+    ],
+    "mode": "ai-managed"
+  },
   "channels": [],
   "coordination": {
     "gc": {
@@ -23,8 +32,7 @@
     "base": "origin/main",
     "branch": "main-integration",
     "stacks": [
-      "mgt-0244-owner-diagnostics",
-      "no-deps-selected-composition"
+      "legacy-fleet-target-recovery"
     ],
     "strategy": "cherry-pick"
   },
@@ -32,30 +40,14 @@
   "stacks": [
     {
       "base": "origin/main",
-      "branch": "pr/mgt-0244-owner-diagnostics",
+      "branch": "pr/legacy-fleet-target-recovery",
       "commits": [
-        "c6035202bad9dbfb10dfcb26657c4424c5f61538"
+        "390300337547f05c60f48439b5c1656f5d256e69"
       ],
-      "id": "mgt-0244-owner-diagnostics",
-      "integration_branch": "main-integration",
-      "meta": {},
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "fix/no-deps-selected-composition",
-      "commits": [
-        "329728952803c2e350b7454d9e89db66a1cf8750"
-      ],
-      "id": "no-deps-selected-composition",
+      "id": "legacy-fleet-target-recovery",
       "integration_branch": "main-integration",
       "meta": {
-        "purpose": "Limit no-deps rendering to selected runtime-eligible artifacts"
+        "purpose": "Recover legacy fleet target state without force adoption"
       },
       "publication": {
         "enabled": true

@@ -62,6 +62,7 @@ export interface ApplyJournal {
   graphLockPath?: string;
   graphLock?: GraphLock;
   graphLockRemovePath?: string;
+  stateRemoveKey?: string;
   workspaceConfigPath?: string;
   workspaceConfig?: unknown;
 }
@@ -322,6 +323,7 @@ export function applyJournalLinkDigest(
     graphLockDigest: journal.graphLockDigest ?? null,
     graphLockPath: journal.graphLockPath ?? null,
     graphLockRemovePath: journal.graphLockRemovePath ?? null,
+    stateRemoveKey: journal.stateRemoveKey ?? null,
     workspaceConfigPath: journal.workspaceConfigPath ?? null,
     operations: journal.operations,
   })).digest("hex");

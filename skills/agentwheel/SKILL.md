@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.8"
+  version: "0.20.13"
 ---
 
 # agentwheel
@@ -618,3 +618,24 @@ nothing else is stale. If it differs, regenerate only the affected graph locks (
 leave them uncommitted: lock commits belong to the approved install. `update --dependency` cannot
 recompute an edge whose root node id changed (e.g. after renaming the root package's artifacts);
 regenerate the locks instead.
+
+If target-state discovery rejects an invalid historical graph-lock/manifest pair, first write and
+review `agentwheel ownership recovery-plan`. For a complete local report, preview a stable-state
+recovery with the exact Fleet target:
+
+```bash
+agentwheel plan --fleet <fleet-id> --agent <agent> \
+  --recover-legacy-state --force-conflict --replace-conflict
+```
+
+`--recover-legacy-state` preserves the invalid historical files and only bypasses their use as the
+planning base. `--force-conflict` adopts exact existing content; `--replace-conflict` permits the
+reviewed plan to update differing unmanaged content. Apply only the same reviewed target and flags.
+After the first stable install, rerun the ordinary plan without recovery flags and require a no-op.
+
+An advanced tracked graph lock with an otherwise valid owned v2 manifest is an ordinary migration:
+Agentwheel keeps the manifest as prior runtime state, resolves the graph fresh, and does not trust the
+advanced lock as installed history. If stale foreign ownership blocks that migration, use
+`agentwheel ownership retire-stale --destination-state-key <exact-fleet-state-key>` to produce a
+metadata-only, revision-gated retirement plan against the already-installed Fleet manifest. Do not
+guess the state key or apply without the exact command emitted by the dry-run.

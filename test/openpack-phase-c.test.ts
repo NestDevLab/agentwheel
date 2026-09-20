@@ -504,6 +504,119 @@ describe("OpenPack phase C", () => {
     expect(codex.graph.roots[0]?.selected).toEqual(["rules/codex.rules", "skills/app"]);
   });
 
+  it("keeps Codex-selected artifacts valid when a profile target uses Claude", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-codex-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "codex-only", "SKILL.md"), "# Codex only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/codex-selection",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "codex-only": { runtimes: ["codex"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/codex-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-c-codex-selection-claude",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.bundle.artifacts).toEqual([]);
+    expect(result.warnings).toContainEqual(expect.stringMatching(
+      /skip artifact .*:skills\/codex-only \(selected but not targeted: runtimes=\[codex\]\)/,
+    ));
+  });
+
+  it("keeps Claude-selected artifacts valid when a profile target uses Codex", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-claude-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "claude-only", "SKILL.md"), "# Claude only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/claude-selection",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "claude-only": { runtimes: ["claude"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/claude-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-claude-selection-codex",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.bundle.artifacts).toEqual([]);
+    expect(result.warnings).toContainEqual(expect.stringMatching(
+      /skip artifact .*:skills\/claude-only \(selected but not targeted: runtimes=\[claude\]\)/,
+    ));
+  });
+
+  it("still rejects an explicit selector absent from the package", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-missing-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "present", "SKILL.md"), "# Present\n");
+    await writeOpenPack(root, {
+      name: "phase-c/missing-selection",
+      provides: [{ type: "skills", path: "skills" }],
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/absent"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-missing-selection-codex",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Selected artifact not found in package: skills\/absent/);
+  });
+
+  it("reports runtime gating as a skip instead of a missing selection", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-selection-message-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "codex-only", "SKILL.md"), "# Codex only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/selection-message",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "codex-only": { runtimes: ["codex"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/codex-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-c-selection-message-claude",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.warnings.join("\n")).toMatch(/selected but not targeted/);
+    expect(result.warnings.join("\n")).not.toMatch(/Selected artifact not found in package/);
+  });
+
   it("does not fetch unused aliases", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-c-unused-target-");

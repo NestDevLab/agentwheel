@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveAdapter } from "../adapters/resolve.js";
 import { computeManifestRevision, withManifestRevision } from "../install/manifest.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
@@ -11,6 +11,7 @@ import { acquireApplyLock, applyLockPath, listApplyJournals, type ApplyLock } fr
 import { installRootForAdapterInstallationType } from "../model/adapter.js";
 import { resolveWorkspaceScope, showRegisteredFleet, type WorkspaceScope } from "../model/fleet.js";
 import { computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
+import { resolveTargetStateIdentity } from "../model/target-state.js";
 import { installManifestSchema, type InstallManifestV2 } from "../model/manifest.js";
 import { isCompositeWorkspaceProfile, resolveConfigPath, workspaceConfigPath, workspaceConfigSchema, type WorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { graphLockPathForTarget } from "./source-plan.js";
@@ -165,6 +166,15 @@ export async function planFleetNormalization(request: FleetNormalizationRequest)
     const sourcePackage = sourceByName.get(name);
     const destinationPackage = destinationByName.get(name);
     if (!sourcePackage || !destinationPackage) {
+      if (legacySelfNormalization
+        && normalizedRequest.orphanedOwnerRoots?.length
+        && normalizedRequest.packages?.includes(name)) {
+        packages.push({
+          name,
+          declarationDigest: sha256(canonicalJson({ name, evidence: "orphaned-installed-state" })),
+        });
+        continue;
+      }
       throw new Error(`Package '${name}' must be an existing duplicate in both source and destination fleets.`);
     }
     const sourceDeclaration = canonicalJson(sourcePackage);
@@ -551,11 +561,32 @@ async function inspectInstalledState(
   const plannedDestinationGraphs = new Set<string>();
 
   for (const sourceGraph of sourceGraphs) {
-    const sourceState = await targetStateForGraph(source, sourceGraph);
-    const destinationState = await targetStateForGraph(destination, sourceGraph);
-    if (sourceState.graphLockPath !== sourceGraph.path) {
-      throw new Error(`Source graph lock target identity is stale or noncanonical: ${sourceGraph.path}`);
+    const sourceState = await installedTargetStateForGraph(
+      source,
+      sourceGraph,
+      manifests,
+      sourceOwners,
+      selected,
+    );
+    const destinationStableState = await targetStateForGraph(destination, sourceGraph);
+    const matchingDestinationGraphs = destinationGraphs.filter((candidate) =>
+      candidate.targetKey === sourceGraph.targetKey && candidate.adapter === sourceGraph.adapter);
+    if (matchingDestinationGraphs.length > 1) {
+      throw new Error(
+        `Ambiguous destination graph state for target '${sourceGraph.targetKey}': `
+        + matchingDestinationGraphs.map((candidate) => candidate.path).join(", "),
+      );
     }
+    const destinationGraph = matchingDestinationGraphs[0];
+    const destinationState = destinationGraph
+      ? await installedTargetStateForGraph(
+          destination,
+          destinationGraph,
+          manifests,
+          destinationOwners,
+          selected,
+        )
+      : destinationStableState;
     if (sourceState.adapter !== destinationState.adapter) {
       throw new Error(`Source and destination adapters diverge for target '${sourceGraph.targetKey}'.`);
     }
@@ -564,7 +595,6 @@ async function inspectInstalledState(
       throw new Error(`Source graph lock is not covered by its canonical install manifest: ${sourceState.manifestPath}`);
     }
     const sourceGraphArtifacts = new Set(sourceGraph.artifactIdentities);
-    const destinationGraph = destinationGraphs.find((candidate) => candidate.path === destinationState.graphLockPath);
     if (destinationGraph && destinationGraph.digest !== sourceGraph.digest) {
       throw new Error("Source and destination graph declarations, selections, versions, identities, or rendered paths diverge.");
     }
@@ -694,11 +724,31 @@ async function inspectLegacySelfInstalledState(
   const legacyOwner = workspaceOwnerForRoot(fleet.root);
   const fleetOwner = workspaceOwnerForRoot(fleet.root, fleet.fleetId);
   const orphanedOwners = await orphanedWorkspaceOwners(orphanedOwnerRoots);
+  const allowOrphanedRetiredPackages = orphanedOwners.size > 0;
   const knownLegacyOwners = new Set([legacyOwner, ...orphanedOwners]);
   const transferableOwners = orphanedOwners.size > 0 ? orphanedOwners : new Set([legacyOwner]);
   let normalizedGraphCount = 0;
   for (const graph of graphCandidates) {
-    const legacyState = await legacyTargetStateForGraph(fleet, graph);
+    const destinationState = await targetStateForGraph(fleet, graph, fleet.fleetId, allowOrphanedRetiredPackages);
+    if (resolve(destinationState.graphLockPath) === resolve(graph.path)) {
+      const destinationManifest = (await collectManifestPaths([destinationState.manifestPath]))[0];
+      if (destinationManifest?.manifest.entries.some((entry) =>
+        entry.workspaceOwner === fleetOwner && entryMatchesPackages(entry, selected))) {
+        assertCorrelatedGraphManifest(
+          graph,
+          destinationState,
+          destinationManifest,
+          new Set([fleetOwner]),
+          selected,
+        );
+        normalizedGraphCount += 1;
+        continue;
+      }
+    }
+    const legacyState = await legacyTargetStateForGraph(fleet, graph, allowOrphanedRetiredPackages);
+    if (resolve(legacyState.graphLockPath) !== resolve(graph.path)) {
+      throw new Error(`Legacy graph lock target identity is stale or noncanonical: ${graph.path}`);
+    }
     const legacyManifest = (await collectManifestPaths([legacyState.manifestPath]))[0];
     const relevantManifestEntries = legacyManifest?.manifest.entries.filter((entry) =>
       entryMatchesGraphPackages(entry, graph.lock, selected)
@@ -706,20 +756,14 @@ async function inspectLegacySelfInstalledState(
     if (relevantManifestEntries.length > 0) {
       graphs.push(graph);
     }
-    const destinationState = await targetStateForGraph(fleet, graph, fleet.fleetId);
-    if (destinationState.graphLockPath === graph.path
-      && legacyManifest?.manifest.entries.some((entry) =>
-        entry.workspaceOwner === fleetOwner && entryMatchesPackages(entry, selected))) {
-      normalizedGraphCount += 1;
-    }
   }
   if (graphs.length === 0 && normalizedGraphCount > 0) {
     throw new Error(`Fleet '${fleet.fleetId}' installed state is already normalized to fleet-qualified ownership.`);
   }
   const manifestPaths = new Set<string>();
   for (const graph of graphs) {
-    manifestPaths.add((await legacyTargetStateForGraph(fleet, graph)).manifestPath);
-    manifestPaths.add((await targetStateForGraph(fleet, graph, fleet.fleetId)).manifestPath);
+    manifestPaths.add((await legacyTargetStateForGraph(fleet, graph, allowOrphanedRetiredPackages)).manifestPath);
+    manifestPaths.add((await targetStateForGraph(fleet, graph, fleet.fleetId, allowOrphanedRetiredPackages)).manifestPath);
   }
   const manifests = await collectManifestPaths([...manifestPaths]);
   const relevantEntries = manifests.flatMap((manifest) => manifest.manifest.entries
@@ -764,8 +808,8 @@ async function inspectLegacySelfInstalledState(
   const orphanedUnmanagedPaths = new Set<string>();
 
   for (const graph of graphs) {
-    const legacyState = await legacyTargetStateForGraph(fleet, graph);
-    const destinationState = await targetStateForGraph(fleet, graph, fleet.fleetId);
+    const legacyState = await legacyTargetStateForGraph(fleet, graph, allowOrphanedRetiredPackages);
+    const destinationState = await targetStateForGraph(fleet, graph, fleet.fleetId, allowOrphanedRetiredPackages);
     if (graph.path === destinationState.graphLockPath) {
       throw new Error(`Fleet '${fleet.fleetId}' graph state is already normalized to fleet-qualified identity.`);
     }
@@ -1025,12 +1069,8 @@ async function relevantGraphLocks(
     if (!lock.canonical.roots.some((candidate) => selected.has(candidate.rootId))) continue;
     const parts = relative(root, path).split(/[\\/]/);
     if (parts.length !== 3) throw new Error(`Graph lock path is not canonical: ${path}`);
-    const [targetKey, adapter, fileName] = parts as [string, string, string];
+    const [targetKey, adapter] = parts as [string, string, string];
     if (targetKeys && !targetKeys.has(targetKey)) continue;
-    const pathFingerprint = basename(fileName, ".graph-lock.json");
-    if (!lock.canonical.targetFingerprint || lock.canonical.targetFingerprint !== pathFingerprint) {
-      throw new Error(`Graph lock fingerprint does not match its canonical path: ${path}`);
-    }
     const candidate: RelevantGraphLock = {
       path,
       lock,
@@ -1073,10 +1113,27 @@ async function hasRelevantLegacyManifestCandidate(
   // manifest without treating that retired root as current desired state.
   // Only a manifest entry actually covered by the graph admits the lock to
   // the full, fail-closed target derivation below.
-  const manifestPath = await legacyManifestPathForConfiguredTarget(scope, graph)
-    ?? (await legacyTargetStateForGraph(scope, graph)).manifestPath;
-  const manifest = (await collectManifestPaths([manifestPath]))[0];
-  return manifest?.manifest.entries.some((entry) =>
+  const configuredLegacyPath = await legacyManifestPathForConfiguredTarget(scope, graph);
+  if (configuredLegacyPath) {
+    const manifest = (await collectManifestPaths([configuredLegacyPath]))[0];
+    if (manifest?.manifest.entries.some((entry) =>
+      entryMatchesGraphPackages(entry, graph.lock, selected))) return true;
+  }
+
+  // Do not derive a target from stale roots until a correlated configured
+  // manifest proves that the historical graph still participates in state.
+  if (graph.lock.canonical.roots.some((root) =>
+    !scope.config.packages.some((pkg) => pkg.name === root.rootId))) return false;
+
+  const legacyState = await legacyTargetStateForGraph(scope, graph);
+  const legacyManifest = (await collectManifestPaths([legacyState.manifestPath]))[0];
+  if (legacyManifest?.manifest.entries.some((entry) =>
+    entryMatchesGraphPackages(entry, graph.lock, selected))) return true;
+
+  const stableState = await targetStateForGraph(scope, graph, scope.fleetId ?? null);
+  if (resolve(stableState.graphLockPath) !== resolve(graph.path)) return false;
+  const stableManifest = (await collectManifestPaths([stableState.manifestPath]))[0];
+  return stableManifest?.manifest.entries.some((entry) =>
     entryMatchesGraphPackages(entry, graph.lock, selected)) ?? false;
 }
 
@@ -1103,6 +1160,7 @@ async function legacyManifestPathForConfiguredTarget(
   const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, agent.installationType, false));
   const stateKey = stateKeyFor(adapter.name, {
     installationType: agent.installationType,
+    stateKey: agent.stateKey,
     targetFingerprint: graph.lock.canonical.targetFingerprint!,
   });
   return installManifestPath(installRoot, adapter.name, { installationType: agent.installationType, stateKey });
@@ -1123,6 +1181,7 @@ async function targetStateForGraph(
   scope: WorkspaceScope,
   graph: RelevantGraphLock,
   identityFleetId: string | null = scope.fleetId ?? null,
+  allowMissingNamedAgentPackages = false,
 ): Promise<DerivedTargetState> {
   const agent = scope.config.agents[graph.targetKey];
   if (agent?.transport === "ssh") {
@@ -1132,10 +1191,11 @@ async function targetStateForGraph(
     throw new Error(`Graph adapter '${graph.adapter}' does not match configured target adapter '${agent.adapter}'.`);
   }
   const graphPackages = graph.lock.canonical.roots.map((root) => scope.config.packages.find((pkg) => pkg.name === root.rootId));
-  if (graphPackages.some((pkg) => !pkg)) {
+  if (graphPackages.some((pkg) => !pkg)
+    && !(allowMissingNamedAgentPackages && agent && agent.installationType)) {
     throw new Error(`Graph target '${graph.targetKey}' contains a package absent from the fleet configuration.`);
   }
-  const packages = graphPackages as WorkspacePackage[];
+  const packages = graphPackages.filter((pkg): pkg is WorkspacePackage => pkg !== undefined);
   if (!agent) {
     if (graph.targetKey !== graph.adapter) {
       throw new Error(
@@ -1151,18 +1211,24 @@ async function targetStateForGraph(
       throw new Error(`Graph adapter '${graph.adapter}' does not match direct package adapter '${packageAdapter}'.`);
     }
   }
-  const installationType = oneEffectiveValue(
-    packages.map((pkg) => pkg.installationType ?? agent?.installationType ?? "local"),
-    `installation type for target '${graph.targetKey}'`,
-  );
-  const adapterConfig = oneEffectiveOptionalValue(
-    packages.map((pkg) => agent?.adapterConfig ?? pkg.adapterConfig),
-    `adapter config for target '${graph.targetKey}'`,
-  );
-  const adapterModule = oneEffectiveOptionalValue(
-    packages.map((pkg) => agent?.adapterModule ?? pkg.adapterModule),
-    `adapter module for target '${graph.targetKey}'`,
-  );
+  const installationType = packages.length > 0
+    ? oneEffectiveValue(
+        packages.map((pkg) => pkg.installationType ?? agent?.installationType ?? "local"),
+        `installation type for target '${graph.targetKey}'`,
+      )
+    : agent!.installationType!;
+  const adapterConfig = packages.length > 0
+    ? oneEffectiveOptionalValue(
+        packages.map((pkg) => agent?.adapterConfig ?? pkg.adapterConfig),
+        `adapter config for target '${graph.targetKey}'`,
+      )
+    : agent?.adapterConfig;
+  const adapterModule = packages.length > 0
+    ? oneEffectiveOptionalValue(
+        packages.map((pkg) => agent?.adapterModule ?? pkg.adapterModule),
+        `adapter module for target '${graph.targetKey}'`,
+      )
+    : agent?.adapterModule;
   const adapter = await resolveAdapter({
     adapter: agent?.adapter ?? graph.adapter,
     adapterConfig,
@@ -1184,14 +1250,21 @@ async function targetStateForGraph(
     ssh: undefined,
     ...(agent?.stateKey ? { stateKey: agent.stateKey } : {}),
   };
-  const targetFingerprint = computeTargetFingerprint(fingerprintParts);
+  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, installationType, false));
+  const targetIdentity = resolveTargetStateIdentity({
+    targetFingerprintParts: fingerprintParts,
+    workspaceRoot: scope.root,
+    targetKey: graph.targetKey,
+    resolvedInstallRoot: installRoot,
+    transportKind: "local",
+  });
+  const targetFingerprint = targetIdentity.targetFingerprint;
   const stateKey = stateKeyFor(adapter.name, {
     installationType,
     stateKey: agent?.stateKey,
-    targetFingerprint,
+    targetFingerprint: targetIdentity.stateFingerprint,
     ...(identityFleetId ? { fleetId: identityFleetId } : {}),
   });
-  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, installationType, false));
   return {
     adapter: adapter.name,
     installationType,
@@ -1199,31 +1272,111 @@ async function targetStateForGraph(
     installRoot,
     stateKey,
     targetFingerprint,
-    graphLockPath: graphLockPathForTarget(scope.root, graph.targetKey, adapter.name, fingerprintParts),
+    graphLockPath: graphLockPathForTarget(scope.root, graph.targetKey, adapter.name, fingerprintParts, {
+      resolvedInstallRoot: installRoot,
+      transportKind: "local",
+    }),
     manifestPath: installManifestPath(installRoot, adapter.name, { installationType, stateKey }),
   };
 }
 
-async function legacyTargetStateForGraph(
+async function installedTargetStateForGraph(
   scope: WorkspaceScope,
   graph: RelevantGraphLock,
+  manifests: CollectedManifest[],
+  owners: Set<string>,
+  selected: Set<string>,
+  identityFleetId: string | null = scope.fleetId ?? null,
 ): Promise<DerivedTargetState> {
-  const current = await targetStateForGraph(scope, graph, null);
-  const targetFingerprint = graph.lock.canonical.targetFingerprint!;
+  const stable = await targetStateForGraph(scope, graph, identityFleetId);
+  let state: DerivedTargetState;
+  if (resolve(graph.path) === resolve(stable.graphLockPath)) {
+    state = stable;
+  } else {
+    const released = await releasedTargetStateForGraph(scope, graph, identityFleetId);
+    if (resolve(graph.path) !== resolve(released.graphLockPath)) {
+      throw new Error(`Graph lock target identity is stale or noncanonical: ${graph.path}`);
+    }
+    state = released;
+  }
+
+  const manifest = manifests.find((candidate) => resolve(candidate.path) === resolve(state.manifestPath));
+  if (!manifest) {
+    throw new Error(`Graph lock is not covered by its canonical install manifest: ${state.manifestPath}`);
+  }
+  assertCorrelatedGraphManifest(graph, state, manifest, owners, selected);
+  return state;
+}
+
+async function releasedTargetStateForGraph(
+  scope: WorkspaceScope,
+  graph: RelevantGraphLock,
+  identityFleetId: string | null = scope.fleetId ?? null,
+  allowMissingNamedAgentPackages = false,
+): Promise<DerivedTargetState> {
+  const current = await targetStateForGraph(scope, graph, identityFleetId, allowMissingNamedAgentPackages);
+  const targetFingerprint = graph.lock.canonical.targetFingerprint;
+  if (!targetFingerprint || !/^[a-f0-9]{64}$/u.test(targetFingerprint)) {
+    throw new Error(`Released graph lock has an invalid target fingerprint: ${graph.path}`);
+  }
+  const agent = scope.config.agents[graph.targetKey];
   const stateKey = stateKeyFor(current.adapter, {
     installationType: current.installationType,
+    stateKey: agent?.stateKey,
     targetFingerprint,
+    ...(identityFleetId ? { fleetId: identityFleetId } : {}),
   });
   return {
     ...current,
     stateKey,
     targetFingerprint,
-    graphLockPath: graph.path,
+    graphLockPath: join(dirname(graph.path), `${targetFingerprint}.graph-lock.json`),
     manifestPath: installManifestPath(current.installRoot, current.adapter, {
       installationType: current.installationType,
       stateKey,
     }),
   };
+}
+
+function assertCorrelatedGraphManifest(
+  graph: RelevantGraphLock,
+  state: DerivedTargetState,
+  manifest: CollectedManifest,
+  owners: Set<string>,
+  selected: Set<string>,
+): void {
+  if (manifest.manifest.adapter !== state.adapter
+    || manifest.manifest.installationType !== state.installationType
+    || manifest.manifest.stateKey !== state.stateKey
+    || resolve(manifest.manifest.targetRoot) !== resolve(state.installRoot)) {
+    throw new Error(`Install manifest identity does not match graph target state: ${manifest.path}`);
+  }
+  const entries = manifest.manifest.entries.filter((entry) =>
+    entryMatchesGraphPackages(entry, graph.lock, selected));
+  if (entries.length === 0) {
+    throw new Error(`Graph lock is not covered by selected install-manifest contributions: ${graph.path}`);
+  }
+  const graphArtifacts = new Set(graph.artifactIdentities);
+  const graphLockDigest = sha256(canonicalJson(graph.lock));
+  for (const entry of entries) {
+    if (!owners.has(entry.workspaceOwner)) {
+      throw new Error(`Graph lock manifest owner mismatch at ${manifest.path}: ${entry.workspaceOwner}.`);
+    }
+    if (!graphArtifacts.has(graphEntryIdentity(entry))) {
+      throw new Error(`Install manifest entry is not covered by its graph lock: ${renderedEntryPath(manifest.manifest, entry)}`);
+    }
+    if (entry.graphLockDigest !== undefined && entry.graphLockDigest !== graphLockDigest) {
+      throw new Error(`Install manifest graph-lock digest does not match ${graph.path}.`);
+    }
+  }
+}
+
+async function legacyTargetStateForGraph(
+  scope: WorkspaceScope,
+  graph: RelevantGraphLock,
+  allowMissingNamedAgentPackages = false,
+): Promise<DerivedTargetState> {
+  return releasedTargetStateForGraph(scope, graph, null, allowMissingNamedAgentPackages);
 }
 
 function assertGraphIsSubset(source: RelevantGraphLock, destination: RelevantGraphLock): void {

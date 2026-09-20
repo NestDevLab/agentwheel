@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.20.13
+
+- Treat an advanced legacy graph lock as desired-state evidence while retaining
+  its correlated install manifest as the prior runtime state. The dependency
+  graph is resolved fresh, foreign-owner candidates remain outside the adopted
+  state, and mixed or corrupt owned digests still fail closed.
+- Allow an explicitly named package removed from fleet configuration to be
+  normalized from an explicitly admitted missing workspace owner, with the
+  existing graph, manifest, and runtime-byte proofs still required.
+- Let `ownership retire-stale` target an exact reviewed destination state key
+  without resolving unrelated legacy target state first, breaking the circular
+  recovery dependency while retaining all plan and revision gates.
+
+## 0.20.12
+
+- Let explicit legacy-state recovery create stable target state while preserving multiple
+  graph-only candidates whose runtime identity and ownership cannot be proven.
+
+## 0.20.11
+
+- Add explicit legacy-state recovery for plan/install so a reviewed Fleet can create stable state
+  while preserving invalid historical candidates and retaining normal conflict controls.
+- Reap cache locks only when their recorded owner PID is no longer alive.
+
+## 0.20.10
+
+- Add a read-only per-path legacy ownership recovery report that preserves unresolved claims
+  for explicit review before any Fleet change.
+
+## 0.20.9
+
+- Preserve managed target state when adapter output, graph representation, or ownership changes,
+  including legacy migration, fleet normalization, and transactional recovery.
+- Reject ambiguous or foreign ownership during target-state migration instead of silently
+  misclassifying managed files.
+
 ## 0.20.8
 
 - Compose only selected artifacts under `--no-deps`, without changing normal dependency graph or

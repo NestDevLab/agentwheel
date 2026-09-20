@@ -414,12 +414,14 @@ label is not endpoint identity.
 
 State created by an older Agentwheel release may be named with the full target fingerprint. For a
 local target, Agentwheel adopts that state only when one canonical graph lock, its v2 install
-manifest, the contribution owner, target details, and graph-lock digest all agree. A supported
-install or uninstall carries an explicit migration and revalidates the old and new state under the
-shared apply lock before replacing the legacy paths. An explicit `stateKey` remains the manifest and
-source-lock key while its legacy graph-lock path moves. Ownership handoff and retirement require a
-full install to migrate first. Status, dependency inspection, uninstall, and journal commands use
-the same discovery rules.
+manifest, the contribution owner, and target details agree. When a tracked graph lock has advanced
+past the installed manifest, Agentwheel uses the manifest only as prior runtime state and resolves
+the graph fresh; it never treats that newer lock as the previously installed graph. Mixed digests
+inside the owned contribution still fail closed. A supported install or uninstall carries an
+explicit migration and revalidates the old and new state under the shared apply lock before replacing
+the legacy paths. An explicit `stateKey` remains the manifest and source-lock key while its legacy
+graph-lock path moves. Status, dependency inspection, uninstall, and journal commands use the same
+discovery rules.
 
 Agentwheel refuses ambiguous candidates, a graph lock without its correlated manifest, or
 disagreeing stable and legacy state, and preserves those files for manual reconciliation. A pending
@@ -442,6 +444,21 @@ agentwheel install --fleet example-fleet --agent lab-claude \
 
 Once the stable manifest exists, normal status and planning use it while retaining the invalid
 historical candidate for explicit later cleanup.
+
+When stale ownership must be retired before the target-state migration can run, bind the retirement
+to the exact already-installed Fleet manifest instead of asking target-state discovery to choose it:
+
+```bash
+agentwheel ownership retire-stale \
+  --from-workspace-root <missing-worktree> \
+  --to-workspace-root <fleet-root> \
+  --source-state-key <stale-state-key> \
+  --destination-state-key <fleet-owned-state-key> \
+  --fleet <fleet-id> --agent <agent> --json
+```
+
+The dry-run still proves exact destination coverage and runtime bytes. Apply only its emitted command,
+which includes the plan, source, destination, and manifest-inventory revisions.
 
 ## Core Ideas
 

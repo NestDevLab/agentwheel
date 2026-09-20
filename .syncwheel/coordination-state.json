@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb"
+    "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -13,6 +13,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
+    "refs/heads/pr/stable-legacy-state-recovery": "90b93a3466f6fd7d004de38d99ca604eeea41cd1",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
@@ -21,10 +22,10 @@
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0",
-    "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "c57380920b87adcb67eeabefabdd74baab115293"
+    "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:41:40+00:00",
+  "created_at": "2026-09-20T22:42:08+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -55,6 +56,7 @@
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
+    "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/release/agentwheel-0.20.0": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
@@ -117,24 +119,23 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/stable-legacy-state-recovery",
+        "branch": "pr/stable-legacy-state-recovery",
         "commits": [
           "fb11ba0e325d25b1d5d297e8bfcbf9574beb923c"
         ],
         "id": "stable-legacy-state-recovery",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "8342460d-46ea-487f-9d3f-db1428ec0125",
-  "parent_state": "c417ef24ca683e6b220461bb48f2062f28356168",
+  "operation_token": "67c38958-755e-451f-bec5-1cf193598a90",
+  "parent_state": "67874a0ac889ed4badca00f408f04a65447b18e4",
   "projection_status": "partial",
-  "publication_id": "cf5eb23a-f903-41d5-a277-c142987a2d95",
-  "publication_scope": "create:stable-legacy-state-recovery",
+  "publication_id": "e78e68cd-ab24-4c5a-b964-3ef45f404285",
+  "publication_scope": "promote:stable-legacy-state-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [
@@ -529,6 +530,14 @@
       "ref": "refs/heads/pr/legacy-fleet-target-recovery",
       "remote_tip": null,
       "stack": "legacy-fleet-target-recovery"
+    },
+    {
+      "branch": "syncwheel/draft/stable-legacy-state-recovery",
+      "closed_at": "2026-09-20T22:41:54+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/stable-legacy-state-recovery",
+      "remote_tip": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
+      "stack": "stable-legacy-state-recovery"
     }
   ]
 }

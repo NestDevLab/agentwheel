@@ -54,7 +54,10 @@
       },
       "meta": {
         "purpose": "Allow explicit stable-state recovery while preserving disagreeing legacy manifests"
-      }
+      },
+      "integration_only_commits": [
+        "39102ee31d1cb1accc3dcec101a83c02a400efbc"
+      ]
     }
   ],
   "syncwheel_tracking": "git-tracked",

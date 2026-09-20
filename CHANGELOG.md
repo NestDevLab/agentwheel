@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.14
+
+- Let explicit legacy-state recovery proceed from an existing stable manifest while preserving
+  disagreeing historical states for later verified retirement. Normal planning still fails closed.
+
 ## 0.20.13
 
 - Treat an advanced legacy graph lock as desired-state evidence while retaining

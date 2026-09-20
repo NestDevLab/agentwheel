@@ -286,6 +286,19 @@ describe("released target-state migration", () => {
       adapterCodeHash: "b".repeat(64),
     }))).rejects.toThrow(/stable.*legacy.*(coexist|disagree)|legacy.*stable.*(coexist|disagree)/i);
 
+    const warnings: string[] = [];
+    const recovered = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }), {
+      recoverLegacyState: true,
+      warn: (message) => warnings.push(message),
+    });
+    expect(recovered.previousManifest?.version).toBe(2);
+    expect(recovered.previousManifest?.version === 2 ? recovered.previousManifest.stateKey : undefined)
+      .toBe(stableDraft.plan.stateKey);
+    expect(recovered.plan.stateMigration).toBeUndefined();
+    expect(warnings).toEqual([expect.stringMatching(/legacy target state.*disagrees.*preserving.*recovered stable state/i)]);
+
     expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
   });
 

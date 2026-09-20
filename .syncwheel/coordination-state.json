@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "b56a6d553e0ea31175e6219a1fd03891ed8080a5"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -14,7 +12,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
-    "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "083de1e409385d04bfdd72849d3dedeb8d834049",
+    "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "ef1a0e31d81201437c4a9876054b80386e4f5608",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
@@ -23,7 +21,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:19:29+00:00",
+  "created_at": "2026-09-20T22:40:38+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -103,34 +101,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "fleet-qualified-state-key-migration"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "syncwheel/draft/fleet-qualified-state-key-migration",
-        "commits": [],
-        "id": "fleet-qualified-state-key-migration",
-        "integration_branch": "main-integration",
-        "state": "draft",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "755f6c83-532d-4147-8203-af7dbdbabc81",
-  "parent_state": "3f909823890212db6b2abe511d13e1a3fac5e7a3",
+  "operation_token": "f15016de-26a0-4dc8-9a27-001b131f5679",
+  "parent_state": "db77c3ab44bccc53318920506bb2361830d9fb7a",
   "projection_status": "partial",
-  "publication_id": "129d89d1-fdc4-4d5f-8346-f1190f172f70",
-  "publication_scope": "create:fleet-qualified-state-key-migration",
+  "publication_id": "a32fe577-9edd-435f-be3d-8422f0892205",
+  "publication_scope": "close:fleet-qualified-state-key-migration",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [
@@ -517,6 +499,14 @@
       "ref": "refs/heads/pr/legacy-fleet-target-recovery",
       "remote_tip": null,
       "stack": "legacy-fleet-target-recovery"
+    },
+    {
+      "branch": "syncwheel/draft/fleet-qualified-state-key-migration",
+      "closed_at": "2026-09-20T22:40:28+00:00",
+      "reason": "abandoned",
+      "ref": "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration",
+      "remote_tip": "b56a6d553e0ea31175e6219a1fd03891ed8080a5",
+      "stack": "fleet-qualified-state-key-migration"
     }
   ]
 }

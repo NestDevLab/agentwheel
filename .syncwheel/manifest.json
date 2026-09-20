@@ -40,7 +40,7 @@
   "stacks": [
     {
       "id": "stable-legacy-state-recovery",
-      "branch": "syncwheel/draft/stable-legacy-state-recovery",
+      "branch": "pr/stable-legacy-state-recovery",
       "base": "origin/main",
       "target_remote": "origin",
       "target_branch": "main",
@@ -48,9 +48,9 @@
       "commits": [
         "fb11ba0e325d25b1d5d297e8bfcbf9574beb923c"
       ],
-      "state": "draft",
+      "state": "published",
       "publication": {
-        "enabled": false
+        "enabled": true
       },
       "meta": {
         "purpose": "Allow explicit stable-state recovery while preserving disagreeing legacy manifests"

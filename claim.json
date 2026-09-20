@@ -1,9 +1,9 @@
 {
   "changed_refs": [],
-  "claimed_at": "2026-09-20T21:56:00+00:00",
+  "claimed_at": "2026-09-20T22:41:09+00:00",
   "closed": true,
   "coordination_id": "default",
-  "operation_token": "f6c88214-f335-425e-9132-6ed98e5dc76c",
+  "operation_token": "53b38d08-3b1b-4d5d-ab8e-65c77d2621f6",
   "publication_scope": "close:legacy-fleet-target-recovery",
   "reason": "absorbed",
   "source_ref": "refs/heads/pr/legacy-fleet-target-recovery",

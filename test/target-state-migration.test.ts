@@ -289,44 +289,77 @@ describe("released target-state migration", () => {
     expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
   });
 
-  it("fails closed when a correlated manifest digest does not match its legacy graph lock", async () => {
+  it("uses the installed manifest without trusting a legacy graph lock that advanced", async () => {
+    const fixture = await migrationFixture();
+    const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const advancedGraphLock = divergentGraphLock(await readGraphLock(legacy.graphLockPath), "9.9.9");
+    await writeGraphLock(legacy.graphLockPath, advancedGraphLock);
+
+    const warnings: string[] = [];
+    const planned = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }), {
+      warn: (message) => warnings.push(message),
+    });
+    expect(planned.previousManifest?.revision).toBe(legacy.manifest.revision);
+    expect(planned.previousGraphLock).toBeUndefined();
+    expect(planned.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+    expect(warnings).toEqual([expect.stringMatching(/graph lock.*advanced.*manifest.*resolving.*fresh/i)]);
+    await applyFixturePlan(fixture, planned);
+
+    const repeated = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }));
+    expect(repeated.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+  });
+
+  it("fails closed when one legacy manifest contains inconsistent graph-lock digests", async () => {
+    const fixture = await migrationFixture();
+    const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "a".repeat(64),
+    }));
+    const first = legacy.manifest.entries[0]!;
+    await writeInstallManifest({
+      ...legacy.manifest,
+      revision: "pending-inconsistent-digests",
+      entries: [
+        { ...first, graphLockDigest: "e".repeat(64) },
+        { ...first, path: ".agents/skills/other", artifactName: "other", installName: "other", graphLockDigest: "f".repeat(64) },
+      ],
+    }, fixture.transport);
+
+    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+      adapterCodeHash: "b".repeat(64),
+    }))).rejects.toThrow(/inconsistent graph-lock digests/i);
+  });
+
+  it("preserves a foreign legacy candidate without adopting it as prior target state", async () => {
     const fixture = await migrationFixture();
     const legacy = await seedLegacyState(fixture, fingerprintParts(fixture.targetRoot, {
       adapterCodeHash: "a".repeat(64),
     }));
     await writeInstallManifest({
       ...legacy.manifest,
-      revision: "pending-mismatched-digest",
-      entries: legacy.manifest.entries.map((entry) => ({ ...entry, graphLockDigest: "f".repeat(64) })),
+      revision: "pending-foreign-owner",
+      entries: legacy.manifest.entries.map((entry) => ({
+        ...entry,
+        workspaceOwner: "workspace-root:/fixture/foreign-owner",
+      })),
     }, fixture.transport);
-    const before = await persistentStateSnapshot([legacy.manifestPath, legacy.graphLockPath]);
-
-    await expect(graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
-      adapterCodeHash: "b".repeat(64),
-    }))).rejects.toThrow(/graph.lock.*digest|digest.*graph.lock/i);
-
-    expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
-
     const warnings: string[] = [];
-    const recovered = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
+
+    const planned = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
       adapterCodeHash: "b".repeat(64),
     }), {
-      recoverLegacyState: true,
       forceConflict: true,
-      replaceConflict: true,
+      deferForeignStateCheck: true,
       warn: (message) => warnings.push(message),
     });
-    expect(recovered.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
-    expect(warnings).toEqual([
-      expect.stringMatching(/legacy target state.*graph-lock digest.*preserving it outside/i),
-    ]);
-    await applyFixturePlan(fixture, recovered);
 
-    expect(await persistentStateSnapshot([...before.keys()])).toEqual(before);
-    const repeated = await graphPlan(fixture, fingerprintParts(fixture.targetRoot, {
-      adapterCodeHash: "b".repeat(64),
-    }));
-    expect(repeated.plan.operations.map((operation) => operation.action)).toEqual(["skip"]);
+    expect(planned.previousManifest).toBeUndefined();
+    expect(warnings).toEqual([expect.stringMatching(/contribution scope.*foreign state/i)]);
   });
 
   it("refuses a correlated manifest whose internal target root differs from the requested runtime", async () => {
@@ -840,6 +873,7 @@ async function graphPlan(
     recoverLegacyState?: boolean;
     forceConflict?: boolean;
     replaceConflict?: boolean;
+    deferForeignStateCheck?: boolean;
     warn?: (message: string) => void;
   } = {},
 ) {
@@ -861,6 +895,7 @@ async function graphPlan(
     recoverLegacyState: options.recoverLegacyState,
     forceConflict: options.forceConflict,
     replaceConflict: options.replaceConflict,
+    deferForeignStateCheck: options.deferForeignStateCheck,
     warn: options.warn,
   });
 }

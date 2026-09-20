@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.13
+
+- Treat an advanced legacy graph lock as desired-state evidence while retaining
+  its correlated install manifest as the prior runtime state. The dependency
+  graph is resolved fresh, foreign-owner candidates remain outside the adopted
+  state, and mixed or corrupt owned digests still fail closed.
+- Allow an explicitly named package removed from fleet configuration to be
+  normalized from an explicitly admitted missing workspace owner, with the
+  existing graph, manifest, and runtime-byte proofs still required.
+- Let `ownership retire-stale` target an exact reviewed destination state key
+  without resolving unrelated legacy target state first, breaking the circular
+  recovery dependency while retaining all plan and revision gates.
+
 ## 0.20.12
 
 - Let explicit legacy-state recovery create stable target state while preserving multiple

@@ -594,12 +594,15 @@ export async function discoverTargetApplyJournal(
       throw new Error(`Legacy apply journal graph-lock digest mismatch at ${item.path}.`);
     }
     const manifest = validateJournalManifestEnvelope(journal.manifest, options, journalStateKey, item.path);
-    validateLegacyManifestCandidate(manifest, {
+    const validatedManifest = validateLegacyManifestCandidate(manifest, {
       ...options,
       candidateStateKey: journalStateKey,
       graphLockDigest: journal.graphLockDigest,
       graphLockPath: journal.graphLockPath,
     });
+    if (!validatedManifest.graphLockCorrelated) {
+      throw new Error(`Legacy apply journal install manifest graph-lock digest mismatch at ${item.path}.`);
+    }
     correlated.push({ path: item.path, stateKey: journalStateKey });
   }
   if (correlated.length > 1) {
@@ -638,9 +641,12 @@ interface LegacyStateCandidate {
   graphLockPath: string;
   graphLockDigest: string;
   graphLock: GraphLock;
+  graphLockCorrelated: boolean;
   manifest?: InstallManifestV2;
   sourceLock?: SourceLock;
 }
+
+class LegacyContributionScopeMismatchError extends Error {}
 
 export async function resolvePriorTargetState(options: PriorTargetStateOptions): Promise<PriorTargetState> {
   const candidates = await discoverLegacyStateCandidates({
@@ -664,7 +670,7 @@ export async function resolvePriorTargetState(options: PriorTargetStateOptions):
     if (!options.stableLock && sameKeyCandidates.length === 1) {
       const candidate = sameKeyCandidates[0]!;
       return {
-        graphLock: candidate.graphLock,
+        graphLock: candidate.graphLockCorrelated ? candidate.graphLock : undefined,
         manifest: options.stableManifest,
         migration: migrationFromCandidate(candidate),
       };
@@ -683,7 +689,7 @@ export async function resolvePriorTargetState(options: PriorTargetStateOptions):
   if (correlated.length === 1) {
     const candidate = correlated[0]!;
     return {
-      graphLock: candidate.graphLock,
+      graphLock: candidate.graphLockCorrelated ? candidate.graphLock : undefined,
       manifest: candidate.manifest,
       migration: migrationFromCandidate(candidate),
     };
@@ -764,7 +770,7 @@ async function discoverLegacyStateCandidates(options: PriorTargetStateOptions): 
         if (sourceLock) {
           throw new Error(`Legacy source lock for ${graphLockPath} has no correlated install manifest.`);
         }
-        candidates.push({ stateKey: candidateStateKey, graphLockPath, graphLockDigest, graphLock });
+        candidates.push({ stateKey: candidateStateKey, graphLockPath, graphLockDigest, graphLock, graphLockCorrelated: false });
         continue;
       }
       const validated = validateLegacyManifestCandidate(manifest, {
@@ -773,17 +779,28 @@ async function discoverLegacyStateCandidates(options: PriorTargetStateOptions): 
         graphLockDigest,
         graphLockPath,
       });
+      if (!validated.graphLockCorrelated) {
+        options.warn?.(
+          `Legacy graph lock at ${graphLockPath} advanced beyond its installed manifest; `
+          + "using the manifest as prior runtime state and resolving the dependency graph fresh.",
+        );
+      }
       candidates.push({
         stateKey: candidateStateKey,
         graphLockPath,
         graphLockDigest,
         graphLock,
-        manifest: validated,
+        graphLockCorrelated: validated.graphLockCorrelated,
+        manifest: validated.manifest,
         sourceLock,
       });
     } catch (error) {
       const message = `Legacy target state for ${graphLockPath} is invalid: `
         + (error instanceof Error ? error.message : String(error));
+      if (error instanceof LegacyContributionScopeMismatchError) {
+        options.warn?.(`${message} Preserving it as foreign state for ownership validation.`);
+        continue;
+      }
       if (!options.recoverLegacyState) throw new Error(message);
       options.warn?.(`${message} Preserving it outside the recovered stable state.`);
     }
@@ -798,7 +815,7 @@ function validateLegacyManifestCandidate(
     graphLockDigest: string;
     graphLockPath: string;
   },
-): InstallManifestV2 {
+): { manifest: InstallManifestV2; graphLockCorrelated: boolean } {
   if (manifest.version !== 2) {
     throw new Error(`Legacy target state for ${options.graphLockPath} requires an install manifest v2.`);
   }
@@ -815,14 +832,17 @@ function validateLegacyManifestCandidate(
     !== normalizeInstallRoot(options.installRoot, options.transport.kind)) {
     throw new Error(`Legacy target state target root mismatch at ${options.graphLockPath}.`);
   }
-  const correlated = manifest.entries.filter((entry) => entry.graphLockDigest === options.graphLockDigest);
-  if (correlated.length === 0) {
-    throw new Error(`Legacy install manifest graph-lock digest does not match ${options.graphLockPath}.`);
+  const ownedEntries = manifest.entries.filter((entry) => entry.workspaceOwner === options.workspaceOwner);
+  if (ownedEntries.length === 0) {
+    throw new LegacyContributionScopeMismatchError(
+      `Legacy target state contribution scope does not match ${options.graphLockPath}.`,
+    );
   }
-  if (correlated.some((entry) => entry.workspaceOwner !== options.workspaceOwner)) {
-    throw new Error(`Legacy target state contribution scope does not match ${options.graphLockPath}.`);
+  const manifestDigests = new Set(ownedEntries.map((entry) => entry.graphLockDigest));
+  if (manifestDigests.size !== 1) {
+    throw new Error(`Legacy install manifest has inconsistent graph-lock digests at ${options.graphLockPath}.`);
   }
-  return manifest;
+  return { manifest, graphLockCorrelated: manifestDigests.has(options.graphLockDigest) };
 }
 
 function migrationFromCandidate(candidate: LegacyStateCandidate): InstallStateMigration {

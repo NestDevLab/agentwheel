@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.12"
+  version: "0.20.13"
 ---
 
 # agentwheel
@@ -632,3 +632,10 @@ agentwheel plan --fleet <fleet-id> --agent <agent> \
 planning base. `--force-conflict` adopts exact existing content; `--replace-conflict` permits the
 reviewed plan to update differing unmanaged content. Apply only the same reviewed target and flags.
 After the first stable install, rerun the ordinary plan without recovery flags and require a no-op.
+
+An advanced tracked graph lock with an otherwise valid owned v2 manifest is an ordinary migration:
+Agentwheel keeps the manifest as prior runtime state, resolves the graph fresh, and does not trust the
+advanced lock as installed history. If stale foreign ownership blocks that migration, use
+`agentwheel ownership retire-stale --destination-state-key <exact-fleet-state-key>` to produce a
+metadata-only, revision-gated retirement plan against the already-installed Fleet manifest. Do not
+guess the state key or apply without the exact command emitted by the dry-run.

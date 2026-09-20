@@ -1065,6 +1065,7 @@ ownershipCommand
   .requiredOption("--from-workspace-root <path>", "exact stale workspace owner root")
   .requiredOption("--to-workspace-root <path>", "registered destination Fleet root")
   .requiredOption("--source-state-key <key>", "exact source install-manifest state key")
+  .option("--destination-state-key <key>", "exact Fleet-owned destination install-manifest state key (defaults to the stable target state)")
   .requiredOption("--fleet <id>", "registered destination Fleet")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
@@ -1096,19 +1097,18 @@ ownershipCommand
     if (target.fleetId !== options.fleet || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
       throw new Error(`Resolved target does not belong to destination Fleet '${options.fleet}'.`);
     }
-    const state = await resolveCliTargetState(target, normalizedOptions);
-    const { adapter, installationType } = state;
-    if (state.migration) {
-      throw new Error(
-        "Migrate the target state before ownership retirement by running a full agentwheel install for this target.",
-      );
-    }
+    const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
+    const adapter = await resolveAdapterForTarget(target, adapterOptions);
+    const installationType = normalizedOptions.installationType
+      ?? target.installationType
+      ?? resolveInstallationTypeForAdapter(adapter, undefined);
+    const stableState = installStateForTarget(target, adapter, adapterOptions, installationType);
     const request = {
-      targetRoot: state.installRoot,
+      targetRoot: stableState.installRoot,
       adapter: adapter.name,
       installationType,
       sourceStateKey: options.sourceStateKey,
-      destinationStateKey: state.stableStateKey,
+      destinationStateKey: options.destinationStateKey ?? stableState.stateKey,
       fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
       toWorkspaceRoot,
       toFleetId: fleet.id,
@@ -1132,6 +1132,7 @@ ownershipCommand
       "--from-workspace-root", request.fromWorkspaceRoot,
       "--to-workspace-root", request.toWorkspaceRoot,
       "--source-state-key", request.sourceStateKey,
+      "--destination-state-key", request.destinationStateKey,
       "--fleet", request.toFleetId,
       ...targetArgs,
       "--installation-type", installationType,

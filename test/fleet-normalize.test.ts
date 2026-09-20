@@ -755,6 +755,42 @@ describe("fleet normalization", () => {
     await expect(stat(state.manifest)).rejects.toThrow();
   });
 
+  it("recovers an explicitly named orphan package after its declaration was removed", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const config = await readConfig(state.fleet);
+    config.packages = [pkg("other")];
+    config.agents.runtime.installationType = "local";
+    await writeConfig(state.fleet, config);
+    const homeConfig = await readConfig(state.home);
+    homeConfig.fleets.delivery.requiredPackages = ["other"];
+    await writeConfig(state.home, homeConfig);
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      packages: ["core"],
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.packages).toEqual([
+      expect.objectContaining({ name: "core", declarationDigest: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ]);
+    expect(plan.installedState.transfers).toHaveLength(1);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
+    expect(destinationManifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
+    await expect(stat(state.manifest)).rejects.toThrow();
+  });
+
   it("replays the exact graph-selected orphan entries during journaling", async () => {
     const state = await legacySelfFixture();
     const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");

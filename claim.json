@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/legacy-fleet-target-recovery"
+  ],
+  "claimed_at": "2026-09-20T21:03:38+00:00",
+  "coordination_id": "default",
+  "operation_token": "26426a0b-7fa4-4f1b-9dc7-8ad935e9ea82",
+  "publication_scope": "promote:legacy-fleet-target-recovery",
+  "source_ref": "refs/heads/pr/legacy-fleet-target-recovery",
+  "syncwheel_version": "0.43.24"
+}

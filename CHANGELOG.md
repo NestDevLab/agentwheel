@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.15
+
+- Forward explicit legacy-state recovery through profile install and plan commands.
+- Run timed real CLI install, update, no-op, and stable/legacy recovery scenarios in CI, preserving unrelated legacy state.
+
 ## 0.20.14
 
 - Let explicit legacy-state recovery proceed from an existing stable manifest while preserving

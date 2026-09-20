@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/dogfood-profile-recovery"
+  ],
+  "claimed_at": "2026-09-20T23:31:54+00:00",
+  "coordination_id": "default",
+  "operation_token": "a3528a44-9b92-4b43-86fe-2014b68ed2c5",
+  "publication_scope": "stack:dogfood-profile-recovery",
+  "source_ref": "refs/heads/pr/dogfood-profile-recovery",
+  "syncwheel_version": "0.43.25"
+}

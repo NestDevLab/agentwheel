@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/legacy-fleet-target-recovery"
+    "refs/heads/pr/legacy-fleet-target-recovery"
   ],
-  "claimed_at": "2026-09-20T21:02:16+00:00",
+  "claimed_at": "2026-09-20T21:03:38+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "8c755998-013b-467d-a8c5-ba60de501b06",
-  "publication_scope": "create:legacy-fleet-target-recovery",
+  "operation_token": "26426a0b-7fa4-4f1b-9dc7-8ad935e9ea82",
+  "publication_scope": "promote:legacy-fleet-target-recovery",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/legacy-fleet-target-recovery",
   "syncwheel_version": "0.43.24"
 }

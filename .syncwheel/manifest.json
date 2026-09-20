@@ -31,11 +31,32 @@
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [],
+    "stacks": [
+      "stable-legacy-state-recovery"
+    ],
     "strategy": "cherry-pick"
   },
   "repository_mode": "delivery",
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "stable-legacy-state-recovery",
+      "branch": "syncwheel/draft/stable-legacy-state-recovery",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "fb11ba0e325d25b1d5d297e8bfcbf9574beb923c"
+      ],
+      "state": "draft",
+      "publication": {
+        "enabled": false
+      },
+      "meta": {
+        "purpose": "Allow explicit stable-state recovery while preserving disagreeing legacy manifests"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "version": 2

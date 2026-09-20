@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/stable-legacy-state-recovery"
+  ],
+  "claimed_at": "2026-09-20T22:41:39+00:00",
+  "coordination_id": "default",
+  "operation_token": "8342460d-46ea-487f-9d3f-db1428ec0125",
+  "publication_scope": "create:stable-legacy-state-recovery",
+  "source_ref": "refs/heads/syncwheel/draft/stable-legacy-state-recovery",
+  "syncwheel_version": "0.43.25"
+}

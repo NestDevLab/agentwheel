@@ -1,19 +1,20 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69"
+    "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
+    "refs/heads/pr/legacy-fleet-target-recovery": "08a076a85c553dbb7a56e8099043ef1b89223289",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
-    "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "2d54d4bb7c2a370510615842455a1ff8fbb3a7f0",
+    "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "ef1a0e31d81201437c4a9876054b80386e4f5608",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
@@ -21,7 +22,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T21:02:17+00:00",
+  "created_at": "2026-09-20T21:03:38+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -40,6 +41,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
+    "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/legacy-graph-only-recovery": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
     "refs/heads/pr/legacy-recovery-report": "54e24e13168c49647c8aa74aabbde499b2204146",
@@ -111,24 +113,23 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/legacy-fleet-target-recovery",
+        "branch": "pr/legacy-fleet-target-recovery",
         "commits": [
           "390300337547f05c60f48439b5c1656f5d256e69"
         ],
         "id": "legacy-fleet-target-recovery",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "8c755998-013b-467d-a8c5-ba60de501b06",
-  "parent_state": "312b437ae8d240c50ef4b17473e1896cfdba443b",
+  "operation_token": "26426a0b-7fa4-4f1b-9dc7-8ad935e9ea82",
+  "parent_state": "b9da8f789b6f0a24b09ba821a0a8cd7c3a50f0e0",
   "projection_status": "partial",
-  "publication_id": "ebfb916f-a999-476d-8bb8-2aa6341cf66f",
-  "publication_scope": "create:legacy-fleet-target-recovery",
+  "publication_id": "3e63131d-20ad-4f45-b398-0c5373e5be83",
+  "publication_scope": "promote:legacy-fleet-target-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.24",
   "tombstones": [
@@ -499,6 +500,14 @@
       "ref": "refs/heads/pr/legacy-graph-only-recovery",
       "remote_tip": null,
       "stack": "legacy-graph-only-recovery"
+    },
+    {
+      "branch": "syncwheel/draft/legacy-fleet-target-recovery",
+      "closed_at": "2026-09-20T21:03:25+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/legacy-fleet-target-recovery",
+      "remote_tip": "390300337547f05c60f48439b5c1656f5d256e69",
+      "stack": "legacy-fleet-target-recovery"
     }
   ]
 }

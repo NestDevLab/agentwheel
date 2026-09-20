@@ -656,14 +656,23 @@ export async function resolvePriorTargetState(options: PriorTargetStateOptions):
   const correlated = candidates.filter((candidate) => candidate.manifest);
 
   if (options.stableManifest) {
+    const compatible: LegacyStateCandidate[] = [];
     for (const candidate of correlated) {
-      if (!sameManifestContributions(options.stableManifest, candidate.manifest!)) {
+      if (sameManifestContributions(options.stableManifest, candidate.manifest!)) {
+        compatible.push(candidate);
+        continue;
+      }
+      if (!options.recoverLegacyState) {
         throw new Error(
           `Stable and legacy target states coexist with disagreeing contributions for ${options.adapter}; reconcile them explicitly.`,
         );
       }
+      options.warn?.(
+        `Legacy target state for ${options.adapter} at ${candidate.graphLockPath} disagrees with the stable manifest. `
+        + "Preserving it outside the explicitly recovered stable state.",
+      );
     }
-    const sameKeyCandidates = correlated.filter((candidate) => candidate.stateKey === options.stateKey);
+    const sameKeyCandidates = compatible.filter((candidate) => candidate.stateKey === options.stateKey);
     if (!options.stableLock && sameKeyCandidates.length > 1) {
       throw new Error(`Ambiguous legacy target state for ${options.adapter}: multiple correlated graph locks use the explicit state key.`);
     }

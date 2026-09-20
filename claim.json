@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/stable-legacy-state-recovery"
   ],
-  "claimed_at": "2026-09-20T22:42:07+00:00",
+  "claimed_at": "2026-09-20T22:44:49+00:00",
   "coordination_id": "default",
-  "operation_token": "67c38958-755e-451f-bec5-1cf193598a90",
-  "publication_scope": "promote:stable-legacy-state-recovery",
+  "operation_token": "95f16493-cde9-4cf7-8a2f-9dc8b867dde4",
+  "publication_scope": "partial",
   "source_ref": "refs/heads/pr/stable-legacy-state-recovery",
   "syncwheel_version": "0.43.25"
 }

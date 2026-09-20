@@ -13,7 +13,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/pr/stable-legacy-state-recovery": "90b93a3466f6fd7d004de38d99ca604eeea41cd1",
+    "refs/heads/pr/stable-legacy-state-recovery": "4092c0e9c5bfbb1407adb6b2b92542c587f85f55",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
@@ -25,7 +25,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:42:08+00:00",
+  "created_at": "2026-09-20T22:44:49+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -131,11 +131,11 @@
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "67c38958-755e-451f-bec5-1cf193598a90",
-  "parent_state": "67874a0ac889ed4badca00f408f04a65447b18e4",
+  "operation_token": "95f16493-cde9-4cf7-8a2f-9dc8b867dde4",
+  "parent_state": "37b15c2b8fae38c4163ec9d3522cafeedfddf10e",
   "projection_status": "partial",
-  "publication_id": "e78e68cd-ab24-4c5a-b964-3ef45f404285",
-  "publication_scope": "promote:stable-legacy-state-recovery",
+  "publication_id": "3aadeec1-b465-47b9-9ef5-890af572d685",
+  "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [

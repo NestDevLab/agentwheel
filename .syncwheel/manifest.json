@@ -1,24 +1,24 @@
 {
   "authority": {
+    "mode": "ai-managed",
     "allow": [
       "source_change"
     ],
     "deny": [
       "destructive_rewrite"
-    ],
-    "mode": "ai-managed"
+    ]
   },
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -31,32 +31,11 @@
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [
-      "stable-legacy-state-recovery"
-    ],
+    "stacks": [],
     "strategy": "cherry-pick"
   },
   "repository_mode": "delivery",
-  "stacks": [
-    {
-      "base": "origin/main",
-      "branch": "pr/stable-legacy-state-recovery",
-      "commits": [
-        "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb"
-      ],
-      "id": "stable-legacy-state-recovery",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Allow explicit stable-state recovery while preserving disagreeing legacy manifests"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "version": 2

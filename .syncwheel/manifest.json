@@ -1,24 +1,24 @@
 {
   "authority": {
+    "mode": "ai-managed",
     "allow": [
       "source_change"
     ],
     "deny": [
       "destructive_rewrite"
-    ],
-    "mode": "ai-managed"
+    ]
   },
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -42,7 +42,7 @@
       "base": "origin/main",
       "branch": "pr/dogfood-profile-recovery",
       "commits": [
-        "e0f8233988cf7cd26cebf2efc6dd0450a5c0df66"
+        "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620"
       ],
       "id": "dogfood-profile-recovery",
       "integration_branch": "main-integration",

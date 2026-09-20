@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/dogfood-profile-recovery"
-  ],
-  "claimed_at": "2026-09-20T23:31:54+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-20T23:46:57+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "a3528a44-9b92-4b43-86fe-2014b68ed2c5",
-  "publication_scope": "stack:dogfood-profile-recovery",
+  "operation_token": "a836e9c7-e422-4e2e-b6c7-a0767ad792bd",
+  "publication_scope": "close:dogfood-profile-recovery",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/dogfood-profile-recovery",
-  "syncwheel_version": "0.43.25"
+  "syncwheel_version": "0.43.26"
 }

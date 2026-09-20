@@ -1,12 +1,12 @@
 {
   "changed_refs": {
-    "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69"
+    "refs/heads/main-integration": "b2dc9ff285dfee81036f78a2f0a7790c92f4da7c"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
-    "refs/heads/main-integration": "ade206555e79152412ff583567de4fe7a0edfd2c",
+    "refs/heads/main-integration": "502d2a05d1fb60fcfed8c5b6a3a4ed25fdd89a3b",
     "refs/heads/pr/legacy-fleet-target-recovery": "08a076a85c553dbb7a56e8099043ef1b89223289",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -22,7 +22,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T21:03:38+00:00",
+  "created_at": "2026-09-20T21:52:32+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -32,7 +32,7 @@
     "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
     "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
-    "refs/heads/main-integration": "fd43a38af98b38db2d893909356cebdec8c6aab2",
+    "refs/heads/main-integration": "b2dc9ff285dfee81036f78a2f0a7790c92f4da7c",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
     "refs/heads/pr/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
@@ -124,14 +124,14 @@
     ],
     "version": 2
   },
-  "manifest_digest": "8aff6aae837f1d6642b3edbf1b33cd5ba25f2a6352fa1c7387ba6c704b37ec5e",
-  "operation_token": "26426a0b-7fa4-4f1b-9dc7-8ad935e9ea82",
-  "parent_state": "b9da8f789b6f0a24b09ba821a0a8cd7c3a50f0e0",
+  "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
+  "operation_token": "0154f4d9-e629-4ea1-83f5-54c29a8a232f",
+  "parent_state": "c86a999bf7210a010a66ca52616534d7643a0295",
   "projection_status": "partial",
-  "publication_id": "3e63131d-20ad-4f45-b398-0c5373e5be83",
-  "publication_scope": "promote:legacy-fleet-target-recovery",
+  "publication_id": "b24438d8-7ddf-4a2c-a284-19a58c970410",
+  "publication_scope": "integration",
   "schema_version": 2,
-  "syncwheel_version": "0.43.24",
+  "syncwheel_version": "0.43.25",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

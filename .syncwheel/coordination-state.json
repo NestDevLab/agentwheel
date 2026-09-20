@@ -1,13 +1,11 @@
 {
-  "changed_refs": {
-    "refs/heads/main-integration": "b2dc9ff285dfee81036f78a2f0a7790c92f4da7c"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "502d2a05d1fb60fcfed8c5b6a3a4ed25fdd89a3b",
-    "refs/heads/pr/legacy-fleet-target-recovery": "08a076a85c553dbb7a56e8099043ef1b89223289",
+    "refs/heads/pr/legacy-fleet-target-recovery": "b2eaa3ecf8c32bdfba100fb0c7c036e11218a426",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
@@ -22,7 +20,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T21:52:32+00:00",
+  "created_at": "2026-09-20T21:56:00+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -101,35 +99,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "legacy-fleet-target-recovery"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/legacy-fleet-target-recovery",
-        "commits": [
-          "390300337547f05c60f48439b5c1656f5d256e69"
-        ],
-        "id": "legacy-fleet-target-recovery",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "0154f4d9-e629-4ea1-83f5-54c29a8a232f",
-  "parent_state": "c86a999bf7210a010a66ca52616534d7643a0295",
+  "operation_token": "f6c88214-f335-425e-9132-6ed98e5dc76c",
+  "parent_state": "71209f88a70d68432e5b3c2e46ba9e5c081b594c",
   "projection_status": "partial",
-  "publication_id": "b24438d8-7ddf-4a2c-a284-19a58c970410",
-  "publication_scope": "integration",
+  "publication_id": "faaad593-df43-44b6-9d4b-1853d2e76eaf",
+  "publication_scope": "close:legacy-fleet-target-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [
@@ -507,6 +488,14 @@
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/legacy-fleet-target-recovery",
       "remote_tip": "390300337547f05c60f48439b5c1656f5d256e69",
+      "stack": "legacy-fleet-target-recovery"
+    },
+    {
+      "branch": "pr/legacy-fleet-target-recovery",
+      "closed_at": "2026-09-20T21:55:50+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/legacy-fleet-target-recovery",
+      "remote_tip": null,
       "stack": "legacy-fleet-target-recovery"
     }
   ]

@@ -5,7 +5,7 @@
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "502d2a05d1fb60fcfed8c5b6a3a4ed25fdd89a3b",
-    "refs/heads/pr/legacy-fleet-target-recovery": "b2eaa3ecf8c32bdfba100fb0c7c036e11218a426",
+    "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
@@ -21,7 +21,7 @@
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-20T22:40:38+00:00",
+  "created_at": "2026-09-20T22:41:09+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -108,11 +108,11 @@
     "version": 2
   },
   "manifest_digest": "51cedf205a0c85c5e64ebf967acaeb1971b14301c477fb2174d1a6414e4e80be",
-  "operation_token": "f15016de-26a0-4dc8-9a27-001b131f5679",
-  "parent_state": "db77c3ab44bccc53318920506bb2361830d9fb7a",
+  "operation_token": "53b38d08-3b1b-4d5d-ab8e-65c77d2621f6",
+  "parent_state": "f3b8b41f26523fe18623f8a4ac9499a7da58aff8",
   "projection_status": "partial",
-  "publication_id": "a32fe577-9edd-435f-be3d-8422f0892205",
-  "publication_scope": "close:fleet-qualified-state-key-migration",
+  "publication_id": "bd613368-c112-4c43-a5bf-f6f92ae655d8",
+  "publication_scope": "close:legacy-fleet-target-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.25",
   "tombstones": [
@@ -493,20 +493,20 @@
       "stack": "legacy-fleet-target-recovery"
     },
     {
-      "branch": "pr/legacy-fleet-target-recovery",
-      "closed_at": "2026-09-20T21:55:50+00:00",
-      "reason": "absorbed",
-      "ref": "refs/heads/pr/legacy-fleet-target-recovery",
-      "remote_tip": null,
-      "stack": "legacy-fleet-target-recovery"
-    },
-    {
       "branch": "syncwheel/draft/fleet-qualified-state-key-migration",
       "closed_at": "2026-09-20T22:40:28+00:00",
       "reason": "abandoned",
       "ref": "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration",
       "remote_tip": "b56a6d553e0ea31175e6219a1fd03891ed8080a5",
       "stack": "fleet-qualified-state-key-migration"
+    },
+    {
+      "branch": "pr/legacy-fleet-target-recovery",
+      "closed_at": "2026-09-20T22:40:59+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/legacy-fleet-target-recovery",
+      "remote_tip": null,
+      "stack": "legacy-fleet-target-recovery"
     }
   ]
 }

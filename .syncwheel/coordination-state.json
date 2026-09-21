@@ -1,7 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/main-integration": "1a412f8cdcf5fe5ca89cd5afa98b0df97dc25900",
-    "refs/heads/pr/update-legacy-recovery": "a4277a83bbe1812c35bf6c73038cd366ea89a66c"
+    "refs/heads/pr/update-legacy-recovery": "ac13312efc335f448cc4f028d37983debbdd89f2"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -16,7 +15,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
-    "refs/heads/pr/update-legacy-recovery": "66985f9f4694157baebbb270876aa68eac7f3dbd",
+    "refs/heads/pr/update-legacy-recovery": "6503beaebb1844a61b32f1d022ef71353b437624",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
@@ -28,7 +27,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T01:03:55+00:00",
+  "created_at": "2026-09-21T01:05:00+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -61,7 +60,7 @@
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
     "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
-    "refs/heads/pr/update-legacy-recovery": "a4277a83bbe1812c35bf6c73038cd366ea89a66c",
+    "refs/heads/pr/update-legacy-recovery": "ac13312efc335f448cc4f028d37983debbdd89f2",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/release/0.18.1-focused-graph": "dc86014ad20f0275a0b8445ddafca46a710447ee",
     "refs/heads/release/agentwheel-0.20.0": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
@@ -125,7 +124,9 @@
           "role": "canonical"
         },
         "branch": "pr/update-legacy-recovery",
-        "commits": [],
+        "commits": [
+          "54de93c6b868a377f86db1b03f93f269e8597500"
+        ],
         "id": "update-legacy-recovery",
         "integration_branch": "main-integration",
         "target_branch": "main"
@@ -134,10 +135,10 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "ff37b9e0-6507-4448-8790-01d243088e73",
-  "parent_state": "259872da2640809d2e2c3cd2881730b63c7fd64c",
+  "operation_token": "e194cd61-4262-4d56-8e49-d8c1ebd87b72",
+  "parent_state": "742718dd3d419bd43a5b74ec24a1065968bf5dbc",
   "projection_status": "partial",
-  "publication_id": "7fbfcb80-cf98-4641-90b9-018fca878e92",
+  "publication_id": "d122f866-cd54-4e54-917f-d1128ff3820e",
   "publication_scope": "stack:update-legacy-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.26",

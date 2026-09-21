@@ -1176,28 +1176,33 @@ ownershipCommand
       throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
     }
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
-    const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
-    const adapter = await resolveAdapterForTarget(target, adapterOptions);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    // same precedence as install, each installation type gets its own state key
-    const packageInstallationType = (pkg: WorkspacePackage) =>
-      normalizedOptions.installationType ?? pkg.installationType ?? target.installationType ?? "local";
-    const installationTypes = [...new Set(config.packages.map(packageInstallationType))];
-    if (installationTypes.length === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
+    // group packages exactly as install does: installation type and adapter options each select a state key
+    const groups = new Map<string, PackageGraphGroup>();
+    for (const pkg of config.packages) graphGroupForPackage(groups, target, pkg, normalizedOptions).packages.push(pkg);
+    if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
+    const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
     if (installationTypes.length > 1) {
       throw new Error(`Configured packages use installation types ${installationTypes.join(", ")}; pass --installation-type <type>.`);
     }
-    const installationType = installationTypes[0]!;
-    const packages = config.packages.filter((pkg) => packageInstallationType(pkg) === installationType);
-    const stable = installStateForTarget(target, adapter, adapterOptions, installationType);
+    if (groups.size > 1) {
+      throw new Error(
+        `Configured packages resolve to ${groups.size} adapter configurations for ${installationTypes[0]}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    const group = [...groups.values()][0]!;
+    const { installationType, adapterOptions } = group;
+    const adapter = await resolveAdapterForTarget(group.target, adapterOptions);
+    const stable = installStateForTarget(group.target, adapter, adapterOptions, installationType);
     const stableGraphLockPath = graphLockPathForTarget(
-      target.workspaceRoot,
-      targetKeyForTarget(target, adapter.name),
+      group.target.workspaceRoot,
+      targetKeyForTarget(group.target, adapter.name),
       adapter.name,
-      targetFingerprintParts(target, adapter, adapterOptions, installationType),
-      targetIdentityContext(target, adapter, installationType),
+      targetFingerprintParts(group.target, adapter, adapterOptions, installationType),
+      targetIdentityContext(group.target, adapter, installationType),
     );
-    const desiredCoverage = await withFreshReadOnlyGraphPlan(target, adapter, adapterOptions, installationType, packages, async (graphPlan) => {
+    const desiredCoverage = await withFreshReadOnlyGraphPlan(group.target, adapter, adapterOptions, installationType, group.packages, async (graphPlan) => {
       if (graphPlan.plan.stateKey !== stable.stateKey || graphPlan.graphLockPath !== stableGraphLockPath) {
         throw new Error("Current source graph resolved a different target state identity; legacy ownership adoption cannot proceed.");
       }

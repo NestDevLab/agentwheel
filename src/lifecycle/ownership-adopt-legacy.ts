@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { commitManifestMetadataJournal } from "../install/apply.js";
-import { computeInstallManifestInventoryRevision, listInstallManifests, readInstallManifest } from "../install/manifest.js";
+import {
+  computeInstallManifestInventoryRevision,
+  listInstallManifests,
+  readInstallManifest,
+  type DiscoveredInstallManifest,
+} from "../install/manifest.js";
 import { installManifestPath } from "../install/paths.js";
 import type { InstallPlan } from "../install/plan.js";
 import {
@@ -237,53 +242,22 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     throw new Error(`Nothing to adopt: no source install manifest for state key ${input.sourceStateKey}.`);
   }
   const source = await requireManifest(identity, input.sourceStateKey, transport, "source");
-  if (source.adapterCode) {
-    throw new Error("The source install manifest records programmatic adapter code; legacy ownership adoption refuses it.");
-  }
   const destination = await readDestination(identity, input.destinationStateKey, transport);
   if (!destination && await pathExists(request.destinationGraphLockPath)) {
     throw new Error(
       `Destination has a stable graph lock without a stable manifest at ${request.destinationGraphLockPath}; reconcile it before adopting legacy ownership.`,
     );
   }
-  if (source.entries.some((entry) => entry.workspaceOwner === input.destinationOwner)) {
-    throw new Error(
-      `Source state ${input.sourceStateKey} has entries already owned by the destination owner; run a normal install to migrate them first.`,
-    );
-  }
-
-  const candidates = source.entries.filter((entry) => entry.workspaceOwner === input.sourceOwner);
-  for (const entry of candidates) assertPlainEntry(entry, targetRoot);
   const desiredByPath = new Map<string, AdoptLegacyDesiredArtifact[]>();
   for (const item of request.desiredCoverage) desiredByPath.set(item.path, [...desiredByPath.get(item.path) ?? [], item]);
-
-  const selectedEntries: InstallManifestEntry[] = [];
-  const retained: AdoptLegacyOwnershipPlan["retained"] = [];
-  for (const entry of source.entries) {
-    if (entry.workspaceOwner !== input.sourceOwner) {
-      retained.push({ path: entry.path, owner: entry.workspaceOwner, reason: "other-owner" });
-      continue;
-    }
-    const desired = desiredByPath.get(entry.path) ?? [];
-    if (desired.length === 0) {
-      retained.push({ path: entry.path, owner: entry.workspaceOwner, reason: "not-desired" });
-      continue;
-    }
-    if (!desired.some((item) => desiredCovers(item, entry))) {
-      throw new Error(`The current graph plans a different artifact at ${entry.path}; legacy ownership cannot be adopted there.`);
-    }
-    selectedEntries.push(entry);
-  }
-  if (selectedEntries.length === 0) {
-    throw new Error(`Nothing to adopt: no entry owned by ${input.sourceOwner} in ${input.sourceStateKey} is desired by this workspace.`);
-  }
-  const selectedPaths = new Set<string>();
-  for (const entry of selectedEntries) {
-    if (selectedPaths.has(entry.path)) throw new Error(`Source state has more than one entry at ${entry.path}.`);
-    selectedPaths.add(entry.path);
-  }
-
-  const provenance = await resolveProvenance(input, selectedEntries);
+  const { entries: selectedEntries, retained, provenance } = await selectLegacySource(
+    input,
+    input.sourceStateKey,
+    input.fingerprint,
+    source,
+    desiredByPath,
+  );
+  const selectedPaths = new Set(selectedEntries.map((entry) => entry.path));
   const selected: AdoptLegacyOwnershipEntry[] = [];
   for (const entry of selectedEntries) {
     const runtimePath = containedArtifactPath(targetRoot, entry.path);
@@ -318,17 +292,21 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   }
 
   const remainingDuplicates: AdoptLegacyOwnershipPlan["remainingDuplicates"] = [];
+  const selectedByPath = new Map(selectedEntries.map((entry) => [entry.path, entry]));
   for (const item of await listInstallManifests(targetRoot, adapter, transport)) {
     if (item.stateKey === input.destinationStateKey) continue;
+    const duplicatePaths: string[] = [];
     for (const entry of item.manifest.entries) {
       if (!selectedPaths.has(entry.path)) continue;
       const owner = "workspaceOwner" in entry ? entry.workspaceOwner : legacyUnownedWorkspaceOwner;
-      if (owner === input.sourceOwner) {
-        if (item.stateKey !== input.sourceStateKey) remainingDuplicates.push({ stateKey: item.stateKey, path: entry.path });
-        continue;
+      if (owner !== input.sourceOwner) {
+        throw new Error(`${entry.path} is also claimed by ${owner} in ${item.fileName}; legacy ownership cannot be adopted.`);
       }
-      throw new Error(`${entry.path} is also claimed by ${owner} in ${item.fileName}; legacy ownership cannot be adopted.`);
+      if (item.stateKey !== input.sourceStateKey) duplicatePaths.push(entry.path);
     }
+    if (duplicatePaths.length === 0) continue;
+    await assertRetirableDuplicate(input, item, duplicatePaths, selectedByPath, desiredByPath, transport);
+    for (const path of duplicatePaths) remainingDuplicates.push({ stateKey: item.stateKey, path });
   }
 
   const withoutDigest = {
@@ -374,10 +352,9 @@ async function normalizeRequest(request: AdoptLegacyOwnershipRequest): Promise<N
   const installationType = request.installationType.trim();
   const sourceStateKey = exactStateKey(request.adapter, request.sourceStateKey, installationType, "source");
   const destinationStateKey = exactStateKey(request.adapter, request.destinationStateKey, installationType, "destination");
-  const prefix = `${request.adapter}.${installationType}.`;
-  const fingerprint = sourceStateKey.startsWith(prefix) ? sourceStateKey.slice(prefix.length) : "";
-  if (!/^[a-f0-9]{64}$/u.test(fingerprint)) {
-    throw new Error(`The source must be a legacy state key of the form ${prefix}<64-hex target fingerprint>.`);
+  const fingerprint = legacyFingerprint(request.adapter, installationType, sourceStateKey);
+  if (!fingerprint) {
+    throw new Error(`The source must be a legacy state key of the form ${request.adapter}.${installationType}.<64-hex target fingerprint>.`);
   }
   if (sourceStateKey === destinationStateKey) throw new Error("Source and destination state keys must differ.");
 
@@ -422,17 +399,103 @@ async function normalizeRequest(request: AdoptLegacyOwnershipRequest): Promise<N
   };
 }
 
-async function resolveProvenance(input: NormalizedRequest, entries: InstallManifestEntry[]): Promise<HistoricalLock> {
-  const locks = await findLegacyNamedLocks(input.sourceRoot, input.adapter, input.fingerprint);
+// A stable key is also <adapter>.<type>.<64 hex>, so the key shape alone never proves a legacy key;
+// the proof is a lock in the owner root named by that fingerprint and recording it.
+function legacyFingerprint(adapter: string, installationType: string, stateKey: string): string | undefined {
+  const prefix = `${adapter}.${installationType}.`;
+  const fingerprint = stateKey.startsWith(prefix) ? stateKey.slice(prefix.length) : "";
+  return /^[a-f0-9]{64}$/u.test(fingerprint) ? fingerprint : undefined;
+}
+
+async function selectLegacySource(
+  input: NormalizedRequest,
+  stateKey: string,
+  fingerprint: string,
+  source: InstallManifestV2,
+  desiredByPath: Map<string, AdoptLegacyDesiredArtifact[]>,
+): Promise<{ entries: InstallManifestEntry[]; retained: AdoptLegacyOwnershipPlan["retained"]; provenance: HistoricalLock }> {
+  if (source.adapterCode) {
+    throw new Error(`The install manifest for ${stateKey} records programmatic adapter code; legacy ownership adoption refuses it.`);
+  }
+  if (source.entries.some((entry) => entry.workspaceOwner === input.destinationOwner)) {
+    throw new Error(
+      `Source state ${stateKey} has entries already owned by the destination owner; run a normal install to migrate them first.`,
+    );
+  }
+  for (const entry of source.entries) {
+    if (entry.workspaceOwner === input.sourceOwner) assertPlainEntry(entry, input.targetRoot);
+  }
+
+  const entries: InstallManifestEntry[] = [];
+  const retained: AdoptLegacyOwnershipPlan["retained"] = [];
+  for (const entry of source.entries) {
+    if (entry.workspaceOwner !== input.sourceOwner) {
+      retained.push({ path: entry.path, owner: entry.workspaceOwner, reason: "other-owner" });
+      continue;
+    }
+    const desired = desiredByPath.get(entry.path) ?? [];
+    if (desired.length === 0) {
+      retained.push({ path: entry.path, owner: entry.workspaceOwner, reason: "not-desired" });
+      continue;
+    }
+    if (!desired.some((item) => desiredCovers(item, entry))) {
+      throw new Error(`The current graph plans a different artifact at ${entry.path}; legacy ownership cannot be adopted there.`);
+    }
+    entries.push(entry);
+  }
+  if (entries.length === 0) {
+    throw new Error(`Nothing to adopt: no entry owned by ${input.sourceOwner} in ${stateKey} is desired by this workspace.`);
+  }
+  const paths = new Set<string>();
+  for (const entry of entries) {
+    if (paths.has(entry.path)) throw new Error(`Source state ${stateKey} has more than one entry at ${entry.path}.`);
+    paths.add(entry.path);
+  }
+  return { entries, retained, provenance: await resolveProvenance(input, fingerprint, entries) };
+}
+
+// A same-owner claim left in another manifest is only safe to leave behind if a follow-up run on
+// that key would retire it against the entry adopted now; otherwise the path ends with two owners.
+async function assertRetirableDuplicate(
+  input: NormalizedRequest,
+  item: DiscoveredInstallManifest,
+  paths: string[],
+  selectedByPath: Map<string, InstallManifestEntry>,
+  desiredByPath: Map<string, AdoptLegacyDesiredArtifact[]>,
+  transport: TargetTransport,
+): Promise<void> {
+  const refuse = (path: string, reason: string) => new Error(
+    `${path} is also claimed by ${input.sourceOwner} in ${item.fileName}, which a follow-up adopt-legacy run could not retire: ${reason}`,
+  );
+  const fingerprint = legacyFingerprint(input.adapter, input.installationType, item.stateKey);
+  if (!fingerprint) throw refuse(paths[0]!, `${item.stateKey} is not a legacy fingerprint state key for ${input.adapter}/${input.installationType}.`);
+  let duplicates: InstallManifestEntry[];
+  try {
+    const identity = { targetRoot: input.targetRoot, adapter: input.adapter, installationType: input.installationType };
+    const manifest = await requireManifest(identity, item.stateKey, transport, "duplicate source");
+    duplicates = (await selectLegacySource(input, item.stateKey, fingerprint, manifest, desiredByPath)).entries;
+  } catch (error) {
+    throw refuse(paths[0]!, error instanceof Error ? error.message : String(error));
+  }
+  for (const path of paths) {
+    const duplicate = duplicates.find((entry) => entry.path === path);
+    if (!duplicate || !sameRecordedArtifact(duplicate, selectedByPath.get(path)!)) {
+      throw refuse(path, "its artifact identity or recorded hashes differ from the adopted entry.");
+    }
+  }
+}
+
+async function resolveProvenance(input: NormalizedRequest, fingerprint: string, entries: InstallManifestEntry[]): Promise<HistoricalLock> {
+  const locks = await findLegacyNamedLocks(input.sourceRoot, input.adapter, fingerprint);
   if (locks.length === 0) {
     throw new Error(
-      `Source root ${input.sourceRoot} has no legacy-named graph lock for ${input.adapter}/${input.fingerprint}; provenance cannot be proven.`,
+      `Source root ${input.sourceRoot} has no legacy-named graph lock for ${input.adapter}/${fingerprint}; provenance cannot be proven.`,
     );
   }
   // own locks get rewritten by later installs, so no digest match here, the owner root is the proof
   if (input.sourceClass === "own-legacy-owner") return locks[0]!;
   if (locks.length !== 1) {
-    throw new Error(`Source root ${input.sourceRoot} must have exactly one legacy-named graph lock for ${input.fingerprint}, found ${locks.length}.`);
+    throw new Error(`Source root ${input.sourceRoot} must have exactly one legacy-named graph lock for ${fingerprint}, found ${locks.length}.`);
   }
   const lock = locks[0]!;
   for (const entry of entries) {
@@ -474,11 +537,15 @@ function desiredCovers(item: AdoptLegacyDesiredArtifact, entry: InstallManifestE
 function coversSourceEntry(destination: InstallManifestEntry, source: InstallManifestEntry, owner: string): boolean {
   return destination.workspaceOwner === owner
     && !destination.mode && !destination.mergeStrategy && !destination.semanticPlugin
-    && destination.artifactType === source.artifactType
-    && destination.artifactName === source.artifactName
-    && destination.kind === source.kind
-    && destination.hash === source.hash
-    && destination.sourceHash === source.sourceHash;
+    && sameRecordedArtifact(destination, source);
+}
+
+function sameRecordedArtifact(left: InstallManifestEntry, right: InstallManifestEntry): boolean {
+  return left.artifactType === right.artifactType
+    && left.artifactName === right.artifactName
+    && left.kind === right.kind
+    && left.hash === right.hash
+    && left.sourceHash === right.sourceHash;
 }
 
 async function assertNoPendingJournals(targetRoot: string, adapter: string, transport: TargetTransport): Promise<void> {

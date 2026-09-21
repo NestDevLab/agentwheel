@@ -228,6 +228,45 @@ describe("legacy ownership adoption", () => {
     expect(await readFile(installManifestPath(fixture.target, adapter.name, scope(destinationKey)))).toEqual(destinationBefore);
   });
 
+  it("refuses a same-owner claim that a follow-up run could not retire", async () => {
+    // a migrating install that crashed after writing its stable manifest leaves this non-legacy duplicate
+    const stable = await createFixture({ ownLegacy: false });
+    const scratchState = await graphPlan(stable, stable.scratch, {
+      select: ["skills/alpha-skill"],
+      freshGraphOnly: true,
+      deferForeignStateCheck: true,
+    });
+    const legacy = await readV2(stable, stable.legacyKey);
+    await writeInstallManifest({
+      ...legacy,
+      stateKey: scratchState.plan.stateKey!,
+      entries: legacy.entries.filter((entry) => entry.path === alpha),
+    });
+    const scratchInstall = () => graphPlan(stable, stable.scratch, { select: ["skills/alpha-skill"] });
+    expect((await scratchInstall()).plan.hasBlockingChanges).toBe(false);
+    const legacyBefore = await readFile(stable.legacyManifestPath);
+    await expect(planAdoptLegacyOwnership(await adoptRequest(stable, stable.scratch)))
+      .rejects.toThrow(/also claimed by .* could not retire: .*no legacy-named graph lock/i);
+    expect(await readFile(stable.legacyManifestPath)).toEqual(legacyBefore);
+    expect((await scratchInstall()).plan.hasBlockingChanges).toBe(false);
+
+    const changed = await createFixture({ ownLegacy: false });
+    const changedSecond = await seedSecondLegacyState(changed);
+    await patchManifestEntry(installManifestPath(changed.target, adapter.name, scope(changedSecond.stateKey)), alpha, {
+      hash: "f".repeat(64),
+    });
+    await expect(planAdoptLegacyOwnership(await adoptRequest(changed, changed.scratch)))
+      .rejects.toThrow(/could not retire: .*recorded hashes differ/i);
+
+    const unproven = await createFixture({ ownLegacy: false });
+    const unprovenSecond = await seedSecondLegacyState(unproven);
+    await patchManifestEntry(installManifestPath(unproven.target, adapter.name, scope(unprovenSecond.stateKey)), alpha, {
+      graphLockDigest: "e".repeat(64),
+    });
+    await expect(planAdoptLegacyOwnership(await adoptRequest(unproven, unproven.scratch)))
+      .rejects.toThrow(/could not retire: .*graph-lock digest/i);
+  });
+
   it("refuses unsafe destination state and Fleet targets", async () => {
     const foreign = await createFixture({ ownLegacy: false });
     const legacy = await readV2(foreign, foreign.legacyKey);
@@ -545,9 +584,13 @@ async function readV2(fixture: Pick<Fixture, "target">, stateKey: string): Promi
 }
 
 async function patchLegacyEntry(fixture: Fixture, path: string, patch: Record<string, unknown>): Promise<void> {
-  const raw = JSON.parse(await readFile(fixture.legacyManifestPath, "utf8"));
+  await patchManifestEntry(fixture.legacyManifestPath, path, patch);
+}
+
+async function patchManifestEntry(manifestPath: string, path: string, patch: Record<string, unknown>): Promise<void> {
+  const raw = JSON.parse(await readFile(manifestPath, "utf8"));
   raw.entries = raw.entries.map((entry: { path: string }) => entry.path === path ? { ...entry, ...patch } : entry);
-  await writeFile(fixture.legacyManifestPath, JSON.stringify(raw));
+  await writeFile(manifestPath, JSON.stringify(raw));
 }
 
 async function lockDigest(path: string): Promise<string> {

@@ -485,15 +485,19 @@ agentwheel ownership adopt-legacy --agent <agent> \
 
 The dry-run proves each moved entry: the previous owner root must hold a graph lock named by the
 legacy fingerprint, and for another workspace root exactly one such lock must match the entry's
-graph-lock digest, node, selector, and source hash. Only entries the current graph still installs at the same path with the
-same artifact identity move; the rest stay in the source manifest and are listed. Runtime bytes must
-match the recorded hash unless `--carry-drift` keeps that hash, so the next install reports drift
-instead of overwriting local changes. A path another owner still claims blocks the plan; a duplicate
-claim by the same previous owner under a second legacy key is listed and retired by a second run.
-Apply only the emitted command. It writes the stable manifest first and the legacy manifest second,
-and changes nothing else. A pending apply journal blocks the command. If an apply stops after the
-stable manifest was written, run the dry-run again: paths already in the stable state are then
-retired from the legacy key.
+graph-lock digest, node, selector, and source hash. Only entries the current graph still installs at
+the same path with the same artifact identity move; the rest stay in the source manifest and are
+listed. The current graph groups packages as install does, by installation type and adapter
+configuration, and the command refuses when they resolve to more than one install state. Runtime
+bytes must match the recorded hash unless `--carry-drift` keeps that hash, so the next install
+reports drift instead of overwriting local changes. A path another owner still claims blocks the
+plan. A duplicate claim by the same previous owner is listed only when it sits under another legacy
+key of that root with the same proof and the same recorded artifact and hashes; run the command
+again with that key to retire it. Any other duplicate, including one in that root's current state,
+blocks the plan. Apply only the emitted command. It writes the stable manifest first and the legacy
+manifest second, and changes nothing else. A pending apply journal blocks the command. If an apply
+stops after the stable manifest was written, run the dry-run again: paths already in the stable
+state are then retired from the legacy key.
 
 ## Core Ideas
 

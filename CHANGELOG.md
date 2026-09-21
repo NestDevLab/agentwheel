@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.18
 
 - Add `ownership adopt-legacy` to move proven ownership claims recorded under a fingerprint-only
   legacy state key into a nested workspace's stable state. It changes only manifest metadata,

@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -31,7 +31,7 @@
   "stacks": [
     {
       "base": "origin/main",
-      "branch": "syncwheel/draft/aw-ownership-adopt-legacy",
+      "branch": "pr/aw-ownership-adopt-legacy",
       "commits": [
         "13f1a8a51e4037d2d173d5851d62de3c770e3ade",
         "1e5797f7f51e19501f9f885684106490495ba52f",
@@ -45,9 +45,9 @@
         "purpose": "Adopt legacy-key ownership records into the owning nested workspace (MGT-0250)"
       },
       "publication": {
-        "enabled": false
+        "enabled": true
       },
-      "state": "draft",
+      "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
     }

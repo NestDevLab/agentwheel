@@ -90,6 +90,42 @@ describe("ownership adopt-legacy CLI", () => {
     const plan = JSON.parse((await runCli([...adoptArgs(fixture), "-i", "local", "--json"], fixture)).stdout);
     expect(plan.selected).toMatchObject([{ path: legacyPath, action: "adopt" }]);
   }, 60_000);
+
+  it("refuses explicit adapter settings other than the ones install resolves for the packages", async () => {
+    const fixture = await createFixture();
+    await writeAdapterConfig(fixture, "same.json", ".claude/skills");
+    await writeAdapterConfig(fixture, "moved.json", ".claude/alt-skills");
+    await configureNested(fixture, [{ name: "fixture-pack", adapterConfig: "moved.json" }]);
+    const before = await stateSnapshot(fixture);
+    const variants = [
+      { flag: "--adapter-config", value: "same.json", expected: /--adapter-config same\.json does not match what install resolves for the configured packages: moved\.json/ },
+      { flag: "--adapter-module", value: "adapter.mjs", expected: /--adapter-module adapter\.mjs does not match what install resolves for the configured packages: no adapter module/ },
+    ];
+    for (const { flag, value, expected } of variants) {
+      const result = await runCli([...adoptArgs(fixture), flag, value, "--json"], fixture, { allowFailure: true });
+      expect.soft(result.code, flag).not.toBe(0);
+      expect.soft(result.stderr, flag).toMatch(expected);
+    }
+    expect(await stateSnapshot(fixture)).toEqual(before);
+  }, 60_000);
+
+  it("accepts an explicit adapter config that resolves to the agent's own, and its apply command round-trips", async () => {
+    const fixture = await createFixture();
+    await writeAdapterConfig(fixture, "same.json", ".claude/skills");
+    await configureNested(fixture, [{ name: "fixture-pack" }], { adapterConfig: "same.json" });
+    const plan = JSON.parse((await runCli([...adoptArgs(fixture), "--adapter-config", "./same.json", "--json"], fixture)).stdout);
+    expect(plan.selected).toMatchObject([{ path: legacyPath, action: "adopt" }]);
+    expect(shellWords(plan.applyCommand)).toEqual(expect.arrayContaining(["--adapter-config", "./same.json"]));
+    await runCli(shellWords(plan.applyCommand).slice(1), fixture);
+
+    const install = JSON.parse((await runCli(["install", "--agent", agent, "--dry-run", "--format", "json"], fixture)).stdout);
+    expect(install.targets).toHaveLength(1);
+    expect(install.targets[0].hasBlockingChanges).toBe(false);
+    expect(install.targets[0].operations.map((operation: { relativeDestPath: string; action: string }) =>
+      [operation.relativeDestPath, operation.action])).toEqual([[legacyPath, "skip"]]);
+    await runCli(["install", "--agent", agent], fixture);
+    expect(await runtimeStateFiles(fixture)).toEqual([`${plan.destination.stateKey}.install-manifest.json`]);
+  }, 60_000);
 });
 
 interface CliFixture {
@@ -169,19 +205,24 @@ interface FixturePackage {
   skill?: string;
 }
 
-async function configureNested(fixture: CliFixture, packages: FixturePackage[]): Promise<void> {
-  await writeWorkspaceConfig(fixture, fixture.nested, packages);
+async function configureNested(
+  fixture: CliFixture,
+  packages: FixturePackage[],
+  agentSettings: { adapterConfig?: string } = {},
+): Promise<void> {
+  await writeWorkspaceConfig(fixture, fixture.nested, packages, agentSettings);
 }
 
 async function writeWorkspaceConfig(
   fixture: CliFixture,
   workspace: string,
   packages: FixturePackage[],
+  agentSettings: { adapterConfig?: string } = {},
 ): Promise<void> {
   await mkdir(join(workspace, ".agentwheel"), { recursive: true });
   await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
     schemaVersion: 4,
-    agents: { [agent]: { adapter: "claude", root: fixture.runtime, transport: "local" } },
+    agents: { [agent]: { adapter: "claude", root: fixture.runtime, transport: "local", ...agentSettings } },
     packages: packages.map((pkg) => ({
       name: pkg.name,
       source: fixture.pack,

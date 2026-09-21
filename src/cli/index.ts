@@ -1168,9 +1168,14 @@ ownershipCommand
     }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const requestedInstallationType = normalizedOptions.installationType;
-    // group like a plain install, without -i: -i forces one type on every package, so we'd adopt
-    // paths the next plain install removes
-    const plainInstallOptions = { ...normalizedOptions, installationType: undefined };
+    // group like a plain install, without -i or adapter flags: each forces one setting on every
+    // package, so we'd adopt paths the next plain install removes
+    const plainInstallOptions = {
+      ...normalizedOptions,
+      installationType: undefined,
+      adapterConfig: undefined,
+      adapterModule: undefined,
+    };
     const targets = await resolveCliTargets(plainInstallOptions);
     if (targets.length !== 1) {
       throw new Error(`Legacy ownership adoption requires exactly one runtime target, found ${targets.length}.`);
@@ -1205,6 +1210,16 @@ ownershipCommand
     }
     const group = [...groups.values()][0]!;
     const { installationType, adapterOptions } = group;
+    const requestedAdapterSettings = [
+      { flag: "--adapter-config", requested: normalizedOptions.adapterConfig, resolved: adapterOptions.adapterConfig, none: "no adapter config" },
+      { flag: "--adapter-module", requested: normalizedOptions.adapterModule, resolved: adapterOptions.adapterModule, none: "no adapter module" },
+    ];
+    for (const { flag, requested, resolved, none } of requestedAdapterSettings) {
+      if (requested === undefined) continue;
+      // adapter files load relative to the workspace root, not cwd
+      if (resolved !== undefined && resolve(target.workspaceRoot, requested) === resolve(target.workspaceRoot, resolved)) continue;
+      throw new Error(`${flag} ${requested} does not match what install resolves for the configured packages: ${resolved ?? none}.`);
+    }
     const adapter = await resolveAdapterForTarget(group.target, adapterOptions);
     const stable = installStateForTarget(group.target, adapter, adapterOptions, installationType);
     const stableGraphLockPath = graphLockPathForTarget(

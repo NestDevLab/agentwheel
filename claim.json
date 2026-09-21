@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/aw-ownership-adopt-legacy"
+    "refs/heads/pr/aw-ownership-adopt-legacy"
   ],
-  "claimed_at": "2026-09-21T21:28:01+00:00",
+  "claimed_at": "2026-09-21T21:28:33+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "73719830-6a28-4b4b-8e67-b7eb43e32a87",
-  "publication_scope": "stack:aw-ownership-adopt-legacy",
+  "operation_token": "443b5b23-bcfd-495f-a859-adf3c9822e55",
+  "publication_scope": "promote:aw-ownership-adopt-legacy",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/aw-ownership-adopt-legacy",
   "syncwheel_version": "0.43.31"
 }

@@ -1,13 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/legacy-graph-only-recovery"
-  ],
-  "claimed_at": "2026-09-19T22:27:41+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-21T09:42:28+00:00",
   "closed": true,
   "coordination_id": "default",
-  "operation_token": "d171ed67-f7b7-4424-8719-f5a8593849fb",
-  "publication_scope": "promote:legacy-graph-only-recovery",
-  "reason": "promoted",
+  "operation_token": "b098f618-c048-488b-95f2-ac1d93c5362d",
+  "publication_scope": "close:legacy-graph-only-recovery",
+  "reason": "merged",
   "source_ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
-  "syncwheel_version": "0.43.20"
+  "syncwheel_version": "0.43.26"
 }

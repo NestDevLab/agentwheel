@@ -1,11 +1,12 @@
 {
   "changed_refs": [
-    "refs/heads/main-integration"
+    "refs/heads/main-integration",
+    "refs/heads/pr/update-legacy-recovery"
   ],
-  "claimed_at": "2026-09-20T21:52:32+00:00",
+  "claimed_at": "2026-09-21T01:03:55+00:00",
   "coordination_id": "default",
-  "operation_token": "0154f4d9-e629-4ea1-83f5-54c29a8a232f",
-  "publication_scope": "integration",
+  "operation_token": "ff37b9e0-6507-4448-8790-01d243088e73",
+  "publication_scope": "stack:update-legacy-recovery",
   "source_ref": "refs/heads/main-integration",
-  "syncwheel_version": "0.43.25"
+  "syncwheel_version": "0.43.26"
 }

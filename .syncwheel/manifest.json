@@ -22,32 +22,11 @@
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [
-      "durable-legacy-retirement"
-    ],
+    "stacks": [],
     "strategy": "cherry-pick"
   },
   "repository_mode": "delivery",
-  "stacks": [
-    {
-      "base": "origin/main",
-      "branch": "pr/durable-legacy-retirement",
-      "commits": [
-        "930a61cb60dcd96549fcf3ec7612cca05651f371"
-      ],
-      "id": "durable-legacy-retirement",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Retire exact same-Fleet duplicate legacy ownership"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "version": 2

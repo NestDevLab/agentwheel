@@ -1,14 +1,12 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
-    "refs/heads/pr/durable-legacy-retirement": "1f127f2d349e9e4ae6f0aa9dcd41148d866ef030",
+    "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -29,7 +27,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T10:29:40+00:00",
+  "created_at": "2026-09-21T11:47:24+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -115,37 +113,20 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "durable-legacy-retirement"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/durable-legacy-retirement",
-        "commits": [
-          "930a61cb60dcd96549fcf3ec7612cca05651f371"
-        ],
-        "id": "durable-legacy-retirement",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "aeb79240-4962-4cd7-8a8e-b013e3cda5cb",
-  "parent_state": "ad09cbebb1e229e7331f09d54c6c2e9abe1b1a50",
+  "operation_token": "d52338bd-8e20-4004-9bdf-91ae7de5cdc4",
+  "parent_state": "f2df49c43ad29992749f9521826e402f3417642f",
   "projection_status": "partial",
-  "publication_id": "620ed995-faec-4f27-967e-117eda053472",
-  "publication_scope": "promote:durable-legacy-retirement",
+  "publication_id": "31d89330-ea32-42e3-a059-60eaadafda91",
+  "publication_scope": "close:durable-legacy-retirement",
   "schema_version": 2,
-  "syncwheel_version": "0.43.26",
+  "syncwheel_version": "0.43.28",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",
@@ -577,6 +558,14 @@
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/durable-legacy-retirement",
       "remote_tip": "930a61cb60dcd96549fcf3ec7612cca05651f371",
+      "stack": "durable-legacy-retirement"
+    },
+    {
+      "branch": "pr/durable-legacy-retirement",
+      "closed_at": "2026-09-21T11:47:14+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/durable-legacy-retirement",
+      "remote_tip": null,
       "stack": "durable-legacy-retirement"
     }
   ]

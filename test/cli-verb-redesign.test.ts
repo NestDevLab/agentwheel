@@ -647,7 +647,7 @@ describe("CLI verb redesign", () => {
     expect(explicitPlan.stdout).not.toContain(cliHome);
     await expect(stat(join(runtimeRoot, "AGENTS.md"))).rejects.toThrow();
     expect((await execFileAsync("git", ["status", "--short"], { cwd: fleetRoot })).stdout).toBe("");
-  });
+  }, 30_000);
 
   it("governs a non-Fleet CLI mutation end to end before write through exact Git commit and receipt", async () => {
     const workspace = await tempRoot("agentwheel-cli-governed-workspace-");

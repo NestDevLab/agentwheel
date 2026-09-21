@@ -1,0 +1,12 @@
+{
+  "changed_refs": [
+    "refs/heads/main-integration",
+    "refs/heads/pr/update-legacy-recovery"
+  ],
+  "claimed_at": "2026-09-21T01:03:55+00:00",
+  "coordination_id": "default",
+  "operation_token": "ff37b9e0-6507-4448-8790-01d243088e73",
+  "publication_scope": "stack:update-legacy-recovery",
+  "source_ref": "refs/heads/pr/update-legacy-recovery",
+  "syncwheel_version": "0.43.26"
+}

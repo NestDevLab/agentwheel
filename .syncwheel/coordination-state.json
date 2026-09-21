@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371"
+    "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -8,6 +8,7 @@
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
+    "refs/heads/pr/durable-legacy-retirement": "1f127f2d349e9e4ae6f0aa9dcd41148d866ef030",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -17,7 +18,7 @@
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
-    "refs/heads/syncwheel/draft/durable-legacy-retirement": "c1783ef9d969100d1efa54bf72abe8eb3df3df0c",
+    "refs/heads/syncwheel/draft/durable-legacy-retirement": "1eaf88b8ea5660aba028508e44f1a404094218b4",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "64ffea77da70ea5e7962dafe7b868cebaf542d86",
@@ -28,7 +29,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T10:27:09+00:00",
+  "created_at": "2026-09-21T10:29:40+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -47,6 +48,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620",
+    "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
     "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -125,24 +127,23 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/durable-legacy-retirement",
+        "branch": "pr/durable-legacy-retirement",
         "commits": [
           "930a61cb60dcd96549fcf3ec7612cca05651f371"
         ],
         "id": "durable-legacy-retirement",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "8b79d6d5-43d2-4549-9877-56d8ce88da22",
-  "parent_state": "63a53ea9f5677146a75c70e43e215126c623b11c",
+  "operation_token": "aeb79240-4962-4cd7-8a8e-b013e3cda5cb",
+  "parent_state": "ad09cbebb1e229e7331f09d54c6c2e9abe1b1a50",
   "projection_status": "partial",
-  "publication_id": "b68b606d-d01a-42f1-b202-c96f46422db5",
-  "publication_scope": "stack:durable-legacy-retirement",
+  "publication_id": "620ed995-faec-4f27-967e-117eda053472",
+  "publication_scope": "promote:durable-legacy-retirement",
   "schema_version": 2,
   "syncwheel_version": "0.43.26",
   "tombstones": [
@@ -569,6 +570,14 @@
       "ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
       "remote_tip": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
       "stack": "legacy-graph-only-recovery"
+    },
+    {
+      "branch": "syncwheel/draft/durable-legacy-retirement",
+      "closed_at": "2026-09-21T10:29:27+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/durable-legacy-retirement",
+      "remote_tip": "930a61cb60dcd96549fcf3ec7612cca05651f371",
+      "stack": "durable-legacy-retirement"
     }
   ]
 }

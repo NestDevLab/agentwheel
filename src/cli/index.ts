@@ -623,6 +623,7 @@ program
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
@@ -3946,6 +3947,7 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   args.push("--profile", profile);
   if (options.dryRun) args.push("--dry-run");
   if (options.refresh) args.push("--refresh");
+  if (options.recoverLegacyState) args.push("--recover-legacy-state");
   if (options.forceDrift) args.push("--force-drift");
   if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");

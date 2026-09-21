@@ -148,6 +148,8 @@ revalidates the exact contribution under the apply lock. It removes only the sel
 server; sibling servers and user configuration remain. The command previews by default. A later
 runtime approval must use the same command with `--apply` instead of `--dry-run`.
 
+When stable and legacy manifests disagree, `update --recover-legacy-state` explicitly uses recovered stable state while preserving legacy evidence. Preview the same command with `--dry-run` first.
+
 For a surgical dependency update, start with a dry-run:
 
 ```bash

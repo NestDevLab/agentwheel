@@ -116,6 +116,17 @@ def fleet():
     assert legacy_path.read_bytes() == before[legacy_path]
     assert legacy_graph.read_bytes() == before[legacy_graph]
     assert all(path.read_bytes() == skill.read_bytes() for path in paths)
+    # Recovery must also permit an actual source update, while retaining legacy evidence.
+    skill.write_text(skill.read_text().replace("TWO", "THREE"))
+    unchanged = {path: path.read_bytes() for path in [stable, legacy_path, graph_path, legacy_graph, *paths]}
+    rejected = run(aw + ["update", "smoke-pack"] + base + ["--dry-run"], workspace, required=False)
+    assert rejected["rc"] != 0 and "disagreeing contributions" in rejected["stderr"]
+    run(aw + ["update", "smoke-pack"] + base + ["--recover-legacy-state", "--dry-run"], workspace)
+    assert all(path.read_bytes() == content for path, content in unchanged.items())
+    run(aw + ["update", "smoke-pack"] + base + ["--recover-legacy-state"], workspace)
+    assert all(path.read_bytes() == skill.read_bytes() for path in paths)
+    assert legacy_path.read_bytes() == before[legacy_path]
+    assert legacy_graph.read_bytes() == before[legacy_graph]
 
 fleet()
 print("PASS", flush=True)

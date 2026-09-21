@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.16
+
+- Allow explicit legacy-state recovery during CLI updates, including profile member forwarding.
+- Exercise real dry-run and applied updates after legacy recovery in CLI dogfood CI.
+
 ## 0.20.15
 
 - Forward explicit legacy-state recovery through profile install and plan commands.

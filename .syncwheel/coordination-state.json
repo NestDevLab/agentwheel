@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/update-legacy-recovery": "ac13312efc335f448cc4f028d37983debbdd89f2"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -15,7 +13,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
-    "refs/heads/pr/update-legacy-recovery": "6503beaebb1844a61b32f1d022ef71353b437624",
+    "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
@@ -27,7 +25,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T01:05:00+00:00",
+  "created_at": "2026-09-21T01:13:05+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -111,35 +109,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "update-legacy-recovery"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/update-legacy-recovery",
-        "commits": [
-          "54de93c6b868a377f86db1b03f93f269e8597500"
-        ],
-        "id": "update-legacy-recovery",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "e194cd61-4262-4d56-8e49-d8c1ebd87b72",
-  "parent_state": "742718dd3d419bd43a5b74ec24a1065968bf5dbc",
+  "operation_token": "ac4ec9ca-21c2-4fad-89ae-4d0763efe7ca",
+  "parent_state": "4799692c4c23a2b7a1070bf7e97d1577c2576c98",
   "projection_status": "partial",
-  "publication_id": "d122f866-cd54-4e54-917f-d1128ff3820e",
-  "publication_scope": "stack:update-legacy-recovery",
+  "publication_id": "75d28743-f9f2-44ce-8b5f-6acf70560681",
+  "publication_scope": "close:update-legacy-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.26",
   "tombstones": [
@@ -558,6 +539,14 @@
       "ref": "refs/heads/pr/dogfood-profile-recovery",
       "remote_tip": null,
       "stack": "dogfood-profile-recovery"
+    },
+    {
+      "branch": "pr/update-legacy-recovery",
+      "closed_at": "2026-09-21T01:12:55+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/update-legacy-recovery",
+      "remote_tip": null,
+      "stack": "update-legacy-recovery"
     }
   ]
 }

@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -30,12 +30,8 @@
   "repository_mode": "delivery",
   "stacks": [
     {
-      "id": "aw-ownership-adopt-legacy",
-      "branch": "syncwheel/draft/aw-ownership-adopt-legacy",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "syncwheel/draft/aw-ownership-adopt-legacy",
       "commits": [
         "13f1a8a51e4037d2d173d5851d62de3c770e3ade",
         "1e5797f7f51e19501f9f885684106490495ba52f",
@@ -43,13 +39,17 @@
         "4642ad5774c5edcd12f5fc1e16e2358b22e5aabb",
         "b8eb08183091218801224d4da0c3af209c6f1293"
       ],
-      "state": "draft",
+      "id": "aw-ownership-adopt-legacy",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Adopt legacy-key ownership records into the owning nested workspace (MGT-0250)"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Adopt legacy-key ownership records into the owning nested workspace (MGT-0250)"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

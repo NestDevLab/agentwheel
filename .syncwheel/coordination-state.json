@@ -17,7 +17,7 @@
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
-    "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "ef1a0e31d81201437c4a9876054b80386e4f5608",
+    "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "64ffea77da70ea5e7962dafe7b868cebaf542d86",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
@@ -25,7 +25,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T01:13:05+00:00",
+  "created_at": "2026-09-21T09:42:28+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -116,11 +116,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "ac4ec9ca-21c2-4fad-89ae-4d0763efe7ca",
-  "parent_state": "4799692c4c23a2b7a1070bf7e97d1577c2576c98",
+  "operation_token": "b098f618-c048-488b-95f2-ac1d93c5362d",
+  "parent_state": "a6db68664748b1b7f9944e3220df240f0493d1bc",
   "projection_status": "partial",
-  "publication_id": "75d28743-f9f2-44ce-8b5f-6acf70560681",
-  "publication_scope": "close:update-legacy-recovery",
+  "publication_id": "2545c1c6-57bf-49b7-a57e-d4485ee27f3e",
+  "publication_scope": "close:legacy-graph-only-recovery",
   "schema_version": 2,
   "syncwheel_version": "0.43.26",
   "tombstones": [
@@ -477,14 +477,6 @@
       "stack": "mgt-0244-integration-preservation"
     },
     {
-      "branch": "syncwheel/draft/legacy-graph-only-recovery",
-      "closed_at": "2026-09-19T22:27:28+00:00",
-      "reason": "promoted",
-      "ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
-      "remote_tip": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
-      "stack": "legacy-graph-only-recovery"
-    },
-    {
       "branch": "pr/legacy-graph-only-recovery",
       "closed_at": "2026-09-19T22:33:35+00:00",
       "reason": "absorbed",
@@ -547,6 +539,14 @@
       "ref": "refs/heads/pr/update-legacy-recovery",
       "remote_tip": null,
       "stack": "update-legacy-recovery"
+    },
+    {
+      "branch": "syncwheel/draft/legacy-graph-only-recovery",
+      "closed_at": "2026-09-21T09:42:17+00:00",
+      "reason": "merged",
+      "ref": "refs/heads/syncwheel/draft/legacy-graph-only-recovery",
+      "remote_tip": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
+      "stack": "legacy-graph-only-recovery"
     }
   ]
 }

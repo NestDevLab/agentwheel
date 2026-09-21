@@ -1064,6 +1064,7 @@ ownershipCommand
   .command("retire-stale")
   .description("retire stale source-manifest ownership already covered by one Fleet manifest")
   .requiredOption("--from-workspace-root <path>", "exact stale workspace owner root")
+  .option("--from-fleet-id <id>", "exact stale Fleet owner id for same-Fleet duplicate state")
   .requiredOption("--to-workspace-root <path>", "registered destination Fleet root")
   .requiredOption("--source-state-key <key>", "exact source install-manifest state key")
   .option("--destination-state-key <key>", "exact Fleet-owned destination install-manifest state key (defaults to the stable target state)")
@@ -1111,6 +1112,7 @@ ownershipCommand
       sourceStateKey: options.sourceStateKey,
       destinationStateKey: options.destinationStateKey ?? stableState.stateKey,
       fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      fromFleetId: options.fromFleetId,
       toWorkspaceRoot,
       toFleetId: fleet.id,
       planDigest: options.planDigest,
@@ -1131,6 +1133,7 @@ ownershipCommand
     const applyArgs = [
       "agentwheel", "ownership", "retire-stale",
       "--from-workspace-root", request.fromWorkspaceRoot,
+      ...(request.fromFleetId ? ["--from-fleet-id", request.fromFleetId] : []),
       "--to-workspace-root", request.toWorkspaceRoot,
       "--source-state-key", request.sourceStateKey,
       "--destination-state-key", request.destinationStateKey,

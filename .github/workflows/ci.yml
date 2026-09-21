@@ -51,5 +51,20 @@ jobs:
           name: cli-dogfood
           path: ${{ runner.temp }}/cli-dogfood/commands.jsonl
 
+      - name: Checkout pinned Syncwheel provider source
+        uses: actions/checkout@v6
+        with:
+          repository: NestDevLab/syncwheel
+          ref: e856a87d588289ba5c880fdc8362a405051d4ddb
+          path: syncwheel
+
+      - name: Verify Syncwheel provider source
+        run: |
+          test -f syncwheel/VERSION
+          test -f syncwheel/scripts/syncwheel.py
+          test -f syncwheel/scripts/syncwheel_revision_provider.py
+
       - name: Test
+        env:
+          SYNCWHEEL_SOURCE_ROOT: ${{ github.workspace }}/syncwheel
         run: pnpm test

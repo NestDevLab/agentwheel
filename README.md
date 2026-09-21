@@ -461,6 +461,15 @@ agentwheel ownership retire-stale \
 
 The dry-run still proves exact destination coverage and runtime bytes. Apply only its emitted command,
 which includes the plan, source, destination, and manifest-inventory revisions.
+For duplicate state owned by the same registered Fleet, set both workspace roots to the Fleet root
+and add `--from-fleet-id <fleet-id>`. The planner selects only legacy paths covered by the stable
+Fleet manifest. For JSON deep merges it also accepts a source contribution that is an exact
+recursive subset of the destination contribution. Across package revisions, merge entries must
+identify the same package and artifact with equal source hashes; other merge contributions must
+match exactly. A source-only path stays in the legacy manifest;
+when every source entry is covered, apply removes the old manifest and source lock without changing
+runtime files or the stable manifest. Preserve copies of those old state files before applying a
+retirement when they are needed as historical evidence.
 
 ## Core Ideas
 

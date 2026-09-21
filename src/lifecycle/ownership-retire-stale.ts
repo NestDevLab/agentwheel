@@ -14,13 +14,14 @@ import {
   type ApplyJournal,
 } from "../install/transaction.js";
 import type { InstallManifestEntry, InstallManifestV2 } from "../model/manifest.js";
+import { artifactSelectorKey } from "../model/selection.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { containedArtifactPath, verifyManifestEntryRuntime } from "./ownership.js";
 import { managedInstructionSelector } from "../install/instructions-block.js";
-import { hasMergeRemovalContent, mergeContributionAbsent } from "../install/merge-removal.js";
+import { combineMergeRemovals, hasMergeRemovalContent, mergeContributionAbsent } from "../install/merge-removal.js";
 
 export interface RetireStaleOwnershipRequest {
   targetRoot: string;
@@ -29,6 +30,7 @@ export interface RetireStaleOwnershipRequest {
   sourceStateKey: string;
   destinationStateKey: string;
   fromWorkspaceRoot: string;
+  fromFleetId?: string;
   toWorkspaceRoot: string;
   toFleetId: string;
   planDigest?: string;
@@ -134,7 +136,7 @@ async function observe(
   const normalized = normalizeRequest(request);
   const source = await requireManifest(normalized, normalized.sourceStateKey, transport, "source");
   const destination = await requireManifest(normalized, normalized.destinationStateKey, transport, "destination");
-  const sourceOwner = workspaceOwnerForRoot(normalized.fromWorkspaceRoot);
+  const sourceOwner = workspaceOwnerForRoot(normalized.fromWorkspaceRoot, normalized.fromFleetId);
   const destinationOwner = workspaceOwnerForRoot(normalized.toWorkspaceRoot, normalized.toFleetId);
   const destinationByPath = new Map<string, InstallManifestEntry[]>();
   for (const entry of destination.entries) {
@@ -218,6 +220,12 @@ function normalizeRequest(request: RetireStaleOwnershipRequest): RetireStaleOwne
   const destinationStateKey = exactStateKey(request.adapter, request.destinationStateKey, request.installationType, "destination");
   if (sourceStateKey === destinationStateKey) throw new Error("Source and destination state keys must differ.");
   if (!request.toFleetId.trim()) throw new Error("Destination Fleet id is required.");
+  const fromFleetId = request.fromFleetId?.trim();
+  if (request.fromFleetId !== undefined && !fromFleetId) throw new Error("Source Fleet id cannot be empty.");
+  if (fromFleetId && (fromFleetId !== request.toFleetId.trim()
+    || resolve(request.fromWorkspaceRoot) !== resolve(request.toWorkspaceRoot))) {
+    throw new Error("Fleet-qualified stale ownership retirement requires the same source and destination Fleet and workspace root.");
+  }
   return {
     ...request,
     targetRoot,
@@ -225,6 +233,7 @@ function normalizeRequest(request: RetireStaleOwnershipRequest): RetireStaleOwne
     sourceStateKey,
     destinationStateKey,
     fromWorkspaceRoot: resolve(request.fromWorkspaceRoot),
+    ...(fromFleetId ? { fromFleetId } : {}),
     toWorkspaceRoot: resolve(request.toWorkspaceRoot),
     toFleetId: request.toFleetId.trim(),
   };
@@ -282,6 +291,7 @@ async function assertContributionCoverage(
   transport: TargetTransport,
   abandonIncompleteMergeOwner: boolean,
 ): Promise<RetireStaleOwnershipEntry["coverage"]> {
+  containedArtifactPath(targetRoot, source.path);
   const sourceManagedBlock = source.mode === "managed-block";
   const destinationManagedBlock = destination.mode === "managed-block";
   const sourceMerge = source.mergeStrategy !== undefined;
@@ -309,11 +319,26 @@ async function assertContributionCoverage(
       if (abandonIncompleteMergeOwner) return "abandoned-incomplete-merge";
       throw new Error(`Cannot retire incomplete merge ownership at ${source.path}.`);
     }
+    const selectorsDiffer = contributionSelector(source) !== contributionSelector(destination);
+    if (selectorsDiffer && !sameContributionSelector(source, destination)) {
+      throw new Error(`Destination Fleet does not identify the same source merge artifact at ${source.path}.`);
+    }
+    if (source.mergeStrategy === "json-deep"
+      && destination.mergeStrategy === "json-deep"
+      && hasMergeRemovalContent(destination.mergeRemoval)
+      && sameContributionSelector(source, destination)) {
+      if (canonicalJson(combineMergeRemovals(destination.mergeRemoval!, source.mergeRemoval!))
+        === canonicalJson(destination.mergeRemoval)) return "exact";
+      throw new Error(`Destination Fleet does not exactly cover stale source merge contribution at ${source.path}.`);
+    }
     const exactlyCovered = destination.mergeStrategy === source.mergeStrategy
       && hasMergeRemovalContent(destination.mergeRemoval)
-      && contributionSelector(source) === contributionSelector(destination)
+      && sameContributionSelector(source, destination)
       && canonicalJson(source.mergeRemoval) === canonicalJson(destination.mergeRemoval);
     if (exactlyCovered) return "exact";
+    if (selectorsDiffer) {
+      throw new Error(`Destination Fleet does not exactly cover stale source merge contribution at ${source.path}.`);
+    }
     const current = await transport.readFile(containedArtifactPath(targetRoot, source.path));
     if (!mergeContributionAbsent(source.mergeRemoval!, source.mergeStrategy, current)) {
       throw new Error(`Destination Fleet does not exactly cover or replace stale source merge contribution at ${source.path}.`);
@@ -325,6 +350,26 @@ async function assertContributionCoverage(
 
 function contributionSelector(entry: InstallManifestEntry): string {
   return entry.logicalSelector ?? `${entry.artifactType}/${entry.artifactName}`;
+}
+
+function sameContributionSelector(source: InstallManifestEntry, destination: InstallManifestEntry): boolean {
+  if (contributionSelector(source) === contributionSelector(destination)) return true;
+  if (!source.packageName || source.packageName !== destination.packageName
+    || source.artifactType !== destination.artifactType
+    || source.artifactName !== destination.artifactName
+    || source.installName !== destination.installName
+    || source.sourceHash !== destination.sourceHash
+    || !source.graphNodeId || !destination.graphNodeId) return false;
+  const selector = artifactSelectorKey({ type: source.artifactType, name: source.artifactName });
+  if (source.logicalSelector !== `${source.graphNodeId}:${selector}`
+    || destination.logicalSelector !== `${destination.graphNodeId}:${selector}`) return false;
+  const sourceAt = source.graphNodeId.lastIndexOf("@");
+  const destinationAt = destination.graphNodeId.lastIndexOf("@");
+  return sourceAt > 0 && destinationAt > 0
+    && source.graphNodeId.slice(0, sourceAt) === source.packageName
+    && destination.graphNodeId.slice(0, destinationAt) === destination.packageName
+    && source.graphNodeId.indexOf("+", sourceAt) > sourceAt
+    && destination.graphNodeId.indexOf("+", destinationAt) > destinationAt;
 }
 
 function assertApplyPreconditions(request: RetireStaleOwnershipRequest): void {

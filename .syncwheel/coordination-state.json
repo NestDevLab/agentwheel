@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/durable-legacy-retirement": "3160558f2f38141536445319b386d2185959cc5c"
+    "refs/heads/syncwheel/draft/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -17,7 +17,7 @@
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
-    "refs/heads/syncwheel/draft/durable-legacy-retirement": "897b095c009d61593f765cf3873c99fc4bb379ea",
+    "refs/heads/syncwheel/draft/durable-legacy-retirement": "c1783ef9d969100d1efa54bf72abe8eb3df3df0c",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "9e14773dec24c00f19734379efda777d16a90821",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "baa8ed2fdcf44ce7cf68224765fe64ffb444b0d2",
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "64ffea77da70ea5e7962dafe7b868cebaf542d86",
@@ -28,7 +28,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T09:44:42+00:00",
+  "created_at": "2026-09-21T10:27:09+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -72,7 +72,7 @@
     "refs/heads/syncwheel/draft/agentwheel-0-20-0-release": "2c4fd0904a8248de2a8b2ed2772088234ca3691a",
     "refs/heads/syncwheel/draft/agentwheel-coordination-cleanup": "267abc1b44c3e5cfea7d5d9f2c863322eab3130b",
     "refs/heads/syncwheel/draft/agentwheel-discovery-intent": "16c061171466c65afb05a109e4d1f84fa51e996a",
-    "refs/heads/syncwheel/draft/durable-legacy-retirement": "3160558f2f38141536445319b386d2185959cc5c",
+    "refs/heads/syncwheel/draft/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371",
     "refs/heads/syncwheel/draft/fleet-qualified-state-key-migration": "b56a6d553e0ea31175e6219a1fd03891ed8080a5",
     "refs/heads/syncwheel/draft/focused-skill-graph-preservation": "441197b61b73b12f51215b5e3e49a60d7254c2ed",
     "refs/heads/syncwheel/draft/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
@@ -126,7 +126,9 @@
           "role": "canonical"
         },
         "branch": "syncwheel/draft/durable-legacy-retirement",
-        "commits": [],
+        "commits": [
+          "930a61cb60dcd96549fcf3ec7612cca05651f371"
+        ],
         "id": "durable-legacy-retirement",
         "integration_branch": "main-integration",
         "state": "draft",
@@ -136,11 +138,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "0b951004-fcd7-42a8-9b5e-1ec31f64410c",
-  "parent_state": "ecdfa6c887953da4dee9a78087e3933382d33d0b",
+  "operation_token": "8b79d6d5-43d2-4549-9877-56d8ce88da22",
+  "parent_state": "63a53ea9f5677146a75c70e43e215126c623b11c",
   "projection_status": "partial",
-  "publication_id": "2bc635c4-32d0-49c3-acbc-486745446fdc",
-  "publication_scope": "create:durable-legacy-retirement",
+  "publication_id": "b68b606d-d01a-42f1-b202-c96f46422db5",
+  "publication_scope": "stack:durable-legacy-retirement",
   "schema_version": 2,
   "syncwheel_version": "0.43.26",
   "tombstones": [

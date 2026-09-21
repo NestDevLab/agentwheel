@@ -1363,8 +1363,9 @@ describe("foreign workspace state at a shared target root", () => {
       ".runtime/skills/shared-skill",
     ]);
 
-    await expect(graphPlan(source, target, fleetAlpha, { fleetId: "alpha" }))
-      .rejects.toThrow(/fleet normalize|another workspace/i);
+    const refusal = graphPlan(source, target, fleetAlpha, { fleetId: "alpha" });
+    await expect(refusal).rejects.toThrow(/fleet normalize|another workspace/i);
+    await expect(refusal).rejects.not.toThrow(/adopt-legacy/);
   });
 
   it("refuses nested owners when the resolving root is the global config directory", async () => {

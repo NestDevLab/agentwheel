@@ -1167,7 +1167,11 @@ ownershipCommand
       throw new Error("Legacy ownership adoption requires exactly one of --agent or --profile.");
     }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const targets = await resolveCliTargets(normalizedOptions);
+    const requestedInstallationType = normalizedOptions.installationType;
+    // group like a plain install, without -i: -i forces one type on every package, so we'd adopt
+    // paths the next plain install removes
+    const plainInstallOptions = { ...normalizedOptions, installationType: undefined };
+    const targets = await resolveCliTargets(plainInstallOptions);
     if (targets.length !== 1) {
       throw new Error(`Legacy ownership adoption requires exactly one runtime target, found ${targets.length}.`);
     }
@@ -1177,13 +1181,21 @@ ownershipCommand
     }
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    // group packages exactly as install does: installation type and adapter options each select a state key
     const groups = new Map<string, PackageGraphGroup>();
-    for (const pkg of config.packages) graphGroupForPackage(groups, target, pkg, normalizedOptions).packages.push(pkg);
+    for (const pkg of config.packages) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
     if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
     const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
     if (installationTypes.length > 1) {
-      throw new Error(`Configured packages use installation types ${installationTypes.join(", ")}; pass --installation-type <type>.`);
+      throw new Error(
+        `Configured packages use installation types ${installationTypes.join(", ")}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    if (requestedInstallationType !== undefined && requestedInstallationType !== installationTypes[0]) {
+      throw new Error(
+        `--installation-type ${requestedInstallationType} does not match installation type ${installationTypes[0]}, `
+        + "which install uses for the configured packages.",
+      );
     }
     if (groups.size > 1) {
       throw new Error(

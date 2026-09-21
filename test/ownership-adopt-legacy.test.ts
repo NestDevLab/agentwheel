@@ -46,7 +46,7 @@ afterEach(async () => {
 describe("legacy ownership adoption", () => {
   it("adopts foreign and own legacy ownership so the nested workspace plans updates without force", async () => {
     const fixture = await createFixture();
-    await expect(installPlan(fixture)).rejects.toThrow(/another workspace/);
+    await expect(installPlan(fixture)).rejects.toThrow(/another workspace[\s\S]*agentwheel ownership adopt-legacy/);
     const runtimeBefore = await runtimeHashes(fixture, [alpha, beta]);
 
     const foreign = await planAdoptLegacyOwnership(await adoptRequest(fixture, fixture.scratch));

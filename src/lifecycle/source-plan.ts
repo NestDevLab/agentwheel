@@ -1013,6 +1013,7 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
 
   if (foreign.length === 0) return observations.sort((left, right) => left.path.localeCompare(right.path));
 
+  const currentOwner = parseWorkspaceOwner(check.workspaceOwner);
   throw new Error([
     `Refusing to plan ${check.adapter} at ${check.installRoot}.`,
     "This runtime root already carries Agentwheel state owned by another workspace, at paths this run would install:",
@@ -1023,9 +1024,14 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
     `Current workspace: ${check.workspaceRoot} (state key ${check.stateKey})`,
     "Agentwheel keys install state by target fingerprint, so this run cannot read that manifest and",
     "would report those paths as unmanaged conflicts or drift.",
-    parseWorkspaceOwner(check.workspaceOwner)?.fleetId
-      ? "Reconcile the owners with an explicit agentwheel fleet normalize operation before planning this fleet."
-      : "Re-run from the owning workspace, or pass --force-foreign-state to plan against it anyway.",
+    ...(currentOwner?.fleetId
+      ? [
+        "Reconcile the owners with an explicit agentwheel fleet normalize operation before planning this fleet.",
+        ...(currentOwner.root !== root
+          ? ["For this nested workspace, adopt legacy fingerprint-keyed claims with agentwheel ownership adopt-legacy."]
+          : []),
+      ]
+      : ["Re-run from the owning workspace, or pass --force-foreign-state to plan against it anyway."]),
   ].join("\n"));
 }
 

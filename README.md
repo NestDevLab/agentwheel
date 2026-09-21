@@ -488,7 +488,8 @@ legacy fingerprint, and for another workspace root exactly one such lock must ma
 graph-lock digest, node, selector, and source hash. Only entries the current graph still installs at
 the same path with the same artifact identity move; the rest stay in the source manifest and are
 listed. The current graph groups packages as install does, by installation type and adapter
-configuration, and the command refuses when they resolve to more than one install state. Runtime
+configuration, and the command refuses when they resolve to more than one install state or when
+`--installation-type` names a different type than install uses. Runtime
 bytes must match the recorded hash unless `--carry-drift` keeps that hash, so the next install
 reports drift instead of overwriting local changes. A path another owner still claims blocks the
 plan. A duplicate claim by the same previous owner is listed only when it sits under another legacy

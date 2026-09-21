@@ -60,6 +60,36 @@ describe("ownership adopt-legacy CLI", () => {
     expect(result.code).not.toBe(0);
     expect(result.stderr).toMatch(/resolve to 2 adapter configurations for local/);
   }, 60_000);
+
+  it("refuses packages with more than one installation type, with or without --installation-type", async () => {
+    const fixture = await createFixture([{ name: "fixture-pack" }, { name: "second-pack", skill: "second-skill" }]);
+    await configureNested(fixture, [
+      { name: "fixture-pack" },
+      { name: "second-pack", skill: "second-skill", installationType: "user" },
+    ]);
+    const before = await stateSnapshot(fixture);
+    for (const extra of [[], ["-i", "local"], ["-i", "user"]]) {
+      const result = await runCli([...adoptArgs(fixture), ...extra, "--json"], fixture, { allowFailure: true });
+      const variant = extra.join(" ") || "without --installation-type";
+      expect.soft(result.code, variant).not.toBe(0);
+      expect.soft(result.stderr, variant).toMatch(/Configured packages use installation types local, user, each with its own install state/);
+      expect.soft(result.stderr, variant).not.toMatch(/pass --installation-type/);
+    }
+    expect(await stateSnapshot(fixture)).toEqual(before);
+  }, 60_000);
+
+  it("refuses an installation type other than the one install uses for the packages", async () => {
+    const fixture = await createFixture();
+    await configureNested(fixture, [{ name: "fixture-pack" }]);
+    const before = await stateSnapshot(fixture);
+    const refused = await runCli([...adoptArgs(fixture), "-i", "user"], fixture, { allowFailure: true });
+    expect(refused.code).not.toBe(0);
+    expect(refused.stderr).toMatch(/--installation-type user does not match installation type local/);
+    expect(await stateSnapshot(fixture)).toEqual(before);
+
+    const plan = JSON.parse((await runCli([...adoptArgs(fixture), "-i", "local", "--json"], fixture)).stdout);
+    expect(plan.selected).toMatchObject([{ path: legacyPath, action: "adopt" }]);
+  }, 60_000);
 });
 
 interface CliFixture {
@@ -72,7 +102,7 @@ interface CliFixture {
   legacyKey: string;
 }
 
-async function createFixture(): Promise<CliFixture> {
+async function createFixture(scratchPackages: FixturePackage[] = [{ name: "fixture-pack" }]): Promise<CliFixture> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "agentwheel-adopt-cli-")));
   tempRoots.push(root);
   const fixture = {
@@ -101,7 +131,17 @@ async function createFixture(): Promise<CliFixture> {
     "Fixture body.",
     "",
   ].join("\n"));
-  await writeWorkspaceConfig(fixture, fixture.scratch, [{ name: "fixture-pack" }]);
+  await mkdir(join(fixture.pack, "skills", "second-skill"), { recursive: true });
+  await writeFile(join(fixture.pack, "skills", "second-skill", "SKILL.md"), [
+    "---",
+    "name: second-skill",
+    "description: Second fixture skill for legacy ownership adoption.",
+    "---",
+    "",
+    "Second body.",
+    "",
+  ].join("\n"));
+  await writeWorkspaceConfig(fixture, fixture.scratch, scratchPackages);
   await runCli(["install", "--agent", agent], { ...fixture, nested: fixture.scratch });
 
   // rewrite the scratch install into the layout older releases wrote: state and lock keyed by target fingerprint
@@ -122,14 +162,21 @@ async function createFixture(): Promise<CliFixture> {
   return { ...fixture, legacyKey: state.stateKey };
 }
 
-async function configureNested(fixture: CliFixture, packages: Array<{ name: string; adapterConfig?: string }>): Promise<void> {
+interface FixturePackage {
+  name: string;
+  adapterConfig?: string;
+  installationType?: string;
+  skill?: string;
+}
+
+async function configureNested(fixture: CliFixture, packages: FixturePackage[]): Promise<void> {
   await writeWorkspaceConfig(fixture, fixture.nested, packages);
 }
 
 async function writeWorkspaceConfig(
   fixture: CliFixture,
   workspace: string,
-  packages: Array<{ name: string; adapterConfig?: string }>,
+  packages: FixturePackage[],
 ): Promise<void> {
   await mkdir(join(workspace, ".agentwheel"), { recursive: true });
   await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify({
@@ -140,8 +187,9 @@ async function writeWorkspaceConfig(
       source: fixture.pack,
       driver: "local",
       mode: "pinned",
-      select: ["skills/fixture-skill"],
+      select: [`skills/${pkg.skill ?? "fixture-skill"}`],
       ...(pkg.adapterConfig ? { adapterConfig: pkg.adapterConfig } : {}),
+      ...(pkg.installationType ? { installationType: pkg.installationType } : {}),
     })),
   }, null, 2)}\n`);
 }
@@ -167,6 +215,20 @@ function adoptArgs(fixture: CliFixture): string[] {
 
 async function runtimeStateFiles(fixture: CliFixture): Promise<string[]> {
   return (await readdir(join(fixture.runtime, ".agentwheel"))).filter((name) => !name.startsWith(".")).sort();
+}
+
+async function stateSnapshot(fixture: CliFixture): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
+  const pending = [fixture.runtime, join(fixture.scratch, ".agentwheel"), join(fixture.nested, ".agentwheel")];
+  while (pending.length > 0) {
+    const path = pending.pop()!;
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) pending.push(child);
+      else snapshot[child] = await readFile(child, "utf8");
+    }
+  }
+  return snapshot;
 }
 
 async function runCli(

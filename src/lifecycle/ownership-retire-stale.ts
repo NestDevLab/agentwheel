@@ -239,15 +239,15 @@ function normalizeRequest(request: RetireStaleOwnershipRequest): RetireStaleOwne
   };
 }
 
-function exactStateKey(adapter: string, value: string, installationType: string, label: string): string {
+export function exactStateKey(adapter: string, value: string, installationType: string, label: string): string {
   if (!value || stateKeyFor(adapter, { installationType, stateKey: value }) !== value) {
     throw new Error(`The ${label} state key must be an exact canonical state key.`);
   }
   return value;
 }
 
-async function requireManifest(
-  request: RetireStaleOwnershipRequest,
+export async function requireManifest(
+  request: Pick<RetireStaleOwnershipRequest, "targetRoot" | "adapter" | "installationType">,
   stateKey: string,
   transport: TargetTransport,
   label: string,
@@ -257,7 +257,7 @@ async function requireManifest(
     stateKey,
   });
   if (!manifest) throw new Error(`No ${label} install manifest for state key ${stateKey}.`);
-  if (manifest.version !== 2) throw new Error(`${label} ownership retirement requires an Agentwheel v2 install manifest.`);
+  if (manifest.version !== 2) throw new Error(`The ${label} install manifest must be an Agentwheel v2 manifest.`);
   const actualStateKey = stateKeyFor(manifest.adapter, {
     installationType: manifest.installationType,
     stateKey: manifest.stateKey,
@@ -385,11 +385,11 @@ function assertApplyPreconditions(request: RetireStaleOwnershipRequest): void {
   }
 }
 
-function assertExpected(expected: string, current: string, label: string): void {
+export function assertExpected(expected: string, current: string, label: string): void {
   if (expected !== current) throw new Error(`Stale ${label}: expected ${expected}, found ${current}; replan required.`);
 }
 
-function entryDigest(entry: InstallManifestEntry): string {
+export function entryDigest(entry: InstallManifestEntry): string {
   return digest(entry);
 }
 
@@ -397,7 +397,7 @@ function digest(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
   const record = value as Record<string, unknown>;

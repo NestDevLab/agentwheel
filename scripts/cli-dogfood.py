@@ -7,6 +7,7 @@ Run each scenario as a separate CI job after installing the candidate CLI.
 import argparse
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -267,6 +268,57 @@ def fleet():
     assert all(path.read_bytes() == skill.read_bytes() for path in paths)
     assert legacy_path.read_bytes() == before[legacy_path]
     assert legacy_graph.read_bytes() == before[legacy_graph]
+
+    # A nested profile under a registered Fleet is refused on paths a plain scratch workspace claimed
+    # under a fingerprint-only key. adopt-legacy moves that proven ownership, no force flags needed.
+    adopt_runtime, scratch, nested = root / "adopt-runtime", root / "adopt-scratch", named / "profiles/adopt"
+    for workspace_root in (scratch, nested):
+        workspace_root.mkdir(parents=True)
+        run(aw + ["init", "workspace", "--target-root", str(workspace_root)], workspace_root)
+        workspace_config_path = workspace_root / ".agentwheel/config.json"
+        workspace_config = json.loads(workspace_config_path.read_text())
+        workspace_config.update({"packages": json.loads(config_path.read_text())["packages"],
+                                 "agents": {"adopt-claude": {"adapter": "claude", "root": str(adopt_runtime),
+                                                             "transport": "local"}}})
+        workspace_config_path.write_text(json.dumps(workspace_config, indent=2) + "\n")
+    adopt_base = ["--local", "--agent", "adopt-claude"]
+    run(aw + ["install"] + adopt_base, scratch)
+    scratch_manifest = next((adopt_runtime / ".agentwheel").glob("*.install-manifest.json"))
+    scratch_graph = next((scratch / ".agentwheel/locks/adopt-claude/claude").glob("*.graph-lock.json"))
+    adopt_fingerprint = json.loads(scratch_graph.read_text())["canonical"]["targetFingerprint"]
+    adopt_state = json.loads(scratch_manifest.read_text())
+    adopt_state["stateKey"] = f"claude.local.{adopt_fingerprint}"
+    adopt_legacy = scratch_manifest.with_name(adopt_state["stateKey"] + ".install-manifest.json")
+    adopt_legacy.write_text(json.dumps(adopt_state, indent=2) + "\n")
+    scratch_graph.with_name(f"{adopt_fingerprint}.graph-lock.json").write_bytes(scratch_graph.read_bytes())
+    for current in [scratch_manifest, scratch_graph,
+                    scratch_manifest.with_name(scratch_manifest.name.replace(".install-manifest.json", ".source-lock.json"))]:
+        if current.exists(): current.unlink()
+    adopt_skill = adopt_runtime / ".claude/skills/smoke-hello/SKILL.md"
+    adopt_runtime_before = adopt_skill.read_bytes()
+    skill.write_text(skill.read_text().replace("FIVE", "SIX"))
+    refused = run(aw + ["install"] + adopt_base + ["--dry-run"], nested, required=False)
+    assert refused["rc"] != 0 and "another workspace" in refused["stderr"]
+    adopt_args = ["ownership", "adopt-legacy", "--source-state-key", adopt_state["stateKey"],
+                  "--from-workspace-root", str(scratch), "--agent", "adopt-claude", "--json"]
+    adoption = json.loads(run(aw + adopt_args, nested)["stdout"])
+    assert adoption["source"]["class"] == "foreign-root" and adoption["destination"]["revision"] is None
+    assert [(e["path"], e["action"], e["drift"]) for e in adoption["selected"]] == [(".claude/skills/smoke-hello", "adopt", False)]
+    assert adopt_legacy.exists() and adopt_skill.read_bytes() == adopt_runtime_before
+    apply_argv = shlex.split(adoption["applyCommand"])
+    assert apply_argv[0] == "agentwheel" and apply_argv[-1] == "--apply"
+    adopted = json.loads(run(aw + apply_argv[1:] + ["--json"], nested)["stdout"])
+    assert adopted["sourceManifestRemoved"] and not adopt_legacy.exists()
+    assert adopt_skill.read_bytes() == adopt_runtime_before
+    nothing = run(aw + adopt_args, nested, required=False)
+    assert nothing["rc"] != 0 and "Nothing to adopt" in nothing["stderr"]
+    adopt_plan = json.loads(run(aw + ["install"] + adopt_base + ["--dry-run", "--format", "json"], nested)["stdout"])
+    assert len(adopt_plan["targets"]) == 1 and not adopt_plan["targets"][0]["hasBlockingChanges"]
+    assert adopt_plan["targets"][0]["summary"]["update"] == 1
+    run(aw + ["install"] + adopt_base, nested)
+    assert adopt_skill.read_bytes() == skill.read_bytes()
+    adopt_noop = json.loads(run(aw + ["install"] + adopt_base + ["--dry-run", "--format", "json"], nested)["stdout"])
+    assert adopt_noop["targets"][0]["summary"]["skip"] == 1 and not adopt_noop["targets"][0]["hasBlockingChanges"]
 
 fleet()
 print("PASS", flush=True)

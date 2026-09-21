@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/durable-legacy-retirement"
+    "refs/heads/pr/durable-legacy-retirement"
   ],
-  "claimed_at": "2026-09-21T10:27:09+00:00",
+  "claimed_at": "2026-09-21T10:29:40+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "8b79d6d5-43d2-4549-9877-56d8ce88da22",
-  "publication_scope": "stack:durable-legacy-retirement",
+  "operation_token": "aeb79240-4962-4cd7-8a8e-b013e3cda5cb",
+  "publication_scope": "promote:durable-legacy-retirement",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/durable-legacy-retirement",
   "syncwheel_version": "0.43.26"
 }

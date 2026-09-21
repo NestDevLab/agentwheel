@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/durable-legacy-retirement"
+  ],
+  "claimed_at": "2026-09-21T10:29:40+00:00",
+  "coordination_id": "default",
+  "operation_token": "aeb79240-4962-4cd7-8a8e-b013e3cda5cb",
+  "publication_scope": "promote:durable-legacy-retirement",
+  "source_ref": "refs/heads/pr/durable-legacy-retirement",
+  "syncwheel_version": "0.43.26"
+}

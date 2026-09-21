@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/aw-ownership-adopt-legacy"
+  ],
+  "claimed_at": "2026-09-21T20:01:14+00:00",
+  "coordination_id": "default",
+  "operation_token": "00717d46-7083-46e5-9656-b96b0ee7dfa6",
+  "publication_scope": "create:aw-ownership-adopt-legacy",
+  "source_ref": "refs/heads/syncwheel/draft/aw-ownership-adopt-legacy",
+  "syncwheel_version": "0.43.31"
+}

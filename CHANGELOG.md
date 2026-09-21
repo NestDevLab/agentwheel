@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.17
+
+- Allow an explicitly identified same-Fleet legacy state to retire only entries exactly covered by the stable manifest, including Codex merge artifacts across package revisions when package and artifact identity and source bytes match.
+- Keep normal planning fail-closed on uncovered legacy contributions and verify retirement through real CLI regression scenarios.
+
 ## 0.20.16
 
 - Allow explicit legacy-state recovery during CLI updates, including profile member forwarding.

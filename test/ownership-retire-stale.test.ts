@@ -22,6 +22,138 @@ afterEach(async () => {
 });
 
 describe("stale ownership retirement", () => {
+  it("retires exact same-Fleet duplicate ownership and keeps runtime bytes", async () => {
+    const fixture = await createFixture({ sameFleet: true });
+    const runtimeBefore = await readFile(fixture.runtimePath);
+    const destinationBefore = await readFile(fixture.destinationManifestPath);
+    const plan = await planRetireStaleOwnership(fixture.request);
+    expect(plan.source.owner).toBe(workspaceOwnerForRoot(fixture.fromWorkspaceRoot, "delivery"));
+    expect(plan.selected.map((item) => item.path)).toEqual(["config/managed.json"]);
+    const result = await applyRetireStaleOwnership(applyRequest(fixture.request, plan));
+    expect(result.sourceManifestRemoved).toBe(true);
+    await expect(stat(fixture.sourceManifestPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(fixture.destinationManifestPath)).toEqual(destinationBefore);
+    expect(await readFile(fixture.runtimePath)).toEqual(runtimeBefore);
+  });
+
+  it("retains same-Fleet source-only ownership and refuses a wrong source Fleet", async () => {
+    const fixture = await createFixture({ sameFleet: true, partial: true });
+    await expect(planRetireStaleOwnership({ ...fixture.request, fromFleetId: "other" }))
+      .rejects.toThrow(/same source and destination Fleet/i);
+    const plan = await planRetireStaleOwnership(fixture.request);
+    const result = await applyRetireStaleOwnership(applyRequest(fixture.request, plan));
+    expect(result.sourceManifestRemoved).toBe(false);
+    const source = await readInstallManifest(fixture.targetRoot, "codex", localTransport, {
+      installationType: "user", stateKey: fixture.sourceStateKey,
+    });
+    expect(source?.version).toBe(2);
+    if (!source || source.version !== 2) throw new Error("missing source manifest");
+    expect(source.entries.map((item) => item.path).sort()).toEqual(["config/foreign.json", "config/source-only.json"]);
+  });
+
+  it("accepts only recursively exact JSON merge coverage by the destination", async () => {
+    const fixture = await createFixture({
+      sameFleet: true,
+      runtimeContent: `${JSON.stringify({ a: { b: 1, c: 2 } })}\n`,
+      sourcePatch: { mergeStrategy: "json-deep", mergeRemoval: { a: { b: 1 } } },
+      destinationPatch: { mergeStrategy: "json-deep", mergeRemoval: { a: { b: 1, c: 2 } } },
+    });
+    const plan = await planRetireStaleOwnership(fixture.request);
+    expect(plan.selected).toMatchObject([{ coverage: "exact" }]);
+    const bad = await createFixture({
+      sameFleet: true,
+      runtimeContent: `${JSON.stringify({ a: { b: 1, c: 2 } })}\n`,
+      sourcePatch: { mergeStrategy: "json-deep", mergeRemoval: { a: { b: 3 } } },
+      destinationPatch: { mergeStrategy: "json-deep", mergeRemoval: { a: { b: 1, c: 2 } } },
+    });
+    await expect(planRetireStaleOwnership(bad.request)).rejects.toThrow(/does not exactly cover/i);
+    const reorderedArray = await createFixture({
+      sameFleet: true,
+      runtimeContent: `${JSON.stringify({ items: [{ b: 2, a: 1 }] })}\n`,
+      sourcePatch: { mergeStrategy: "json-deep", mergeRemoval: { items: [{ a: 1, b: 2 }] } },
+      destinationPatch: { mergeStrategy: "json-deep", mergeRemoval: { items: [{ b: 2, a: 1 }] } },
+    });
+    // Preserve distinct array-object key order in the two on-disk manifests.
+    // The normal manifest writer canonicalizes both, so write the raw v2 bodies.
+    const rawSource = JSON.parse(await readFile(reorderedArray.sourceManifestPath, "utf8"));
+    rawSource.entries[0].mergeRemoval = { items: [{ a: 1, b: 2 }] };
+    await writeFile(reorderedArray.sourceManifestPath, JSON.stringify(rawSource));
+    const rawDestination = JSON.parse(await readFile(reorderedArray.destinationManifestPath, "utf8"));
+    rawDestination.entries[0].mergeRemoval = { items: [{ b: 2, a: 1 }] };
+    await writeFile(reorderedArray.destinationManifestPath, JSON.stringify(rawDestination));
+    await expect(planRetireStaleOwnership(reorderedArray.request))
+      .rejects.toThrow(/does not exactly cover/i);
+  });
+
+  it("retires the same merge artifact across package revisions only with exact coverage", async () => {
+    const source = {
+      packageName: "fixture/pack",
+      graphNodeId: "fixture/pack@1.0.0+aaaaaaaaaaaa",
+      logicalSelector: "fixture/pack@1.0.0+aaaaaaaaaaaa:settings/managed.json",
+      mergeStrategy: "json-deep",
+      mergeRemoval: { a: { b: 1 } },
+    };
+    const destination = {
+      ...source,
+      graphNodeId: "fixture/pack@1.1.0+bbbbbbbbbbbb",
+      logicalSelector: "fixture/pack@1.1.0+bbbbbbbbbbbb:settings/managed.json",
+      mergeRemoval: { a: { b: 1, c: 2 } },
+    };
+    const fixture = await createFixture({
+      sameFleet: true,
+      runtimeContent: `${JSON.stringify({ a: { b: 1, c: 2 } })}\n`,
+      sourcePatch: source,
+      destinationPatch: destination,
+    });
+    const runtimeBefore = await readFile(fixture.runtimePath);
+    const destinationBefore = await readFile(fixture.destinationManifestPath);
+    const plan = await planRetireStaleOwnership(fixture.request);
+    expect(plan.selected).toMatchObject([{ coverage: "exact" }]);
+    await applyRetireStaleOwnership(applyRequest(fixture.request, plan));
+    expect(await readFile(fixture.runtimePath)).toEqual(runtimeBefore);
+    expect(await readFile(fixture.destinationManifestPath)).toEqual(destinationBefore);
+    await expect(stat(fixture.sourceManifestPath)).rejects.toMatchObject({ code: "ENOENT" });
+
+    for (const destinationPatch of [
+      { ...destination, packageName: "fixture/other", graphNodeId: "fixture/other@1.1.0+bbbbbbbbbbbb", logicalSelector: "fixture/other@1.1.0+bbbbbbbbbbbb:settings/managed.json" },
+      { ...destination, artifactName: "other.json", logicalSelector: "fixture/pack@1.1.0+bbbbbbbbbbbb:settings/other.json" },
+      { ...destination, mergeRemoval: { a: { b: 3, c: 2 } } },
+      { ...destination, logicalSelector: "arbitrary:settings/managed.json" },
+    ]) {
+      const bad = await createFixture({
+        sameFleet: true,
+        runtimeContent: `${JSON.stringify({ a: { b: 1, c: 2 } })}\n`,
+        sourcePatch: source,
+        destinationPatch,
+      });
+      await expect(planRetireStaleOwnership(bad.request))
+        .rejects.toThrow(/does not identify the same source merge artifact|does not exactly cover/i);
+    }
+  });
+
+  it("requires equal non-JSON merge contributions across revisions", async () => {
+    const source = {
+      packageName: "fixture/pack",
+      graphNodeId: "fixture/pack@1.0.0+aaaaaaaaaaaa",
+      logicalSelector: "fixture/pack@1.0.0+aaaaaaaaaaaa:mcp/managed.json",
+      artifactType: "mcp",
+      artifactName: "managed.json",
+      mergeStrategy: "codex-toml-mcp",
+      mergeRemoval: { mcpServers: { managed: { command: "old" } } },
+    };
+    const destination = {
+      ...source,
+      graphNodeId: "fixture/pack@1.1.0+bbbbbbbbbbbb",
+      logicalSelector: "fixture/pack@1.1.0+bbbbbbbbbbbb:mcp/managed.json",
+    };
+    const runtimeContent = '[mcp_servers.managed]\ncommand = "old"\n';
+    const fixture = await createFixture({ sameFleet: true, runtimeContent, sourcePatch: source, destinationPatch: destination });
+    expect((await planRetireStaleOwnership(fixture.request)).selected).toMatchObject([{ coverage: "exact" }]);
+    const changed = await createFixture({ sameFleet: true, runtimeContent, sourcePatch: source,
+      destinationPatch: { ...destination, mergeRemoval: { mcpServers: { managed: { command: "new" } } } } });
+    await expect(planRetireStaleOwnership(changed.request)).rejects.toThrow(/differs or is missing|does not exactly cover/i);
+  });
+
   it("removes only exact stale source entries without touching runtime or destination", async () => {
     const fixture = await createFixture({ partial: true });
     const runtimeBefore = await readFile(fixture.runtimePath);
@@ -269,6 +401,7 @@ function applyRequest(request: RetireStaleOwnershipRequest, plan: Awaited<Return
 
 async function createFixture(options: {
   partial?: boolean;
+  sameFleet?: boolean;
   destinationOwner?: string;
   sourcePatch?: Record<string, unknown>;
   destinationPatch?: Record<string, unknown>;
@@ -276,7 +409,9 @@ async function createFixture(options: {
 } = {}) {
   const targetRoot = await mkdtemp(join(tmpdir(), "agentwheel-retire-target-"));
   const fromWorkspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-retire-from-"));
-  const toWorkspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-retire-to-"));
+  const toWorkspaceRoot = options.sameFleet
+    ? fromWorkspaceRoot
+    : await mkdtemp(join(tmpdir(), "agentwheel-retire-to-"));
   roots.push(targetRoot, fromWorkspaceRoot, toWorkspaceRoot);
   const sourceStateKey = "codex.user.legacy";
   const destinationStateKey = "codex.user.fleet-delivery.fixture";
@@ -286,12 +421,13 @@ async function createFixture(options: {
   await writeFile(join(targetRoot, "config", "source-only.json"), "source-only\n");
   await writeFile(join(targetRoot, "config", "foreign.json"), "foreign\n");
   const hash = await localTransport.hashPath(runtimePath);
-  const sourceEntries = [entry("config/managed.json", hash, workspaceOwnerForRoot(fromWorkspaceRoot), options.sourcePatch)];
+  const sourceOwner = workspaceOwnerForRoot(fromWorkspaceRoot, options.sameFleet ? "delivery" : undefined);
+  const sourceEntries = [entry("config/managed.json", hash, sourceOwner, options.sourcePatch)];
   if (options.partial) {
-    sourceEntries.push(entry("config/source-only.json", await localTransport.hashPath(join(targetRoot, "config", "source-only.json")), workspaceOwnerForRoot(fromWorkspaceRoot)));
+    sourceEntries.push(entry("config/source-only.json", await localTransport.hashPath(join(targetRoot, "config", "source-only.json")), sourceOwner));
     sourceEntries.push(entry("config/foreign.json", await localTransport.hashPath(join(targetRoot, "config", "foreign.json")), "workspace-root:/foreign"));
   }
-  await writeInstallManifest(manifest(targetRoot, sourceStateKey, workspaceOwnerForRoot(fromWorkspaceRoot), sourceEntries));
+  await writeInstallManifest(manifest(targetRoot, sourceStateKey, sourceOwner, sourceEntries));
   await writeInstallManifest(manifest(targetRoot, destinationStateKey, options.destinationOwner ?? workspaceOwnerForRoot(toWorkspaceRoot, "delivery"), [
     entry("config/managed.json", hash, options.destinationOwner ?? workspaceOwnerForRoot(toWorkspaceRoot, "delivery"), options.destinationPatch),
   ]));
@@ -311,6 +447,7 @@ async function createFixture(options: {
       sourceStateKey,
       destinationStateKey,
       fromWorkspaceRoot,
+      ...(options.sameFleet ? { fromFleetId: "delivery" } : {}),
       toWorkspaceRoot,
       toFleetId: "delivery",
     } satisfies RetireStaleOwnershipRequest,

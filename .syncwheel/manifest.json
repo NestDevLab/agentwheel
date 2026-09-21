@@ -22,11 +22,30 @@
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [],
+    "stacks": [
+      "aw-ownership-adopt-legacy"
+    ],
     "strategy": "cherry-pick"
   },
   "repository_mode": "delivery",
-  "stacks": [],
+  "stacks": [
+    {
+      "id": "aw-ownership-adopt-legacy",
+      "branch": "syncwheel/draft/aw-ownership-adopt-legacy",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "draft",
+      "publication": {
+        "enabled": false
+      },
+      "meta": {
+        "purpose": "Adopt legacy-key ownership records into the owning nested workspace (MGT-0250)"
+      }
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "version": 2

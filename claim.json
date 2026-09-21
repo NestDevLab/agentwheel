@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/update-legacy-recovery"
-  ],
-  "claimed_at": "2026-09-21T01:05:00+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-09-21T01:13:05+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "e194cd61-4262-4d56-8e49-d8c1ebd87b72",
-  "publication_scope": "stack:update-legacy-recovery",
+  "operation_token": "ac4ec9ca-21c2-4fad-89ae-4d0763efe7ca",
+  "publication_scope": "close:update-legacy-recovery",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/update-legacy-recovery",
   "syncwheel_version": "0.43.26"
 }

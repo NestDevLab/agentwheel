@@ -11,31 +11,10 @@
   "integration": {
     "base": "origin/main",
     "branch": "main-integration",
-    "stacks": [
-      "legacy-graph-only-recovery"
-    ],
+    "stacks": [],
     "strategy": "cherry-pick"
   },
-  "stacks": [
-    {
-      "id": "legacy-graph-only-recovery",
-      "branch": "syncwheel/draft/legacy-graph-only-recovery",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "1cc502d77c4a9a98e38d07c23a9ca72cdcae9b85"
-      ],
-      "state": "draft",
-      "publication": {
-        "enabled": false
-      },
-      "meta": {
-        "purpose": "Recover deterministically when multiple graph-only legacy locks exist without adopting stale state"
-      }
-    }
-  ],
+  "stacks": [],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
   "coordination": {

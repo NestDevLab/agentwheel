@@ -1,13 +1,11 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/aw-ownership-adopt-legacy": "6fd21adcb62da1c5e634e6b27f1c84735a284eac"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
-    "refs/heads/pr/aw-ownership-adopt-legacy": "e258b36b45ae1c009204ed10db0a58a1234bab5b",
+    "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
@@ -31,7 +29,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-21T21:49:09+00:00",
+  "created_at": "2026-09-22T10:24:05+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -119,40 +117,18 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [
-        "aw-ownership-adopt-legacy"
-      ],
+      "stacks": [],
       "strategy": "cherry-pick"
     },
-    "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/aw-ownership-adopt-legacy",
-        "commits": [
-          "13f1a8a51e4037d2d173d5851d62de3c770e3ade",
-          "1e5797f7f51e19501f9f885684106490495ba52f",
-          "a1ef3bfa41431d8afc38cf44aa9313d6100a383b",
-          "4642ad5774c5edcd12f5fc1e16e2358b22e5aabb",
-          "b8eb08183091218801224d4da0c3af209c6f1293",
-          "6fd21adcb62da1c5e634e6b27f1c84735a284eac"
-        ],
-        "id": "aw-ownership-adopt-legacy",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      }
-    ],
+    "stacks": [],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "b80a1b57-1f3b-4c4d-9272-0a4e807905f0",
-  "parent_state": "c5597ba502060667a80e3247a6956545dd8e88b7",
+  "operation_token": "3d317d8e-6dd0-4982-b3ec-72aa3ed454a6",
+  "parent_state": "60c9547345029e15f672fce6aa35325bd1d8cfd0",
   "projection_status": "partial",
-  "publication_id": "662dc90d-226a-4efd-b74a-0be629c55bb5",
-  "publication_scope": "stack:aw-ownership-adopt-legacy",
+  "publication_id": "24af9f9b-c872-4990-a9d9-88999ce64034",
+  "publication_scope": "close:aw-ownership-adopt-legacy",
   "schema_version": 2,
   "syncwheel_version": "0.43.31",
   "tombstones": [
@@ -602,6 +578,14 @@
       "reason": "promoted",
       "ref": "refs/heads/syncwheel/draft/aw-ownership-adopt-legacy",
       "remote_tip": "b8eb08183091218801224d4da0c3af209c6f1293",
+      "stack": "aw-ownership-adopt-legacy"
+    },
+    {
+      "branch": "pr/aw-ownership-adopt-legacy",
+      "closed_at": "2026-09-22T10:23:55+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/aw-ownership-adopt-legacy",
+      "remote_tip": null,
       "stack": "aw-ownership-adopt-legacy"
     }
   ]

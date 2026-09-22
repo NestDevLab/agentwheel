@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { listInstallManifests, type DiscoveredInstallManifest } from "../install/manifest.js";
 import { stateKeyFor } from "../install/paths.js";
@@ -69,14 +69,46 @@ export async function inventoryHistoricalLocks(fleetRoot: string): Promise<Histo
     })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) await visit(path);
-      else if (entry.isFile() && entry.name.endsWith(".graph-lock.json")) {
-        const lock = await readGraphLock(path);
-        found.push({ path, digest: sha256(canonicalGraphLockJson(lock)), lock });
-      }
+      else if (entry.isFile() && entry.name.endsWith(".graph-lock.json")) found.push(await historicalLock(path));
     }
   }
   await visit(root);
   return found.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+// legacy lock: <root>/.agentwheel/locks/<target>/<adapter>/<fp>.graph-lock.json recording that same fp.
+// stable locks are named by the state fingerprint, so they never match here.
+export async function findLegacyNamedLocks(workspaceRoot: string, adapter: string, fingerprint: string): Promise<HistoricalLock[]> {
+  const root = join(workspaceRoot, ".agentwheel", "locks");
+  const found: HistoricalLock[] = [];
+  for (const target of await readdir(root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  })) {
+    if (!target.isDirectory()) continue;
+    const path = join(root, target.name, adapter, `${fingerprint}.graph-lock.json`);
+    const stats = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (!stats?.isFile()) continue;
+    const item = await historicalLock(path);
+    if (item.lock.canonical.targetFingerprint === fingerprint) found.push(item);
+  }
+  return found.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function lockCoversEntry(
+  lock: GraphLock,
+  entry: { graphNodeId?: string; logicalSelector?: string; sourceHash: string },
+): boolean {
+  return lock.canonical.artifacts.some((artifact) => artifact.graphNodeId === entry.graphNodeId
+    && artifact.logicalSelector === entry.logicalSelector && artifact.hash === entry.sourceHash);
+}
+
+async function historicalLock(path: string): Promise<HistoricalLock> {
+  const lock = await readGraphLock(path);
+  return { path, digest: sha256(canonicalGraphLockJson(lock)), lock };
 }
 
 export async function planLegacyRecovery(input: {
@@ -218,8 +250,8 @@ function claimFor(item: DiscoveredInstallManifest, entry: InstallManifestEntry |
   if (boundLocks.length && !boundLocks.some((candidate) => candidate.lock.canonical.artifacts.some((artifact) =>
     artifact.graphNodeId === nodeId && artifact.logicalSelector === selector))) {
     evidence.push("historical graph-lock selector/node does not cover claim");
-  } else if (boundLocks.length && !boundLocks.some((candidate) => candidate.lock.canonical.artifacts.some((artifact) =>
-    artifact.graphNodeId === nodeId && artifact.logicalSelector === selector && artifact.hash === entry.sourceHash))) {
+  } else if (boundLocks.length && !boundLocks.some((candidate) =>
+    lockCoversEntry(candidate.lock, { graphNodeId: nodeId, logicalSelector: selector, sourceHash: entry.sourceHash }))) {
     evidence.push("historical graph-lock artifact hash differs from manifest source hash");
   }
   const foreign = owner !== binding.expectedOwner || !sameRoot

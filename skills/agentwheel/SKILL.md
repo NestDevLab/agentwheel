@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.17"
+  version: "0.20.18"
 ---
 
 # agentwheel
@@ -639,3 +639,10 @@ advanced lock as installed history. If stale foreign ownership blocks that migra
 `agentwheel ownership retire-stale --destination-state-key <exact-fleet-state-key>` to produce a
 metadata-only, revision-gated retirement plan against the already-installed Fleet manifest. Do not
 guess the state key or apply without the exact command emitted by the dry-run.
+
+When a nested non-Fleet workspace is refused because another plain workspace root, or its own root
+before Fleet qualification, owns paths under a fingerprint-only legacy key, run
+`agentwheel ownership adopt-legacy --agent <agent> --source-state-key <legacy-key>
+--from-workspace-root <previous-owner-root> --json` from that workspace. It moves only proven,
+still-desired entries into the stable state; add `--carry-drift` only after reviewing the drifted
+paths. Apply the emitted command, then require a normal install plan without force flags.

@@ -47,6 +47,7 @@ import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
+import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
 import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
 import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
@@ -1024,25 +1025,7 @@ ownershipCommand
     const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     if (config.packages.length === 0) throw new Error("Fleet has no configured source packages.");
-    const stage = await mkdtemp(join(tmpdir(), "agentwheel-recovery-"));
-    const priorTmpdir = process.env.TMPDIR;
-    try {
-      process.env.TMPDIR = stage;
-      const graphPlan = await createGraphSourcePlan({
-        roots: config.packages.map((pkg) => ({
-          rootId: pkg.name, source: pkg.source, mode: pkg.mode, version: pkg.version,
-          ref: pkg.requestedRef, select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
-          selection: pkg.selection, aliases: pkg.aliases, overrides: pkg.overrides,
-          includeSuggestions: pkg.withSuggestions, suggestionAliases: pkg.suggestions,
-          useLock: false,
-        })),
-        targetRoot: target.targetRoot, workspaceRoot: target.workspaceRoot, fleetId: target.fleetId,
-        adapter, transport, targetKey: targetKeyForTarget(target, adapter.name),
-        targetFingerprintParts: targetFingerprintParts(target, adapter, adapterOptionsForTarget(target, {}), installationType),
-        installationType, stateKey: target.stateKey, readOnly: true, yes: true, freshGraphOnly: true,
-        deferForeignStateCheck: true, cacheRoot: join(stage, "source-cache"),
-        registryCachePath: join(stage, "registry.json"),
-      });
+    await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, config.packages, async (graphPlan) => {
       const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh");
       const report = await planLegacyRecovery({
         graphPlan, installRoot, workspaceRoot: target.workspaceRoot,
@@ -1053,11 +1036,7 @@ ownershipCommand
       await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: "wx" });
       console.log(`Recovery report: ${reportPath}`);
       console.log(JSON.stringify(report.counts));
-    } finally {
-      if (priorTmpdir === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = priorTmpdir;
-      await rm(stage, { recursive: true, force: true });
-    }
+    });
   });
 
 ownershipCommand
@@ -1163,6 +1142,156 @@ ownershipCommand
     for (const entry of result.selected) console.log(`- ${entry.path}: ${entry.sourceEntryDigest} -> ${entry.destinationEntryDigest}`);
     console.log(`Plan digest: ${result.planDigest}`);
     if (!options.apply) console.log(`Apply: ${applyCommand}`);
+  });
+
+ownershipCommand
+  .command("adopt-legacy")
+  .description("move proven legacy-keyed ownership into this workspace's stable target state without rewriting runtime artifacts")
+  .requiredOption("--source-state-key <key>", "exact legacy install-manifest state key")
+  .requiredOption("--from-workspace-root <path>", "exact plain workspace owner root of the entries to move")
+  .option("--agent <name>", "named agent of this workspace")
+  .option("--profile <name>", "workspace profile resolving to one target")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("--carry-drift", "also move entries whose runtime differs from the recorded hash; the recorded hash is kept", false)
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
+  .option("--expected-destination-revision <sha256|absent>", "reviewed destination manifest revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed runtime manifest inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata-only adoption", false)
+  .option("--json", "print the complete deterministic plan as JSON", false)
+  .action(async (options) => {
+    if (Boolean(options.agent) === Boolean(options.profile)) {
+      throw new Error("Legacy ownership adoption requires exactly one of --agent or --profile.");
+    }
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const requestedInstallationType = normalizedOptions.installationType;
+    // group like a plain install, without -i or adapter flags: each forces one setting on every
+    // package, so we'd adopt paths the next plain install removes
+    const plainInstallOptions = {
+      ...normalizedOptions,
+      installationType: undefined,
+      adapterConfig: undefined,
+      adapterModule: undefined,
+    };
+    const targets = await resolveCliTargets(plainInstallOptions);
+    if (targets.length !== 1) {
+      throw new Error(`Legacy ownership adoption requires exactly one runtime target, found ${targets.length}.`);
+    }
+    const target = targets[0]!;
+    if (target.fleetId) {
+      throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
+    }
+    if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const groups = new Map<string, PackageGraphGroup>();
+    for (const pkg of config.packages) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
+    if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
+    const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
+    if (installationTypes.length > 1) {
+      throw new Error(
+        `Configured packages use installation types ${installationTypes.join(", ")}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    if (requestedInstallationType !== undefined && requestedInstallationType !== installationTypes[0]) {
+      throw new Error(
+        `--installation-type ${requestedInstallationType} does not match installation type ${installationTypes[0]}, `
+        + "which install uses for the configured packages.",
+      );
+    }
+    if (groups.size > 1) {
+      throw new Error(
+        `Configured packages resolve to ${groups.size} adapter configurations for ${installationTypes[0]}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    const group = [...groups.values()][0]!;
+    const { installationType, adapterOptions } = group;
+    const requestedAdapterSettings = [
+      { flag: "--adapter-config", requested: normalizedOptions.adapterConfig, resolved: adapterOptions.adapterConfig, none: "no adapter config" },
+      { flag: "--adapter-module", requested: normalizedOptions.adapterModule, resolved: adapterOptions.adapterModule, none: "no adapter module" },
+    ];
+    for (const { flag, requested, resolved, none } of requestedAdapterSettings) {
+      if (requested === undefined) continue;
+      // adapter files load relative to the workspace root, not cwd
+      if (resolved !== undefined && resolve(target.workspaceRoot, requested) === resolve(target.workspaceRoot, resolved)) continue;
+      throw new Error(`${flag} ${requested} does not match what install resolves for the configured packages: ${resolved ?? none}.`);
+    }
+    const adapter = await resolveAdapterForTarget(group.target, adapterOptions);
+    const stable = installStateForTarget(group.target, adapter, adapterOptions, installationType);
+    const stableGraphLockPath = graphLockPathForTarget(
+      group.target.workspaceRoot,
+      targetKeyForTarget(group.target, adapter.name),
+      adapter.name,
+      targetFingerprintParts(group.target, adapter, adapterOptions, installationType),
+      targetIdentityContext(group.target, adapter, installationType),
+    );
+    const desiredCoverage = await withFreshReadOnlyGraphPlan(group.target, adapter, adapterOptions, installationType, group.packages, async (graphPlan) => {
+      if (graphPlan.plan.stateKey !== stable.stateKey || graphPlan.graphLockPath !== stableGraphLockPath) {
+        throw new Error("Current source graph resolved a different target state identity; legacy ownership adoption cannot proceed.");
+      }
+      return desiredCoverageFromPlan(graphPlan.plan);
+    });
+    const request = {
+      targetRoot: stable.installRoot,
+      adapter: adapter.name,
+      installationType,
+      sourceStateKey: options.sourceStateKey,
+      destinationStateKey: stable.stateKey,
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      workspaceRoot: target.workspaceRoot,
+      destinationFleetId: target.fleetId,
+      destinationGraphLockPath: stableGraphLockPath,
+      desiredCoverage,
+      carryDrift: options.carryDrift === true,
+      planDigest: options.planDigest,
+      expectedSourceRevision: options.expectedSourceRevision,
+      expectedDestinationRevision: options.expectedDestinationRevision,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      transport: transportForTarget(target),
+    };
+    const result = options.apply
+      ? await applyAdoptLegacyOwnership(request)
+      : await planAdoptLegacyOwnership(request);
+    const destinationRevision = result.destination.revision ?? "absent";
+    const applyArgs = [
+      "agentwheel", "ownership", "adopt-legacy",
+      "--source-state-key", result.source.stateKey,
+      "--from-workspace-root", request.fromWorkspaceRoot,
+      ...(options.profile ? ["--profile", options.profile] : ["--agent", options.agent]),
+      "--installation-type", installationType,
+      ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),
+      ...(options.adapterModule ? ["--adapter-module", options.adapterModule] : []),
+      ...(options.allowAdapterCode ? ["--allow-adapter-code"] : []),
+      ...(request.carryDrift ? ["--carry-drift"] : []),
+      "--plan-digest", result.planDigest,
+      "--expected-source-revision", result.source.revision,
+      "--expected-destination-revision", destinationRevision,
+      "--expected-inventory-revision", result.manifestInventoryRevision,
+      "--apply",
+    ];
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, applyCommand }, null, 2));
+      return;
+    }
+    console.log(`${options.apply ? "Adopted legacy ownership" : "Legacy ownership adoption plan"}: ${result.selected.length} entr${result.selected.length === 1 ? "y" : "ies"}`);
+    console.log(`Target: ${result.adapter}/${result.installationType} at ${result.targetRoot}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision} (${result.source.class}, ${result.source.owner})`);
+    console.log(`Provenance: ${result.source.provenanceLock.path} (${result.source.provenanceLock.digest})`);
+    console.log(`Destination: ${result.destination.stateKey} revision ${destinationRevision} (${result.destination.owner})`);
+    console.log(`Manifest inventory revision: ${result.manifestInventoryRevision}`);
+    for (const entry of result.selected) {
+      const drift = entry.drift ? ` drift: recorded ${entry.recordedHash}, runtime ${entry.runtimeHash ?? "missing"}` : "";
+      console.log(`- ${entry.path}: ${entry.action}${drift}`);
+    }
+    for (const entry of result.retained) console.log(`  retained ${entry.path} (${entry.reason}, ${entry.owner})`);
+    for (const entry of result.remainingDuplicates) console.log(`  duplicate claim remains in ${entry.stateKey}: ${entry.path}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
   });
 
 const mcpCommand = program
@@ -3450,6 +3579,43 @@ function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, o
     ssh: target.ssh,
     stateKey: target.stateKey,
   };
+}
+
+// skips prior target state on purpose, so it still works while that state is broken.
+// staged sources are removed after the callback returns
+async function withFreshReadOnlyGraphPlan<T>(
+  target: RuntimeTarget,
+  adapter: AdapterConfig,
+  adapterOptions: { adapterConfig?: string; adapterModule?: string },
+  installationType: string,
+  packages: WorkspacePackage[],
+  use: (graphPlan: GraphSourcePlanResult) => Promise<T>,
+): Promise<T> {
+  const stage = await mkdtemp(join(tmpdir(), "agentwheel-recovery-"));
+  const priorTmpdir = process.env.TMPDIR;
+  try {
+    process.env.TMPDIR = stage;
+    const graphPlan = await createGraphSourcePlan({
+      roots: packages.map((pkg) => ({
+        rootId: pkg.name, source: pkg.source, mode: pkg.mode, version: pkg.version,
+        ref: pkg.requestedRef, select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
+        selection: pkg.selection, aliases: pkg.aliases, overrides: pkg.overrides,
+        includeSuggestions: pkg.withSuggestions, suggestionAliases: pkg.suggestions,
+        useLock: false,
+      })),
+      targetRoot: target.targetRoot, workspaceRoot: target.workspaceRoot, fleetId: target.fleetId,
+      adapter, transport: transportForTarget(target), targetKey: targetKeyForTarget(target, adapter.name),
+      targetFingerprintParts: targetFingerprintParts(target, adapter, adapterOptions, installationType),
+      installationType, stateKey: target.stateKey, readOnly: true, yes: true, freshGraphOnly: true,
+      deferForeignStateCheck: true, cacheRoot: join(stage, "source-cache"),
+      registryCachePath: join(stage, "registry.json"),
+    });
+    return await use(graphPlan);
+  } finally {
+    if (priorTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = priorTmpdir;
+    await rm(stage, { recursive: true, force: true });
+  }
 }
 
 function installStateForTarget(

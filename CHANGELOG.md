@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.18
+
+- Add `ownership adopt-legacy` to move proven ownership claims recorded under a fingerprint-only
+  legacy state key into a nested workspace's stable state. It changes only manifest metadata,
+  requires legacy lock provenance, moves only entries the current graph still installs, keeps
+  drift visible, and is gated by a reviewed plan digest and manifest revisions.
+
 ## 0.20.17
 
 - Allow an explicitly identified same-Fleet legacy state to retire only entries exactly covered by the stable manifest, including Codex merge artifacts across package revisions when package and artifact identity and source bytes match.

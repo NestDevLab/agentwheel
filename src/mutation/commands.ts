@@ -45,6 +45,7 @@ export const commandGovernance = {
   "ownership handoff": "governed-unless-dry-run",
   "ownership recovery-plan": "incidental-cache",
   "ownership retire-stale": "governed-apply",
+  "ownership adopt-legacy": "governed-apply",
   "mcp retire": "governed-apply",
   eject: "governed-always",
   uninstall: "governed-unless-dry-run",

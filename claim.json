@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/fix/tmpdir-staging-cleanup"
+  ],
+  "claimed_at": "2026-09-23T20:22:46+00:00",
+  "coordination_id": "default",
+  "operation_token": "3c460c5d-f255-419e-b0a0-352ce5ca05f0",
+  "publication_scope": "stack:tmpdir-cleanup",
+  "source_ref": "refs/heads/fix/tmpdir-staging-cleanup",
+  "syncwheel_version": "0.44.0"
+}

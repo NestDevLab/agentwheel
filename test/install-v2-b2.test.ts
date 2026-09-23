@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -1284,6 +1284,29 @@ describe("foreign workspace state at a shared target root", () => {
     ]);
 
     await expect(graphPlan(source, target, projectBeta)).rejects.toThrow(/another workspace/);
+  });
+
+  it("removes the rendered bundle when the foreign-state check refuses the plan", async () => {
+    const fleetAlpha = await tempRoot("agentwheel-b2-alpha-");
+    const projectBeta = await tempRoot("agentwheel-b2-beta-");
+    const target = await tempRoot("agentwheel-b2-target-");
+    const home = await tempRoot("agentwheel-b2-home-");
+    const scratch = await tempRoot("agentwheel-b2-tmp-");
+    const source = await skillSource(projectBeta, "shared-skill");
+    const first = await graphPlan(source, target, projectBeta, { globalRoot: home });
+    await applyCombinedInstallPlan(first.plan);
+    await rm(first.bundle.root, { recursive: true, force: true });
+    await writeOwnedManifest(target, alphaStateKey, workspaceOwnerForRoot(fleetAlpha), [".runtime/skills/shared-skill"]);
+
+    const previousTmpdir = process.env.TMPDIR;
+    process.env.TMPDIR = scratch;
+    try {
+      await expect(graphPlan(source, target, projectBeta, { globalRoot: home })).rejects.toThrow(/another workspace/);
+    } finally {
+      if (previousTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previousTmpdir;
+    }
+    expect(await readdir(scratch)).toEqual([]);
   });
 
   it("names the foreign owner, its manifest, entry count, colliding path and the ways out", async () => {

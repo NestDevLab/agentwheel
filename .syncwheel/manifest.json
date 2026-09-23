@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -33,7 +33,8 @@
       "base": "origin/main",
       "branch": "fix/tmpdir-staging-cleanup",
       "commits": [
-        "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f"
+        "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f",
+        "74dfbf08441db4b39faa4c6289131d7c69be29f0"
       ],
       "id": "tmpdir-cleanup",
       "integration_branch": "main-integration",

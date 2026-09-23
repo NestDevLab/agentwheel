@@ -1,9 +1,12 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/fix/tmpdir-staging-cleanup": "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
+    "refs/heads/fix/tmpdir-staging-cleanup": "6c228de8c293e4247c4420d2f20eb613a2a48c7b",
     "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
@@ -29,7 +32,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-22T10:24:05+00:00",
+  "created_at": "2026-09-23T20:22:46+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -39,6 +42,7 @@
     "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
     "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
+    "refs/heads/fix/tmpdir-staging-cleanup": "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f",
     "refs/heads/main-integration": "1a412f8cdcf5fe5ca89cd5afa98b0df97dc25900",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
@@ -117,20 +121,37 @@
         "role": "canonical"
       },
       "branch": "main-integration",
-      "stacks": [],
+      "stacks": [
+        "tmpdir-cleanup"
+      ],
       "strategy": "cherry-pick"
     },
-    "stacks": [],
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "fix/tmpdir-staging-cleanup",
+        "commits": [
+          "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f"
+        ],
+        "id": "tmpdir-cleanup",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      }
+    ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "3d317d8e-6dd0-4982-b3ec-72aa3ed454a6",
-  "parent_state": "60c9547345029e15f672fce6aa35325bd1d8cfd0",
+  "operation_token": "3c460c5d-f255-419e-b0a0-352ce5ca05f0",
+  "parent_state": "5aa2875143f4d29bfe51032ddd5d13b2ba873691",
   "projection_status": "partial",
-  "publication_id": "24af9f9b-c872-4990-a9d9-88999ce64034",
-  "publication_scope": "close:aw-ownership-adopt-legacy",
+  "publication_id": "7258d7a0-b16d-41be-9283-a73a156ed89f",
+  "publication_scope": "stack:tmpdir-cleanup",
   "schema_version": 2,
-  "syncwheel_version": "0.43.31",
+  "syncwheel_version": "0.44.0",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

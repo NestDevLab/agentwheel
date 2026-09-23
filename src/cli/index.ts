@@ -1724,30 +1724,34 @@ async function runInstallCommand(
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
-      if (!behavior.quiet) console.log(formatGraphPlan(result));
-      if (behavior.apply) {
-        declareMutationPath(result.graphLockPath);
-        if (extraPackage && !targetOptions.onlySource) declareMutationPath(workspaceConfigPath(target.workspaceRoot));
-        const transport = transportForTarget(target);
-        const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
-        await applyCombinedInstallPlan(result.plan, {
-          executePlugins,
-          transport,
-          graphLockDigest: result.graphLockDigest,
-          graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
-        });
-        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
-          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
-          executePlugins,
-        });
-        if (!behavior.quiet) {
-          console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
-          if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+    const results = await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" });
+    try {
+      for (const result of results) {
+        if (!behavior.quiet) console.log(formatGraphPlan(result));
+        if (behavior.apply) {
+          declareMutationPath(result.graphLockPath);
+          if (extraPackage && !targetOptions.onlySource) declareMutationPath(workspaceConfigPath(target.workspaceRoot));
+          const transport = transportForTarget(target);
+          const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
+          await applyCombinedInstallPlan(result.plan, {
+            executePlugins,
+            transport,
+            graphLockDigest: result.graphLockDigest,
+            graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+          });
+          const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+            enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
+            executePlugins,
+          });
+          if (!behavior.quiet) {
+            console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+            if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+          }
         }
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
       }
-      await rm(result.bundle.root, { recursive: true, force: true });
-      if (result.plan.hasBlockingChanges) process.exitCode = 1;
+    } finally {
+      await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
     }
 
     if (behavior.apply && extraPackage && !targetOptions.onlySource) {
@@ -2380,28 +2384,31 @@ async function runConfiguredGraphPackages(
   behavior: { mode: "install" | "update" },
 ): Promise<void> {
   const results = await buildGraphPlansForTarget(target, undefined, options, behavior);
-  for (const result of results) {
-    console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
-    console.log(formatGraphPlan(result));
-    if (!options.dryRun) {
-      declareMutationPath(result.graphLockPath);
-      const transport = transportForTarget(target);
-      const executePlugins = target.executePlugins ?? options.executePlugins;
-      await applyCombinedInstallPlan(result.plan, {
-        executePlugins,
-        transport,
-        graphLockDigest: result.graphLockDigest,
-        graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
-      });
-      const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
-        enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
-        executePlugins,
-      });
-      console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
-      if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+  try {
+    for (const result of results) {
+      console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
+      console.log(formatGraphPlan(result));
+      if (!options.dryRun) {
+        declareMutationPath(result.graphLockPath);
+        const transport = transportForTarget(target);
+        const executePlugins = target.executePlugins ?? options.executePlugins;
+        await applyCombinedInstallPlan(result.plan, {
+          executePlugins,
+          transport,
+          graphLockDigest: result.graphLockDigest,
+          graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+        });
+        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
+          executePlugins,
+        });
+        console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+      }
+      if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    await rm(result.bundle.root, { recursive: true, force: true });
-    if (result.plan.hasBlockingChanges) process.exitCode = 1;
+  } finally {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }
 }
 
@@ -2410,6 +2417,22 @@ async function buildGraphPlansForTarget(
   source: string | undefined,
   options: GraphCliOptions,
   behavior: { mode: "install" | "update"; readOnly?: boolean },
+) {
+  const bundleRoots: string[] = [];
+  try {
+    return await collectGraphPlansForTarget(target, source, options, behavior, bundleRoots);
+  } catch (error) {
+    await Promise.all(bundleRoots.map((root) => rm(root, { recursive: true, force: true })));
+    throw error;
+  }
+}
+
+async function collectGraphPlansForTarget(
+  target: RuntimeTarget,
+  source: string | undefined,
+  options: GraphCliOptions,
+  behavior: { mode: "install" | "update"; readOnly?: boolean },
+  bundleRoots: string[],
 ) {
   const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -2620,6 +2643,7 @@ async function buildGraphPlansForTarget(
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
       recoverLegacyState: targetOptions.recoverLegacyState,
     });
+    bundleRoots.push(result.bundle.root);
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
       const manifest = result.previousManifest;
       const previousLock = result.previousGraphLock;
@@ -3472,48 +3496,50 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
       remainingDesired = desiredArtifactsFromGraphBundle(result.bundle);
       renderedRoot = result.bundle.root;
     }
-
-    const uninstallPlan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, {
-      graphLockDigest: remainingGraphPlan?.graphLockDigest,
-    });
-    const transitionPlan = remainingGraphPlan?.plan;
-    const plan: InstallPlan = {
-      ...uninstallPlan,
-      stateKey: transitionPlan?.stateKey ?? removedState.stableStateKey,
-      stateMigration: transitionPlan?.stateMigration ?? removedState.migration,
-      targetStateFilePreconditions: transitionPlan?.targetStateFilePreconditions
-        ?? removedState.targetStateFilePreconditions,
-    };
-    console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
-    console.log(formatPlan(plan));
-    const graphLockFinalState = remainingGraphPlan
-      ? { graphLock: { path: remainingGraphPlan.graphLockPath, lock: remainingGraphPlan.bundle.graphLock } }
-      : {
-          removeGraphLockPath: removedState.graphLockPath ?? removedState.stableGraphLockPath,
-        };
-    if (!options.dryRun) {
-      declareMutationPath(workspaceConfigPath(target.workspaceRoot));
-      const declarativeGraphPath = remainingGraphPlan
-        ? remainingGraphPlan.graphLockPath
-        : removedState.graphLockPath ?? removedState.stableGraphLockPath;
-      declareMutationPath(declarativeGraphPath);
+    try {
+      const uninstallPlan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, {
+        graphLockDigest: remainingGraphPlan?.graphLockDigest,
+      });
+      const transitionPlan = remainingGraphPlan?.plan;
+      const plan: InstallPlan = {
+        ...uninstallPlan,
+        stateKey: transitionPlan?.stateKey ?? removedState.stableStateKey,
+        stateMigration: transitionPlan?.stateMigration ?? removedState.migration,
+        targetStateFilePreconditions: transitionPlan?.targetStateFilePreconditions
+          ?? removedState.targetStateFilePreconditions,
+      };
+      console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
+      console.log(formatPlan(plan));
+      const graphLockFinalState = remainingGraphPlan
+        ? { graphLock: { path: remainingGraphPlan.graphLockPath, lock: remainingGraphPlan.bundle.graphLock } }
+        : {
+            removeGraphLockPath: removedState.graphLockPath ?? removedState.stableGraphLockPath,
+          };
+      if (!options.dryRun) {
+        declareMutationPath(workspaceConfigPath(target.workspaceRoot));
+        const declarativeGraphPath = remainingGraphPlan
+          ? remainingGraphPlan.graphLockPath
+          : removedState.graphLockPath ?? removedState.stableGraphLockPath;
+        declareMutationPath(declarativeGraphPath);
+      }
+      const result = await uninstall(plan, {
+        dryRun: options.dryRun,
+        force: options.force,
+        keepFiles: options.keepFiles,
+        transport,
+        ...graphLockFinalState,
+        workspaceConfig: {
+          path: workspaceConfigPath(target.workspaceRoot),
+          data: { ...config, packages: remaining },
+        },
+      });
+      if (!options.dryRun) {
+        console.log(formatUninstallResult(result));
+      }
+      if (plan.hasBlockingChanges) process.exitCode = 1;
+    } finally {
+      if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
     }
-    const result = await uninstall(plan, {
-      dryRun: options.dryRun,
-      force: options.force,
-      keepFiles: options.keepFiles,
-      transport,
-      ...graphLockFinalState,
-      workspaceConfig: {
-        path: workspaceConfigPath(target.workspaceRoot),
-        data: { ...config, packages: remaining },
-      },
-    });
-    if (!options.dryRun) {
-      console.log(formatUninstallResult(result));
-    }
-    if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
-    if (plan.hasBlockingChanges) process.exitCode = 1;
   }
 }
 

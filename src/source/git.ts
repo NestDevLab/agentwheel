@@ -17,6 +17,7 @@ import {
   removeGeneratedEntries,
   withGitCacheMaintenanceLock,
 } from "./cache.js";
+import { parseGitSource } from "./git-source.js";
 import { LocalSourceDriver } from "./local.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "./types.js";
 
@@ -82,15 +83,18 @@ export class GitSourceDriver implements SourceDriver {
           return { path, leasePath };
         },
       );
-      const snapshotPath = snapshot.path;
-      const manifest = await readPackageManifest(snapshotPath);
+      const packageRoot = parsed.subpath ? join(snapshot.path, parsed.subpath) : snapshot.path;
+      if (parsed.subpath && !(await isDirectory(packageRoot))) {
+        throw new Error(`Git source subpath '${parsed.subpath}' does not exist at ${resolvedCommit} in ${parsed.url}`);
+      }
+      const manifest = await readPackageManifest(packageRoot);
       return {
         ...resolved,
-        resolvedPath: snapshotPath,
+        resolvedPath: packageRoot,
         packageName: manifest?.name,
         packageVersion: manifest?.version,
         resolvedCommit,
-        sourceHash: await hashPath(snapshotPath),
+        sourceHash: await hashPath(packageRoot),
         cacheLeasePath: snapshot.leasePath,
       };
     }, "git cache");
@@ -113,22 +117,12 @@ export class GitSourceDriver implements SourceDriver {
   }
 }
 
-function parseGitSource(source: string): { url: string; ref?: string } {
-  if (source.startsWith("github:")) {
-    const rest = source.slice("github:".length);
-    const [repo, ref] = rest.split("#", 2);
-    if (!repo.includes("/")) throw new Error(`Invalid GitHub source: ${source}`);
-    return { url: `https://github.com/${repo}.git`, ref };
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
   }
-  if (source.startsWith("git:")) {
-    const rest = source.slice("git:".length);
-    const hashIndex = rest.lastIndexOf("#");
-    if (hashIndex >= 0) {
-      return { url: rest.slice(0, hashIndex), ref: rest.slice(hashIndex + 1) };
-    }
-    return { url: rest };
-  }
-  throw new Error(`Invalid git source: ${source}`);
 }
 
 function cachePathFor(url: string, cacheRoot?: string): string {

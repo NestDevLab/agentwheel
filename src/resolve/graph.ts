@@ -16,7 +16,8 @@ import { hashPath } from "../utils/fs.js";
 import { artifactSelectorKey, normalizeArtifactSelectors } from "../model/selection.js";
 import type { WorkspaceSelectionImport } from "../model/workspace.js";
 import { resolveSelectionImport, type ResolvedSelectionImport } from "../model/workspace-composition.js";
-import { normalizeDependencySource, type NormalizedDependencySource } from "./identity.js";
+import { normalizeDependencySource, normalizeGitRemoteUrl, type DeclaringGitSource, type NormalizedDependencySource } from "./identity.js";
+import { parseGitSource } from "../source/git-source.js";
 import { satisfiesVersionRange } from "./semver.js";
 
 export interface GraphRootRequest {
@@ -89,6 +90,7 @@ interface Requirement {
   mode: "pinned" | "tracking";
   ref?: string;
   declaringPackageRoot: string;
+  declaringGitSource?: DeclaringGitSource;
   requiredBy: string;
   rootId?: string;
   aliases?: Record<string, string>;
@@ -300,6 +302,7 @@ async function processRequirement(
       ? normalizedSourceFromLockedNode(lockedByReference.node)
       : await normalizeDependencySource(requirement.source, {
           declaringPackageRoot: requirement.declaringPackageRoot,
+          declaringGitSource: requirement.declaringGitSource,
           workspaceRoot: options.workspaceRoot,
           ref: requirement.ref,
           registryClient: options.registryClient,
@@ -307,6 +310,7 @@ async function processRequirement(
     if (lockedByReference && shouldCheckLockedRootSource(requirement)) {
       const declared = await normalizeDependencySource(requirement.source, {
         declaringPackageRoot: requirement.declaringPackageRoot,
+        declaringGitSource: requirement.declaringGitSource,
         workspaceRoot: options.workspaceRoot,
         ref: requirement.ref,
         registryClient: options.registryClient,
@@ -623,6 +627,7 @@ function dependencyRequirement(
     useLock: dependency.mode !== "tracking" || (options.lockedResolution === true && !updateClosure),
     updateClosure,
     declaringPackageRoot: fetched.resolved.resolvedPath,
+    declaringGitSource: declaringGitSource(fetched),
     requiredBy: state.node.id,
     alias,
     parentId: state.node.id,
@@ -1329,4 +1334,14 @@ async function mapLimit<T, U>(items: T[], limit: number, fn: (item: T) => Promis
   await Promise.all(workers);
   if (failure !== undefined) throw failure;
   return out;
+}
+
+function declaringGitSource(fetched: FetchedPackage): DeclaringGitSource | undefined {
+  if (fetched.resolved.driver !== "git" || !fetched.resolved.resolvedCommit) return undefined;
+  const parsed = parseGitSource(fetched.resolved.source);
+  return {
+    url: normalizeGitRemoteUrl(parsed.url, fetched.resolved.resolvedPath),
+    commit: fetched.resolved.resolvedCommit,
+    subpath: parsed.subpath,
+  };
 }

@@ -132,6 +132,12 @@ Apply the same command with the reviewed values added as `--expected-hash <sha25
 journal, rechecks the old owner and the live artifact hash, then atomically updates only the install
 manifest. Run one target at a time; named SSH agents use the same contract through `--agent`.
 
+Use `--from-unknown-owner` instead of `--from-workspace-root` for an entry recorded as
+`workspace:unknown`. A plain file or directory whose runtime no longer matches the recorded hash is
+refused unless `--carry-drift` is passed: the dry-run prints the runtime hash, the apply also needs
+`--expected-runtime-hash <sha256>`, and the manifest keeps the recorded hash so the next install
+still reports the drift. Merge and managed-block entries never carry drift.
+
 For a one-time MCP rename, keep the legacy artifact in a dedicated cutover workspace rather than
 the canonical desired-state profile. Set the legacy manifest `stateKey` on its named agent, then
 preview one runtime at a time:

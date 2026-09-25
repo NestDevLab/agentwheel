@@ -24,6 +24,15 @@ export async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+export async function removeOnFailure<T>(path: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    await rm(path, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function hashPath(path: string): Promise<string> {
   const stats = await stat(path);
   if (stats.isFile()) {

@@ -22,7 +22,7 @@ import { stageSource, type StagedBundle } from "../staging/staging.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.js";
-import { pathExists } from "../utils/fs.js";
+import { pathExists, removeOnFailure } from "../utils/fs.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { assertTrustArtifactPolicy, evaluateTransitiveTrust, normalizeTrustPolicy, readTrustedSources, rememberTrustedSources } from "./trust.js";
 import { globalWorkspaceConfigPath, readMergedWorkspaceConfig } from "../model/workspace.js";
@@ -324,90 +324,92 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     noDeps: options.noDeps,
     warn,
   });
-  const desiredArtifacts = filterArtifactsByAdapterTargets(
-    desiredArtifactsFromGraphBundle(bundle),
-    options.adapter,
-    installationType,
-    { warn },
-  );
-  const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);
-  const resolvedInstallRoot = installRootForArtifacts(options.adapter, options.targetRoot, resolvedInstallationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
-  const graphLockDigest = digestGraphLock(bundle.graphLock);
-  const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
-  if (normalizeInstallRoot(resolvedInstallRoot, transport.kind) !== normalizeInstallRoot(installRoot, transport.kind)) {
-    throw new Error(
-      `Adapter ${options.adapter.name} resolved a different install root after rendering; target state identity cannot be proven.`,
+  return removeOnFailure(bundle.root, async () => {
+    const desiredArtifacts = filterArtifactsByAdapterTargets(
+      desiredArtifactsFromGraphBundle(bundle),
+      options.adapter,
+      installationType,
+      { warn },
     );
-  }
-  const manifest = priorState.manifest;
-  const basePlan = options.retireExactMcp
-    ? await createExactMcpRetirementPlan(
-        desiredArtifacts,
-        options.adapter,
-        options.targetRoot,
-        manifest,
-        transport,
-        {
+    const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);
+    const resolvedInstallRoot = installRootForArtifacts(options.adapter, options.targetRoot, resolvedInstallationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+    const graphLockDigest = digestGraphLock(bundle.graphLock);
+    const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
+    if (normalizeInstallRoot(resolvedInstallRoot, transport.kind) !== normalizeInstallRoot(installRoot, transport.kind)) {
+      throw new Error(
+        `Adapter ${options.adapter.name} resolved a different install root after rendering; target state identity cannot be proven.`,
+      );
+    }
+    const manifest = priorState.manifest;
+    const basePlan = options.retireExactMcp
+      ? await createExactMcpRetirementPlan(
+          desiredArtifacts,
+          options.adapter,
+          options.targetRoot,
+          manifest,
+          transport,
+          {
+            installationType: resolvedInstallationType,
+            stateKey,
+            workspaceOwner,
+            expectedFromWorkspaceOwner: options.expectedFromWorkspaceOwner,
+            graphLockDigest,
+          },
+        )
+      : await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
+          baseRevision: manifest?.revision ?? null,
+          graphLockDigest,
+          workspaceOwner,
           installationType: resolvedInstallationType,
           stateKey,
-          workspaceOwner,
-          expectedFromWorkspaceOwner: options.expectedFromWorkspaceOwner,
-          graphLockDigest,
-        },
-      )
-    : await createCombinedInstallPlan(desiredArtifacts, options.adapter, options.targetRoot, manifest, transport, {
-        baseRevision: manifest?.revision ?? null,
-        graphLockDigest,
+          forceDrift: options.forceDrift,
+          forceConflict: options.forceConflict,
+          replaceConflict: options.replaceConflict,
+          stateMigration: priorState.migration,
+          warn,
+        });
+    const plan = priorState.migration && !basePlan.stateMigration
+      ? { ...basePlan, stateMigration: priorState.migration }
+      : basePlan;
+    plan.targetStateFilePreconditions = {
+      graphLockPath,
+      graphLockRevision: stableLock ? digestGraphLock(stableLock) : null,
+      sourceLockRevision: computeSourceLockRevision(stableSourceLock),
+    };
+    let foreignStateObservations: ForeignStateObservation[] = [];
+    if (options.forceForeignState !== true && options.deferForeignStateCheck !== true) {
+      foreignStateObservations = await assertNoForeignWorkspaceState({
+        installRoot: resolvedInstallRoot,
+        adapter: options.adapter.name,
+        transport,
+        workspaceRoot,
         workspaceOwner,
-        installationType: resolvedInstallationType,
+        globalRoot: options.globalRoot,
         stateKey,
-        forceDrift: options.forceDrift,
-        forceConflict: options.forceConflict,
-        replaceConflict: options.replaceConflict,
-        stateMigration: priorState.migration,
-        warn,
+        migratingStateKey: priorState.migration?.fromStateKey,
+        plannedPaths: plan.operations.map((operation) => operation.relativeDestPath),
+        plannedOperations: plan.operations,
       });
-  const plan = priorState.migration && !basePlan.stateMigration
-    ? { ...basePlan, stateMigration: priorState.migration }
-    : basePlan;
-  plan.targetStateFilePreconditions = {
-    graphLockPath,
-    graphLockRevision: stableLock ? digestGraphLock(stableLock) : null,
-    sourceLockRevision: computeSourceLockRevision(stableSourceLock),
-  };
-  let foreignStateObservations: ForeignStateObservation[] = [];
-  if (options.forceForeignState !== true && options.deferForeignStateCheck !== true) {
-    foreignStateObservations = await assertNoForeignWorkspaceState({
-      installRoot: resolvedInstallRoot,
-      adapter: options.adapter.name,
-      transport,
-      workspaceRoot,
-      workspaceOwner,
-      globalRoot: options.globalRoot,
-      stateKey,
-      migratingStateKey: priorState.migration?.fromStateKey,
-      plannedPaths: plan.operations.map((operation) => operation.relativeDestPath),
-      plannedOperations: plan.operations,
-    });
-    plan.hasBlockingChanges = plan.operations.some((operation) => operation.action === "drift" || operation.action === "conflict");
-  }
+      plan.hasBlockingChanges = plan.operations.some((operation) => operation.action === "drift" || operation.action === "conflict");
+    }
 
-  return {
-    plan,
-    graph,
-    bundle,
-    desiredArtifacts,
-    graphLockPath,
-    graphLockDigest,
-    targetFingerprint,
-    warnings,
-    newTransitiveSources: trustEvaluation.promptSources,
-    graphDiff,
-    recoveredPendingApply,
-    previousManifest: priorState.manifest,
-    previousGraphLock: priorState.graphLock,
-    foreignStateObservations,
-  };
+    return {
+      plan,
+      graph,
+      bundle,
+      desiredArtifacts,
+      graphLockPath,
+      graphLockDigest,
+      targetFingerprint,
+      warnings,
+      newTransitiveSources: trustEvaluation.promptSources,
+      graphDiff,
+      recoveredPendingApply,
+      previousManifest: priorState.manifest,
+      previousGraphLock: priorState.graphLock,
+      foreignStateObservations,
+    };
+  });
 }
 
 export async function assertNoForeignWorkspaceStateForPlan(

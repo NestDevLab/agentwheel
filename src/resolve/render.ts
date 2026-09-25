@@ -15,6 +15,7 @@ import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
+import { removeOnFailure } from "../utils/fs.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
 
@@ -27,11 +28,20 @@ export interface GraphRenderTargetContext {
   warn?: (message: string) => void;
 }
 
+// stage every node under root, callers only ever remove bundle.root
 export async function renderGraphForTarget(
   graph: ResolvedGraph,
   targetContext: GraphRenderTargetContext = {},
 ): Promise<ResolvedGraphBundle> {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-render-"));
+  return removeOnFailure(root, () => renderGraphIntoRoot(root, graph, targetContext));
+}
+
+async function renderGraphIntoRoot(
+  root: string,
+  graph: ResolvedGraph,
+  targetContext: GraphRenderTargetContext,
+): Promise<ResolvedGraphBundle> {
   const artifacts: ResolvedArtifact[] = [];
   const stagedNodes = new Map<string, StagedGraphNode>();
   const includeEdges = new Map<string, GraphLockIncludeEdge>();
@@ -42,7 +52,7 @@ export async function renderGraphForTarget(
       && rawNode.manifest?.schemaVersion === 3
       && Boolean(rawNode.manifest.compositionRules?.length);
     if (rawNode.node.selected.length === 0 && !ownsCompositionRules) continue;
-    const rawBundle = await stageResolvedArtifactsRaw(rawNode.resolved, rawNode.artifacts);
+    const rawBundle = await stageResolvedArtifactsRaw(rawNode.resolved, rawNode.artifacts, root);
     const fragmentCustomized = targetContext.workspaceRoot && targetContext.adapter
       ? await applyFragmentCustomizations(rawBundle.artifacts, {
         workspaceRoot: targetContext.workspaceRoot,

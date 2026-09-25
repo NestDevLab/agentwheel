@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from "../compose/markdown.js";
 import type { Artifact, PackageItemRequire, PackageItemSuggest } from "../model/artifact.js";
@@ -74,7 +73,6 @@ export interface ResolvedGraphRawNode {
 }
 
 export interface ResolvedGraph {
-  root: string;
   roots: ResolvedGraphRoot[];
   nodes: ResolvedNode[];
   rawNodes: ResolvedGraphRawNode[];
@@ -164,7 +162,6 @@ export async function resolveDependencyGraph(
 ): Promise<ResolvedGraph> {
   if (roots.length === 0) throw new Error("At least one graph root is required.");
 
-  const graphRoot = await mkdtemp(join(tmpdir(), "agentwheel-graph-"));
   const fetchCache = new Map<string, Promise<FetchedPackage>>();
   const nodesByKey = new Map<string, NodeState>();
   const nodesBySource = new Map<string, NodeState>();
@@ -237,7 +234,6 @@ export async function resolveDependencyGraph(
   detectDirectCollisions(rawNodes);
 
   return {
-    root: graphRoot,
     roots: rootResults.sort((a, b) => a.rootId.localeCompare(b.rootId)),
     nodes: rawNodes.map((state) => state.node),
     rawNodes,

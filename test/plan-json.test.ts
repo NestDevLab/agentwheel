@@ -372,7 +372,7 @@ function normalizeHumanPlan(value: string, workspace: string, source: string): s
     .replace(/json-human-skill@1\.0\.0\+[a-f0-9]+/g, "json-human-skill@1.0.0+<source-hash>")
     .replace(/<workspace>\/\.agentwheel\/locks\/codex\/codex\/[a-f0-9]+\.graph-lock\.json/g, "<workspace>/.agentwheel/locks/codex/codex/<fingerprint>.graph-lock.json")
     .replace(/\([a-f0-9]{64}\)/g, "(<digest>)")
-    .replace(/\/tmp\/agentwheel-stage-[^/]+/g, "<stage>");
+    .replace(/\S*\/agentwheel-render-[^/\s]+\/agentwheel-stage-[^/\s]+/g, "<stage>");
 }
 
 function expectNoExternalResourceRefs(value: string): void {

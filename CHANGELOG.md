@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.20.19
+
+- Install a package that lives in a subdirectory of a git repository with
+  `git:<url>#<ref>//<subpath>` (also `github:<owner>/<repo>#<ref>//<subpath>`). The subpath is the
+  package root; the clone stays shared per repository. `./` and `../` dependencies declared inside a
+  git package now resolve to the same repository at the same commit instead of a path in the local
+  source cache, so a nested package and the root it depends on always install from one commit and
+  the lock stays portable. Existing git packages with relative dependencies lock a git source
+  instead of a cache path: a `--frozen-lock` or `--offline` install of one needs a single unfrozen
+  resolve first.
+- Stop leaving temporary directories behind after graph plans. Every package node is staged under
+  the render root, the unused graph directory is no longer created, partial roots are removed when
+  staging, rendering or planning fails, and install, update and uninstall clean up in `finally`.
+- Let `ownership handoff` carry a drifted plain file or directory with `--carry-drift`, bound to the
+  reviewed bytes through `--expected-runtime-hash`, and select entries recorded as
+  `workspace:unknown` with `--from-unknown-owner`. The manifest keeps the recorded hash, so the next
+  install still reports the drift; merge and managed-block entries stay strict.
+
 ## 0.20.18
 
 - Add `ownership adopt-legacy` to move proven ownership claims recorded under a fingerprint-only

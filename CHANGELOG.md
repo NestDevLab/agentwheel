@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.19
+
+- Let `ownership handoff` carry drift on a plain file or directory with `--carry-drift`. Applying
+  also needs `--expected-runtime-hash` from the reviewed dry-run, and the manifest keeps the
+  recorded hash so the next install still reports the drift. Merge and managed-block entries stay
+  strict.
+- Add `--from-unknown-owner` to hand off entries recorded as `workspace:unknown`.
+
 ## 0.20.18
 
 - Add `ownership adopt-legacy` to move proven ownership claims recorded under a fingerprint-only

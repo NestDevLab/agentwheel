@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.18"
+  version: "0.20.19"
 ---
 
 # agentwheel
@@ -475,6 +475,9 @@ Drift means a managed runtime output changed outside agentwheel. Fix drift by ch
   colliding upstream artifact.
 - Eject an item into `.agentwheel/ejected` when the user wants local ownership.
 
+When the plan instead keeps a file as foreign or refuses because another workspace owns it, that is
+an ownership problem, not drift: see "Choosing an ownership command" under Troubleshooting.
+
 Append durable local instruction text:
 
 ```bash
@@ -646,3 +649,23 @@ before Fleet qualification, owns paths under a fingerprint-only legacy key, run
 --from-workspace-root <previous-owner-root> --json` from that workspace. It moves only proven,
 still-desired entries into the stable state; add `--carry-drift` only after reviewing the drifted
 paths. Apply the emitted command, then require a normal install plan without force flags.
+
+### Choosing an ownership command
+
+`agentwheel ownership --help` lists the commands; each subcommand's `--help` is the authoritative flag
+reference. All of them dry-run by default and change only manifest metadata.
+
+| Situation | Command |
+|---|---|
+| Unclear who owns what | `ownership recovery-plan` (read-only evidence report) |
+| Refused: paths owned under a fingerprint-only legacy key | `ownership adopt-legacy` |
+| `adopt-legacy` says entries are "already owned by the destination owner" (mixed legacy manifest) | Run a normal `install --agent <agent>` first; it migrates the state and keeps the foreign entry. Then hand off that entry. |
+| Plan keeps one file as a `foreign artifact owned by …` in a stable manifest | `ownership handoff <type/name>` with `--from-workspace-root <root>`, or `--from-unknown-owner` for `workspace:unknown`; add `--to-fleet <id>` for a Fleet owner |
+| Stale foreign entry already covered by the Fleet manifest | `ownership retire-stale` |
+
+`handoff` refuses a file whose runtime hash differs from the manifest. If the drift is reviewed and
+harmless, add `--carry-drift`; applying then also needs `--expected-runtime-hash` from the dry-run.
+The recorded hash is kept, so the next install reports `DRIFT` for that file. Replacing it needs
+`install --agent <agent> --force-drift`, which also force-refreshes every merge contribution of that
+target (for example hooks): check that each merge destination is byte-identical afterwards. Never
+narrow that install with `--select`: it removes unselected merge contributions.

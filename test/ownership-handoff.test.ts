@@ -123,6 +123,123 @@ describe("artifact ownership handoff", () => {
     expect(await readFile(fixture.manifestPath, "utf8")).toBe(before);
   });
 
+  it("carries reviewed file drift only with the exact runtime hash and keeps the recorded hash", async () => {
+    const fixture = await localFixture();
+    await writeFile(fixture.skillFile, "hand-edited\n");
+    const runtimeHash = await localTransport.hashPath(fixture.artifactPath);
+    const before = await readFile(fixture.manifestPath, "utf8");
+
+    await expect(planArtifactOwnershipHandoff(fixture.request)).rejects.toThrow(/Managed artifact is drifted/);
+    const plan = await planArtifactOwnershipHandoff({ ...fixture.request, carryDrift: true });
+    expect(plan).toMatchObject({ drifted: true, artifactHash: fixture.request.expectedHash, runtimeHash });
+    await expect(applyArtifactOwnershipHandoff({ ...fixture.request, carryDrift: true }))
+      .rejects.toThrow(/requires expectedRuntimeHash/);
+    await expect(applyArtifactOwnershipHandoff({
+      ...fixture.request,
+      carryDrift: true,
+      expectedRuntimeHash: "0".repeat(64),
+    })).rejects.toThrow(/Runtime hash precondition failed/);
+    await expect(planArtifactOwnershipHandoff({ ...fixture.request, expectedRuntimeHash: runtimeHash }))
+      .rejects.toThrow(/only valid with carryDrift/);
+    expect(await readFile(fixture.manifestPath, "utf8")).toBe(before);
+
+    await applyArtifactOwnershipHandoff({ ...fixture.request, carryDrift: true, expectedRuntimeHash: runtimeHash });
+    const manifest = await readInstallManifest(fixture.targetRoot, "codex", localTransport, fixture.scope);
+    if (!manifest || manifest.version !== 2) throw new Error("missing v2 manifest");
+    expect(manifest.entries[0]).toMatchObject({
+      workspaceOwner: workspaceOwnerForRoot(fixture.toWorkspaceRoot),
+      hash: fixture.request.expectedHash,
+    });
+    expect(await readFile(fixture.skillFile, "utf8")).toBe("hand-edited\n");
+  });
+
+  it("rejects a stale runtime hash once the artifact is no longer drifted", async () => {
+    const fixture = await localFixture();
+    await expect(planArtifactOwnershipHandoff({
+      ...fixture.request,
+      carryDrift: true,
+      expectedRuntimeHash: "0".repeat(64),
+    })).rejects.toThrow(/no longer drifted/);
+    const plan = await planArtifactOwnershipHandoff({ ...fixture.request, carryDrift: true });
+    expect(plan.drifted).toBe(false);
+  });
+
+  it("hands off an entry recorded as workspace:unknown only when selected explicitly", async () => {
+    const fixture = await localFixture();
+    const manifest = await readInstallManifest(fixture.targetRoot, "codex", localTransport, fixture.scope);
+    if (!manifest || manifest.version !== 2) throw new Error("missing v2 manifest");
+    await writeInstallManifest({
+      ...manifest,
+      entries: manifest.entries.map((entry, index) => index === 0 ? { ...entry, workspaceOwner: "workspace:unknown" } : entry),
+    }, localTransport);
+    const unknown = await readInstallManifest(fixture.targetRoot, "codex", localTransport, fixture.scope);
+    if (!unknown || unknown.version !== 2) throw new Error("missing unknown-owner manifest");
+    const { fromWorkspaceRoot: _omitted, ...withoutRoot } = fixture.request;
+    const request = { ...withoutRoot, fromUnknownOwner: true, expectedRevision: unknown.revision };
+
+    await expect(planArtifactOwnershipHandoff({ ...fixture.request, expectedRevision: unknown.revision }))
+      .rejects.toThrow(/Old owner precondition failed/);
+    await expect(planArtifactOwnershipHandoff({ ...request, fromWorkspaceRoot: fixture.fromWorkspaceRoot }))
+      .rejects.toThrow(/exactly one of fromWorkspaceRoot or fromUnknownOwner/);
+    await expect(planArtifactOwnershipHandoff(withoutRoot)).rejects.toThrow(/exactly one of/);
+
+    const plan = await planArtifactOwnershipHandoff(request);
+    expect(plan.fromOwner).toBe("workspace:unknown");
+    await applyArtifactOwnershipHandoff(request);
+    const updated = await readInstallManifest(fixture.targetRoot, "codex", localTransport, fixture.scope);
+    if (!updated || updated.version !== 2) throw new Error("missing updated manifest");
+    expect(updated.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(fixture.toWorkspaceRoot));
+    expect(updated.entries[1].workspaceOwner).toBe("workspace-root:/unrelated");
+  });
+
+  it("never carries drift for merge-owned entries", async () => {
+    const targetRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-merge-drift-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-merge-ws-"));
+    roots.push(targetRoot, workspaceRoot);
+    const scope = { installationType: "user", stateKey: "claude.user.merge-drift" };
+    await mkdir(join(targetRoot, ".claude"), { recursive: true });
+    await writeFile(join(targetRoot, ".claude", "settings.json"), `${JSON.stringify({ hooks: {} }, null, 2)}\n`);
+    await writeInstallManifest({
+      version: 2,
+      adapter: "claude",
+      installationType: "user",
+      stateKey: scope.stateKey,
+      targetRoot,
+      generatedAt: "2026-07-14T00:00:00.000Z",
+      revision: "pending-owner-fixture",
+      legacy: false,
+      entries: [{
+        path: ".claude/settings.json",
+        artifactType: "hooks",
+        artifactName: "hooks.json",
+        installName: "hooks.json",
+        logicalSelector: "hooks/hooks.json",
+        kind: "file",
+        hash: "a".repeat(64),
+        sourceHash: "b".repeat(64),
+        updatedAt: "2026-07-14T00:00:00.000Z",
+        channel: "managed",
+        dependencyRole: "root",
+        owners: ["limen-claude-hooks"],
+        refCount: 1,
+        workspaceOwner: workspaceOwnerForRoot(workspaceRoot),
+        mergeStrategy: "json-deep",
+        mergeRemoval: { hooks: { Stop: [{ command: "amf-hook" }] } },
+      }],
+    }, localTransport);
+    await expect(planArtifactOwnershipHandoff({
+      targetRoot,
+      adapter: "claude",
+      ...scope,
+      artifactType: "hooks",
+      artifactName: "hooks.json",
+      fromWorkspaceRoot: workspaceRoot,
+      toWorkspaceRoot: workspaceRoot,
+      toFleetId: "delivery",
+      carryDrift: true,
+    })).rejects.toThrow();
+  });
+
   it("uses the same atomic manifest-only contract over SSH transports", async () => {
     const targetRoot = "/remote/home/user";
     const artifactPath = `${targetRoot}/.agents/skills/obsidian-memory`;

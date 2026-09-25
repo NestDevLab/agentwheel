@@ -932,11 +932,14 @@ ownershipCommand
   .command("handoff")
   .description("transfer one managed artifact between Agentwheel workspace roots")
   .argument("<selector>", "exact artifact selector in type/name form")
-  .requiredOption("--from-workspace-root <path>", "current owning workspace root")
+  .option("--from-workspace-root <path>", "current owning workspace root")
+  .option("--from-unknown-owner", "hand off an artifact recorded as workspace:unknown", false)
   .requiredOption("--to-workspace-root <path>", "new owning workspace root")
   .option("--to-fleet <id>", "qualify the new owner with a registered fleet id")
-  .option("--expected-hash <sha256>", "expected current artifact hash; required when applying")
+  .option("--expected-hash <sha256>", "expected recorded artifact hash; required when applying")
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
+  .option("--carry-drift", "accept a file or directory whose runtime differs from the recorded hash; the recorded hash is kept", false)
+  .option("--expected-runtime-hash <sha256>", "expected drifted runtime hash; required when applying with --carry-drift")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "use the user workspace", false)
@@ -952,6 +955,9 @@ ownershipCommand
   .action(async (selector, options) => {
     if (!options.dryRun && (!options.expectedHash || !options.expectedRevision)) {
       throw new Error("Applying an ownership handoff requires --expected-hash and --expected-revision from a reviewed --dry-run.");
+    }
+    if (Boolean(options.fromWorkspaceRoot) === (options.fromUnknownOwner === true)) {
+      throw new Error("Ownership handoff requires exactly one of --from-workspace-root or --from-unknown-owner.");
     }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const targets = await resolveCliTargets(normalizedOptions);
@@ -984,11 +990,15 @@ ownershipCommand
       adapter: adapter.name,
       artifactType,
       artifactName,
-      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      ...(options.fromUnknownOwner === true
+        ? { fromUnknownOwner: true }
+        : { fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot) }),
       toWorkspaceRoot,
       toFleetId: options.toFleet,
       expectedHash: options.expectedHash,
       expectedRevision: options.expectedRevision,
+      carryDrift: options.carryDrift === true,
+      expectedRuntimeHash: options.expectedRuntimeHash,
       transport: transportForTarget(target),
     };
     const result = options.dryRun
@@ -998,6 +1008,7 @@ ownershipCommand
     console.log(`Target: ${result.adapter}/${result.installationType ?? "default"} at ${result.targetRoot}`);
     console.log(`Path: ${result.path}`);
     console.log(`Hash: ${result.artifactHash}`);
+    if (result.drifted) console.log(`Runtime hash: ${result.runtimeHash} (drift carried; the recorded hash is kept)`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
   });

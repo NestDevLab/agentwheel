@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/package-runtime-opt-in-0.20.20"
+  ],
+  "claimed_at": "2026-09-28T06:59:31+00:00",
+  "coordination_id": "default",
+  "operation_token": "86b82221-0b0e-47fa-a5d7-2e2ef28e7ebd",
+  "publication_scope": "stack:package-runtime-opt-in",
+  "source_ref": "refs/heads/pr/package-runtime-opt-in-0.20.20",
+  "syncwheel_version": "0.45.0"
+}

@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -55,7 +55,8 @@
       "branch": "pr/package-runtime-opt-in-0.20.20",
       "commits": [
         "cc4e818ae4e339c3d9ddf58713ecd88681d66353",
-        "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795"
+        "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795",
+        "da6492610035c74a8ae8211d898d250ccfe6a433"
       ],
       "id": "package-runtime-opt-in",
       "integration_branch": "main-integration",

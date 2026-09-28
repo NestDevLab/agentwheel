@@ -2,9 +2,9 @@
   "changed_refs": [
     "refs/heads/pr/package-runtime-opt-in-0.20.20"
   ],
-  "claimed_at": "2026-09-28T07:33:06+00:00",
+  "claimed_at": "2026-09-28T09:59:08+00:00",
   "coordination_id": "default",
-  "operation_token": "e0b9882d-1933-4da0-9ee2-82fa34fb42b2",
+  "operation_token": "4b968b52-994d-4dca-964b-2b0e2dc1ac88",
   "publication_scope": "stack:package-runtime-opt-in",
   "source_ref": "refs/heads/pr/package-runtime-opt-in-0.20.20",
   "syncwheel_version": "0.45.0"

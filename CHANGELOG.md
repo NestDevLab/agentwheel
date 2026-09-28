@@ -2,9 +2,11 @@
 
 ## 0.20.20
 
-- Let a configured package opt into selected profile runtimes with `runtimes`. Packages without the
-  field keep their existing profile behavior. A restricted package remains available when another
-  root requires it, and narrowing a package produces normal planned removals on excluded runtimes.
+- Let a configured package opt into selected runtime adapters with `runtimes` across profile, agent,
+  status, update, and ownership plans. Packages without the field retain their existing behavior.
+  A restricted package remains available when another root requires it; narrowing the list plans
+  removals on excluded runtimes. Agentwheel 0.20.19 and earlier silently drop this unknown config
+  key, so upgrade every member before using `runtimes` in a shared configuration.
 
 ## 0.20.19
 

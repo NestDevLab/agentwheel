@@ -2225,6 +2225,33 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("keeps restricted package roots out of agent status, update, and install plans", async () => {
+    const workspace = await tempRoot();
+    const claudeRoot = await tempRoot("agentwheel-restricted-claude-");
+    const codexRoot = await tempRoot("agentwheel-restricted-codex-");
+    const source = await skillPackageFixture("restricted-skill", "restricted");
+    const config = {
+      schemaVersion: 3,
+      packages: [{ name: "restricted", source, driver: "local", adapter: "claude", mode: "tracking", runtimes: ["claude"] }],
+      agents: {
+        claude: { adapter: "claude", root: claudeRoot, installationType: "local" },
+        codex: { adapter: "codex", root: codexRoot, installationType: "local" },
+      },
+      profiles: { all: { runtimes: [{ agent: "claude" }, { agent: "codex" }] } },
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    const profile = await runCli(["install", "--profile", "all", "--target-root", workspace, "--dry-run"]);
+    expect(profile.stdout).toContain("(no packages)");
+    const status = await runCli(["status", "--agent", "codex"], { cwd: workspace });
+    expect(status.stdout).toContain("Pending install work: none");
+    const update = await runCli(["update", "--agent", "codex", "--dry-run"], { cwd: workspace });
+    expect(update.stdout).not.toContain("CREATE");
+    const install = await runCli(["install", "--agent", "codex", "--dry-run"], { cwd: workspace });
+    expect(install.stdout).not.toContain("CREATE");
+  });
+
   it("does not report foreign kept artifacts as pending status work", async () => {
     const ownerWorkspace = await tempRoot("agentwheel-status-owner-");
     const observerWorkspace = await tempRoot("agentwheel-status-observer-");

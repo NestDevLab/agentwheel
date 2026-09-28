@@ -65,6 +65,7 @@ export interface SourcePlanResult {
 export interface GraphSourcePlanOptions {
   roots: GraphRootRequest[];
   allowEmptyRoots?: boolean;
+  excludedRootIds?: string[];
   targetRoot: string;
   workspaceRoot?: string;
   adapter: AdapterConfig;
@@ -373,6 +374,18 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     const plan = priorState.migration && !basePlan.stateMigration
       ? { ...basePlan, stateMigration: priorState.migration }
       : basePlan;
+    if (options.excludedRootIds?.length && previousLock) {
+      const excludedRoots = new Set(options.excludedRootIds);
+      const excludedNodeIds = new Set(previousLock.canonical.roots
+        .filter((root) => excludedRoots.has(root.rootId))
+        .map((root) => root.graphNodeId));
+      for (const operation of plan.operations) {
+        const excludedOwner = operation.owners?.length && operation.owners.every((owner) => excludedRoots.has(owner));
+        if (operation.action === "remove" && (excludedOwner || (operation.graphNodeId && excludedNodeIds.has(operation.graphNodeId)))) {
+          operation.reason = "excluded by package runtimes";
+        }
+      }
+    }
     plan.targetStateFilePreconditions = {
       graphLockPath,
       graphLockRevision: stableLock ? digestGraphLock(stableLock) : null,

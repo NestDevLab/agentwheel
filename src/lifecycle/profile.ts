@@ -4,7 +4,7 @@ import { defaultInstallationType, installRootForAdapterInstallationType, resolve
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan, type GraphSourcePlanResult } from "./source-plan.js";
-import { isCompositeWorkspaceProfile, readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
+import { isCompositeWorkspaceProfile, packagesForTarget, readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
@@ -81,9 +81,17 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   if (selected && packages.some((pkg) => pkg.selection)) {
     throw new Error("--select/--skill cannot be combined with a package selection import.");
   }
+  if (!options.source) {
+    const adapters = new Set(profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId).adapter));
+    for (const pkg of packages) {
+      if (pkg.runtimes && !pkg.runtimes.some((runtime) => adapters.has(runtime))) {
+        options.warn?.(`Package '${pkg.name}' matches no runtime in profile '${options.profile}'.`);
+      }
+    }
+  }
   for (const runtime of profile.runtimes) {
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
-    const runtimePackages = packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes(target.adapter));
+    const runtimePackages = options.source ? packages : packagesForTarget(packages, target);
     const transport = transportForTarget(target);
     const adapter = await resolveAdapter({
       adapter: target.adapter,
@@ -147,13 +155,14 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       replaceConflict: options.replaceConflict,
       recoverLegacyState: options.recoverLegacyState,
       allowEmptyRoots: runtimePackages.length === 0,
+      excludedRootIds: options.source ? [] : packages.filter((pkg) => !runtimePackages.includes(pkg)).map((pkg) => pkg.name),
     });
     try {
       const result: ProfileSyncResult = {
         runtime: adapter.name,
         targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
         transport: transport.kind,
-        packageName: runtimePackages.map((pkg) => pkg.name).join(","),
+        packageName: runtimePackages.map((pkg) => pkg.name).join(",") || "(no packages)",
         plan: graphPlan.plan,
         graphPlan,
         graphLockDigest: graphPlan.graphLockDigest,

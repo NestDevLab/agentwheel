@@ -180,16 +180,6 @@ SSH targets require these commands on the remote host:
 
 Leaf profiles group runtimes:
 
-Packages run on every leaf-profile runtime by default, regardless of their `adapter` value.
-Set a package's optional `runtimes` to a nonempty list of adapter names to make that package a
-graph root only on matching profile runtimes. For example, `"runtimes": ["claude"]` keeps a
-package off Codex, OpenClaw, and Hermes in the same profile. This field applies only to profile
-planning; direct `--agent` and single-target installs retain their existing behavior. If an
-unrestricted package requires the restricted package, that dependency is still included on the
-other runtime. Narrowing the list reconciles the previously installed artifacts through normal
-`REMOVE` operations in the plan; review the dry-run before applying. Fleet normalization requires
-the complete package declarations, including `runtimes`, to match.
-
 ```jsonc
 {
   "profiles": {
@@ -202,6 +192,16 @@ the complete package declarations, including `runtimes`, to match.
   }
 }
 ```
+
+Packages run on every configured target by default, regardless of their `adapter` value.
+Set a package's optional `runtimes` to a nonempty list of adapter names to make that package a
+graph root only on matching targets. Every configured-package plan, including profile, agent,
+status, update, and ownership planning, honors this field. Ad hoc `install <source>` is unaffected.
+Matching uses the declared target `adapter` name; `adapterConfig` and `adapterModule` do not change
+that name. The field cannot select one agent among several agents sharing an adapter. A package
+may still be installed as a dependency of an unrestricted root. Narrowing the list plans removals
+on excluded targets; review the dry-run before applying. Fleet normalization requires complete
+package declarations, including `runtimes`, to match.
 
 Composite profiles group autonomous Agentwheel workspaces instead. A member keeps its own config,
 locks, manifests, profiles, and standalone update path; the parent invokes the member's native

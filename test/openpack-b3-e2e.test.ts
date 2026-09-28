@@ -55,6 +55,10 @@ describe("OpenPack phase B dogfood", () => {
     expect(workspaceConfigSchema.parse(config).packages[0]?.runtimes).toEqual(["claude"]);
     expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: [] }] })).toThrow();
     expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["claude", "claude"] }] })).toThrow();
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["cladue"] }] })).toThrow();
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["Claude"] }] })).toThrow();
+    expect(workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["codex", "claude"] }] }).packages[0]?.runtimes).toEqual(["claude", "codex"]);
+    expect(workspaceConfigSchema.parse({ ...config, agents: { custom: { adapter: "custom", root: "/custom" } }, packages: [{ ...config.packages[0], runtimes: ["custom"] }] }).packages[0]?.runtimes).toEqual(["custom"]);
   });
 
   it("keeps unrestricted roots on every profile runtime and retains restricted packages needed as dependencies", async () => {
@@ -127,11 +131,14 @@ describe("OpenPack phase B dogfood", () => {
     expect(await pathExists(skillPath)).toBe(true);
 
     await writeWorkspaceConfig(workspace, { ...config, packages: [{ ...config.packages[0], runtimes: ["claude"] }] });
-    const [preview] = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true });
+    const warnings: string[] = [];
+    const [preview] = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true, warn: (warning) => warnings.push(warning) });
+    expect(warnings).toContain("Package 'sample' matches no runtime in profile 'all'.");
     expect(preview?.graphPlan.graph.roots).toEqual([]);
     expect(preview?.plan.operations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ action: "remove", artifactName: "sample" }),
+      expect.objectContaining({ action: "remove", artifactName: "sample", reason: "excluded by package runtimes" }),
     ]));
+    expect(preview?.packageName).toBe("(no packages)");
     expect(await pathExists(skillPath)).toBe(true);
     expect(installed[0]?.plan.stateKey).toBe(preview?.plan.stateKey);
     await syncProfile({ workspaceRoot: workspace, profile: "all", yes: true });

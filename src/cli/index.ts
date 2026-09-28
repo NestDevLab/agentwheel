@@ -21,7 +21,7 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, stageSourceRaw } from "../staging/staging.js";
-import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
+import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, packagesForTarget, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
@@ -1035,8 +1035,9 @@ ownershipCommand
     }
     const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    if (config.packages.length === 0) throw new Error("Fleet has no configured source packages.");
-    await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, config.packages, async (graphPlan) => {
+    const targetPackages = packagesForTarget(config.packages, target);
+    if (targetPackages.length === 0) throw new Error("Fleet target has no configured source packages.");
+    await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, targetPackages, async (graphPlan) => {
       const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh");
       const report = await planLegacyRecovery({
         graphPlan, installRoot, workspaceRoot: target.workspaceRoot,
@@ -1198,7 +1199,7 @@ ownershipCommand
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const groups = new Map<string, PackageGraphGroup>();
-    for (const pkg of config.packages) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
+    for (const pkg of packagesForTarget(config.packages, target)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
     if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
     const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
     if (installationTypes.length > 1) {
@@ -1712,7 +1713,7 @@ async function runInstallCommand(
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForTarget(config.packages, target), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -1833,7 +1834,7 @@ async function buildPlanReport(
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForTarget(config.packages, target), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -2376,7 +2377,7 @@ async function runSkillUpdateCommand(
   const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
   for (const target of targets) {
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const owner = await configuredPackageForSkill(target, config.packages, skillName, normalizedOptions, options.package);
+    const owner = await configuredPackageForSkill(target, packagesForTarget(config.packages, target), skillName, normalizedOptions, options.package);
     const mode = owner.mode === "tracking" ? "update" : "install";
     console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
     await runConfiguredGraphPackages(target, {
@@ -2447,11 +2448,12 @@ async function collectGraphPlansForTarget(
 ) {
   const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  const targetPackages = packagesForTarget(config.packages, target);
   const groups = new Map<string, PackageGraphGroup>();
   const selectedArtifacts = selectedArtifactsFromOptions(targetOptions);
   const dependencyUpdateSelectors = sortedUniqueValues(targetOptions.dependency ?? []);
   const scopedDependencyUpdate = behavior.mode === "update" && dependencyUpdateSelectors.length > 0;
-  const scopedPackage = targetOptions.scope ? findConfiguredPackage(config.packages, targetOptions.scope) : undefined;
+  const scopedPackage = targetOptions.scope ? findConfiguredPackage(targetPackages, targetOptions.scope) : undefined;
   const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
   if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
 
@@ -2459,9 +2461,14 @@ async function collectGraphPlansForTarget(
     const group = graphGroupForPackage(groups, target, scopedPackage, targetOptions);
     group.packages.push(scopedPackage);
   } else if (!source || !targetOptions.onlySource) {
-    for (const pkg of config.packages) {
+    for (const pkg of targetPackages) {
       const group = graphGroupForPackage(groups, target, pkg, targetOptions);
       group.packages.push(pkg);
+    }
+  }
+  if (!source && !targetOptions.scope) {
+    for (const pkg of config.packages.filter((candidate) => !targetPackages.includes(candidate))) {
+      graphGroupForPackage(groups, target, pkg, targetOptions);
     }
   }
 
@@ -2506,6 +2513,13 @@ async function collectGraphPlansForTarget(
     const adapter = await resolveAdapterForTarget(group.target, { ...group.adapterOptions, warn: targetOptions.warn });
     const transport = transportForTarget(group.target);
     const allPackages = [...group.packages, ...group.extraPackages];
+    const excludedRootIds = config.packages.filter((pkg) => !targetPackages.includes(pkg)
+      && graphGroupKey(targetForPackage(target, pkg, targetOptions), {
+        installationType: targetOptions.installationType ?? pkg.installationType ?? target.installationType ?? "local",
+        adapterConfig: targetOptions.adapterConfig ?? target.adapterConfig ?? pkg.adapterConfig,
+        adapterModule: targetOptions.adapterModule ?? target.adapterModule ?? pkg.adapterModule,
+      }) === graphGroupKey(group.target, { ...group.adapterOptions, installationType: group.installationType }))
+      .map((pkg) => pkg.name);
     const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);
     if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
     if (behavior.readOnly !== true && targetOptions.dryRun !== true) {
@@ -2616,15 +2630,16 @@ async function collectGraphPlansForTarget(
     ];
     if (behavior.mode === "update") {
       const changed = roots.filter((root) => root.useLock === false);
-      if (changed.length === 0 && !scopedDependencyUpdate) {
+      if (changed.length === 0 && !scopedDependencyUpdate && excludedRootIds.length === 0) {
         const label = targetOptions.scope ? ` ${targetOptions.scope}` : "";
         console.log(`No tracking packages to update${label}.`);
         continue;
       }
     }
-    if (roots.length === 0) continue;
     const result = await createGraphSourcePlan({
       roots,
+      allowEmptyRoots: roots.length === 0,
+      excludedRootIds,
       targetRoot: group.target.targetRoot,
       workspaceRoot: group.target.workspaceRoot,
       fleetId: group.target.fleetId,
@@ -3436,7 +3451,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
   if (removed.length === 0) {
     throw new Error(`Configured package not found: ${packageName}`);
   }
-  const remaining = config.packages.filter((pkg) => !removed.includes(pkg));
+  const remaining = packagesForTarget(config.packages.filter((pkg) => !removed.includes(pkg)), target);
   const groups = new Map<string, PackageGraphGroup>();
   for (const pkg of remaining) {
     const group = graphGroupForPackage(groups, target, pkg, options);
@@ -3805,7 +3820,7 @@ async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptio
     : null;
 
   const packages: StatusPackage[] = [];
-  for (const pkg of config.packages) {
+  for (const pkg of packagesForTarget(config.packages, target)) {
     const root = effectiveGraphLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
     const node = root ? effectiveGraphLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId) : undefined;
     const availability = await discoverPackageVersions(pkg, target.workspaceRoot, {

@@ -36,6 +36,7 @@ export interface GraphRootRequest {
 
 export interface ResolveGraphOptions {
   workspaceRoot: string;
+  allowEmptyRoots?: boolean;
   cacheRoot?: string;
   concurrency?: number;
   registryClient?: Pick<RegistryClient, "resolve">;
@@ -162,7 +163,7 @@ export async function resolveDependencyGraph(
   roots: GraphRootRequest[],
   options: ResolveGraphOptions,
 ): Promise<ResolvedGraph> {
-  if (roots.length === 0) throw new Error("At least one graph root is required.");
+  if (roots.length === 0 && !options.allowEmptyRoots) throw new Error("At least one graph root is required.");
 
   const fetchCache = new Map<string, Promise<FetchedPackage>>();
   const nodesByKey = new Map<string, NodeState>();

@@ -8,6 +8,7 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { isSupportedVersionRange } from "../resolve/semver.js";
 import { mutationPolicySchema } from "./mutation.js";
 import { declareMutationPath } from "../mutation/declarations.js";
+import { listAdapters } from "../adapters/index.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
 export const CURRENT_WORKSPACE_SCHEMA_VERSION = 4 as const;
@@ -49,6 +50,9 @@ const workspacePackageBaseSchema = z.object({
   source: z.string().min(1),
   driver: z.enum(["local", "git", "skillkit", "vercel-skills", "mcp-registry", "clawhub"]).default("local"),
   adapter: z.string().min(1).default("openclaw"),
+  runtimes: z.array(z.string().min(1)).min(1).refine((runtimes) => new Set(runtimes).size === runtimes.length, {
+    message: "Package runtimes must be unique.",
+  }).transform((runtimes) => [...runtimes].sort()).optional(),
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
   adapterCodeHash: z.string().min(16).optional(),
@@ -231,7 +235,25 @@ export const workspaceConfigSchema = z.discriminatedUnion("schemaVersion", [
   workspaceConfigV2Schema,
   workspaceConfigV3Schema,
   workspaceConfigV4Schema,
-]);
+]).superRefine((config, ctx) => {
+  const known = new Set([
+    ...listAdapters().map((adapter) => adapter.name),
+    ...Object.values(config.agents).map((agent) => agent.adapter),
+    ...Object.values(config.profiles).flatMap((profile) => "runtimes" in profile && profile.runtimes
+      ? profile.runtimes.map((runtime) => runtime.agent
+        ? config.agents[runtime.agent]?.adapter ?? runtime.adapter
+        : runtime.adapter)
+      : []),
+  ]);
+  for (const [index, pkg] of config.packages.entries()) {
+    for (const [runtimeIndex, runtime] of (pkg.runtimes ?? []).entries()) {
+      if (!known.has(runtime)) ctx.addIssue({
+        code: "custom", path: ["packages", index, "runtimes", runtimeIndex],
+        message: `Unknown package runtime adapter '${runtime}'. Use a built-in adapter or an adapter declared by an agent/profile runtime.`,
+      });
+    }
+  }
+});
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
 export type WorkspaceSelectionImport = z.infer<typeof workspaceSelectionImportSchema>;
@@ -245,6 +267,14 @@ export type WorkspaceProfile = z.infer<typeof workspaceProfileSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type RegisteredFleet = z.infer<typeof registeredFleetSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
+
+export function packagesForTarget<T extends Pick<WorkspacePackage, "runtimes">>(
+  packages: T[],
+  target: { adapter: string },
+  targetForPackage?: (pkg: T) => { adapter: string },
+): T[] {
+  return packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes((targetForPackage?.(pkg) ?? target).adapter));
+}
 export type FleetWorkspaceConfig = Extract<WorkspaceConfig, { schemaVersion: 3 | 4 }>;
 
 export function supportsFleetConfig(config: WorkspaceConfig): config is FleetWorkspaceConfig {

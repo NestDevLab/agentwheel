@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.20
+
+- Let a configured package opt into selected runtime adapters with `runtimes` across profile, agent,
+  status, update, and ownership plans. Packages without the field retain their existing behavior.
+  A restricted package remains available when another root requires it; narrowing the list plans
+  removals on excluded runtimes. Agentwheel 0.20.19 and earlier silently drop this unknown config
+  key, so upgrade every member before using `runtimes` in a shared configuration.
+
 ## 0.20.19
 
 - Install a package that lives in a subdirectory of a git repository with

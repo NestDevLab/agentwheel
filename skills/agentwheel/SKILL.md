@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.19"
+  version: "0.20.20"
 ---
 
 # agentwheel
@@ -356,6 +356,12 @@ Current config shape:
 ```
 
 Use named targets:
+
+Configured packages may declare `"runtimes": ["claude"]` to select adapter runtimes. All
+configured-package plans honor it, including `--agent`, `--profile`, status, and update. Named
+targets match their declared adapter; plain workspace commands match each package's adapter.
+Agents sharing an adapter cannot be selected separately. Upgrade all members to a version
+supporting this field before adding it to shared configuration.
 
 ```bash
 agentwheel fleet register example-fleet --root /srv/agentwheel/fleets/example-fleet --required-package core-agent-pack

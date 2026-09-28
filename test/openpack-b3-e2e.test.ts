@@ -7,7 +7,7 @@ import { codexAdapter } from "../src/adapters/codex.js";
 import { applyCombinedInstallPlan, createOwnershipUninstallPlan, readInstallManifest, uninstall } from "../src/install/index.js";
 import { syncProfile } from "../src/lifecycle/profile.js";
 import { createGraphSourcePlan, desiredArtifactsFromGraphBundle, writeGraphSourceLock, type GraphSourcePlanResult } from "../src/lifecycle/source-plan.js";
-import { readWorkspaceConfig, workspaceConfigPath, writeWorkspaceConfig } from "../src/model/workspace.js";
+import { readWorkspaceConfig, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../src/model/workspace.js";
 import { pathExists } from "../src/utils/fs.js";
 
 const tempRoots: string[] = [];
@@ -50,6 +50,103 @@ async function readPlanManifest(result: GraphSourcePlanResult) {
 }
 
 describe("OpenPack phase B dogfood", () => {
+  it("validates package runtime declarations", () => {
+    const config = { schemaVersion: 3, packages: [{ name: "pack", source: "/pack", runtimes: ["claude"] }] };
+    expect(workspaceConfigSchema.parse(config).packages[0]?.runtimes).toEqual(["claude"]);
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: [] }] })).toThrow();
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["claude", "claude"] }] })).toThrow();
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["cladue"] }] })).toThrow();
+    expect(() => workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["Claude"] }] })).toThrow();
+    expect(workspaceConfigSchema.parse({ ...config, packages: [{ ...config.packages[0], runtimes: ["codex", "claude"] }] }).packages[0]?.runtimes).toEqual(["claude", "codex"]);
+    expect(workspaceConfigSchema.parse({ ...config, agents: { custom: { adapter: "custom", root: "/custom" } }, packages: [{ ...config.packages[0], runtimes: ["custom"] }] }).packages[0]?.runtimes).toEqual(["custom"]);
+  });
+
+  it("keeps unrestricted roots on every profile runtime and retains restricted packages needed as dependencies", async () => {
+    const workspace = await tempRoot();
+    const claude = await tempRoot("agentwheel-profile-claude-");
+    const codex = await tempRoot("agentwheel-profile-codex-");
+    const restricted = join(workspace, "restricted");
+    const consumer = join(workspace, "consumer");
+    for (const name of ["restricted", "consumer"]) {
+      await writeText(join(workspace, name, "skills", name, "SKILL.md"), `---\nname: ${name}\ndescription: Fixture.\n---\n`);
+    }
+    await writeOpenPack(restricted, { name: "profile/restricted", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(consumer, {
+      name: "profile/consumer",
+      provides: [{ type: "skills", path: "skills" }],
+      requires: { restricted: { source: "../restricted", select: ["skills/restricted"] } },
+    });
+    const config = {
+      schemaVersion: 3 as const,
+      packages: [
+        { name: "restricted", source: restricted, adapter: "openclaw", mode: "pinned" as const },
+        { name: "consumer", source: consumer, adapter: "openclaw", mode: "pinned" as const },
+      ],
+      profiles: { all: { runtimes: [
+        { adapter: "claude", targetRoot: claude, installationType: "local" },
+        { adapter: "codex", targetRoot: codex, installationType: "local" },
+      ] } },
+    };
+    await writeWorkspaceConfig(workspace, config);
+    const baseline = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true });
+    expect(baseline.map((result) => result.graphPlan.graph.roots.map((root) => root.rootId))).toEqual([
+      ["consumer", "restricted"], ["consumer", "restricted"],
+    ]);
+    await writeWorkspaceConfig(workspace, { ...config, packages: config.packages.map((pkg) => ({
+      ...pkg, runtimes: ["claude", "codex"],
+    })) });
+    const explicitAll = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true });
+    expect(explicitAll.map((result) => result.graphLockDigest)).toEqual(baseline.map((result) => result.graphLockDigest));
+    const plannedOperations = (results: typeof baseline) => results.map((result) => result.plan.operations.map((operation) => ({
+      action: operation.action,
+      artifactName: operation.artifactName,
+      relativeDestPath: operation.relativeDestPath,
+      owners: operation.owners,
+    })));
+    expect(plannedOperations(explicitAll)).toEqual(plannedOperations(baseline));
+
+    await writeWorkspaceConfig(workspace, { ...config, packages: [
+      { ...config.packages[0], runtimes: ["claude"] }, config.packages[1],
+    ] });
+    const restrictedPlan = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true });
+    expect(restrictedPlan[0]!.graphPlan.graph.roots.map((root) => root.rootId)).toEqual(["consumer", "restricted"]);
+    expect(restrictedPlan[1]!.graphPlan.graph.roots.map((root) => root.rootId)).toEqual(["consumer"]);
+    expect(restrictedPlan[1]!.graphPlan.graph.nodes.map((node) => node.name)).toContain("profile/restricted");
+  });
+
+  it("plans a managed removal when narrowing leaves a profile runtime with no roots", async () => {
+    const workspace = await tempRoot();
+    const codex = await tempRoot("agentwheel-profile-removal-");
+    const source = join(workspace, "source");
+    await writeText(join(source, "skills", "sample", "SKILL.md"), "---\nname: sample\ndescription: Fixture.\n---\n");
+    await writeOpenPack(source, { name: "profile/sample", provides: [{ type: "skills", path: "skills" }] });
+    const config = {
+      schemaVersion: 3 as const,
+      packages: [{ name: "sample", source, adapter: "openclaw", mode: "pinned" as const }],
+      profiles: { all: { runtimes: [{ adapter: "codex", targetRoot: codex, installationType: "local" }] } },
+    };
+    await writeWorkspaceConfig(workspace, config);
+    const installed = await syncProfile({ workspaceRoot: workspace, profile: "all", yes: true });
+    const skillPath = join(codex, ".agents", "skills", "sample", "SKILL.md");
+    expect(await pathExists(skillPath)).toBe(true);
+
+    await writeWorkspaceConfig(workspace, { ...config, packages: [{ ...config.packages[0], runtimes: ["claude"] }] });
+    const warnings: string[] = [];
+    const [preview] = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true, warn: (warning) => warnings.push(warning) });
+    expect(warnings).toContain("Package 'sample' matches no runtime in profile 'all'.");
+    expect(preview?.graphPlan.graph.roots).toEqual([]);
+    expect(preview?.plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "remove", artifactName: "sample", reason: "excluded by package runtimes" }),
+    ]));
+    expect(preview?.packageName).toBe("(no packages)");
+    expect(await pathExists(skillPath)).toBe(true);
+    expect(installed[0]?.plan.stateKey).toBe(preview?.plan.stateKey);
+    await syncProfile({ workspaceRoot: workspace, profile: "all", yes: true });
+    expect(await pathExists(skillPath)).toBe(false);
+    const [settled] = await syncProfile({ workspaceRoot: workspace, profile: "all", dryRun: true, yes: true });
+    expect(settled?.plan.operations).toEqual([]);
+  });
+
   it("syncs a shared dependency once and ownership uninstall keeps it until all roots are removed", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-b3-claude-");

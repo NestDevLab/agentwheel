@@ -193,6 +193,17 @@ Leaf profiles group runtimes:
 }
 ```
 
+Packages run on every configured target by default, regardless of their `adapter` value.
+Set a package's optional `runtimes` to a nonempty list of adapter names to make that package a
+graph root only on matching targets. Every configured-package plan, including profile, agent,
+status, update, and ownership planning, honors this field. Ad hoc `install <source>` is unaffected.
+Matching uses the declared agent/profile `adapter` name. In plain workspace commands with no
+detected runtime, each package uses its own `adapter` name. `adapterConfig` and `adapterModule`
+do not change that name. The field cannot select one agent among several agents sharing an
+adapter. A package may still be installed as a dependency of an unrestricted root. Narrowing the
+list plans removals on excluded targets; review the dry-run before applying. Fleet normalization
+requires complete package declarations, including `runtimes`, to match.
+
 Composite profiles group autonomous Agentwheel workspaces instead. A member keeps its own config,
 locks, manifests, profiles, and standalone update path; the parent invokes the member's native
 Agentwheel CLI locally or over SSH:

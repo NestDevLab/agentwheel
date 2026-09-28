@@ -644,6 +644,11 @@ project's curated selection for a remote runtime.
 }
 ```
 
+Configured packages can opt into adapter runtimes with `"runtimes": ["claude"]`. Profile and
+named-agent plans match the declared target adapter; plain workspace commands match each package's
+configured adapter. Agents sharing an adapter receive the same package roots. Upgrade every member
+to a version supporting this field before using it in shared configuration.
+
 The import is data-only: Agentwheel resolves the package first, then reads only
 `exports.selections` from that resolved source's `.agentwheel/config.json`. It never imports the
 source project's agents, profiles, SSH fields, adapter modules, trust policy, or other workspace

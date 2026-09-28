@@ -44,6 +44,16 @@ describe("fleet normalization", () => {
     await expect(planFleetNormalization({ destinationFleet: "delivery", from: "user", packages: ["core"], globalRoot: home })).rejects.toThrow(/required package|duplicate|destination/i);
   });
 
+  it("requires matching package runtime restrictions before fleet normalization", async () => {
+    const { home, destination } = await fixture();
+    const configPath = join(destination, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages[0].runtimes = ["claude"];
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await expect(planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: home }))
+      .rejects.toThrow(/divergent declarations.*runtime restrictions/);
+  });
+
   it("requires apply plus the exact digest and rejects a stale source", async () => {
     const { home } = await fixture();
     const plan = await planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: home });

@@ -83,6 +83,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   }
   for (const runtime of profile.runtimes) {
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
+    const runtimePackages = packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes(target.adapter));
     const transport = transportForTarget(target);
     const adapter = await resolveAdapter({
       adapter: target.adapter,
@@ -95,7 +96,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     const installationType = target.installationType ?? defaultInstallationType;
     resolveInstallationTypeForAdapter(adapter, installationType);
     const graphPlan = await createGraphSourcePlan({
-      roots: packages.map((pkg) => ({
+      roots: runtimePackages.map((pkg) => ({
         rootId: pkg.name,
         source: pkg.source,
         mode: options.mode ?? pkg.mode,
@@ -145,13 +146,14 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       forceForeignState: options.forceForeignState,
       replaceConflict: options.replaceConflict,
       recoverLegacyState: options.recoverLegacyState,
+      allowEmptyRoots: runtimePackages.length === 0,
     });
     try {
       const result: ProfileSyncResult = {
         runtime: adapter.name,
         targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
         transport: transport.kind,
-        packageName: packages.map((pkg) => pkg.name).join(","),
+        packageName: runtimePackages.map((pkg) => pkg.name).join(","),
         plan: graphPlan.plan,
         graphPlan,
         graphLockDigest: graphPlan.graphLockDigest,

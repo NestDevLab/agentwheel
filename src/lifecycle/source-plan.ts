@@ -64,6 +64,7 @@ export interface SourcePlanResult {
 
 export interface GraphSourcePlanOptions {
   roots: GraphRootRequest[];
+  allowEmptyRoots?: boolean;
   targetRoot: string;
   workspaceRoot?: string;
   adapter: AdapterConfig;
@@ -180,7 +181,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
 }
 
 export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Promise<GraphSourcePlanResult> {
-  if (options.roots.length === 0) {
+  if (options.roots.length === 0 && !options.allowEmptyRoots) {
     throw new Error("At least one source is required for a graph plan.");
   }
   if (options.freshGraphOnly && options.readOnly !== true) {
@@ -307,6 +308,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     previousLock,
     warn,
     runtime: options.adapter.name,
+    allowEmptyRoots: options.allowEmptyRoots,
   });
   assertFrozenGraph(previousLock, graph, lockMode, lockLabel);
   assertTrustArtifactPolicy(graph, trustPolicy);

@@ -182,7 +182,7 @@ export async function planFleetNormalization(request: FleetNormalizationRequest)
     if (sourceDeclaration !== destinationDeclaration) {
       throw new Error(
         `Package '${name}' has divergent declarations. Source, driver, adapter, adapter configuration, installation type, `
-        + "version policy, selections, aliases, overrides, and suggestions must match before normalization.",
+        + "version policy, runtime restrictions, selections, aliases, overrides, and suggestions must match before normalization.",
       );
     }
     packages.push({ name, declarationDigest: sha256(sourceDeclaration) });

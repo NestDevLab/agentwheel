@@ -49,6 +49,9 @@ const workspacePackageBaseSchema = z.object({
   source: z.string().min(1),
   driver: z.enum(["local", "git", "skillkit", "vercel-skills", "mcp-registry", "clawhub"]).default("local"),
   adapter: z.string().min(1).default("openclaw"),
+  runtimes: z.array(z.string().min(1)).min(1).refine((runtimes) => new Set(runtimes).size === runtimes.length, {
+    message: "Package runtimes must be unique.",
+  }).optional(),
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
   adapterCodeHash: z.string().min(16).optional(),

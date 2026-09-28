@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.20
+
+- Let a configured package opt into selected profile runtimes with `runtimes`. Packages without the
+  field keep their existing profile behavior. A restricted package remains available when another
+  root requires it, and narrowing a package produces normal planned removals on excluded runtimes.
+
 ## 0.20.19
 
 - Install a package that lives in a subdirectory of a git repository with

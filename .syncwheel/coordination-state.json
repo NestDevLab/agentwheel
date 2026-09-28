@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc80018783882521efc69f56c561b2d48d626b4d"
+    "refs/heads/pr/package-runtime-opt-in-0.20.20": "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -17,7 +17,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/pr/package-runtime-opt-in-0.20.20": "9ee39ac7acdef2840ed017e75d73605bba3cdb80",
+    "refs/heads/pr/package-runtime-opt-in-0.20.20": "53f1618ce5354667cde38e5f6e282e708063b80a",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -33,7 +33,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-09-28T06:59:31+00:00",
+  "created_at": "2026-09-28T07:33:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -66,7 +66,7 @@
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "f235868bf89b9828ee11ab5edd72db47ac9749e1",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
-    "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc80018783882521efc69f56c561b2d48d626b4d",
+    "refs/heads/pr/package-runtime-opt-in-0.20.20": "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
     "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
@@ -153,7 +153,8 @@
         },
         "branch": "pr/package-runtime-opt-in-0.20.20",
         "commits": [
-          "cc4e818ae4e339c3d9ddf58713ecd88681d66353"
+          "cc4e818ae4e339c3d9ddf58713ecd88681d66353",
+          "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795"
         ],
         "id": "package-runtime-opt-in",
         "integration_branch": "main-integration",
@@ -163,10 +164,10 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "86b82221-0b0e-47fa-a5d7-2e2ef28e7ebd",
-  "parent_state": "4e36dd53125c56d8cae53dc8a3dda51e2382d817",
+  "operation_token": "e0b9882d-1933-4da0-9ee2-82fa34fb42b2",
+  "parent_state": "f7945c23260258c5e9f3b8a299f99bd048acea7e",
   "projection_status": "partial",
-  "publication_id": "6223f638-ef17-4639-95d5-bfa9c46da231",
+  "publication_id": "9e90d1d5-b7d6-4767-bdea-707b982771f6",
   "publication_scope": "stack:package-runtime-opt-in",
   "schema_version": 2,
   "syncwheel_version": "0.45.0",

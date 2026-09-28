@@ -268,8 +268,12 @@ export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type RegisteredFleet = z.infer<typeof registeredFleetSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
-export function packagesForTarget<T extends Pick<WorkspacePackage, "runtimes">>(packages: T[], target: { adapter: string }): T[] {
-  return packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes(target.adapter));
+export function packagesForTarget<T extends Pick<WorkspacePackage, "runtimes">>(
+  packages: T[],
+  target: { adapter: string },
+  targetForPackage?: (pkg: T) => { adapter: string },
+): T[] {
+  return packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes((targetForPackage?.(pkg) ?? target).adapter));
 }
 export type FleetWorkspaceConfig = Extract<WorkspaceConfig, { schemaVersion: 3 | 4 }>;
 

@@ -2252,6 +2252,39 @@ describe("CLI verb redesign", () => {
     expect(install.stdout).not.toContain("CREATE");
   });
 
+  it("matches a configured package adapter in plain cwd mode", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("cwd-claude-skill", "cwd-claude");
+    const config = {
+      schemaVersion: 3,
+      packages: [{ name: "cwd-claude", source, driver: "local", adapter: "claude", mode: "pinned", runtimes: ["claude"] }],
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    const preview = await runCli(["install", "--dry-run"], { cwd: workspace });
+    expect(preview.stdout).toContain("claude/local");
+    expect(preview.stdout).toContain("CREATE");
+    expect(preview.stdout).toContain("cwd-claude-skill");
+    expect(preview.stdout).not.toContain("REMOVE");
+  });
+
+  it("includes unmatched package warnings in JSON profile plans", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-unmatched-codex-");
+    const source = await skillPackageFixture("unmatched-skill", "unmatched");
+    const config = {
+      schemaVersion: 3,
+      packages: [{ name: "unmatched", source, driver: "local", adapter: "claude", mode: "pinned", runtimes: ["claude"] }],
+      profiles: { all: { runtimes: [{ adapter: "codex", targetRoot: target, installationType: "local" }] } },
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    const plan = JSON.parse((await runCli(["plan", "--profile", "all", "--target-root", workspace, "--format", "json"])).stdout);
+    expect(plan.warnings).toContain("Package 'unmatched' matches no runtime in profile 'all'.");
+  });
+
   it("does not report foreign kept artifacts as pending status work", async () => {
     const ownerWorkspace = await tempRoot("agentwheel-status-owner-");
     const observerWorkspace = await tempRoot("agentwheel-status-observer-");

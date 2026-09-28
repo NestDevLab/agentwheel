@@ -1035,7 +1035,7 @@ ownershipCommand
     }
     const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const targetPackages = packagesForTarget(config.packages, target);
+    const targetPackages = packagesForCliTarget(config.packages, target, {});
     if (targetPackages.length === 0) throw new Error("Fleet target has no configured source packages.");
     await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, targetPackages, async (graphPlan) => {
       const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh");
@@ -1199,7 +1199,7 @@ ownershipCommand
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const groups = new Map<string, PackageGraphGroup>();
-    for (const pkg of packagesForTarget(config.packages, target)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
+    for (const pkg of packagesForCliTarget(config.packages, target, plainInstallOptions)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
     if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
     const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
     if (installationTypes.length > 1) {
@@ -1713,7 +1713,7 @@ async function runInstallCommand(
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForTarget(config.packages, target), nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForCliTarget(config.packages, target, targetOptions), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -1822,10 +1822,10 @@ async function buildPlanReport(
       trustPatterns: normalizedOptions.trust ?? [],
       readOnly: true,
       isTTY: false,
+      warn: collectWarning,
     });
     for (const result of results) {
       reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
-      reportWarnings.push(...result.warnings);
     }
     return planReport(reportTargets, reportWarnings);
   }
@@ -1834,7 +1834,7 @@ async function buildPlanReport(
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForTarget(config.packages, target), nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForCliTarget(config.packages, target, targetOptions), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -2377,7 +2377,7 @@ async function runSkillUpdateCommand(
   const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
   for (const target of targets) {
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const owner = await configuredPackageForSkill(target, packagesForTarget(config.packages, target), skillName, normalizedOptions, options.package);
+    const owner = await configuredPackageForSkill(target, packagesForCliTarget(config.packages, target, normalizedOptions), skillName, normalizedOptions, options.package);
     const mode = owner.mode === "tracking" ? "update" : "install";
     console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
     await runConfiguredGraphPackages(target, {
@@ -2448,7 +2448,7 @@ async function collectGraphPlansForTarget(
 ) {
   const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-  const targetPackages = packagesForTarget(config.packages, target);
+  const targetPackages = packagesForCliTarget(config.packages, target, targetOptions);
   const groups = new Map<string, PackageGraphGroup>();
   const selectedArtifacts = selectedArtifactsFromOptions(targetOptions);
   const dependencyUpdateSelectors = sortedUniqueValues(targetOptions.dependency ?? []);
@@ -3451,7 +3451,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
   if (removed.length === 0) {
     throw new Error(`Configured package not found: ${packageName}`);
   }
-  const remaining = packagesForTarget(config.packages.filter((pkg) => !removed.includes(pkg)), target);
+  const remaining = packagesForCliTarget(config.packages.filter((pkg) => !removed.includes(pkg)), target, options);
   const groups = new Map<string, PackageGraphGroup>();
   for (const pkg of remaining) {
     const group = graphGroupForPackage(groups, target, pkg, options);
@@ -3602,6 +3602,10 @@ function targetForPackage(target: RuntimeTarget, pkg: WorkspacePackage, options:
   return options.adapter || target.source !== "cwd"
     ? { ...target, installationType }
     : { ...target, adapter: pkg.adapter, installationType };
+}
+
+function packagesForCliTarget(packages: WorkspacePackage[], target: RuntimeTarget, options: GraphCliOptions): WorkspacePackage[] {
+  return packagesForTarget(packages, target, (pkg) => targetForPackage(target, pkg, options));
 }
 
 function graphGroupKey(target: RuntimeTarget, options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }): string {
@@ -3820,7 +3824,7 @@ async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptio
     : null;
 
   const packages: StatusPackage[] = [];
-  for (const pkg of packagesForTarget(config.packages, target)) {
+  for (const pkg of packagesForCliTarget(config.packages, target, options)) {
     const root = effectiveGraphLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
     const node = root ? effectiveGraphLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId) : undefined;
     const availability = await discoverPackageVersions(pkg, target.workspaceRoot, {

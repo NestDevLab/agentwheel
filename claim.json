@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/ccp011-ownership-supersession"
+  ],
+  "claimed_at": "2026-10-11T10:37:58+00:00",
+  "coordination_id": "default",
+  "operation_token": "97a266e9-c2b9-46ff-8512-29a3358affd3",
+  "publication_scope": "create:ccp011-ownership-supersession",
+  "source_ref": "refs/heads/syncwheel/draft/ccp011-ownership-supersession",
+  "syncwheel_version": "0.45.5"
+}

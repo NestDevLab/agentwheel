@@ -114,6 +114,7 @@ path, not from the inverse Codex/Copilot path.
 - Copilot rule-like artifacts are custom instructions. They do not provide command execution policy like Codex rules.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
 - OpenClaw subagents require both a workspace directory and config registration. Agentwheel renders Markdown OpenPack subagents to `workspace-subagents/<name>/AGENTS.md`; fleet settings provide the `agents.list[]` entries and parent allowlist.
+- OpenClaw JSON merge sources expand `${NAME}` from the install process environment and fail if it is unset. Use `${secret:NAME}` in a string field to install a literal `${NAME}` for OpenClaw to resolve at runtime; Agentwheel does not read `NAME` while rendering that marker. `NAME` must match `[A-Za-z_][A-Za-z0-9_]*`. Rendering is one pass, so placeholders produced by either form are not expanded again.
 - OpenClaw, Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, git shims, or generated ClawHub wrappers and runs the runtime CLI; it does not copy plugin sources into `.openclaw/plugins`, `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
 - Runtime reloads/restarts are not implied by plugin execution. Configure target `reloadCommands`
   and pass `--reload-runtimes` or `--restart-runtimes` to run them after executed semantic plugin

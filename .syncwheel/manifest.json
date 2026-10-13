@@ -25,7 +25,8 @@
     "stacks": [
       "tmpdir-cleanup",
       "package-runtime-opt-in",
-      "ccp011-ownership-supersession"
+      "ccp011-ownership-supersession",
+      "mgt0406-runas-readonly"
     ],
     "strategy": "cherry-pick"
   },
@@ -85,6 +86,22 @@
       },
       "meta": {
         "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      }
+    },
+    {
+      "id": "mgt0406-runas-readonly",
+      "branch": "syncwheel/draft/mgt0406-runas-readonly",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "draft",
+      "publication": {
+        "enabled": false
+      },
+      "meta": {
+        "purpose": "MGT-0406 local run-as read-only transport"
       }
     }
   ],

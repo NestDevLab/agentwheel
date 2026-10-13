@@ -120,13 +120,14 @@ export async function acquireApplyLock(
 }
 
 export async function writeApplyJournal(journal: ApplyJournal, transport: TargetTransport = localTransport): Promise<void> {
+  if (transport.kind === "local-run-as") throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
   const path = applyJournalPath(journal.targetRoot, journal.adapter, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
   });
   let link: {
     path: string;
-    transport: TargetTransport["kind"];
+    transport: Exclude<TargetTransport["kind"], "local-run-as">;
     transportDescription: string;
     journalDigest: string;
   } | undefined;
@@ -293,6 +294,9 @@ export function mutationMetadataForApplyJournal(): ApplyJournal["mutation"] {
 }
 
 export function assertGovernedRuntimeTransportSupported(transport: TargetTransport): void {
+  if (transport.kind === "local-run-as") {
+    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+  }
   const active = activeMutationMetadata();
   if (active && transport.kind !== "local") {
     throw new Error(

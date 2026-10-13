@@ -483,9 +483,9 @@ describe("runtime target resolution", () => {
   it("home-rooted user install uses the remote agent root over ssh, the local home otherwise", () => {
     const remoteHome = "/home/remote-user";
     // over ssh the user's home is the remote agent root (= targetRoot), not the orchestrator's local os.homedir()
-    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", true)).toBe(remoteHome);
-    expect(installRootForArtifacts(openClawAdapter, remoteHome, "user", ["skills"] as ArtifactType[], true)).toBe(remoteHome);
+    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", { kind: "ssh" })).toBe(remoteHome);
+    expect(installRootForArtifacts(openClawAdapter, remoteHome, "user", ["skills"] as ArtifactType[], { kind: "ssh" })).toBe(remoteHome);
     // locally it stays the orchestrator's home, never the passed (remote) target root
-    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", false)).not.toBe(remoteHome);
+    expect(installRootForAdapterInstallationType(openClawAdapter, remoteHome, "user", { kind: "local" })).not.toBe(remoteHome);
   });
 });

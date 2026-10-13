@@ -176,15 +176,27 @@ export const workspaceAgentSchema = z.object({
   root: z.string().min(1),
   installationType: installationTypeSchema.optional(),
   stateKey: installStateKeySchema.optional(),
-  transport: z.enum(["local", "ssh"]).default("local"),
+  transport: z.enum(["local", "ssh", "local-run-as"]).default("local"),
+  runAs: z.string().regex(/^[a-z_][a-z0-9_-]*[$]?$/i).optional(),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),
   port: z.number().int().positive().optional(),
   identityFile: z.string().min(1).optional(),
   reloadCommands: commandListSchema,
 }).superRefine((agent, ctx) => {
-  if (agent.transport !== "ssh") return;
-  if (!agent.host) {
+  if (agent.transport === "local-run-as") {
+    if (!agent.runAs) ctx.addIssue({ code: "custom", path: ["runAs"], message: "Local run-as agents require runAs" });
+    if (agent.runAs === "root") ctx.addIssue({ code: "custom", path: ["runAs"], message: "Local run-as cannot target root" });
+    for (const key of ["host", "user", "port", "identityFile"] as const) {
+      if (agent[key] !== undefined) ctx.addIssue({ code: "custom", path: [key], message: `Local run-as agents cannot set ${key}` });
+    }
+    if (!agent.root.startsWith("/") || resolve(agent.root) !== agent.root) {
+      ctx.addIssue({ code: "custom", path: ["root"], message: "Local run-as root must be an absolute normalized path" });
+    }
+  } else if (agent.runAs !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["runAs"], message: "runAs requires local-run-as transport" });
+  }
+  if (agent.transport === "ssh" && !agent.host) {
     ctx.addIssue({
       code: "custom",
       path: ["host"],

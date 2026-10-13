@@ -104,6 +104,7 @@ export interface GraphSourcePlanOptions {
 }
 
 export interface GraphSourcePlanResult {
+  transportKind?: TargetTransport["kind"];
   plan: InstallPlan;
   graph: ResolvedGraph;
   bundle: ResolvedGraphBundle;
@@ -150,7 +151,7 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
   const formatCompatibleArtifacts = await filterArtifactsByInstallFormat(bundle.artifacts, options.adapter, requestedInstallationType);
   const installRootArtifacts = filterArtifactsByAdapterTargets(formatCompatibleArtifacts, options.adapter, requestedInstallationType, { warn: options.warn });
   const installationType = resolveInstallationTypeForArtifacts(options.adapter, installRootArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRoot = installRootForArtifacts(options.adapter, options.targetRoot, installationType, installRootArtifacts.map((artifact) => artifact.type), transport);
   const targetFingerprint = options.fleetId
     ? computeTargetFingerprint({
         adapter: options.adapter.name,
@@ -204,7 +205,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     transport: transport.kind,
     transportDescription: transport.description,
   };
-  const installRoot = installRootForAdapterInstallationType(options.adapter, options.targetRoot, installationType, transport.kind === "ssh");
+  const installRoot = installRootForAdapterInstallationType(options.adapter, options.targetRoot, installationType, transport);
   const targetIdentity = resolveTargetStateIdentity({
     targetFingerprintParts,
     workspaceRoot,
@@ -335,7 +336,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
       { warn },
     );
     const resolvedInstallationType = resolveInstallationTypeForArtifacts(options.adapter, desiredArtifacts.map((artifact) => artifact.type), installationType);
-    const resolvedInstallRoot = installRootForArtifacts(options.adapter, options.targetRoot, resolvedInstallationType, desiredArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+    const resolvedInstallRoot = installRootForArtifacts(options.adapter, options.targetRoot, resolvedInstallationType, desiredArtifacts.map((artifact) => artifact.type), transport);
     const graphLockDigest = digestGraphLock(bundle.graphLock);
     const graphDiff = diffGraphLocks(previousLock, bundle.graphLock);
     if (normalizeInstallRoot(resolvedInstallRoot, transport.kind) !== normalizeInstallRoot(installRoot, transport.kind)) {
@@ -409,6 +410,7 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
     }
 
     return {
+      transportKind: transport.kind,
       plan,
       graph,
       bundle,

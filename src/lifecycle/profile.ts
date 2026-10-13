@@ -93,6 +93,9 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
     const runtimePackages = options.source ? packages : packagesForTarget(packages, target);
     const transport = transportForTarget(target);
+    if (!options.dryRun && transport.kind === "local-run-as") {
+      throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+    }
     const adapter = await resolveAdapter({
       adapter: target.adapter,
       adapterConfig: target.adapterConfig,
@@ -134,6 +137,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         targetRoot: target.targetRoot,
         transport: transport.kind,
         ssh: target.ssh,
+        runAs: target.runAs,
         stateKey: target.stateKey,
       },
       installationType,
@@ -160,7 +164,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     try {
       const result: ProfileSyncResult = {
         runtime: adapter.name,
-        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
+        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport),
         transport: transport.kind,
         packageName: runtimePackages.map((pkg) => pkg.name).join(",") || "(no packages)",
         plan: graphPlan.plan,

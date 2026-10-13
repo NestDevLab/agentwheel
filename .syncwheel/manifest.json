@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -73,38 +73,38 @@
       "target_remote": "origin"
     },
     {
-      "id": "ccp011-ownership-supersession",
-      "branch": "syncwheel/draft/ccp011-ownership-supersession",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "syncwheel/draft/ccp011-ownership-supersession",
       "commits": [],
-      "state": "draft",
+      "id": "ccp011-ownership-supersession",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "mgt0406-runas-readonly",
-      "branch": "syncwheel/draft/mgt0406-runas-readonly",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "syncwheel/draft/mgt0406-runas-readonly",
       "commits": [
         "967b645c95f4829f8079043740b0ae78e4c45555"
       ],
-      "state": "draft",
+      "id": "mgt0406-runas-readonly",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "MGT-0406 local run-as read-only transport"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "MGT-0406 local run-as read-only transport"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

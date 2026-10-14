@@ -23,7 +23,6 @@
     "base": "origin/main",
     "branch": "main-integration",
     "stacks": [
-      "tmpdir-cleanup",
       "ccp011-ownership-supersession",
       "mgt0406-runas-readonly"
     ],
@@ -31,26 +30,6 @@
   },
   "repository_mode": "delivery",
   "stacks": [
-    {
-      "base": "origin/main",
-      "branch": "fix/tmpdir-staging-cleanup",
-      "commits": [
-        "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f",
-        "74dfbf08441db4b39faa4c6289131d7c69be29f0"
-      ],
-      "id": "tmpdir-cleanup",
-      "integration_branch": "main-integration",
-      "integration_commits": [],
-      "meta": {
-        "purpose": "Remove Agentwheel staging/graph/render temp dirs after use"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
     {
       "base": "origin/main",
       "branch": "syncwheel/draft/ccp011-ownership-supersession",

@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/package-runtime-opt-in-0.20.20"
-  ],
-  "claimed_at": "2026-09-28T09:59:08+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-14T05:50:03+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "4b968b52-994d-4dca-964b-2b0e2dc1ac88",
-  "publication_scope": "stack:package-runtime-opt-in",
+  "operation_token": "f2d5b4c6-3b6d-4aee-a082-f8b21bb428f0",
+  "publication_scope": "close:package-runtime-opt-in",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/package-runtime-opt-in-0.20.20",
-  "syncwheel_version": "0.45.0"
+  "syncwheel_version": "0.45.5"
 }

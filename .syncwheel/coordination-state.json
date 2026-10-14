@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "967b645c95f4829f8079043740b0ae78e4c45555"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -28,12 +30,12 @@
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
-    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "9fefa9125ac63675f1fea009d648856d93c2e713",
+    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "f775f0b39c721a5fc2bbbfbf622f859d370a1bbf",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0",
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-14T09:07:00+00:00",
+  "created_at": "2026-10-14T09:08:06+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -92,7 +94,7 @@
     "refs/heads/syncwheel/draft/legacy-recovery-report": "09d69cd7b695835b4bd20b91eb02d7fc111e5d52",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
-    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "432bbbb2c612641c2b7517a3e439c1c7bf07d704",
+    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "967b645c95f4829f8079043740b0ae78e4c45555",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
     "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
@@ -152,7 +154,9 @@
           "role": "canonical"
         },
         "branch": "syncwheel/draft/mgt0406-runas-readonly",
-        "commits": [],
+        "commits": [
+          "967b645c95f4829f8079043740b0ae78e4c45555"
+        ],
         "id": "mgt0406-runas-readonly",
         "integration_branch": "main-integration",
         "state": "draft",
@@ -162,11 +166,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "a7e3714b-5828-4d87-a99d-af446a130dea",
-  "parent_state": "d1529bf839360779c2939efc4e7225af43996b13",
+  "operation_token": "8be8dcd3-5382-42ff-bdb4-d06da1e1afb3",
+  "parent_state": "8423aeb4cddae876af493f84c038338d722a9561",
   "projection_status": "partial",
-  "publication_id": "401b62df-2927-4879-809e-661815960ef7",
-  "publication_scope": "close:tmpdir-cleanup",
+  "publication_id": "483ff858-e762-44a2-b384-44c91b5a1376",
+  "publication_scope": "stack:mgt0406-runas-readonly",
   "schema_version": 2,
   "syncwheel_version": "0.45.5",
   "tombstones": [

@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "432bbbb2c612641c2b7517a3e439c1c7bf07d704"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
@@ -17,7 +15,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/pr/package-runtime-opt-in-0.20.20": "151f034e50ec27f3eac1621b3f88c9385dce508d",
+    "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -35,7 +33,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-13T09:58:19+00:00",
+  "created_at": "2026-10-14T05:50:03+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -129,7 +127,6 @@
       "branch": "main-integration",
       "stacks": [
         "tmpdir-cleanup",
-        "package-runtime-opt-in",
         "ccp011-ownership-supersession",
         "mgt0406-runas-readonly"
       ],
@@ -148,22 +145,6 @@
           "74dfbf08441db4b39faa4c6289131d7c69be29f0"
         ],
         "id": "tmpdir-cleanup",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/package-runtime-opt-in-0.20.20",
-        "commits": [
-          "cc4e818ae4e339c3d9ddf58713ecd88681d66353",
-          "9dae61f06ba7713b6a7b5a237dbc7e78f6a88795",
-          "da6492610035c74a8ae8211d898d250ccfe6a433"
-        ],
-        "id": "package-runtime-opt-in",
         "integration_branch": "main-integration",
         "target_branch": "main"
       },
@@ -197,11 +178,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "5c0f221f-1939-430a-93b5-7fc4a9c66542",
-  "parent_state": "c0e5add3eda0642fea74642e4cdfbe442a6f4a4d",
+  "operation_token": "f2d5b4c6-3b6d-4aee-a082-f8b21bb428f0",
+  "parent_state": "780f404f4db236b1b3d5962607580ef3a499f81c",
   "projection_status": "partial",
-  "publication_id": "9bb2c653-61d2-4e1d-9fb6-0f694fd12ccb",
-  "publication_scope": "create:mgt0406-runas-readonly",
+  "publication_id": "adeeaf74-7acf-4c95-b62c-74f961089351",
+  "publication_scope": "close:package-runtime-opt-in",
   "schema_version": 2,
   "syncwheel_version": "0.45.5",
   "tombstones": [
@@ -660,6 +641,14 @@
       "ref": "refs/heads/pr/aw-ownership-adopt-legacy",
       "remote_tip": null,
       "stack": "aw-ownership-adopt-legacy"
+    },
+    {
+      "branch": "pr/package-runtime-opt-in-0.20.20",
+      "closed_at": "2026-10-14T05:49:53+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/package-runtime-opt-in-0.20.20",
+      "remote_tip": null,
+      "stack": "package-runtime-opt-in"
     }
   ]
 }

@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/fix/tmpdir-staging-cleanup"
-  ],
-  "claimed_at": "2026-09-23T20:27:47+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-14T09:06:59+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "ad659a5d-47bc-41d5-b9ad-d3aa8f76a0cd",
-  "publication_scope": "stack:tmpdir-cleanup",
+  "operation_token": "a7e3714b-5828-4d87-a99d-af446a130dea",
+  "publication_scope": "close:tmpdir-cleanup",
+  "reason": "delivered as #161 (c0290b8); content later evolved on main",
   "source_ref": "refs/heads/fix/tmpdir-staging-cleanup",
-  "syncwheel_version": "0.44.0"
+  "syncwheel_version": "0.45.5"
 }

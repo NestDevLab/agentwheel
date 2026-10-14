@@ -4,7 +4,7 @@
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
-    "refs/heads/fix/tmpdir-staging-cleanup": "d774d0235651a0f903a7fc9903dca2c716d82a68",
+    "refs/heads/fix/tmpdir-staging-cleanup": "bdbd68c901783d75f318f2dc9d7683f760647cfa",
     "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
@@ -33,7 +33,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-14T05:50:03+00:00",
+  "created_at": "2026-10-14T09:07:00+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -126,28 +126,12 @@
       },
       "branch": "main-integration",
       "stacks": [
-        "tmpdir-cleanup",
         "ccp011-ownership-supersession",
         "mgt0406-runas-readonly"
       ],
       "strategy": "cherry-pick"
     },
     "stacks": [
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "fix/tmpdir-staging-cleanup",
-        "commits": [
-          "7b2a4a436720c0d9082e467c036ef9fe7ddf7a0f",
-          "74dfbf08441db4b39faa4c6289131d7c69be29f0"
-        ],
-        "id": "tmpdir-cleanup",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
       {
         "base": {
           "kind": "remote-ref",
@@ -178,11 +162,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "f2d5b4c6-3b6d-4aee-a082-f8b21bb428f0",
-  "parent_state": "780f404f4db236b1b3d5962607580ef3a499f81c",
+  "operation_token": "a7e3714b-5828-4d87-a99d-af446a130dea",
+  "parent_state": "d1529bf839360779c2939efc4e7225af43996b13",
   "projection_status": "partial",
-  "publication_id": "adeeaf74-7acf-4c95-b62c-74f961089351",
-  "publication_scope": "close:package-runtime-opt-in",
+  "publication_id": "401b62df-2927-4879-809e-661815960ef7",
+  "publication_scope": "close:tmpdir-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.45.5",
   "tombstones": [
@@ -649,6 +633,14 @@
       "ref": "refs/heads/pr/package-runtime-opt-in-0.20.20",
       "remote_tip": null,
       "stack": "package-runtime-opt-in"
+    },
+    {
+      "branch": "fix/tmpdir-staging-cleanup",
+      "closed_at": "2026-10-14T09:06:50+00:00",
+      "reason": "delivered as #161 (c0290b8); content later evolved on main",
+      "ref": "refs/heads/fix/tmpdir-staging-cleanup",
+      "remote_tip": null,
+      "stack": "tmpdir-cleanup"
     }
   ]
 }

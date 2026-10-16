@@ -1016,14 +1016,18 @@ ownershipCommand
 ownershipCommand
   .command("recovery-plan")
   .description("write a read-only per-path legacy ownership evidence report")
-  .option("--fleet <id>", "registered Fleet containing the current source graph")
+  .option("--fleet <id>", "required for a registered Fleet target; omit for a non-Fleet workspace")
   .requiredOption("--report <path>", "new private JSON report path")
-  .option("--agent <name>", "one named Fleet target")
-  .option("--profile <name>", "Fleet profile resolving to one target")
+  .option("--agent <name>", "one named target")
+  .option("--profile <name>", "profile resolving to one target")
   .action(async (options) => {
     const targets = await resolveCliTargets({ fleet: options.fleet, agent: options.agent, profile: options.profile });
-    if (targets.length !== 1) throw new Error(`Recovery planning requires one Fleet target, found ${targets.length}.`);
+    if (targets.length !== 1) throw new Error(`Recovery planning requires one target, found ${targets.length}.`);
     const target = targets[0]!;
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    if (!options.fleet && (target.fleetId || (supportsFleetConfig(config) && config.fleetId))) {
+      throw new Error("Recovery planning for a Fleet target requires --fleet <id>.");
+    }
     if (options.fleet && target.fleetId !== options.fleet) throw new Error("Resolved target does not belong to the selected Fleet.");
     const adapter = await resolveAdapterForTarget(target, {});
     const transport = transportForTarget(target);
@@ -1034,9 +1038,8 @@ ownershipCommand
       throw new Error("Recovery report must be outside the runtime target root.");
     }
     const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
-    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const targetPackages = packagesForCliTarget(config.packages, target, {});
-    if (targetPackages.length === 0) throw new Error("Fleet target has no configured source packages.");
+    if (targetPackages.length === 0) throw new Error("Recovery target has no configured source packages.");
     await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, targetPackages, async (graphPlan) => {
       const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport);
       const report = await planLegacyRecovery({

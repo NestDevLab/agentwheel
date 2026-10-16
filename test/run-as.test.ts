@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,7 +7,7 @@ import { openClawAdapter } from "../src/adapters/openclaw.js";
 import { applyCombinedInstallPlan } from "../src/install/apply.js";
 import { stateKeyFor } from "../src/install/paths.js";
 import type { InstallPlan } from "../src/install/plan.js";
-import { installRootForAdapterInstallationType } from "../src/model/adapter.js";
+import { installRootForAdapterInstallationType, installRootForArtifacts } from "../src/model/adapter.js";
 import { resolveTargetStateIdentity } from "../src/model/target-state.js";
 import { workspaceAgentSchema } from "../src/model/workspace.js";
 import { createRunAsTransport, type RunAsRunner } from "../src/transport/run-as.js";
@@ -47,6 +48,7 @@ describe("local run-as schema and identity", () => {
     const runAs = identity(root);
     expect(installRootForAdapterInstallationType(openClawAdapter, root, "user", { kind: "local-run-as", homeRoot: root })).toBe(root);
     expect(() => installRootForAdapterInstallationType(openClawAdapter, "/other", "user", { kind: "local-run-as", homeRoot: root })).toThrow(/home/);
+    expect(() => installRootForArtifacts(openClawAdapter, "/other", "user", ["skills"], { kind: "local-run-as", homeRoot: root })).toThrow(/home/);
     const common = { adapter: "openclaw", installationType: "user", targetRoot: root };
     const state = (kind: "local" | "local-run-as") => resolveTargetStateIdentity({
       targetFingerprintParts: { ...common, transport: kind, ...(kind === "local-run-as" ? { runAs } : {}) },
@@ -72,10 +74,12 @@ describe("local run-as read transport", () => {
     expect(calls[0]).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", "service", "-H", "--", "/usr/bin/id", "-u"], input: undefined });
     expect(calls[1]?.command).toBe("/usr/bin/sudo");
     expect(calls[1]?.args).toEqual(["-n", "-u", "service", "-H", "--", "/usr/bin/env", "-i",
-      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", "node", "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
+      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(process.env.AGENTWHEEL_RUN_AS_NODE ?? "/usr/bin/node"), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
     expect(JSON.parse(calls[1]!.input!)).toEqual({ version: 1, operation: "pathExists", path: "managed" });
     expect(calls[1]?.args).not.toContain("-c");
     expect(calls[1]?.args.join(" ")).not.toContain(process.env.HOME ?? "/home/administrator");
+    await Promise.all([transport.pathExists(join(root, "second")), transport.readFile(join(root, "third"))]);
+    expect(calls.filter(({ args }) => args.at(-2) === "/usr/bin/id" && args.at(-1) === "-u")).toHaveLength(1);
   });
 
   it("fails closed on sudo denial, a wrong UID, escaping paths and all writes", async () => {
@@ -88,6 +92,19 @@ describe("local run-as read transport", () => {
     await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(/read-only in PR1/);
     const plan = { hasBlockingChanges: false, installationType: "user", stateKey: "openclaw.user.test" } as InstallPlan;
     await expect(applyCombinedInstallPlan(plan, { transport: wrong })).rejects.toThrow(/read-only in PR1/);
+  });
+
+  it("rejects a service-owned or writable Node executable before sudo", async () => {
+    const root = await fixture();
+    const executable = join(root, "node");
+    await writeFile(executable, "fixture");
+    const currentUid = process.getuid!();
+    if (currentUid > 0) {
+      expect(() => createRunAsTransport({ ...identity(root), uid: currentUid }, async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable is writable/);
+    }
+    await chmod(executable, 0o666);
+    expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable is writable/);
+    expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", "node")).toThrow(/must be absolute/);
   });
 
   it("rejects traversal and symlinks inside the worker, and reads contained inventory", async () => {

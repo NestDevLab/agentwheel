@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/mgt0406-runas-readonly"
   ],
-  "claimed_at": "2026-10-14T09:09:30+00:00",
+  "claimed_at": "2026-10-16T21:34:39+00:00",
   "coordination_id": "default",
-  "operation_token": "9f39b53d-3edb-43cd-819d-19b2fc24f684",
+  "operation_token": "42cd6a53-258e-406b-ae46-fe7378327d9a",
   "publication_scope": "stack:mgt0406-runas-readonly",
   "source_ref": "refs/heads/pr/mgt0406-runas-readonly",
-  "syncwheel_version": "0.45.5"
+  "syncwheel_version": "0.45.6"
 }

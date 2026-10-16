@@ -55,6 +55,14 @@ function normalizeInstallRoot(path: string, transportKind: TransportKind): strin
 }
 
 function targetEndpoint(value: unknown, transportKind: TransportKind): unknown {
+  if (transportKind === "local-run-as") {
+    const record = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    const account = record.runAs && typeof record.runAs === "object" && !Array.isArray(record.runAs)
+      ? record.runAs as Record<string, unknown> : {};
+    if (!Number.isSafeInteger(account.uid) || (account.uid as number) <= 0 || typeof account.home !== "string"
+      || typeof account.root !== "string") throw new Error("Local run-as target identity requires pinned UID, home and root.");
+    return { kind: "local-run-as", uid: account.uid, home: account.home, root: account.root };
+  }
   if (transportKind !== "ssh") return { kind: "local" };
   const record = value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>

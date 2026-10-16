@@ -68,6 +68,10 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   if (isCompositeWorkspaceProfile(profile)) {
     throw new Error(`Composite profile '${options.profile}' must be executed through member delegation.`);
   }
+  if (!options.dryRun && profile.runtimes.some((runtime) =>
+    resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId).transport === "local-run-as")) {
+    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+  }
 
   const packages = options.source
     ? [await packageFromSource(options.source, options)]
@@ -134,6 +138,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         targetRoot: target.targetRoot,
         transport: transport.kind,
         ssh: target.ssh,
+        runAs: target.runAs,
         stateKey: target.stateKey,
       },
       installationType,
@@ -160,7 +165,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     try {
       const result: ProfileSyncResult = {
         runtime: adapter.name,
-        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
+        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport),
         transport: transport.kind,
         packageName: runtimePackages.map((pkg) => pkg.name).join(",") || "(no packages)",
         plan: graphPlan.plan,

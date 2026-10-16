@@ -174,6 +174,7 @@ export function formatGraphPlan(result: GraphSourcePlanResult): string {
     ...formatSelectionImports(result.graph),
     `LOCK    ${result.graphLockPath} (${result.graphLockDigest})`,
   ];
+  if (result.transportKind === "local-run-as") lines.push(`STATE   ${result.plan.stateKey}`);
   if (result.recoveredPendingApply) {
     lines.push("RECOVER recovered pending apply journal before planning");
   }
@@ -209,6 +210,7 @@ export function graphPlanReport(result: GraphSourcePlanResult) {
       installationType: result.plan.installationType,
       targetRoot: result.plan.targetRoot,
       targetFingerprint: result.targetFingerprint,
+      stateKey: result.plan.stateKey,
     },
     lock: {
       path: result.graphLockPath,

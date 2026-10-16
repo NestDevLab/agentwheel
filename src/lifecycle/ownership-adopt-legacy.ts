@@ -233,6 +233,9 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   if (transport.kind === "ssh") {
     throw new Error("Legacy ownership adoption does not support SSH targets; legacy SSH state does not prove its endpoint.");
   }
+  if (transport.kind === "local-run-as") {
+    throw new Error("local-run-as is read-only in PR1; legacy ownership adoption is not supported.");
+  }
   const input = await normalizeRequest(request);
   const { targetRoot, adapter, installationType } = input;
   await assertNoPendingJournals(targetRoot, adapter, transport);

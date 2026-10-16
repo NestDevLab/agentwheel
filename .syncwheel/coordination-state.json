@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/mgt0406-runas-readonly": "967b645c95f4829f8079043740b0ae78e4c45555"
+    "refs/heads/pr/mgt0406-runas-readonly": "ff7582fd517674764beab6730b8d7e4309c2c91e"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -17,7 +17,7 @@
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
-    "refs/heads/pr/mgt0406-runas-readonly": "25222ca00ed83a4df3ebb191b442954b569d3187",
+    "refs/heads/pr/mgt0406-runas-readonly": "3c3c26f4af6156e3f23626156d2329e5103fb467",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
@@ -36,7 +36,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-14T09:09:30+00:00",
+  "created_at": "2026-10-16T21:34:40+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -67,7 +67,7 @@
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "f235868bf89b9828ee11ab5edd72db47ac9749e1",
-    "refs/heads/pr/mgt0406-runas-readonly": "967b645c95f4829f8079043740b0ae78e4c45555",
+    "refs/heads/pr/mgt0406-runas-readonly": "ff7582fd517674764beab6730b8d7e4309c2c91e",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
@@ -157,7 +157,8 @@
         },
         "branch": "pr/mgt0406-runas-readonly",
         "commits": [
-          "967b645c95f4829f8079043740b0ae78e4c45555"
+          "967b645c95f4829f8079043740b0ae78e4c45555",
+          "ff7582fd517674764beab6730b8d7e4309c2c91e"
         ],
         "id": "mgt0406-runas-readonly",
         "integration_branch": "main-integration",
@@ -167,13 +168,13 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "9f39b53d-3edb-43cd-819d-19b2fc24f684",
-  "parent_state": "cb7d28a24e3db78e8b28ebd01fb552156a67e6fb",
+  "operation_token": "42cd6a53-258e-406b-ae46-fe7378327d9a",
+  "parent_state": "d03db17011fe18fac6e1684883ae1e3cddbfb2ec",
   "projection_status": "partial",
-  "publication_id": "4897d559-552f-4d47-b65d-045089970489",
+  "publication_id": "e2b6b34a-847e-4528-a748-2389e898e01b",
   "publication_scope": "stack:mgt0406-runas-readonly",
   "schema_version": 2,
-  "syncwheel_version": "0.45.5",
+  "syncwheel_version": "0.45.6",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

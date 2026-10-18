@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/mgt0406-runas-readonly": "ff7582fd517674764beab6730b8d7e4309c2c91e"
+    "refs/heads/syncwheel/draft/local-run-as-readonly": "432bbbb2c612641c2b7517a3e439c1c7bf07d704"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -30,13 +30,14 @@
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "64ffea77da70ea5e7962dafe7b868cebaf542d86",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "6ddef4f72c6083f332b0882fab84c6331e83f9f3",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "fa9853a805f2221b96daeadb4eb031f6ff1a62de",
+    "refs/heads/syncwheel/draft/local-run-as-readonly": "3e6c7bfccc21037497a66a98795c07ef5795cd48",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
     "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "ebf2d5ad072e9a6c429e07e1ea568390df1655c2",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0",
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-16T21:34:40+00:00",
+  "created_at": "2026-10-18T12:18:14+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -95,6 +96,7 @@
     "refs/heads/syncwheel/draft/legacy-graph-only-recovery": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
     "refs/heads/syncwheel/draft/legacy-recovery-report": "09d69cd7b695835b4bd20b91eb02d7fc111e5d52",
     "refs/heads/syncwheel/draft/legacy-state-candidate-correlation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
+    "refs/heads/syncwheel/draft/local-run-as-readonly": "432bbbb2c612641c2b7517a3e439c1c7bf07d704",
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "3bd436ee505f3cfcdd868a3aca77577e5a7b0502",
     "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "967b645c95f4829f8079043740b0ae78e4c45555",
     "refs/heads/syncwheel/draft/proof-scoped-self-fleet-normalization": "5622b73489fd9f59652004d59efb4250ab11ea4c",
@@ -131,7 +133,8 @@
       "branch": "main-integration",
       "stacks": [
         "ccp011-ownership-supersession",
-        "mgt0406-runas-readonly"
+        "mgt0406-runas-readonly",
+        "local-run-as-readonly"
       ],
       "strategy": "cherry-pick"
     },
@@ -163,16 +166,29 @@
         "id": "mgt0406-runas-readonly",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/local-run-as-readonly",
+        "commits": [],
+        "id": "local-run-as-readonly",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "42cd6a53-258e-406b-ae46-fe7378327d9a",
-  "parent_state": "d03db17011fe18fac6e1684883ae1e3cddbfb2ec",
+  "operation_token": "af9cf5c8-6695-49e6-8abc-3eeaca0971d1",
+  "parent_state": "edf9e835dac2695e856a290bb2996013df25006a",
   "projection_status": "partial",
-  "publication_id": "e2b6b34a-847e-4528-a748-2389e898e01b",
-  "publication_scope": "stack:mgt0406-runas-readonly",
+  "publication_id": "b46d7437-4e15-43f4-afd7-64ad82952a03",
+  "publication_scope": "create:local-run-as-readonly",
   "schema_version": 2,
   "syncwheel_version": "0.45.6",
   "tombstones": [

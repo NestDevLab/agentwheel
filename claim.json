@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/syncwheel/draft/local-run-as-readonly"
+  ],
+  "claimed_at": "2026-10-18T12:18:14+00:00",
+  "coordination_id": "default",
+  "operation_token": "af9cf5c8-6695-49e6-8abc-3eeaca0971d1",
+  "publication_scope": "create:local-run-as-readonly",
+  "source_ref": "refs/heads/syncwheel/draft/local-run-as-readonly",
+  "syncwheel_version": "0.45.6"
+}

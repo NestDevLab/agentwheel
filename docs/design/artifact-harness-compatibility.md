@@ -58,6 +58,21 @@ path, not from the inverse Codex/Copilot path.
 
 ## Built-In Matrix
 
+Agentwheel also accepts `transport: "local-run-as"` on a named Linux agent with a
+required `runAs` account. It resolves `root: "home"` to that account's passwd home
+and reads runtime files and install manifests through a path-checked, service-user
+worker. In the first release this transport is **read-only**: plans, status, and
+ownership recovery reports work; installs, uninstalls, journal recovery, and
+other target mutations fail before writes. An absolute target root must be owned
+by the account and equal its home for home-rooted mappings. SSH and ordinary
+local transports retain their existing layouts.
+The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
+`AGENTWHEEL_RUN_AS_NODE` may select another absolute path). The executable and
+worker must be regular files that the service UID cannot own or write. One
+worker copy is staged per process and removed on exit, SIGINT, or SIGTERM.
+`ownership recovery-plan` requires `--fleet` for registered Fleet targets;
+it may omit `--fleet` for a nested workspace outside any Fleet.
+
 | Harness | Artifact | `local` | `user` | Notes |
 |---|---|---|---|---|
 | Codex | `instructions` | `supported-native`: `AGENTS.md` managed block | `supported-native`: `~/.codex/AGENTS.md` managed block | Project/user custom instructions. |

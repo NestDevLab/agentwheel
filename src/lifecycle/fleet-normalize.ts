@@ -933,8 +933,8 @@ function targetKeysForProfile(scope: WorkspaceScope, name: string): Set<string> 
 function targetKeysForAgent(scope: WorkspaceScope, name: string): Set<string> {
   const agent = scope.config.agents[name];
   if (!agent) throw new Error(`Unknown fleet agent '${name}'.`);
-  if (agent.transport === "ssh") {
-    throw new Error(`Installed-state normalization cannot hand off SSH agent '${name}' locally.`);
+  if (agent.transport === "ssh" || agent.transport === "local-run-as") {
+    throw new Error(`Installed-state normalization cannot hand off ${agent.transport} agent '${name}' locally.`);
   }
   return new Set([name]);
 }
@@ -952,7 +952,7 @@ async function runtimeRoots(scope: WorkspaceScope): Promise<string[]> {
     roots.add(resolve(process.env.AGENTWHEEL_TEST_HOME || process.env.HOME || homedir()));
   }
   for (const [name, agent] of Object.entries(scope.config.agents)) {
-    if (agent.transport === "ssh") throw new Error(`Installed-state normalization cannot inspect SSH agent '${name}' locally.`);
+    if (agent.transport === "ssh" || agent.transport === "local-run-as") throw new Error(`Installed-state normalization cannot inspect ${agent.transport} agent '${name}' locally.`);
     roots.add(resolveConfigPath(agent.root, scope.root));
   }
   for (const profile of Object.values(scope.config.profiles)) {
@@ -1096,8 +1096,8 @@ async function relevantGraphLocks(
 
 function isCurrentLocalTarget(scope: WorkspaceScope, graph: RelevantGraphLock): boolean {
   const agent = scope.config.agents[graph.targetKey];
-  if (agent?.transport === "ssh") {
-    throw new Error(`Installed-state normalization cannot hand off SSH target '${graph.targetKey}' locally.`);
+  if (agent?.transport === "ssh" || agent?.transport === "local-run-as") {
+    throw new Error(`Installed-state normalization cannot hand off ${agent.transport} target '${graph.targetKey}' locally.`);
   }
   return Boolean(agent) || graph.targetKey === graph.adapter;
 }
@@ -1143,8 +1143,8 @@ async function legacyManifestPathForConfiguredTarget(
 ): Promise<string | undefined> {
   const agent = scope.config.agents[graph.targetKey];
   if (!agent || !agent.installationType) return undefined;
-  if (agent.transport === "ssh") {
-    throw new Error(`Installed-state normalization cannot hand off SSH target '${graph.targetKey}' locally.`);
+  if (agent.transport === "ssh" || agent.transport === "local-run-as") {
+    throw new Error(`Installed-state normalization cannot hand off ${agent.transport} target '${graph.targetKey}' locally.`);
   }
   if (agent.adapter !== graph.adapter) {
     throw new Error(`Graph adapter '${graph.adapter}' does not match configured target adapter '${agent.adapter}'.`);
@@ -1157,7 +1157,7 @@ async function legacyManifestPathForConfiguredTarget(
     baseDir: scope.root,
   });
   const targetRoot = resolveConfigPath(agent.root, scope.root);
-  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, agent.installationType, false));
+  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, agent.installationType, { kind: "local" }));
   const stateKey = stateKeyFor(adapter.name, {
     installationType: agent.installationType,
     stateKey: agent.stateKey,
@@ -1184,8 +1184,8 @@ async function targetStateForGraph(
   allowMissingNamedAgentPackages = false,
 ): Promise<DerivedTargetState> {
   const agent = scope.config.agents[graph.targetKey];
-  if (agent?.transport === "ssh") {
-    throw new Error(`Installed-state normalization cannot hand off SSH target '${graph.targetKey}' locally.`);
+  if (agent?.transport === "ssh" || agent?.transport === "local-run-as") {
+    throw new Error(`Installed-state normalization cannot hand off ${agent.transport} target '${graph.targetKey}' locally.`);
   }
   if (agent && agent.adapter !== graph.adapter) {
     throw new Error(`Graph adapter '${graph.adapter}' does not match configured target adapter '${agent.adapter}'.`);
@@ -1250,7 +1250,7 @@ async function targetStateForGraph(
     ssh: undefined,
     ...(agent?.stateKey ? { stateKey: agent.stateKey } : {}),
   };
-  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, installationType, false));
+  const installRoot = resolve(installRootForAdapterInstallationType(adapter, targetRoot, installationType, { kind: "local" }));
   const targetIdentity = resolveTargetStateIdentity({
     targetFingerprintParts: fingerprintParts,
     workspaceRoot: scope.root,

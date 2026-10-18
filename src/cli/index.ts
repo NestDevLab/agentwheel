@@ -1016,15 +1016,19 @@ ownershipCommand
 ownershipCommand
   .command("recovery-plan")
   .description("write a read-only per-path legacy ownership evidence report")
-  .requiredOption("--fleet <id>", "registered Fleet containing the current source graph")
+  .option("--fleet <id>", "required for a registered Fleet target; omit for a non-Fleet workspace")
   .requiredOption("--report <path>", "new private JSON report path")
-  .option("--agent <name>", "one named Fleet target")
-  .option("--profile <name>", "Fleet profile resolving to one target")
+  .option("--agent <name>", "one named target")
+  .option("--profile <name>", "profile resolving to one target")
   .action(async (options) => {
     const targets = await resolveCliTargets({ fleet: options.fleet, agent: options.agent, profile: options.profile });
-    if (targets.length !== 1) throw new Error(`Recovery planning requires one Fleet target, found ${targets.length}.`);
+    if (targets.length !== 1) throw new Error(`Recovery planning requires one target, found ${targets.length}.`);
     const target = targets[0]!;
-    if (target.fleetId !== options.fleet) throw new Error("Resolved target does not belong to the selected Fleet.");
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    if (!options.fleet && (target.fleetId || (supportsFleetConfig(config) && config.fleetId))) {
+      throw new Error("Recovery planning for a Fleet target requires --fleet <id>.");
+    }
+    if (options.fleet && target.fleetId !== options.fleet) throw new Error("Resolved target does not belong to the selected Fleet.");
     const adapter = await resolveAdapterForTarget(target, {});
     const transport = transportForTarget(target);
     const requestedReport = normalizeCliPath(options.report);
@@ -1034,11 +1038,10 @@ ownershipCommand
       throw new Error("Recovery report must be outside the runtime target root.");
     }
     const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
-    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const targetPackages = packagesForCliTarget(config.packages, target, {});
-    if (targetPackages.length === 0) throw new Error("Fleet target has no configured source packages.");
+    if (targetPackages.length === 0) throw new Error("Recovery target has no configured source packages.");
     await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, targetPackages, async (graphPlan) => {
-      const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh");
+      const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport);
       const report = await planLegacyRecovery({
         graphPlan, installRoot, workspaceRoot: target.workspaceRoot,
         fleetId: target.fleetId, explicitStateKey: target.stateKey,
@@ -1197,6 +1200,7 @@ ownershipCommand
       throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
     }
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
+    if (target.transport === "local-run-as") throw new Error("Legacy ownership adoption cannot mutate local-run-as targets in PR1.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const groups = new Map<string, PackageGraphGroup>();
     for (const pkg of packagesForCliTarget(config.packages, target, plainInstallOptions)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
@@ -1429,6 +1433,7 @@ program
   .option("--json", "print the versioned status protocol as JSON", false)
   .option("--offline", "use cached version and member status even when stale", false)
   .option("--refresh", "refresh package and member status regardless of TTL", false)
+  .option("--recover-legacy-state", "inspect stable state while preserving invalid historical state", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
@@ -1698,6 +1703,7 @@ async function runInstallCommand(
     for (const result of results) {
       if (!behavior.quiet) {
         console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        if (result.transport === "local-run-as") console.log(`STATE   ${result.plan.stateKey}`);
         console.log(formatPlan(result.plan));
         if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
       }
@@ -1710,6 +1716,9 @@ async function runInstallCommand(
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
+  if (behavior.apply && targets.some((target) => target.transport === "local-run-as")) {
+    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+  }
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
@@ -3633,8 +3642,13 @@ function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, o
     targetRoot: target.targetRoot,
     transport: target.transport,
     ssh: target.ssh,
+    runAs: target.runAs,
     stateKey: target.stateKey,
   };
+}
+
+function installRootContextForTarget(target: RuntimeTarget): { kind: RuntimeTarget["transport"]; homeRoot?: string } {
+  return { kind: target.transport, homeRoot: target.runAs?.home };
 }
 
 // skips prior target state on purpose, so it still works while that state is broken.
@@ -3680,7 +3694,7 @@ function installStateForTarget(
   options: { adapterConfig?: string; adapterModule?: string },
   installationType: string,
 ): { installationType: string; stateKey: string; installRoot: string } {
-  const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh");
+  const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, installRootContextForTarget(target));
   const targetIdentity = resolveTargetStateIdentity({
     targetFingerprintParts: targetFingerprintParts(target, adapter, options, installationType),
     workspaceRoot: target.workspaceRoot,
@@ -3710,7 +3724,7 @@ function targetIdentityContext(
       adapter,
       target.targetRoot,
       installationType,
-      target.transport === "ssh",
+      installRootContextForTarget(target),
     ),
     transportKind: target.transport,
   };

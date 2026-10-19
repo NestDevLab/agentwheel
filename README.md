@@ -98,6 +98,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 |---|---|
 | `agentwheel search <query>` | Search configured registries and the public enriched/Vercel catalogue; supports stable JSON output for agent reranking. |
 | `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
+| `agentwheel pin <alias> <commit>` | Change an existing pinned alias's exact commit, preserving its configuration; does not resolve sources or touch runtimes. |
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing; supports `--profile <name>` and `--json`. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
@@ -586,6 +587,40 @@ agentwheel install
 Use `add --runtimes codex` to restrict a saved package to matching runtime adapters. The option
 accepts comma-separated names and can be repeated. When replacing an existing package alias,
 pass its runtime restrictions and selection again; `add` replaces the saved entry.
+
+To change only an existing pinned alias's revision, use its exact configured name and a full
+40-hex commit SHA:
+
+```bash
+agentwheel pin shared-pack 0123456789abcdef0123456789abcdef01234567 --fleet delivery --reason "Pin the reviewed source revision"
+```
+
+`pin` preserves the source URL, driver, adapter, runtime restrictions, installation type (including
+its absence), package order and other fields. It accepts the normal workspace selectors
+`--fleet`, `--local`, `--user`, or `--target-root`, and uses the same mutation policy, durable
+receipts and revision provider as other source mutations. Missing or duplicate aliases, tracking
+packages and abbreviated or symbolic revisions are refused. No sources are fetched or rendered;
+use the normal plan/dry-run before installing the new revision.
+
+Omitting `--select` preserves the complete existing selection. Supplying repeatable or
+comma-separated `--select type/name` replaces the complete selection, including any legacy
+`skills` or imported `selection` field. An explicit empty selection is refused.
+
+For one source mutation with several aliases, use `pin --pins-file reviewed-pins.json --fleet
+delivery --reason "Pin the reviewed source set"`. The JSON file is a nonempty array of objects
+containing only `alias`, `commit` and optional `select`:
+
+```json
+[
+  { "alias": "shared-pack", "commit": "0123456789abcdef0123456789abcdef01234567" },
+  { "alias": "companion-pack", "commit": "abcdef0123456789abcdef0123456789abcdef01", "select": ["skills/companion"] }
+]
+```
+
+The batch cannot be combined with positional pins or `--select`. Every entry is validated before
+the config write; duplicate aliases and extra fields are refused. An omitted `select` preserves
+that package's selection; an explicit list replaces only that package's complete selection. The
+batch shares one durable receipt and revision-provider transaction.
 
 Package authors can mark artifacts as required. Required artifacts are always installed and cannot
 be deselected:

@@ -2,6 +2,8 @@
 
 ## 0.21.3
 
+- Add governed `pin <alias> <commit>` source mutations that preserve configured package fields
+  and optionally replace the complete selection, without fetching sources or touching runtimes.
 - Add explicit `add --runtimes` restrictions, with repeatable and comma-separated adapter names.
   Preserve runtime filtering when replacing a package alias by passing its restrictions again.
 

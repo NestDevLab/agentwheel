@@ -9,6 +9,7 @@ import { isSupportedVersionRange } from "../resolve/semver.js";
 import { mutationPolicySchema } from "./mutation.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { listAdapters } from "../adapters/index.js";
+import { normalizeArtifactSelectors } from "./selection.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
 export const CURRENT_WORKSPACE_SCHEMA_VERSION = 4 as const;
@@ -307,6 +308,49 @@ export async function writeWorkspaceConfig(workspaceRoot: string, config: Worksp
   const path = workspaceConfigPath(workspaceRoot);
   declareMutationPath(path);
   await writeJsonAtomic(path, workspaceConfigSchema.parse(config));
+}
+
+export async function pinConfiguredPackages(
+  workspaceRoot: string,
+  input: unknown,
+): Promise<void> {
+  const pins = z.array(z.object({
+    alias: z.string().min(1),
+    commit: z.string().regex(/^[a-f0-9]{40}$/i, "Pin requires an exact 40-hex commit SHA."),
+    select: z.array(z.string().min(1)).min(1).optional(),
+  }).strict()).min(1).parse(input).map((pin) => {
+    const select = pin.select === undefined ? undefined : normalizeArtifactSelectors(pin.select);
+    if (pin.select !== undefined && !select?.length) throw new Error("Explicit pin selection must not be empty.");
+    return { ...pin, select };
+  });
+  if (new Set(pins.map((pin) => pin.alias)).size !== pins.length) {
+    throw new Error("Pin requires unique configured aliases.");
+  }
+  const path = workspaceConfigPath(workspaceRoot);
+  const config = JSON.parse(await readFile(path, "utf8")) as WorkspaceConfigInput;
+  workspaceConfigSchema.parse(config);
+  const updates = pins.map(({ alias, commit, select }) => {
+    const matches = (config.packages ?? []).filter((pkg) => pkg.name === alias);
+    if (matches.length !== 1) {
+      throw new Error(matches.length === 0 ? `Configured package alias not found: ${alias}` : `Ambiguous configured package alias: ${alias}`);
+    }
+    const pkg = matches[0];
+    if (pkg.mode === "tracking") throw new Error(`Configured package ${alias} is tracking; pin requires pinned mode.`);
+    return { pkg, requestedRef: commit, select };
+  });
+  for (const { pkg, requestedRef, select } of updates) {
+    pkg.requestedRef = requestedRef;
+    if (select !== undefined) {
+      pkg.select = select;
+      delete pkg.skills;
+      delete pkg.selection;
+    }
+  }
+  // Validate without serializing the parsed result: defaults, package extension
+  // fields and unrelated entries must survive this field-only source mutation.
+  workspaceConfigSchema.parse(config);
+  declareMutationPath(path);
+  await writeJsonAtomic(path, config);
 }
 
 export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePackage): WorkspaceConfig {

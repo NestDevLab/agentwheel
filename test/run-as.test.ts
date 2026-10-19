@@ -10,7 +10,7 @@ import type { InstallPlan } from "../src/install/plan.js";
 import { installRootForAdapterInstallationType, installRootForArtifacts } from "../src/model/adapter.js";
 import { resolveTargetStateIdentity } from "../src/model/target-state.js";
 import { workspaceAgentSchema } from "../src/model/workspace.js";
-import { createRunAsTransport, type RunAsRunner } from "../src/transport/run-as.js";
+import { createRunAsTransport, defaultRunAsRunner, type RunAsRunner } from "../src/transport/run-as.js";
 import { resolveRunAsIdentity, type RunAsIdentity } from "../src/transport/run-as-identity.js";
 import { containedReadPath, executeRead } from "../src/transport/run-as-worker.js";
 
@@ -69,24 +69,24 @@ describe("local run-as read transport", () => {
       calls.push({ command, args, input });
       return { stdout: input ? JSON.stringify({ version: 1, result: true }) : "998\n" };
     };
-    const transport = createRunAsTransport(identity(root), runner, "/fixed/run-as-worker.mjs");
+    const transport = createRunAsTransport(identity(root), runner, "/fixed/run-as-worker.mjs", process.execPath);
     expect(await transport.pathExists(join(root, "managed"))).toBe(true);
     expect(calls[0]).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", "service", "-H", "--", "/usr/bin/id", "-u"], input: undefined });
     expect(calls[1]?.command).toBe("/usr/bin/sudo");
     expect(calls[1]?.args).toEqual(["-n", "-u", "service", "-H", "--", "/usr/bin/env", "-i",
-      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(process.env.AGENTWHEEL_RUN_AS_NODE ?? "/usr/bin/node"), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
+      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(process.execPath), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
     expect(JSON.parse(calls[1]!.input!)).toEqual({ version: 1, operation: "pathExists", path: "managed" });
     expect(calls[1]?.args).not.toContain("-c");
-    expect(calls[1]?.args.join(" ")).not.toContain(process.env.HOME ?? "/home/example");
+    expect(calls[1]?.args).not.toContain(`HOME=${process.env.HOME ?? "/home/example"}`);
     await Promise.all([transport.pathExists(join(root, "second")), transport.readFile(join(root, "third"))]);
     expect(calls.filter(({ args }) => args.at(-2) === "/usr/bin/id" && args.at(-1) === "-u")).toHaveLength(1);
   });
 
   it("fails closed on sudo denial, a wrong UID, escaping paths and all writes", async () => {
     const root = await fixture();
-    const denied = createRunAsTransport(identity(root), async () => { throw new Error("a password is required"); }, "/fixed/worker");
+    const denied = createRunAsTransport(identity(root), async () => { throw new Error("a password is required"); }, "/fixed/worker", process.execPath);
     await expect(denied.pathExists(join(root, "x"))).rejects.toThrow(/sudo preflight failed/);
-    const wrong = createRunAsTransport(identity(root), async () => ({ stdout: "0\n" }), "/fixed/worker");
+    const wrong = createRunAsTransport(identity(root), async () => ({ stdout: "0\n" }), "/fixed/worker", process.execPath);
     await expect(wrong.pathExists(join(root, "x"))).rejects.toThrow(/expected 998/);
     await expect(wrong.pathExists("/etc/passwd")).rejects.toThrow(/escapes/);
     await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(/read-only in PR1/);
@@ -105,6 +105,19 @@ describe("local run-as read transport", () => {
     await chmod(executable, 0o666);
     expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable is writable/);
     expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", "node")).toThrow(/must be absolute/);
+  });
+
+  it("times out stalled child processes with and without request input", async () => {
+    const args = ["-e", "setInterval(() => {}, 1000)"];
+    for (const input of [undefined, "request"]) {
+      await expect(defaultRunAsRunner(process.execPath, args, input, 100)).rejects.toMatchObject({ killed: true });
+    }
+  });
+
+  it("rejects directory reads through the worker readFile operation", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "directory"));
+    await expect(executeRead(root, { version: 1, operation: "readFile", path: "directory" })).rejects.toThrow(/regular file/);
   });
 
   it("rejects traversal and symlinks inside the worker, and reads contained inventory", async () => {

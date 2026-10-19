@@ -70,6 +70,22 @@ The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
 `AGENTWHEEL_RUN_AS_NODE` may select another absolute path). The executable and
 worker must be regular files that the service UID cannot own or write. One
 worker copy is staged per process and removed on exit, SIGINT, or SIGTERM.
+Each `sudo` child has a 120-second timeout, and worker `readFile` accepts only
+regular files.
+
+For a dedicated operator and service account, grant only the UID check and the
+read worker invocation. Replace the example account, home, UID/GID, and Node
+path with the resolved values on the target host; the Node path must be its
+canonical absolute path. Validate the resulting file with `visudo -cf` before
+installing it in sudoers. The wildcard covers the random, caller-owned worker
+staging directory and should be granted only to a trusted operator:
+
+```sudoers
+Cmnd_Alias AGENTWHEEL_RUN_AS_ID = /usr/bin/id -u
+Cmnd_Alias AGENTWHEEL_RUN_AS_READ = /usr/bin/env -i HOME=/home/example PATH=/usr/local/bin\:/usr/bin\:/bin /usr/bin/node /tmp/agentwheel-run-as-*/run-as-worker.mjs --root /home/example --uid 998 --gid 998
+operator ALL=(service) NOPASSWD: AGENTWHEEL_RUN_AS_ID, AGENTWHEEL_RUN_AS_READ
+```
+
 `ownership recovery-plan` requires `--fleet` for registered Fleet targets;
 it may omit `--fleet` for a nested workspace outside any Fleet.
 

@@ -58,7 +58,10 @@ export async function executeRead(root: string, request: ReadRequest): Promise<u
     await rejectNestedLinks(path);
     return hashPath(path);
   }
-  if (request.operation === "readFile") return readFile(path, "utf8");
+  if (request.operation === "readFile") {
+    if (!(await lstat(path)).isFile()) throw new Error("Run-as readFile requires a regular file.");
+    return readFile(path, "utf8");
+  }
   return readdir(path);
 }
 

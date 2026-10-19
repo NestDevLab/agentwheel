@@ -10,6 +10,7 @@ import type { TargetTransport } from "./types.js";
 const execFileAsync = promisify(execFile);
 const workerPath = fileURLToPath(new URL("./run-as-worker.js", import.meta.url));
 const nodePath = process.env.AGENTWHEEL_RUN_AS_NODE ?? "/usr/bin/node";
+const runAsTimeoutMs = 120_000;
 const readonlyError = "local-run-as is read-only in PR1; apply and runtime mutations are not supported.";
 const stagedWorkers = new Map<string, { directory: string; worker: string }>();
 let cleanupInstalled = false;
@@ -58,10 +59,10 @@ function stageWorkerOnce(worker: string): string {
 
 export type RunAsRunner = (command: string, args: string[], input?: string) => Promise<{ stdout: string }>;
 
-export async function defaultRunAsRunner(command: string, args: string[], input?: string): Promise<{ stdout: string }> {
-  if (input === undefined) return execFileAsync(command, args, { maxBuffer: 20 * 1024 * 1024 });
+export async function defaultRunAsRunner(command: string, args: string[], input?: string, timeoutMs = runAsTimeoutMs): Promise<{ stdout: string }> {
+  if (input === undefined) return execFileAsync(command, args, { maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs });
   return new Promise((resolveResult, reject) => {
-    const child = execFile(command, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout) => {
+    const child = execFile(command, args, { maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }, (error, stdout) => {
       if (error) reject(error);
       else resolveResult({ stdout: String(stdout) });
     });

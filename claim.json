@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/ownership-release-claim-0211"
-  ],
-  "claimed_at": "2026-10-19T15:00:54+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T15:10:05+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "0eaa5366-bb5d-40cd-b9b6-35bd5ac69679",
-  "publication_scope": "stack:ownership-release-claim-0211",
+  "operation_token": "a16ca164-09a6-41cb-a7e4-ca87d9e0219d",
+  "publication_scope": "close:ownership-release-claim-0211",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/ownership-release-claim-0211",
   "syncwheel_version": "0.45.8"
 }

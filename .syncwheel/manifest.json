@@ -26,7 +26,8 @@
       "ccp011-ownership-supersession",
       "mgt0406-runas-readonly",
       "local-run-as-readonly",
-      "local-run-as-transport"
+      "local-run-as-transport",
+      "catalogue-worker-follow-up"
     ],
     "strategy": "cherry-pick"
   },
@@ -99,6 +100,22 @@
       },
       "meta": {
         "purpose": "Read-only local run-as transport"
+      }
+    },
+    {
+      "id": "catalogue-worker-follow-up",
+      "branch": "fix/catalogue-worker-follow-up",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Document preview snapshots and pin CPU benchmark baseline"
       }
     }
   ],

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, stageSourceRaw } from "../staging/staging.js";
-import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, packagesForTarget, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
+import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, packagesForTarget, pinConfiguredPackages, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
@@ -228,6 +228,7 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver (local, git, skillkit, vercel-skills, mcp-registry, or clawhub)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
+  .option("--runtimes <adapters>", "restrict package runtimes (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "use the user workspace", false)
   .option("--local", "use the nearest local workspace", false)
@@ -250,6 +251,29 @@ program
     const entry = await packageEntryFromSource(source, targetRoot, normalizedOptions);
     await writeWorkspaceConfig(targetRoot, upsertPackage(await readWorkspaceConfig(targetRoot), entry));
     console.log(`Added ${entry.name}. Preview: agentwheel plan - Apply: agentwheel install`);
+  });
+
+program
+  .command("pin")
+  .description("pin configured package aliases without resolving sources or touching runtimes")
+  .argument("[alias]", "exact configured package alias")
+  .argument("[commit]", "exact 40-hex commit SHA")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
+  .option("--pins-file <path>", "JSON array of {alias, commit, select?} pins in one mutation")
+  .option("--select <type/name>", "replace the complete selection (repeatable or comma-separated)", collectSelectOption)
+  .action(async (alias, commit, options) => {
+    const workspaceRoot = await workspaceRootFromOptions(normalizeRuntimeScopeOptions(options));
+    if (options.pinsFile ? alias !== undefined || commit !== undefined || options.select !== undefined : !alias || !commit) {
+      throw new Error("Choose pin <alias> <commit> [--select ...] or pin --pins-file <path>, exclusively.");
+    }
+    const pins: unknown = options.pinsFile
+      ? JSON.parse(await readFile(resolve(options.pinsFile), "utf8"))
+      : [{ alias, commit, ...(options.select === undefined ? {} : { select: options.select }) }];
+    await pinConfiguredPackages(workspaceRoot, pins);
+    console.log("Pinned configured package revisions. Preview: agentwheel plan - Apply: agentwheel install");
   });
 
 program
@@ -1980,6 +2004,7 @@ async function packageEntryFromSource(
   options: {
     driver?: string;
     adapter?: string;
+    runtimes?: string[];
     adapterConfig?: string;
     adapterModule?: string;
     allowAdapterCode?: boolean;
@@ -2070,6 +2095,7 @@ async function packageEntryFromSource(
       source: resolvedSource,
       driver: driverName,
       adapter: adapter.name,
+      runtimes: options.runtimes?.length ? options.runtimes : undefined,
       installationType,
       adapterConfig: options.adapterConfig,
       adapterModule: options.adapterModule,
@@ -4650,7 +4676,7 @@ function shellQuoteArg(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function collectSelectOption(value: string, previous: string[]): string[] {
+function collectSelectOption(value: string, previous: string[] = []): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
 
@@ -5197,7 +5223,7 @@ async function governedCommandContext(command: Command, options: GlobalMutationO
     ? await workspaceContextRootFromOptions(normalized)
     : await workspaceRootFromOptions(normalized);
   const anticipatedPaths: string[] = [];
-  if (path === "add") anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
+  if (path === "add" || path === "pin") anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
   if (path === "remember" && options.runtime) {
     anticipatedPaths.push(join(workspaceRoot, ".agentwheel", "overlays", options.runtime, "instructions.local.md"));
   }

@@ -2225,6 +2225,150 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("pins a configured fleet alias through policy, exact-path commit and durable receipt without normalizing fields", async () => {
+    const workspace = await tempRoot();
+    const stateRoot = join(await tempRoot(), "mutations");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const commit = "a".repeat(40);
+    const config = {
+      schemaVersion: 4,
+      fleetId: "pin-test",
+      mutationPolicy: {
+        reason: "required", journal: "required",
+        revisioning: {
+          mode: "commit-after-verify", allowNoCommitOverride: false, reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+      packages: [{
+        name: "configured", source: "git:https://example.invalid/pack.git#main//pack", driver: "local",
+        adapter: "claude", runtimes: ["codex", "claude"], installationType: "user", mode: "pinned",
+        requestedRef: "1".repeat(40), select: ["skills/retained"], skills: ["legacy"],
+        adapterConfig: "adapter.json", adapterModule: "adapter.mjs", adapterCodeHash: "a".repeat(64),
+        version: "^1.0.0", withSuggestions: true, suggestions: ["companion"],
+        aliases: { "skills/retained": "renamed" }, overrides: ["other::skills/retained"],
+        extension: { untouched: true },
+      }, { name: "implicit", source: "missing-source", requestedRef: "2".repeat(40) },
+      { name: "different", source: "another-missing-source", requestedRef: "3".repeat(40) }],
+    };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(config)}\n`);
+    await git(workspace, ["init", "-b", "main"]);
+    await git(workspace, ["config", "user.name", "Test"]);
+    await git(workspace, ["config", "user.email", "test@example.test"]);
+    await git(workspace, ["add", ".agentwheel/config.json"]);
+    await git(workspace, ["commit", "-m", "Initialize pin fixture"]);
+    await runCli(["fleet", "register", "pin-test", "--root", workspace, "--required-package", "configured"]);
+    const env = { AGENTWHEEL_MUTATION_STATE_ROOT: stateRoot };
+    const pinsPath = join(await tempRoot(), "pins.json");
+    await writeFile(pinsPath, JSON.stringify([
+      { alias: "configured", commit },
+      { alias: "implicit", commit, select: ["skills/implicit"] },
+      { alias: "different", commit: "b".repeat(40), select: ["skills/different", "rules/different.md"] },
+    ]));
+    const args = ["pin", "--pins-file", pinsPath, "--fleet", "pin-test"];
+    const before = await readFile(configPath, "utf8");
+    await expect(runCli(args, { env })).rejects.toThrow(/mutation reason required/i);
+    await expect(runCli(["--reason", "Forbidden override", "--no-commit", ...args], { env })).rejects.toThrow(/does not allow/i);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    const applied = await runCli(["--reason", "Pin reviewed source", "--operation-id", "cli-pin-fixture", ...args], { env });
+    expect(applied.stderr).toContain("Agentwheel mutation cli-pin-fixture: succeeded");
+    config.packages[0].requestedRef = commit;
+    config.packages[1].requestedRef = commit;
+    config.packages[1].select = ["skills/implicit"];
+    config.packages[2].requestedRef = "b".repeat(40);
+    config.packages[2].select = ["skills/different", "rules/different.md"];
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual(config);
+    const receipt = JSON.parse(await readFile(join(stateRoot, "receipts", "cli-pin-fixture.json"), "utf8"));
+    expect(receipt).toMatchObject({ status: "succeeded", commandName: "agentwheel pin", paths: [{ path: ".agentwheel/config.json" }] });
+    expect((await execFileAsync("git", ["show", "--format=", "--name-only", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(".agentwheel/config.json");
+    expect((await execFileAsync("git", ["status", "--short"], { cwd: workspace })).stdout).toBe("");
+    expect(await readdir(join(workspace, ".agentwheel"))).toEqual(["config.json"]);
+    await expect(stat(join(cliHome, ".claude"))).rejects.toThrow();
+    await expect(stat(join(cliHome, ".agents"))).rejects.toThrow();
+  });
+
+  it.each([{ skills: ["legacy"] }, { selection: { export: "reviewed", exclude: ["skills/old"] } }])(
+    "preserves omitted pin selection and replaces the complete explicit selection (%j)", async (selection) => {
+      const workspace = await tempRoot();
+      const configPath = join(workspace, ".agentwheel", "config.json");
+      const entry = { name: "configured", source: "unavailable", driver: "local", mode: "pinned", ...selection };
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, JSON.stringify({ schemaVersion: 3, packages: [entry] }));
+      const commit = "a".repeat(40);
+      const args = ["pin", "configured", commit, "--target-root", workspace];
+      await runCli(args);
+      expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ schemaVersion: 3, packages: [{ ...entry, requestedRef: commit }] });
+      await runCli([...args, "--select", "skills/new,rules/new.md", "--select", "skills/second"]);
+      expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ schemaVersion: 3, packages: [{
+        name: "configured", source: "unavailable", driver: "local", mode: "pinned", requestedRef: commit,
+        select: ["skills/new", "rules/new.md", "skills/second"],
+      }] });
+    },
+  );
+
+  it("refuses invalid pin scope, aliases, revisions and selections before config writes", async () => {
+    const workspace = await tempRoot();
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const packages = [
+      { name: "configured", source: "unavailable", mode: "pinned" },
+      { name: "tracking", source: "unavailable", mode: "tracking" },
+      { name: "duplicate", source: "one" }, { name: "duplicate", source: "two" },
+    ];
+    const before = JSON.stringify({ schemaVersion: 3, packages });
+    await writeFile(configPath, before);
+    const commit = "a".repeat(40);
+    for (const [args, error] of [
+      [["missing", commit], /alias not found/i],
+      [["duplicate", commit], /ambiguous.*alias/i],
+      [["tracking", commit], /requires pinned mode/i],
+      [["configured", "main"], /40-hex/],
+      [["configured", "a".repeat(39)], /40-hex/],
+      [["configured", "g".repeat(40)], /40-hex/],
+      [["configured", commit, "--select", ""], /too small/i],
+      [["configured", commit, "--select", "invalid"], /invalid artifact selector/i],
+      [[], /choose pin/i],
+      [["configured", commit, "--user", "--fleet", "unknown"], /exactly one workspace selector/i],
+    ] as const) {
+      await expect(runCli(["pin", ...args, "--target-root", workspace])).rejects.toThrow(error);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    const pinsPath = join(await tempRoot(), "pins.json");
+    const valid = { alias: "configured", commit };
+    for (const pins of [
+      [], [valid, valid], [valid, { alias: "missing", commit }],
+      [valid, { alias: "tracking", commit }], [valid, { alias: "configured", commit: "main" }],
+      [valid, { alias: "tracking", commit, source: "injected" }],
+      [valid, { alias: "tracking", commit, runtimes: ["claude"] }],
+      [valid, { alias: "tracking", commit, select: [] }],
+      [valid, { alias: "tracking", commit, select: ["invalid"] }],
+    ]) {
+      await writeFile(pinsPath, JSON.stringify(pins));
+      await expect(runCli(["pin", "--pins-file", pinsPath, "--target-root", workspace])).rejects.toThrow();
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(pinsPath, JSON.stringify([valid]));
+    for (const args of [["configured", commit], ["--select", "skills/new"]]) {
+      await expect(runCli(["pin", ...args, "--pins-file", pinsPath, "--target-root", workspace])).rejects.toThrow(/exclusively/i);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+  }, 30_000);
+
+  it("validates repeatable runtime restrictions while leaving omitted restrictions unset", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("runtime-option-skill", "runtime-option");
+    const add = ["add", source, "--name", "runtime-option", "--adapter", "codex", "--target-root", workspace];
+    await runCli([...add, "--runtimes", "codex,claude", "--runtimes", "openclaw"]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const saved = await readFile(configPath, "utf8");
+    expect(JSON.parse(saved).packages[0].runtimes).toEqual(["claude", "codex", "openclaw"]);
+    await expect(runCli([...add, "--runtimes", "unknown-adapter"])).rejects.toThrow("Unknown package runtime adapter");
+    expect(await readFile(configPath, "utf8")).toBe(saved);
+    await runCli(add);
+    expect(JSON.parse(await readFile(configPath, "utf8")).packages[0]).not.toHaveProperty("runtimes");
+  });
+
   it("keeps restricted package roots out of agent status, update, and install plans", async () => {
     const workspace = await tempRoot();
     const claudeRoot = await tempRoot("agentwheel-restricted-claude-");
@@ -2232,7 +2376,7 @@ describe("CLI verb redesign", () => {
     const source = await skillPackageFixture("restricted-skill", "restricted");
     const config = {
       schemaVersion: 3,
-      packages: [{ name: "restricted", source, driver: "local", adapter: "claude", mode: "tracking", runtimes: ["claude"] }],
+      packages: [],
       agents: {
         claude: { adapter: "claude", root: claudeRoot, installationType: "local" },
         codex: { adapter: "codex", root: codexRoot, installationType: "local" },
@@ -2241,6 +2385,22 @@ describe("CLI verb redesign", () => {
     };
     await mkdir(join(workspace, ".agentwheel"), { recursive: true });
     await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    await runCli([
+      "add", source, "--name", "restricted", "--adapter", "claude", "--mode", "tracking",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    // Replacing the alias must retain the explicitly supplied restriction and selection.
+    const replacement = await skillPackageFixture("restricted-skill", "updated");
+    await runCli([
+      "add", replacement, "--name", "restricted", "--adapter", "claude", "--mode", "pinned",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    const saved = JSON.parse(await readFile(join(workspace, ".agentwheel", "config.json"), "utf8"));
+    expect(saved.packages).toHaveLength(1);
+    expect(saved.packages[0]).toMatchObject({
+      source: replacement, mode: "pinned", runtimes: ["claude"], select: ["skills/restricted-skill"],
+    });
 
     const profile = await runCli(["install", "--profile", "all", "--target-root", workspace, "--dry-run"]);
     expect(profile.stdout).toContain("(no packages)");

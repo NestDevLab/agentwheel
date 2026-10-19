@@ -8,7 +8,7 @@ import { buildCatalogueAssets, readCatalogueSources, CATALOGUE_URL, VERCEL_INDEX
 import { TEMPLATE_PATH } from "./catalogue-assets.js";
 
 const { values } = parseArgs({ options: {
-  "baseline-ref": { type: "string", default: "origin/main" },
+  "baseline-ref": { type: "string", default: "432bbbb2c612641c2b7517a3e439c1c7bf07d704" },
   catalogue: { type: "string" }, "vercel-index": { type: "string" },
 } });
 const root = dirname(fileURLToPath(import.meta.url));

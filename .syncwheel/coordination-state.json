@@ -3,7 +3,7 @@
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
-    "refs/heads/fix/catalogue-worker-follow-up": "eba449614fdfd87009506a826bd3ce3edcd95d4c",
+    "refs/heads/fix/catalogue-worker-follow-up": "2dc4bcd6afa30c68f628cd893add5cae14089d15",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/fix/tmpdir-staging-cleanup": "bdbd68c901783d75f318f2dc9d7683f760647cfa",
@@ -38,7 +38,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T09:01:57+00:00",
+  "created_at": "2026-10-19T09:03:08+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -138,8 +138,7 @@
       "stacks": [
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
-        "local-run-as-transport",
-        "catalogue-worker-follow-up"
+        "local-run-as-transport"
       ],
       "strategy": "cherry-pick"
     },
@@ -184,30 +183,16 @@
         "id": "local-run-as-transport",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "fix/catalogue-worker-follow-up",
-        "commits": [
-          "d1645b160671643ca3467f0ebcf1f1c10fe05e0a"
-        ],
-        "id": "catalogue-worker-follow-up",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "e684a901-2c84-42b7-9373-3fbf6c62914c",
-  "parent_state": "3865b6f67430db5cdc0a7361682f036ed40b1721",
+  "operation_token": "a95997b5-0e0a-46f2-a17f-d6cee16f2855",
+  "parent_state": "c7ef1ca88220f1349149bced92df4c2c7fe8a210",
   "projection_status": "partial",
-  "publication_id": "2a306b5d-0191-41d1-8e09-dc6d97cd7ed5",
-  "publication_scope": "close:mgt0406-runas-readonly",
+  "publication_id": "1dde470e-21b5-4e9a-98b4-063629f4e51a",
+  "publication_scope": "close:catalogue-worker-follow-up",
   "schema_version": 2,
   "syncwheel_version": "0.45.7",
   "tombstones": [
@@ -706,6 +691,14 @@
       "ref": "refs/heads/pr/mgt0406-runas-readonly",
       "remote_tip": null,
       "stack": "mgt0406-runas-readonly"
+    },
+    {
+      "branch": "fix/catalogue-worker-follow-up",
+      "closed_at": "2026-10-19T09:02:58+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/fix/catalogue-worker-follow-up",
+      "remote_tip": null,
+      "stack": "catalogue-worker-follow-up"
     }
   ]
 }

@@ -20,6 +20,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/mgt0406-runas-readonly": "99f0c6918792ae62fd1537c1b2b8da3ee0fedb27",
+    "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
@@ -39,7 +40,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T14:18:17+00:00",
+  "created_at": "2026-10-19T14:43:47+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -77,6 +78,7 @@
     "refs/heads/pr/mgt0406-runas-readonly": "ff7582fd517674764beab6730b8d7e4309c2c91e",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
+    "refs/heads/pr/ownership-release-claim": null,
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
@@ -174,11 +176,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "1af82039-0f3c-4f1b-a33f-ed0b2833e10b",
-  "parent_state": "dd7912538f017c80035ab6c78878b041a7b4cc53",
+  "operation_token": "ca429c47-7f9a-4054-9b5e-e2bf16abf1cb",
+  "parent_state": "23e49f30960f168d9c02d93d347cdc5a61a07730",
   "projection_status": "partial",
-  "publication_id": "d3acecbc-b7fd-4132-8f74-c3525d55d3b7",
-  "publication_scope": "close:journal-compatibility",
+  "publication_id": "40cabecd-bacc-4035-a524-6105521442a6",
+  "publication_scope": "close:ownership-release-claim",
   "schema_version": 2,
   "syncwheel_version": "0.45.8",
   "tombstones": [
@@ -701,6 +703,14 @@
       "ref": "refs/heads/pr/journal-compatibility",
       "remote_tip": null,
       "stack": "journal-compatibility"
+    },
+    {
+      "branch": "pr/ownership-release-claim",
+      "closed_at": "2026-10-19T14:43:39+00:00",
+      "reason": "abandoned",
+      "ref": "refs/heads/pr/ownership-release-claim",
+      "remote_tip": null,
+      "stack": "ownership-release-claim"
     }
   ]
 }

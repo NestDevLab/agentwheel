@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -25,7 +25,8 @@
     "stacks": [
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
-      "mgt0478-add-runtimes"
+      "mgt0478-add-runtimes",
+      "pin-package-declarations"
     ],
     "strategy": "cherry-pick"
   },
@@ -81,6 +82,22 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "pin-package-declarations",
+      "branch": "pr/pin-package-declarations",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Replace package declarations through governed native pin without source resolution"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

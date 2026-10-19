@@ -1,12 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/fix/catalogue-worker-cpu",
-    "refs/heads/pr/local-run-as-transport"
-  ],
-  "claimed_at": "2026-10-19T07:14:22+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T07:41:02+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "9ba850f3-6bf1-439c-b348-6748e8bf963d",
-  "publication_scope": "partial",
+  "operation_token": "217eda96-3288-4c53-ae29-c861d025bb60",
+  "publication_scope": "close:catalogue-worker-cpu",
+  "reason": "absorbed",
   "source_ref": "refs/heads/fix/catalogue-worker-cpu",
   "syncwheel_version": "0.45.7"
 }

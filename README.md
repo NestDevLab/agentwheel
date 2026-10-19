@@ -583,6 +583,10 @@ agentwheel plan
 agentwheel install
 ```
 
+Use `add --runtimes codex` to restrict a saved package to matching runtime adapters. The option
+accepts comma-separated names and can be repeated. When replacing an existing package alias,
+pass its runtime restrictions and selection again; `add` replaces the saved entry.
+
 Package authors can mark artifacts as required. Required artifacts are always installed and cannot
 be deselected:
 

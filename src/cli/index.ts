@@ -228,6 +228,7 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver (local, git, skillkit, vercel-skills, mcp-registry, or clawhub)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
+  .option("--runtimes <adapters>", "restrict package runtimes (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "use the user workspace", false)
   .option("--local", "use the nearest local workspace", false)
@@ -1980,6 +1981,7 @@ async function packageEntryFromSource(
   options: {
     driver?: string;
     adapter?: string;
+    runtimes?: string[];
     adapterConfig?: string;
     adapterModule?: string;
     allowAdapterCode?: boolean;
@@ -2070,6 +2072,7 @@ async function packageEntryFromSource(
       source: resolvedSource,
       driver: driverName,
       adapter: adapter.name,
+      runtimes: options.runtimes?.length ? options.runtimes : undefined,
       installationType,
       adapterConfig: options.adapterConfig,
       adapterModule: options.adapterModule,

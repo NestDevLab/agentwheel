@@ -2225,6 +2225,20 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("validates repeatable runtime restrictions while leaving omitted restrictions unset", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("runtime-option-skill", "runtime-option");
+    const add = ["add", source, "--name", "runtime-option", "--adapter", "codex", "--target-root", workspace];
+    await runCli([...add, "--runtimes", "codex,claude", "--runtimes", "openclaw"]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const saved = await readFile(configPath, "utf8");
+    expect(JSON.parse(saved).packages[0].runtimes).toEqual(["claude", "codex", "openclaw"]);
+    await expect(runCli([...add, "--runtimes", "unknown-adapter"])).rejects.toThrow("Unknown package runtime adapter");
+    expect(await readFile(configPath, "utf8")).toBe(saved);
+    await runCli(add);
+    expect(JSON.parse(await readFile(configPath, "utf8")).packages[0]).not.toHaveProperty("runtimes");
+  });
+
   it("keeps restricted package roots out of agent status, update, and install plans", async () => {
     const workspace = await tempRoot();
     const claudeRoot = await tempRoot("agentwheel-restricted-claude-");
@@ -2232,7 +2246,7 @@ describe("CLI verb redesign", () => {
     const source = await skillPackageFixture("restricted-skill", "restricted");
     const config = {
       schemaVersion: 3,
-      packages: [{ name: "restricted", source, driver: "local", adapter: "claude", mode: "tracking", runtimes: ["claude"] }],
+      packages: [],
       agents: {
         claude: { adapter: "claude", root: claudeRoot, installationType: "local" },
         codex: { adapter: "codex", root: codexRoot, installationType: "local" },
@@ -2241,6 +2255,22 @@ describe("CLI verb redesign", () => {
     };
     await mkdir(join(workspace, ".agentwheel"), { recursive: true });
     await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    await runCli([
+      "add", source, "--name", "restricted", "--adapter", "claude", "--mode", "tracking",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    // Replacing the alias must retain the explicitly supplied restriction and selection.
+    const replacement = await skillPackageFixture("restricted-skill", "updated");
+    await runCli([
+      "add", replacement, "--name", "restricted", "--adapter", "claude", "--mode", "pinned",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    const saved = JSON.parse(await readFile(join(workspace, ".agentwheel", "config.json"), "utf8"));
+    expect(saved.packages).toHaveLength(1);
+    expect(saved.packages[0]).toMatchObject({
+      source: replacement, mode: "pinned", runtimes: ["claude"], select: ["skills/restricted-skill"],
+    });
 
     const profile = await runCli(["install", "--profile", "all", "--target-root", workspace, "--dry-run"]);
     expect(profile.stdout).toContain("(no packages)");

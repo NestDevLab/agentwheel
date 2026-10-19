@@ -25,7 +25,8 @@
     "stacks": [
       "ccp011-ownership-supersession",
       "mgt0406-runas-readonly",
-      "local-run-as-readonly"
+      "local-run-as-readonly",
+      "catalogue-worker-cpu"
     ],
     "strategy": "cherry-pick"
   },
@@ -82,6 +83,22 @@
       },
       "meta": {
         "purpose": "Read-only local run-as transport"
+      }
+    },
+    {
+      "id": "catalogue-worker-cpu",
+      "branch": "fix/catalogue-worker-cpu",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Bound catalogue preview CPU with build-time metadata assets"
       }
     }
   ],

@@ -1,9 +1,11 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/local-run-as-readonly": "432bbbb2c612641c2b7517a3e439c1c7bf07d704"
+    "refs/heads/fix/catalogue-worker-cpu": "0b01148fcace2a23a1d2b9aad1e774f46277cc3f",
+    "refs/heads/pr/local-run-as-transport": "a7f3bc27676ad89ba3c2b142132df1d91ca4de09"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
+    "refs/heads/fix/catalogue-worker-cpu": "9860a9f2a8d5997085a8a103e40bdea660205235",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/fix/tmpdir-staging-cleanup": "bdbd68c901783d75f318f2dc9d7683f760647cfa",
@@ -15,6 +17,7 @@
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
+    "refs/heads/pr/local-run-as-transport": "a46053e47e77a84afb0574abe85c647aaefeb020",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/mgt0406-runas-readonly": "3c3c26f4af6156e3f23626156d2329e5103fb467",
@@ -37,11 +40,12 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-18T12:18:14+00:00",
+  "created_at": "2026-10-19T07:14:22+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
     "refs/heads/feat/ownership-retire-stale": "114910594f0523ca2193d5fd7d702b59d91f506b",
+    "refs/heads/fix/catalogue-worker-cpu": "0b01148fcace2a23a1d2b9aad1e774f46277cc3f",
     "refs/heads/fix/fleet-composite-ownership": "fc621282ff58924fa3cf8818eed4d7a8df1e3673",
     "refs/heads/fix/focused-skill-graph-preservation": "2b1a89862f99c0eed6063ba2c196806152b524fe",
     "refs/heads/fix/no-deps-selected-composition": "7d65df0d58576c4b46828c49f8c4be9f43bfc6eb",
@@ -65,6 +69,7 @@
     "refs/heads/pr/legacy-graph-only-recovery": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
     "refs/heads/pr/legacy-recovery-report": "54e24e13168c49647c8aa74aabbde499b2204146",
     "refs/heads/pr/legacy-state-recovery-02011": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
+    "refs/heads/pr/local-run-as-transport": "a7f3bc27676ad89ba3c2b142132df1d91ca4de09",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "f235868bf89b9828ee11ab5edd72db47ac9749e1",
@@ -134,7 +139,9 @@
       "stacks": [
         "ccp011-ownership-supersession",
         "mgt0406-runas-readonly",
-        "local-run-as-readonly"
+        "local-run-as-readonly",
+        "catalogue-worker-cpu",
+        "local-run-as-transport"
       ],
       "strategy": "cherry-pick"
     },
@@ -179,18 +186,46 @@
         "integration_branch": "main-integration",
         "state": "draft",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "fix/catalogue-worker-cpu",
+        "commits": [
+          "0b01148fcace2a23a1d2b9aad1e774f46277cc3f"
+        ],
+        "id": "catalogue-worker-cpu",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/local-run-as-transport",
+        "commits": [
+          "a7f3bc27676ad89ba3c2b142132df1d91ca4de09"
+        ],
+        "id": "local-run-as-transport",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "af9cf5c8-6695-49e6-8abc-3eeaca0971d1",
-  "parent_state": "edf9e835dac2695e856a290bb2996013df25006a",
+  "operation_token": "9ba850f3-6bf1-439c-b348-6748e8bf963d",
+  "parent_state": "d801743fabaad0ea7baf585209975909d24dfabf",
   "projection_status": "partial",
-  "publication_id": "b46d7437-4e15-43f4-afd7-64ad82952a03",
-  "publication_scope": "create:local-run-as-readonly",
+  "publication_id": "c51ce67e-d048-4460-8d4f-2a24eefccf9e",
+  "publication_scope": "partial",
   "schema_version": 2,
-  "syncwheel_version": "0.45.6",
+  "syncwheel_version": "0.45.7",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

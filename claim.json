@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/mgt0406-runas-readonly"
-  ],
-  "claimed_at": "2026-10-16T21:34:39+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T09:01:57+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "42cd6a53-258e-406b-ae46-fe7378327d9a",
-  "publication_scope": "stack:mgt0406-runas-readonly",
+  "operation_token": "e684a901-2c84-42b7-9373-3fbf6c62914c",
+  "publication_scope": "close:mgt0406-runas-readonly",
+  "reason": "superseded by local-run-as-transport (PR #171)",
   "source_ref": "refs/heads/pr/mgt0406-runas-readonly",
-  "syncwheel_version": "0.45.6"
+  "syncwheel_version": "0.45.7"
 }

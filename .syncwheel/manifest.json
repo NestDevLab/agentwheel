@@ -24,8 +24,7 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly",
-      "ownership-release-claim"
+      "local-run-as-readonly"
     ],
     "strategy": "cherry-pick"
   },
@@ -62,20 +61,6 @@
       "state": "draft",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "ownership-release-claim",
-      "branch": "pr/ownership-release-claim",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",

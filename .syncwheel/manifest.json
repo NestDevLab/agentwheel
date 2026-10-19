@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -24,8 +24,7 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly",
-      "ownership-release-claim-0211"
+      "local-run-as-readonly"
     ],
     "strategy": "cherry-pick"
   },
@@ -60,22 +59,6 @@
         "enabled": false
       },
       "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/ownership-release-claim-0211",
-      "commits": [
-        "2ab2f9c6bdef7329f564696888a1772f7e3b9d41"
-      ],
-      "id": "ownership-release-claim-0211",
-      "integration_branch": "main-integration",
-      "meta": {},
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
     }

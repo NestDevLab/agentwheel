@@ -1,11 +1,8 @@
 {
-  "changed_refs": {
-    "refs/heads/fix/catalogue-worker-cpu": "0b01148fcace2a23a1d2b9aad1e774f46277cc3f",
-    "refs/heads/pr/local-run-as-transport": "a7f3bc27676ad89ba3c2b142132df1d91ca4de09"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
-    "refs/heads/fix/catalogue-worker-cpu": "9860a9f2a8d5997085a8a103e40bdea660205235",
+    "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/fix/tmpdir-staging-cleanup": "bdbd68c901783d75f318f2dc9d7683f760647cfa",
@@ -40,7 +37,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T07:14:22+00:00",
+  "created_at": "2026-10-19T07:41:02+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -140,7 +137,6 @@
         "ccp011-ownership-supersession",
         "mgt0406-runas-readonly",
         "local-run-as-readonly",
-        "catalogue-worker-cpu",
         "local-run-as-transport"
       ],
       "strategy": "cherry-pick"
@@ -193,20 +189,6 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "fix/catalogue-worker-cpu",
-        "commits": [
-          "0b01148fcace2a23a1d2b9aad1e774f46277cc3f"
-        ],
-        "id": "catalogue-worker-cpu",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
         "branch": "pr/local-run-as-transport",
         "commits": [
           "a7f3bc27676ad89ba3c2b142132df1d91ca4de09"
@@ -219,11 +201,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "9ba850f3-6bf1-439c-b348-6748e8bf963d",
-  "parent_state": "d801743fabaad0ea7baf585209975909d24dfabf",
+  "operation_token": "217eda96-3288-4c53-ae29-c861d025bb60",
+  "parent_state": "4c258294f3004d0959eb0dde2850cd434068d239",
   "projection_status": "partial",
-  "publication_id": "c51ce67e-d048-4460-8d4f-2a24eefccf9e",
-  "publication_scope": "partial",
+  "publication_id": "b4b1df2a-6a27-42eb-8952-dffa49a8fdfd",
+  "publication_scope": "close:catalogue-worker-cpu",
   "schema_version": 2,
   "syncwheel_version": "0.45.7",
   "tombstones": [
@@ -706,6 +688,14 @@
       "ref": "refs/heads/syncwheel/draft/mgt0406-runas-readonly",
       "remote_tip": "967b645c95f4829f8079043740b0ae78e4c45555",
       "stack": "mgt0406-runas-readonly"
+    },
+    {
+      "branch": "fix/catalogue-worker-cpu",
+      "closed_at": "2026-10-19T07:40:52+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/fix/catalogue-worker-cpu",
+      "remote_tip": null,
+      "stack": "catalogue-worker-cpu"
     }
   ]
 }

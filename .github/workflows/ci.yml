@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NestDevLab/syncwheel
-          ref: e856a87d588289ba5c880fdc8362a405051d4ddb
+          ref: acd4c69058b2841fe7aa0b60542e87258821a875 # 0.46.0: journal revision-provider support
           path: syncwheel
 
       - name: Verify Syncwheel provider source

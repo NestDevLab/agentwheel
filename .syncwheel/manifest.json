@@ -24,7 +24,8 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly"
+      "local-run-as-readonly",
+      "journal-compatibility"
     ],
     "strategy": "cherry-pick"
   },
@@ -61,6 +62,22 @@
       "state": "draft",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "journal-compatibility",
+      "branch": "pr/journal-compatibility",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Path-scoped revision leases and mutation isolation"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

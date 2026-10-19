@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -64,22 +64,22 @@
       "target_remote": "origin"
     },
     {
-      "id": "journal-compatibility",
-      "branch": "pr/journal-compatibility",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/journal-compatibility",
       "commits": [
         "6975c5550f0cae8ce1defee4f5268d37d26c1c02"
       ],
-      "state": "published",
+      "id": "journal-compatibility",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Path-scoped revision leases and mutation isolation"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Path-scoped revision leases and mutation isolation"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

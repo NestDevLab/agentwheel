@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -69,58 +69,58 @@
       "target_remote": "origin"
     },
     {
-      "id": "local-run-as-readonly",
-      "branch": "syncwheel/draft/local-run-as-readonly",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "syncwheel/draft/local-run-as-readonly",
       "commits": [],
-      "state": "draft",
+      "id": "local-run-as-readonly",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "local-run-as-transport",
-      "branch": "pr/local-run-as-transport",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/local-run-as-transport",
       "commits": [
         "a7f3bc27676ad89ba3c2b142132df1d91ca4de09",
         "5806f32b72b847992819dcd883145daba8235bba",
         "09ab3252365c6d65b10b0fa0eb5f19b73fae90ae"
       ],
-      "state": "published",
+      "id": "local-run-as-transport",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "catalogue-worker-follow-up",
-      "branch": "fix/catalogue-worker-follow-up",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "fix/catalogue-worker-follow-up",
       "commits": [
         "d1645b160671643ca3467f0ebcf1f1c10fe05e0a"
       ],
-      "state": "published",
+      "id": "catalogue-worker-follow-up",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Document preview snapshots and pin CPU benchmark baseline"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Document preview snapshots and pin CPU benchmark baseline"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

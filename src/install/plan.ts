@@ -152,7 +152,7 @@ export async function createInstallPlan(
     warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
   });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport);
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   const desired: InstallOperation[] = [];
@@ -194,7 +194,7 @@ export async function createCombinedInstallPlan(
     warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
   });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport);
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   for (const artifact of installableArtifacts) {

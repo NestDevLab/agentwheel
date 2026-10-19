@@ -1,8 +1,9 @@
-export type TransportKind = "local" | "ssh";
+export type TransportKind = "local" | "ssh" | "local-run-as";
 
 export interface TargetTransport {
   kind: TransportKind;
   description: string;
+  homeRoot?: string;
   pathExists(path: string): Promise<boolean>;
   mkdirExclusive(path: string): Promise<void>;
   hashPath(path: string): Promise<string>;

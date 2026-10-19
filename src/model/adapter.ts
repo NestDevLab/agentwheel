@@ -183,7 +183,7 @@ export function installRootForArtifacts(
   targetRoot: string,
   installationType: string,
   artifactTypes: ArtifactType[],
-  isSsh = false,
+  context: InstallRootContext = { kind: "local" },
 ): string {
   const roots = new Set(
     [...new Set(artifactTypes.filter((type) => type !== "fragments"))]
@@ -192,15 +192,29 @@ export function installRootForArtifacts(
   if (roots.has("home") && roots.has("target")) {
     throw new Error(`Installation type '${installationType}' for ${adapter.name} mixes home-rooted and target-rooted artifacts.`);
   }
-  // ssh: home-rooted artifacts live under the REMOTE home (= targetRoot/agent.root), not the orchestrator's local os.homedir().
-  return roots.has("home") && !isSsh ? userHomeRoot() : targetRoot;
+  return resolveInstallRoot(roots, targetRoot, context);
+}
+
+export interface InstallRootContext {
+  kind: "local" | "ssh" | "local-run-as";
+  homeRoot?: string;
+}
+
+function resolveInstallRoot(roots: Set<string>, targetRoot: string, context: InstallRootContext): string {
+  if (!roots.has("home")) return targetRoot;
+  if (context.kind === "local") return userHomeRoot();
+  if (context.kind === "ssh") return targetRoot;
+  if (!context.homeRoot || targetRoot !== context.homeRoot) {
+    throw new Error(`Local run-as home-rooted artifacts require target root to equal the service account home (${context.homeRoot ?? "missing"}).`);
+  }
+  return context.homeRoot;
 }
 
 export function installRootForAdapterInstallationType(
   adapter: AdapterConfig,
   targetRoot: string,
   installationType: string,
-  isSsh = false,
+  context: InstallRootContext = { kind: "local" },
 ): string {
   const roots = new Set<string>();
   for (const registry of Object.values(adapter.targets)) {
@@ -210,8 +224,7 @@ export function installRootForAdapterInstallationType(
   if (roots.has("home") && roots.has("target")) {
     throw new Error(`Installation type '${installationType}' for ${adapter.name} mixes home-rooted and target-rooted artifacts.`);
   }
-  // ssh: home-rooted artifacts live under the REMOTE home (= targetRoot/agent.root), not the orchestrator's local os.homedir().
-  return roots.has("home") && !isSsh ? userHomeRoot() : targetRoot;
+  return resolveInstallRoot(roots, targetRoot, context);
 }
 
 function userHomeRoot(): string {

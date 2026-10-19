@@ -1,0 +1,11 @@
+{
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T15:30:05+00:00",
+  "closed": true,
+  "coordination_id": "default",
+  "operation_token": "e4872bc3-be36-431c-9008-6478122cbe7f",
+  "publication_scope": "close:adopt-legacy-managed-block-0212",
+  "reason": "abandoned empty registration; source captured in legacy-managed-block-0212",
+  "source_ref": "refs/heads/pr/adopt-legacy-managed-block-0212",
+  "syncwheel_version": "0.46.1"
+}

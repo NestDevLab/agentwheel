@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/local-run-as-transport"
-  ],
-  "claimed_at": "2026-10-19T09:05:42+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T09:14:52+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "03faf6ce-71e5-46d0-a52e-5785feb32ae1",
-  "publication_scope": "stack:local-run-as-transport",
+  "operation_token": "b0665547-4241-4f3e-bbad-e1d0f428acc7",
+  "publication_scope": "close:local-run-as-transport",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/local-run-as-transport",
   "syncwheel_version": "0.45.7"
 }

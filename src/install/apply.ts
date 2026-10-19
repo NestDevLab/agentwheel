@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { declareMutationPath } from "../mutation/declarations.js";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -12,9 +12,10 @@ import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
-import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, listInstallManifests, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
+import { installManifestPath } from "./paths.js";
 import {
   acquireApplyLock,
   applyJournalPath,
@@ -30,6 +31,11 @@ import {
   type ApplyLockOptions,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
+  assertNoSymlinkPath,
+  metadataAuditPath,
+  metadataRuntimePath,
+  ownershipRuntimeSnapshot,
+  syncMetadataPath,
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
@@ -415,11 +421,21 @@ async function commitJournalState(
 ): Promise<InstallManifest> {
   const manifest = withManifestRevision({
     ...journal.manifest,
-    generatedAt: now,
+    generatedAt: journal.metadataAudit ? journal.createdAt : now,
     entries: entries ? entries.sort((a, b) => a.path.localeCompare(b.path)) : journal.manifest.entries,
   });
 
-  if (journal.mode === "uninstall" && manifest.entries.length === 0) {
+  if (journal.metadataAudit) {
+    await assertMetadataAuditGuards(journal, manifest, transport);
+    // Intent lands first. A crash leaves an explicit pending journal, never an unaudited release.
+    for (const file of journal.metadataAudit.auditFiles) {
+      const path = metadataAuditPath(journal.metadataAudit, file.path);
+      declareMutationPath(path);
+      await writeAuditFileExclusive(path, file.content);
+    }
+    await assertMetadataAuditGuards(journal, manifest, transport);
+  }
+  if (journal.mode === "uninstall" && manifest.entries.length === 0 && !journal.metadataAudit) {
     await removeStateFiles(journal.targetRoot, journal.adapter, transport, {
       installationType: journal.installationType,
       stateKey: journal.stateKey,
@@ -430,6 +446,9 @@ async function commitJournalState(
       stateKey: journal.stateKey,
     });
     await writeInstallManifest(manifest, transport);
+    if (journal.metadataAudit) await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
+      installationType: journal.installationType, stateKey: journal.stateKey,
+    }));
   }
   if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
   if (journal.stateRemoveKey && journal.stateRemoveKey !== journal.stateKey) {
@@ -447,6 +466,7 @@ async function commitJournalState(
     await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
   }
   const verifiedManifest = await assertCommittedJournalState(journal, manifest, transport);
+  if (journal.metadataAudit) await assertMetadataAuditGuards(journal, manifest, transport, true);
   await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
@@ -467,7 +487,7 @@ async function assertCommittedJournalState(
 ): Promise<InstallManifest | undefined> {
   const scope = { installationType: journal.installationType, stateKey: journal.stateKey };
   const actualManifest = await readInstallManifest(journal.targetRoot, journal.adapter, transport, scope);
-  if (journal.mode === "uninstall" && expectedManifest.entries.length === 0) {
+  if (journal.mode === "uninstall" && expectedManifest.entries.length === 0 && !journal.metadataAudit) {
     if (actualManifest) throw new Error("Uninstall postcheck found an install manifest that should have been removed.");
   } else if (!actualManifest) {
     throw new Error(
@@ -506,6 +526,91 @@ async function assertCommittedJournalState(
     }
   }
   return actualManifest;
+}
+
+/** Both initial commit and recovery accept only the exact reviewed before/after manifest states. */
+async function assertMetadataAuditGuards(
+  journal: ApplyJournal,
+  after: InstallManifestV2,
+  transport: TargetTransport,
+  requireAfter = false,
+): Promise<void> {
+  const audit = journal.metadataAudit!;
+  const sha = /^[a-f0-9]{64}$/;
+  if (transport.kind !== "local" || audit.kind !== "ownership-release"
+    || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
+    || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
+    || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
+    || journal.sourceLock || journal.graphLock || journal.graphLockPath || journal.graphLockRemovePath
+    || journal.stateRemoveKey || journal.workspaceConfigPath || journal.workspaceConfig
+    || !sha.test(audit.planDigest) || !sha.test(journal.baseRevision ?? "")
+    || audit.auditFiles.length !== 1 || audit.runtime.length !== 1 || !audit.inventory.length) {
+    throw new Error("Invalid metadata-audit transaction; no state was committed.");
+  }
+  await assertNoSymlinkPath(journal.targetRoot);
+  await assertNoSymlinkPath(join(journal.targetRoot, ".agentwheel"));
+  const inventory = await listInstallManifests(journal.targetRoot, undefined, transport);
+  const expected = new Map(audit.inventory.map((item) => [item.stateKey, item.revision]));
+  if (expected.size !== audit.inventory.length || inventory.length !== expected.size
+    || expected.get(journal.stateKey!) !== journal.baseRevision) {
+    throw new Error("Metadata-audit inventory changed; recovery requires the reviewed state.");
+  }
+  for (const item of inventory) {
+    await assertNoSymlinkPath(item.path);
+    const before = expected.get(item.stateKey);
+    const accepted = item.stateKey === journal.stateKey
+      ? (item.manifest.revision === after.revision || (!requireAfter && item.manifest.revision === before))
+      : item.manifest.revision === before;
+    if (!before || !sha.test(before) || !accepted) {
+      throw new Error(`Metadata-audit inventory/manifest CAS failed at ${item.stateKey}; concurrent state was preserved.`);
+    }
+  }
+  for (const guard of audit.runtime) {
+    const path = metadataRuntimePath(journal.targetRoot, guard.path);
+    if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
+      || await ownershipRuntimeSnapshot(path) !== guard.snapshotDigest
+      || await transport.hashPath(path) !== guard.hash) {
+      throw new Error(`Metadata-audit runtime CAS failed at ${guard.path}; runtime was preserved.`);
+    }
+  }
+  for (const file of audit.auditFiles) {
+    const path = metadataAuditPath(audit, file.path);
+    await assertNoSymlinkPath(path);
+    if (!sha.test(file.sha256) || createHash("sha256").update(file.content).digest("hex") !== file.sha256) {
+      throw new Error("Metadata-audit content digest is invalid.");
+    }
+    try {
+      if (await readFile(path, "utf8") !== file.content) throw new Error(`Metadata-audit file changed: ${path}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || requireAfter) throw error;
+    }
+  }
+}
+
+async function writeAuditFileExclusive(path: string, content: string): Promise<void> {
+  await assertNoSymlinkPath(path);
+  await mkdir(dirname(path), { recursive: true });
+  await syncMetadataPath(dirname(dirname(path)), true);
+  const temporary = `${path}.pending-${randomUUID()}`;
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      // Unlike rename, link never replaces an independently created destination.
+      await link(temporary, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || await readFile(path, "utf8") !== content) throw error;
+    }
+    const directory = await open(dirname(path), "r");
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 function canonicalJson(value: unknown): string {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.1
+
+- Add `ownership release-claim` for reviewed, targeted metadata-only ownership retirement.
+  Preserve runtime bytes, package declarations, sibling claims, and source locks; bind the
+  immutable source audit and install state through a recoverable native journal with CAS guards.
+- Add `plan --adopt` and `install --adopt` for ordinary unmanaged adoption, preserving managed
+  drift and foreign ownership protections and text outside managed instruction blocks.
+
 ## 0.21.0
 
 - Add opt-in `provider.headLease: "path-scoped"` for disjoint concurrent journal commits.

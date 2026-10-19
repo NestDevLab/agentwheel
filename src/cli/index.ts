@@ -47,6 +47,7 @@ import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
+import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
 import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
 import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
@@ -449,6 +450,7 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--adopt", "adopt unmanaged destinations; managed drift and foreign ownership remain protected", false)
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
@@ -492,6 +494,7 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--adopt", "adopt unmanaged destinations; managed drift and foreign ownership remain protected", false)
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
@@ -927,6 +930,68 @@ program
 const ownershipCommand = program
   .command("ownership")
   .description("inspect and transfer manifest ownership without rewriting runtime artifacts");
+
+ownershipCommand
+  .command("release-claim")
+  .description("release one exact plain ownership claim while preserving runtime bytes and package declarations")
+  .argument("<selector>", "exact artifact selector in type/name form")
+  .requiredOption("--path <relative-path>", "exact owned runtime path from the install manifest")
+  .requiredOption("--state-key <key>", "exact source install-manifest state key")
+  .requiredOption("--from-workspace-root <path>", "exact current workspace owner root")
+  .option("--from-fleet-id <id>", "qualify the recorded owner with its Fleet id")
+  .option("--fleet <id>", "governing registered Fleet workspace")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-i, --installation-type <type>", "exact installation type")
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "configured agent resolving to one local target")
+  .option("--profile <name>", "profile resolving to one local target")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed manifest inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata-only release", false)
+  .option("--json", "print the complete plan or result as JSON", false)
+  .action(async (selector, _options, command: Command) => {
+    const options = command.optsWithGlobals();
+    if (!options.reason) throw new Error("Ownership release requires --reason <why> for planning and applying.");
+    const normalized = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalized);
+    if (targets.length !== 1) throw new Error("Ownership release requires exactly one target.");
+    const target = targets[0]!;
+    const adapterOptions = adapterOptionsForTarget(target, normalized);
+    const adapter = await resolveAdapterForTarget(target, adapterOptions);
+    const installationType = normalized.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const request = {
+      workspaceRoot: await workspaceRootFromOptions(normalized),
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      fromFleetId: options.fromFleetId,
+      targetRoot: state.installRoot,
+      adapter: adapter.name,
+      installationType,
+      stateKey: options.stateKey,
+      selector,
+      path: options.path,
+      reason: options.reason,
+      planDigest: options.planDigest,
+      expectedSourceRevision: options.expectedSourceRevision,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      operationId: options.operationId,
+      noCommit: options.commit === false,
+      transport: transportForTarget(target),
+    };
+    const result = options.apply ? await applyReleaseOwnership(request) : await planReleaseOwnership(request);
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
+    console.log(`${options.apply ? "Released ownership claim" : "Ownership release plan"}: ${result.selector} at ${result.path}`);
+    console.log(`Owner: ${result.owner}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision}`);
+    console.log(`Recorded hash: ${result.recordedHash}; actual runtime hash: ${result.runtimeHash}`);
+    console.log(`Inventory revision: ${result.manifestInventoryRevision}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log("Apply with this same scope and reason plus --apply --plan-digest, --expected-source-revision and --expected-inventory-revision from this plan.");
+  });
 
 ownershipCommand
   .command("handoff")
@@ -1635,7 +1700,11 @@ async function runInstallCommand(
   },
   behavior: { apply: boolean; quiet?: boolean },
 ): Promise<void> {
-  const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
+  const normalizedOptions = normalizeRuntimeScopeOptions({
+    ...options,
+    forceConflict: options.forceConflict || options.adopt,
+    replaceConflict: options.replaceConflict || options.adopt,
+  }, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
   const outputFormat = effectivePlanOutputFormat(normalizedOptions);
   const composite = await resolveSelectedCompositeProfile(normalizedOptions);
   if (composite) {

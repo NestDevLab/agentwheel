@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.2
+
+- Adopt coherent managed instruction blocks from legacy fingerprint state without rewriting the
+  runtime file or its prefix, suffix, block, permissions, or recorded hashes. Refuse drift, ambiguous
+  markers and overlapping claims; managed blocks cannot use `--carry-drift`.
+- Bind block adoption phases and recovery to immutable full-file/mode snapshots and exact manifest
+  inventory CAS. Preserve existing plain adoption behavior and ownership-release journal identities.
+
 ## 0.21.1
 
 - Add `ownership release-claim` for reviewed, targeted metadata-only ownership retirement.

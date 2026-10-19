@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { commitManifestMetadataJournal } from "../install/apply.js";
 import {
   computeInstallManifestInventoryRevision,
   listInstallManifests,
   readInstallManifest,
+  withManifestRevision,
   type DiscoveredInstallManifest,
 } from "../install/manifest.js";
 import { installManifestPath } from "../install/paths.js";
@@ -16,7 +17,11 @@ import {
   mutationMetadataForApplyJournal,
   writeApplyJournal,
   type ApplyJournal,
+  type MetadataStateGuards,
+  assertNoSymlinkPath,
+  ownershipRuntimeSnapshot,
 } from "../install/transaction.js";
+import { exactManagedInstructionBlockSnapshot, managedInstructionSelector, type ExactManagedInstructionBlockSnapshot } from "../install/instructions-block.js";
 import { listRegisteredFleets, resolveWorkspaceOwnershipScope } from "../model/fleet.js";
 import { legacyUnownedWorkspaceOwner, type InstallManifestEntry, type InstallManifestV2 } from "../model/manifest.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
@@ -33,6 +38,8 @@ export interface AdoptLegacyDesiredArtifact {
   artifactName: string;
   kind: string;
   packageName?: string;
+  mode?: "managed-block";
+  logicalSelector?: string;
 }
 
 export interface AdoptLegacyOwnershipRequest {
@@ -65,6 +72,8 @@ export interface AdoptLegacyOwnershipEntry {
   recordedHash: string;
   runtimeHash: string | null;
   drift: boolean;
+  runtimeSnapshotDigest?: string;
+  managedBlock?: ExactManagedInstructionBlockSnapshot;
 }
 
 export interface AdoptLegacyOwnershipPlan {
@@ -90,8 +99,9 @@ export interface AdoptLegacyOwnershipPlan {
   selected: AdoptLegacyOwnershipEntry[];
   retained: Array<{ path: string; owner: string; reason: "other-owner" | "not-desired" }>;
   remainingDuplicates: Array<{ stateKey: string; path: string }>;
-  desiredCoverage: Array<Pick<AdoptLegacyDesiredArtifact, "path" | "artifactType" | "artifactName" | "kind">>;
+  desiredCoverage: Array<Pick<AdoptLegacyDesiredArtifact, "path" | "artifactType" | "artifactName" | "kind" | "mode" | "logicalSelector">>;
   planDigest: string;
+  metadataGuards?: MetadataStateGuards;
 }
 
 export interface AdoptLegacyOwnershipResult extends AdoptLegacyOwnershipPlan {
@@ -112,6 +122,8 @@ export function desiredCoverageFromPlan(plan: Pick<InstallPlan, "operations">): 
       artifactType: operation.artifactType,
       artifactName: operation.artifactName,
       kind: operation.kind,
+      ...(operation.mode ? { mode: operation.mode } : {}),
+      ...(operation.mode && operation.logicalSelector ? { logicalSelector: operation.logicalSelector } : {}),
       ...(operation.packageName ? { packageName: operation.packageName } : {}),
     }))
     .sort((left, right) => left.path.localeCompare(right.path));
@@ -126,6 +138,11 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
   const transport = request.transport ?? localTransport;
   const targetRoot = resolve(request.targetRoot);
   const installationType = request.installationType.trim();
+  if (transport.kind !== "local") throw new Error("Legacy ownership adoption requires a local filesystem transport.");
+  const beforeLock = await readInstallManifest(targetRoot, request.adapter, transport, { installationType, stateKey: request.sourceStateKey });
+  if (beforeLock?.entries.some((entry) => entry.mode === "managed-block")) {
+    await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
+  }
   // apply lock is per root + adapter + installation type, so it covers both state keys
   const lock = await acquireApplyLock(targetRoot, request.adapter, transport, {}, {
     installationType,
@@ -155,6 +172,7 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
     }
 
     const now = new Date().toISOString();
+    let guards = current.metadataGuards;
     // destination first, a crash between the commits only leaves duplicate claims that a rerun retires
     if (adopted.length > 0) {
       declareMutationPath(current.destination.manifestPath);
@@ -169,13 +187,21 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
         legacy: false,
         entries: [],
       };
-      await commitMetadata({
+      const next = withManifestRevision({
         ...base,
+        generatedAt: now,
         entries: [...base.entries, ...adopted].sort((left, right) => left.path.localeCompare(right.path)),
-      }, destination?.revision ?? null, now, transport);
+      });
+      await commitMetadata(next, destination?.revision ?? null, now, transport, guards);
+      if (guards) guards = {
+        ...guards,
+        inventory: [...guards.inventory.filter((item) => item.stateKey !== current.destination.stateKey),
+          { stateKey: current.destination.stateKey, revision: next.revision }]
+          .sort((left, right) => left.stateKey.localeCompare(right.stateKey)),
+      };
     }
     declareMutationPath(current.source.manifestPath);
-    await commitMetadata({ ...source, entries: retained }, source.revision, now, transport);
+    await commitMetadata({ ...source, entries: retained }, source.revision, now, transport, guards);
     return {
       ...current,
       applied: true,
@@ -194,6 +220,7 @@ async function commitMetadata(
   baseRevision: string | null,
   now: string,
   transport: TargetTransport,
+  metadataGuards?: MetadataStateGuards,
 ): Promise<void> {
   const mutation = mutationMetadataForApplyJournal();
   const journal: ApplyJournal = {
@@ -210,6 +237,7 @@ async function commitMetadata(
     operations: [],
     completed: [],
     manifest,
+    ...(metadataGuards ? { metadataGuards } : {}),
   };
   await writeApplyJournal(journal, transport);
   await commitManifestMetadataJournal(journal, transport);
@@ -261,11 +289,21 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     desiredByPath,
   );
   const selectedPaths = new Set(selectedEntries.map((entry) => entry.path));
+  const hasManagedBlock = selectedEntries.some((entry) => entry.mode === "managed-block");
+  if (hasManagedBlock && request.carryDrift) throw new Error("--carry-drift is forbidden for managed instruction block adoption.");
   const selected: AdoptLegacyOwnershipEntry[] = [];
   for (const entry of selectedEntries) {
     const runtimePath = containedArtifactPath(targetRoot, entry.path);
+    const managedBlock = entry.mode === "managed-block"
+      ? exactManagedInstructionBlockSnapshot(await transport.readFile(runtimePath),
+          managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName))
+      : undefined;
+    if (managedBlock && managedBlock.hash !== entry.hash) {
+      throw new Error(`Managed instruction block hash differs from its recorded manifest hash at ${entry.path}; adoption is refused.`);
+    }
+    const runtimeSnapshotDigest = hasManagedBlock ? await ownershipRuntimeSnapshot(runtimePath) : undefined;
     const runtimeHash = await transport.pathExists(runtimePath) ? await transport.hashPath(runtimePath) : null;
-    const drift = runtimeHash !== entry.hash;
+    const drift = managedBlock ? false : runtimeHash !== entry.hash;
     if (drift && request.carryDrift !== true) {
       throw new Error(
         runtimeHash === null
@@ -291,7 +329,29 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
       recordedHash: entry.hash,
       runtimeHash,
       drift,
+      ...(runtimeSnapshotDigest ? { runtimeSnapshotDigest } : {}),
+      ...(managedBlock ? { managedBlock } : {}),
     });
+  }
+
+  const guardedInventory = hasManagedBlock ? await listInstallManifests(targetRoot, undefined, transport) : undefined;
+  if (guardedInventory) {
+    for (const item of guardedInventory) {
+      await assertNoSymlinkPath(item.path);
+      for (const other of item.manifest.entries) {
+        const otherPath = containedArtifactPath(targetRoot, other.path);
+        for (const entry of selectedEntries) {
+          const path = containedArtifactPath(targetRoot, entry.path);
+          const overlap = otherPath === path || otherPath.startsWith(`${path}/`) || path.startsWith(`${otherPath}/`);
+          if (!overlap) continue;
+          if (item.stateKey === input.sourceStateKey && otherPath === path
+            && "workspaceOwner" in other && entryDigest(other) === entryDigest(entry)) continue;
+          if (item.stateKey === input.destinationStateKey && otherPath === path
+            && "workspaceOwner" in other && coversSourceEntry(other, entry, input.destinationOwner)) continue;
+          throw new Error(`Overlapping or duplicate ownership claim at ${entry.path} in ${item.stateKey}; managed-block adoption is refused.`);
+        }
+      }
+    }
   }
 
   const remainingDuplicates: AdoptLegacyOwnershipPlan["remainingDuplicates"] = [];
@@ -331,7 +391,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
       owner: input.destinationOwner,
       workspaceRoot: input.workspaceRoot,
     },
-    manifestInventoryRevision: await computeInstallManifestInventoryRevision(targetRoot, adapter, transport),
+    manifestInventoryRevision: await computeInstallManifestInventoryRevision(targetRoot, hasManagedBlock ? undefined : adapter, transport),
     selected: selected.sort((left, right) => left.path.localeCompare(right.path)),
     retained: retained.sort((left, right) => left.path.localeCompare(right.path) || left.owner.localeCompare(right.owner)),
     remainingDuplicates: remainingDuplicates.sort((left, right) =>
@@ -339,10 +399,16 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     // identity only, so a newer package revision doesn't invalidate a reviewed plan
     desiredCoverage: request.desiredCoverage
       .filter((item) => selectedPaths.has(item.path))
-      .map(({ path, artifactType, artifactName, kind }) => ({ path, artifactType, artifactName, kind }))
+      .map(({ path, artifactType, artifactName, kind, mode, logicalSelector }) => ({ path, artifactType, artifactName, kind,
+        ...(mode ? { mode, logicalSelector: managedInstructionSelector(logicalSelector, artifactType, artifactName) } : {}) }))
       .sort((left, right) => left.path.localeCompare(right.path)
         || left.artifactType.localeCompare(right.artifactType)
         || left.artifactName.localeCompare(right.artifactName)),
+    ...(guardedInventory ? { metadataGuards: {
+      inventory: guardedInventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
+      runtime: selected.map((entry) => ({ path: entry.path, hash: entry.runtimeHash!, snapshotDigest: entry.runtimeSnapshotDigest!,
+        ...(entry.managedBlock ? { managedBlock: entry.managedBlock } : {}) })),
+    } } : {}),
   };
   return { ...withoutDigest, planDigest: createHash("sha256").update(canonicalJson(withoutDigest)).digest("hex") };
 }
@@ -426,7 +492,7 @@ async function selectLegacySource(
     );
   }
   for (const entry of source.entries) {
-    if (entry.workspaceOwner === input.sourceOwner) assertPlainEntry(entry, input.targetRoot);
+    if (entry.workspaceOwner === input.sourceOwner) assertSupportedLegacyEntry(entry, input.targetRoot);
   }
 
   const entries: InstallManifestEntry[] = [];
@@ -523,8 +589,9 @@ async function readDestination(
   return requireManifest(identity, stateKey, transport, "destination");
 }
 
-function assertPlainEntry(entry: InstallManifestEntry, targetRoot: string): void {
-  if (entry.mode || entry.mergeStrategy || entry.semanticPlugin || entry.semanticCommand || entry.executed) {
+function assertSupportedLegacyEntry(entry: InstallManifestEntry, targetRoot: string): void {
+  const supportedBlock = entry.mode === "managed-block" && entry.kind === "file" && entry.artifactType === "instructions";
+  if ((entry.mode && !supportedBlock) || entry.mergeStrategy || entry.semanticPlugin || entry.semanticCommand || entry.executed) {
     throw new Error(`Legacy ownership adoption supports only plain file or directory entries; ${entry.path} is not one.`);
   }
   containedArtifactPath(targetRoot, entry.path);
@@ -534,13 +601,18 @@ function desiredCovers(item: AdoptLegacyDesiredArtifact, entry: InstallManifestE
   return item.artifactType === entry.artifactType
     && item.artifactName === entry.artifactName
     && item.kind === entry.kind
-    && (!item.packageName || !entry.packageName || item.packageName === entry.packageName);
+    && (!item.packageName || !entry.packageName || item.packageName === entry.packageName)
+    && (entry.mode !== "managed-block" || (item.mode === "managed-block"
+      && managedInstructionSelector(item.logicalSelector, item.artifactType, item.artifactName)
+        === managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName)));
 }
 
 function coversSourceEntry(destination: InstallManifestEntry, source: InstallManifestEntry, owner: string): boolean {
   return destination.workspaceOwner === owner
-    && !destination.mode && !destination.mergeStrategy && !destination.semanticPlugin
-    && sameRecordedArtifact(destination, source);
+    && destination.mode === source.mode && !destination.mergeStrategy && !destination.semanticPlugin
+    && sameRecordedArtifact(destination, source)
+    && (source.mode !== "managed-block"
+      || entryDigest({ ...destination, workspaceOwner: source.workspaceOwner }) === entryDigest(source));
 }
 
 function sameRecordedArtifact(left: InstallManifestEntry, right: InstallManifestEntry): boolean {
@@ -548,7 +620,11 @@ function sameRecordedArtifact(left: InstallManifestEntry, right: InstallManifest
     && left.artifactName === right.artifactName
     && left.kind === right.kind
     && left.hash === right.hash
-    && left.sourceHash === right.sourceHash;
+    && left.sourceHash === right.sourceHash
+    && left.mode === right.mode
+    && (left.mode !== "managed-block"
+      || managedInstructionSelector(left.logicalSelector, left.artifactType, left.artifactName)
+        === managedInstructionSelector(right.logicalSelector, right.artifactType, right.artifactName));
 }
 
 async function assertNoPendingJournals(targetRoot: string, adapter: string, transport: TargetTransport): Promise<void> {

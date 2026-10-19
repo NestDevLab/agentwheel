@@ -3,6 +3,7 @@ import { cp, lstat, mkdir, open, readFile, readdir, rm, stat } from "node:fs/pro
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
+import type { ExactManagedInstructionBlockSnapshot } from "./instructions-block.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import type { InstallOperation } from "./plan.js";
@@ -67,15 +68,19 @@ export interface ApplyJournal {
   workspaceConfig?: unknown;
   /** Opt-in, immutable intent for a metadata-only claim release. Recovery rolls forward only. */
   metadataAudit?: MetadataAuditTransaction;
+  metadataGuards?: MetadataStateGuards;
 }
 
-export interface MetadataAuditTransaction {
+export interface MetadataStateGuards {
+  inventory: Array<{ stateKey: string; revision: string }>;
+  runtime: Array<{ path: string; hash: string; snapshotDigest: string; managedBlock?: ExactManagedInstructionBlockSnapshot }>;
+}
+
+export interface MetadataAuditTransaction extends MetadataStateGuards {
   kind: "ownership-release";
   workspaceRoot: string;
   operationId: string;
   planDigest: string;
-  inventory: Array<{ stateKey: string; revision: string }>;
-  runtime: Array<{ path: string; hash: string; snapshotDigest: string }>;
   auditFiles: Array<{ path: string; content: string; sha256: string }>;
 }
 
@@ -234,7 +239,7 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
     ...journal,
     updatedAt: new Date().toISOString(),
   });
-  if (journal.metadataAudit && transport.kind === "local") await syncMetadataPath(path);
+  if ((journal.metadataAudit || journal.metadataGuards) && transport.kind === "local") await syncMetadataPath(path);
   if (link) await activateActiveRuntimeJournal(link);
 }
 
@@ -332,7 +337,7 @@ export async function removeApplyJournal(targetRoot: string, adapter: string, tr
   if (existing?.mutation) await beginResolveMutationRuntimeJournal(existing.mutation.operationId, path);
   await transport.rm(applyJournalPath(targetRoot, adapter, scope));
   await transport.rm(applyBackupDir(targetRoot, adapter, scope));
-  if (existing?.metadataAudit && transport.kind === "local") await syncMetadataPath(dirname(path), true);
+  if ((existing?.metadataAudit || existing?.metadataGuards) && transport.kind === "local") await syncMetadataPath(dirname(path), true);
   if (existing?.mutation) await resolveMutationRuntimeJournal(existing.mutation.operationId, path);
 }
 
@@ -351,8 +356,8 @@ export async function abortApplyJournal(
     const archivePath = join(metadataDir(targetRoot), "archive", `${stateKey}.apply-journal.failed-${journalTimestamp(new Date())}.json`);
     const content = await transport.readFile(journalPath);
     const journal = parseApplyJournal(JSON.parse(content));
-    if (journal.metadataAudit) {
-      throw new Error("A metadata-audit transaction must be recovered and verified; abort cannot discard its partial state.");
+    if (journal.metadataAudit || journal.metadataGuards) {
+      throw new Error("A guarded metadata transaction must be recovered and verified; abort cannot discard its partial state.");
     }
     await transport.writeFileAtomic(archivePath, content.endsWith("\n") ? content : `${content}\n`);
     if (journal.mutation) await beginResolveMutationRuntimeJournal(journal.mutation.operationId, journalPath);
@@ -414,6 +419,7 @@ export function applyJournalLinkDigest(
     workspaceConfigPath: journal.workspaceConfigPath ?? null,
     operations: journal.operations,
     ...(journal.metadataAudit ? { metadataAudit: journal.metadataAudit, manifest: journal.manifest } : {}),
+    ...(journal.metadataGuards ? { metadataGuards: journal.metadataGuards, manifest: journal.manifest } : {}),
   })).digest("hex");
 }
 

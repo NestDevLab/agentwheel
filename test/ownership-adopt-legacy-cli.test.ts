@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -319,3 +319,50 @@ function shellWords(command: string): string[] {
   if (word !== undefined) words.push(word);
   return words;
 }
+
+describe("managed-block adoption CLI", () => {
+  it("adopts a coherent legacy block with an unchanged user prefix, suffix and mode", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "agentwheel-managed-adopt-cli-"))); tempRoots.push(root);
+    const home = join(root, "home"); const parent = join(root, "fleet"); const nested = join(parent, "profiles/nested");
+    const pack = join(root, "pack"); const runtime = join(root, "runtime");
+    await mkdir(home); await mkdir(join(nested, ".agentwheel"), { recursive: true }); await mkdir(join(pack, "instructions"), { recursive: true });
+    const configPath = join(nested, ".agentwheel/config.json");
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 4, agents: { demo: { adapter: "codex", root: runtime, transport: "local" } }, packages: [{ name: "example", driver: "local", source: pack, mode: "pinned", select: ["instructions/AGENTS.md"] }] }));
+    await writeFile(join(pack, "openpack.json"), JSON.stringify({ schemaVersion: 2, name: "fixture/managed-cli", version: "1.0.0", provides: [{ type: "instructions", path: "instructions/AGENTS.md" }] }));
+    await writeFile(join(pack, "instructions/AGENTS.md"), "Historical instruction body.\n");
+    const fixture = { home, nested };
+    await runCli(["install", "--agent", "demo"], fixture);
+    const metadata = join(runtime, ".agentwheel");
+    const manifestName = (await readdir(metadata)).find((name) => name.endsWith(".install-manifest.json"))!;
+    const state = JSON.parse(await readFile(join(metadata, manifestName), "utf8"));
+    const locks = join(nested, ".agentwheel/locks/demo/codex");
+    const lockName = (await readdir(locks)).find((name) => name.endsWith(".graph-lock.json"))!;
+    const fingerprint = JSON.parse(await readFile(join(locks, lockName), "utf8")).canonical.targetFingerprint;
+    state.stateKey = `codex.local.${fingerprint}`;
+    await writeFile(join(metadata, `${state.stateKey}.install-manifest.json`), JSON.stringify(state));
+    if (manifestName !== `${state.stateKey}.install-manifest.json`) await rm(join(metadata, manifestName));
+    if (lockName !== `${fingerprint}.graph-lock.json`) await rename(join(locks, lockName), join(locks, `${fingerprint}.graph-lock.json`));
+    const file = join(runtime, "AGENTS.md");
+    const bytes = `Preserved owner prefix.\r\n\n${await readFile(file, "utf8")}\nPreserved owner suffix.\r\n`;
+    await writeFile(file, bytes); await chmod(file, 0o640);
+    await mkdir(join(parent, ".agentwheel"), { recursive: true }); await mkdir(join(home, ".agentwheel"), { recursive: true });
+    await writeFile(join(parent, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, fleetId: "example-fleet", packages: [{ name: "core", source: pack, driver: "local", adapter: "claude", mode: "pinned" }] }));
+    await writeFile(join(home, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, fleets: { "example-fleet": { root: parent, requiredPackages: ["core"] } } }));
+    await writeFile(join(pack, "instructions/AGENTS.md"), "New source body, evaluated after adoption.\n");
+    const configBefore = await readFile(configPath);
+    const args = ["ownership", "adopt-legacy", "--agent", "demo", "--source-state-key", state.stateKey, "--from-workspace-root", nested, "--json"];
+    const plan = JSON.parse((await runCli(args, fixture)).stdout);
+    expect(plan.selected[0]).toMatchObject({ drift: false, managedBlock: { hash: state.entries[0].hash } });
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    await runCli(shellWords(plan.applyCommand).slice(1), fixture);
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    expect((await stat(file)).mode & 0o777).toBe(0o640);
+    expect(await readFile(configPath)).toEqual(configBefore);
+    const adopted = JSON.parse(await readFile(plan.destination.manifestPath, "utf8"));
+    expect(adopted.entries[0]).toMatchObject({ hash: state.entries[0].hash, sourceHash: state.entries[0].sourceHash, mode: "managed-block" });
+    const ordinary = JSON.parse((await runCli(["install", "--agent", "demo", "--dry-run", "--format", "json"], fixture)).stdout);
+    expect(ordinary.targets[0].hasBlockingChanges).toBe(false);
+    expect(ordinary.targets[0].operations.map((operation: { action: string }) => operation.action)).toEqual(["update"]);
+    expect(await readFile(file, "utf8")).toBe(bytes);
+  }, 60_000);
+});

@@ -22,6 +22,64 @@ export interface ManagedInstructionBlockMutationOptions {
   allowDrift?: boolean;
 }
 
+export interface ExactManagedInstructionBlockSnapshot {
+  selector: string;
+  hash: string;
+  markerHash: string;
+  prefixHash: string;
+  suffixHash: string;
+  blockBytesHash: string;
+}
+
+/** Strict observation for metadata adoption; unlike the editing reader it never tolerates partial markers. */
+export function exactManagedInstructionBlockSnapshot(content: string, selector: string): ExactManagedInstructionBlockSnapshot {
+  const beginCount = [...content.matchAll(new RegExp(`<!-- BEGIN openpack:include ${escapeRegex(selector)}(?=\\s|-->)`, "gu"))].length;
+  const endCount = [...content.matchAll(new RegExp(`<!-- END openpack:include ${escapeRegex(selector)}(?=\\s|-->)`, "gu"))].length;
+  if (beginCount !== 1 || endCount !== 1) throw new Error("Duplicate or missing managed instruction markers; adoption is refused.");
+  const stack: string[] = [];
+  let selectedBegin: { start: number; bodyStart: number; hash: string } | undefined;
+  let selectedEnd: { bodyEnd: number; end: number } | undefined;
+  let begins = 0;
+  let ends = 0;
+  for (const token of content.matchAll(/<!-- (BEGIN|END) openpack:include ([^\r\n]*?) -->/gu)) {
+    const at = token.index!;
+    if (token[1] === "BEGIN") {
+      const begin = /^(.*?) sha256:([a-f0-9]{64})$/u.exec(token[2]!);
+      if (!begin) throw new Error("Malformed managed instruction begin marker; adoption is refused.");
+      const name = begin[1]!;
+      if (name === selector) {
+        if (++begins !== 1 || stack.length !== 0) throw new Error("Duplicate or overlapping managed instruction block; adoption is refused.");
+        let bodyStart = at + token[0].length;
+        if (content.slice(bodyStart, bodyStart + 2) === "\r\n") bodyStart += 2;
+        else if (content[bodyStart] === "\n") bodyStart++;
+        selectedBegin = { start: at, bodyStart, hash: begin[2]! };
+      }
+      stack.push(name);
+    } else {
+      const name = token[2]!;
+      if (stack.pop() !== name) throw new Error("Overlapping or unmatched managed instruction markers; adoption is refused.");
+      if (name === selector) {
+        if (++ends !== 1 || !selectedBegin) throw new Error("Duplicate or missing managed instruction marker; adoption is refused.");
+        let end = at + token[0].length;
+        if (content.slice(end, end + 2) === "\r\n") end += 2;
+        else if (content[end] === "\n") end++;
+        selectedEnd = { bodyEnd: at, end };
+      }
+    }
+  }
+  if (stack.length || begins !== 1 || ends !== 1 || !selectedBegin || !selectedEnd) {
+    throw new Error(`Missing or incomplete managed instruction block for ${selector}; adoption is refused.`);
+  }
+  const hash = hashText(content.slice(selectedBegin.bodyStart, selectedEnd.bodyEnd));
+  if (hash !== selectedBegin.hash) throw new Error(`Managed instruction block drift detected for ${selector}; adoption is refused.`);
+  return {
+    selector, hash, markerHash: selectedBegin.hash,
+    prefixHash: hashText(content.slice(0, selectedBegin.start)),
+    suffixHash: hashText(content.slice(selectedEnd.end)),
+    blockBytesHash: hashText(content.slice(selectedBegin.start, selectedEnd.end)),
+  };
+}
+
 interface LocatedBlock {
   start: number;
   end: number;

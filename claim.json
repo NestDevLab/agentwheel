@@ -1,12 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/fix/catalogue-worker-follow-up",
-    "refs/heads/pr/local-run-as-transport"
-  ],
-  "claimed_at": "2026-10-19T08:01:29+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T09:03:08+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "e54aa4e0-df72-40c0-8ed7-90e48889fbea",
-  "publication_scope": "partial",
+  "operation_token": "a95997b5-0e0a-46f2-a17f-d6cee16f2855",
+  "publication_scope": "close:catalogue-worker-follow-up",
+  "reason": "absorbed",
   "source_ref": "refs/heads/fix/catalogue-worker-follow-up",
   "syncwheel_version": "0.45.7"
 }

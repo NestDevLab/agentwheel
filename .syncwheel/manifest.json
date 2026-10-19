@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -67,7 +67,8 @@
       "base": "origin/main",
       "branch": "pr/mgt0478-add-runtimes",
       "commits": [
-        "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da"
+        "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da",
+        "00bdf22b4696497078a5768f4f6136798be2d1fe"
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",

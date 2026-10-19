@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { cp, lstat, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import type { InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
@@ -65,6 +65,84 @@ export interface ApplyJournal {
   stateRemoveKey?: string;
   workspaceConfigPath?: string;
   workspaceConfig?: unknown;
+  /** Opt-in, immutable intent for a metadata-only claim release. Recovery rolls forward only. */
+  metadataAudit?: MetadataAuditTransaction;
+}
+
+export interface MetadataAuditTransaction {
+  kind: "ownership-release";
+  workspaceRoot: string;
+  operationId: string;
+  planDigest: string;
+  inventory: Array<{ stateKey: string; revision: string }>;
+  runtime: Array<{ path: string; hash: string; snapshotDigest: string }>;
+  auditFiles: Array<{ path: string; content: string; sha256: string }>;
+}
+
+/** Reject symlinks in every existing ancestor, including a missing file's parent chain. */
+export async function assertNoSymlinkPath(path: string): Promise<void> {
+  const absolute = resolve(path);
+  let current = absolute;
+  while (true) {
+    try {
+      if ((await lstat(current)).isSymbolicLink()) throw new Error(`Symlink path is unsupported: ${current}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
+
+/** Includes ignored/cache files too: a reviewed release must detect every runtime byte change. */
+export async function ownershipRuntimeSnapshot(path: string): Promise<string> {
+  await assertNoSymlinkPath(path);
+  const hash = createHash("sha256");
+  async function visit(candidate: string): Promise<void> {
+    const info = await lstat(candidate);
+    if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) {
+      throw new Error(`Unsupported ownership runtime path: ${candidate}`);
+    }
+    hash.update(JSON.stringify([relative(path, candidate), info.isDirectory() ? "dir" : "file", info.mode & 0o7777]));
+    if (info.isDirectory()) {
+      for (const name of (await readdir(candidate)).sort()) await visit(join(candidate, name));
+    } else {
+      const content = await readFile(candidate);
+      hash.update(String(content.length)).update("\0").update(content);
+    }
+  }
+  await visit(path);
+  return hash.digest("hex");
+}
+
+export function metadataAuditPath(audit: MetadataAuditTransaction, path: string): string {
+  mutationOperationIdSchema.parse(audit.operationId);
+  if (resolve(audit.workspaceRoot) !== audit.workspaceRoot
+    || path !== `.agentwheel/ownership-releases/${audit.operationId}.json`) {
+    throw new Error("Invalid ownership release audit path.");
+  }
+  return join(audit.workspaceRoot, ...path.split("/"));
+}
+
+export function metadataRuntimePath(root: string, path: string): string {
+  const result = resolve(root, path);
+  if (!path || relative(resolve(root), result).split(sep).join("/") !== path
+    || path === ".agentwheel" || path.startsWith(".agentwheel/")
+    || result === resolve(root) || !result.startsWith(`${resolve(root)}${sep}`)) {
+    throw new Error(`Unsafe ownership release path: ${path}`);
+  }
+  return result;
+}
+
+/** The opt-in audit transaction makes its journal and committed state durable before resolution. */
+export async function syncMetadataPath(path: string, directoryOnly = false): Promise<void> {
+  if (!directoryOnly) {
+    const file = await open(path, "r");
+    try { await file.sync(); } finally { await file.close(); }
+  }
+  const directory = await open(directoryOnly ? path : dirname(path), "r");
+  try { await directory.sync(); } finally { await directory.close(); }
 }
 
 export interface AbortedApplyJournal {
@@ -156,6 +234,7 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
     ...journal,
     updatedAt: new Date().toISOString(),
   });
+  if (journal.metadataAudit && transport.kind === "local") await syncMetadataPath(path);
   if (link) await activateActiveRuntimeJournal(link);
 }
 
@@ -196,7 +275,7 @@ export async function listApplyJournals(
 
 export async function listAllApplyJournals(
   targetRoot: string,
-  adapter: string,
+  adapter: string | undefined,
   transport: TargetTransport = localTransport,
 ): Promise<DiscoveredApplyJournal[]> {
   const suffix = ".apply-journal.json";
@@ -205,7 +284,7 @@ export async function listAllApplyJournals(
     if (!fileName.endsWith(suffix)) continue;
     const path = join(metadataDir(targetRoot), fileName);
     const journal = parseApplyJournal(JSON.parse(await transport.readFile(path)));
-    if (journal.adapter === adapter) found.push({ path, journal });
+    if (adapter === undefined || journal.adapter === adapter) found.push({ path, journal });
   }
   return found.sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -253,6 +332,7 @@ export async function removeApplyJournal(targetRoot: string, adapter: string, tr
   if (existing?.mutation) await beginResolveMutationRuntimeJournal(existing.mutation.operationId, path);
   await transport.rm(applyJournalPath(targetRoot, adapter, scope));
   await transport.rm(applyBackupDir(targetRoot, adapter, scope));
+  if (existing?.metadataAudit && transport.kind === "local") await syncMetadataPath(dirname(path), true);
   if (existing?.mutation) await resolveMutationRuntimeJournal(existing.mutation.operationId, path);
 }
 
@@ -271,6 +351,9 @@ export async function abortApplyJournal(
     const archivePath = join(metadataDir(targetRoot), "archive", `${stateKey}.apply-journal.failed-${journalTimestamp(new Date())}.json`);
     const content = await transport.readFile(journalPath);
     const journal = parseApplyJournal(JSON.parse(content));
+    if (journal.metadataAudit) {
+      throw new Error("A metadata-audit transaction must be recovered and verified; abort cannot discard its partial state.");
+    }
     await transport.writeFileAtomic(archivePath, content.endsWith("\n") ? content : `${content}\n`);
     if (journal.mutation) await beginResolveMutationRuntimeJournal(journal.mutation.operationId, journalPath);
     await transport.rm(journalPath);
@@ -330,6 +413,7 @@ export function applyJournalLinkDigest(
     stateRemoveKey: journal.stateRemoveKey ?? null,
     workspaceConfigPath: journal.workspaceConfigPath ?? null,
     operations: journal.operations,
+    ...(journal.metadataAudit ? { metadataAudit: journal.metadataAudit, manifest: journal.manifest } : {}),
   })).digest("hex");
 }
 

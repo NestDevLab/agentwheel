@@ -238,12 +238,13 @@ export class GovernedMutation {
     }
   }
 
-  metadata(): { operationId: string; reason: string; noCommit: boolean; revisionMode: MutationReceipt["revisionMode"] } {
+  metadata(): { operationId: string; reason: string; noCommit: boolean; revisionMode: MutationReceipt["revisionMode"]; workspaceRoot: string } {
     return {
       operationId: this.receipt.operationId,
       reason: this.receipt.reason,
       noCommit: this.receipt.noCommit,
       revisionMode: this.receipt.revisionMode,
+      workspaceRoot: this.receipt.workspaceRoot,
     };
   }
 
@@ -334,6 +335,7 @@ export function activeMutationMetadata(): {
   reason: string;
   noCommit: boolean;
   revisionMode: MutationReceipt["revisionMode"];
+  workspaceRoot: string;
 } | undefined {
   return activeMutation?.metadata();
 }

@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/journal-compatibility"
-  ],
-  "claimed_at": "2026-10-19T14:10:37+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T14:18:17+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "48a229f0-2b22-4c03-a3db-825a67724e82",
-  "publication_scope": "stack:journal-compatibility",
+  "operation_token": "1af82039-0f3c-4f1b-a33f-ed0b2833e10b",
+  "publication_scope": "close:journal-compatibility",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/journal-compatibility",
   "syncwheel_version": "0.45.8"
 }

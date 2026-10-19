@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/journal-compatibility": "6975c5550f0cae8ce1defee4f5268d37d26c1c02"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -11,6 +13,7 @@
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
+    "refs/heads/pr/journal-compatibility": "c5166df421a83a08526847c35992738e86220824",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -38,7 +41,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T09:14:52+00:00",
+  "created_at": "2026-10-19T14:00:16+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -63,6 +66,7 @@
     "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620",
     "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
+    "refs/heads/pr/journal-compatibility": "6975c5550f0cae8ce1defee4f5268d37d26c1c02",
     "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/legacy-graph-only-recovery": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
@@ -137,7 +141,8 @@
       "branch": "main-integration",
       "stacks": [
         "ccp011-ownership-supersession",
-        "local-run-as-readonly"
+        "local-run-as-readonly",
+        "journal-compatibility"
       ],
       "strategy": "cherry-pick"
     },
@@ -167,18 +172,32 @@
         "integration_branch": "main-integration",
         "state": "draft",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/journal-compatibility",
+        "commits": [
+          "6975c5550f0cae8ce1defee4f5268d37d26c1c02"
+        ],
+        "id": "journal-compatibility",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "b0665547-4241-4f3e-bbad-e1d0f428acc7",
-  "parent_state": "e94acfe43422f73a4357798967a2884f60e01400",
+  "operation_token": "f9406f05-62ff-4727-8f26-16717c84c34d",
+  "parent_state": "1731e7ffae91c32761d7be28f3554f9856ff84b5",
   "projection_status": "partial",
-  "publication_id": "f349d470-6499-4725-a77f-82647347ed57",
-  "publication_scope": "close:local-run-as-transport",
+  "publication_id": "92ca8d0c-0c6a-40e2-b4c0-a7492c2451a8",
+  "publication_scope": "stack:journal-compatibility",
   "schema_version": 2,
-  "syncwheel_version": "0.45.7",
+  "syncwheel_version": "0.45.8",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

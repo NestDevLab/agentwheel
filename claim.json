@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/pin-package-declarations"
+  ],
+  "claimed_at": "2026-10-19T23:05:50+00:00",
+  "coordination_id": "default",
+  "operation_token": "934ad980-82b0-46c1-a67d-5bb1d374ac61",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/pin-package-declarations",
+  "syncwheel_version": "0.46.5"
+}

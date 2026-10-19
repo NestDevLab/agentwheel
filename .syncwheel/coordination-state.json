@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/mgt0478-add-runtimes": "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da"
+    "refs/heads/pr/mgt0478-add-runtimes": "00bdf22b4696497078a5768f4f6136798be2d1fe"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -24,7 +24,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/mgt0406-runas-readonly": "99f0c6918792ae62fd1537c1b2b8da3ee0fedb27",
-    "refs/heads/pr/mgt0478-add-runtimes": "5504dae74852ce7c543ffeda397e96298453d6d5",
+    "refs/heads/pr/mgt0478-add-runtimes": "54e2fc2d67be7d884daf724097615af6fa246035",
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
@@ -46,7 +46,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T19:07:19+00:00",
+  "created_at": "2026-10-19T20:43:03+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -84,7 +84,7 @@
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "f235868bf89b9828ee11ab5edd72db47ac9749e1",
     "refs/heads/pr/mgt0406-runas-readonly": "ff7582fd517674764beab6730b8d7e4309c2c91e",
-    "refs/heads/pr/mgt0478-add-runtimes": "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da",
+    "refs/heads/pr/mgt0478-add-runtimes": "00bdf22b4696497078a5768f4f6136798be2d1fe",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/ownership-release-claim": null,
@@ -191,7 +191,8 @@
         },
         "branch": "pr/mgt0478-add-runtimes",
         "commits": [
-          "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da"
+          "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da",
+          "00bdf22b4696497078a5768f4f6136798be2d1fe"
         ],
         "id": "mgt0478-add-runtimes",
         "integration_branch": "main-integration",
@@ -201,13 +202,13 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "0f75ba7f-0b00-44fe-8b6a-a133f799d0fe",
-  "parent_state": "84e4e9c6d4bce055a04c7ad87ff6e493269b350b",
+  "operation_token": "402d0b34-983c-4a59-9809-a4696af39abc",
+  "parent_state": "245653dacc24fbb432eca77869bc690486e8b930",
   "projection_status": "partial",
-  "publication_id": "9ab34496-8d9d-42b4-880e-1e6c255d84db",
+  "publication_id": "c4dcb11f-4c9b-4002-985d-597afec47edc",
   "publication_scope": "stack:mgt0478-add-runtimes",
   "schema_version": 2,
-  "syncwheel_version": "0.46.4",
+  "syncwheel_version": "0.46.5",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

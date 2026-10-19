@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,12 +20,18 @@ import { canonicalGraphLockJson, readGraphLock, writeGraphLock } from "../src/mo
 import type { InstallManifestV2 } from "../src/model/manifest.js";
 import { workspaceOwnerForRoot } from "../src/model/workspace-owner.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
+import { exactManagedInstructionBlockSnapshot, managedInstructionSelector } from "../src/install/instructions-block.js";
+import { ownershipRuntimeSnapshot } from "../src/install/transaction.js";
+import { GovernedMutation, recoverMutationRuntime } from "../src/mutation/coordinator.js";
 
 const tempRoots: string[] = [];
 const savedEnvironment = new Map<string, string | undefined>();
 const adapter: AdapterConfig = {
   name: "fixture-runtime",
-  targets: { skills: { local: { enabled: true, dest: ".runtime/skills", root: "target" } } },
+  targets: {
+    skills: { local: { enabled: true, dest: ".runtime/skills", root: "target" } },
+    instructions: { local: { enabled: true, dest: ".runtime/AGENTS.md", root: "target", mode: "managed-block" } },
+  },
 };
 const targetKey = "runtime-agent";
 const alpha = ".runtime/skills/alpha-skill";
@@ -653,3 +659,198 @@ async function tempRoot(prefix: string): Promise<string> {
   tempRoots.push(root);
   return root;
 }
+
+describe("coherent managed-block legacy adoption", () => {
+  it("moves metadata while preserving block hash, full file, prefix, suffix, mode and legacy lock", async () => {
+    const f = await managedFixture();
+    const before = await readFile(f.file);
+    const snapshot = await ownershipRuntimeSnapshot(f.file);
+    const lockBefore = await readFile(f.legacyLock);
+    const mode = (await stat(f.file)).mode;
+    const plan = await planAdoptLegacyOwnership(f.request);
+    expect(plan.selected[0]).toMatchObject({ drift: false, recordedHash: f.entry.hash, managedBlock: { hash: f.entry.hash } });
+    expect(plan.selected[0]!.runtimeHash).not.toBe(f.entry.hash);
+    expect(plan.selected[0]!.managedBlock!.prefixHash).toBe(sha(f.prefix));
+    expect(plan.selected[0]!.managedBlock!.suffixHash).toBe(sha(f.suffix));
+    await applyAdoptLegacyOwnership(applyRequest(f.request, plan));
+    const destination = await readV2({ target: f.target }, f.request.destinationStateKey);
+    expect(destination.entries).toEqual([{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.parent, "delivery") }]);
+    expect(await readFile(f.file)).toEqual(before);
+    expect(await ownershipRuntimeSnapshot(f.file)).toBe(snapshot);
+    expect((await stat(f.file)).mode).toBe(mode);
+    expect(await readFile(f.legacyLock)).toEqual(lockBefore);
+    // A later source version is a separate update; adoption does not rewrite or bless it.
+    const ordinary = await graphPlan(f, f.workspace, { select: ["instructions/AGENTS.md"] });
+    expect(ordinary.plan.operations.map((operation) => operation.action)).toEqual(["update"]);
+    expect(ordinary.plan.hasBlockingChanges).toBe(false);
+    expect(await readFile(f.file)).toEqual(before);
+  });
+
+  it("plans without any runtime, manifest or lock writes", async () => {
+    const f = await managedFixture();
+    const runtimeBefore = await readFile(f.file);
+    const manifestBefore = await readFile(f.manifest);
+    const lockBefore = await readFile(f.legacyLock);
+    const one = await planAdoptLegacyOwnership(f.request);
+    expect(await planAdoptLegacyOwnership(f.request)).toEqual(one);
+    expect(await readFile(f.file)).toEqual(runtimeBefore);
+    expect(await readFile(f.manifest)).toEqual(manifestBefore);
+    expect(await readFile(f.legacyLock)).toEqual(lockBefore);
+    await expect(stat(installManifestPath(f.target, adapter.name, scope(f.request.destinationStateKey))))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each(["body", "marker", "recorded", "missing-end", "duplicate", "incomplete-duplicate", "overlap", "selector", "carry"])("rejects %s inconsistencies without repairs", async (kind) => {
+    const f = await managedFixture();
+    let text = await readFile(f.file, "utf8");
+    if (kind === "body") text = text.replace("Historical body.", "Edited historical body.");
+    if (kind === "marker") text = text.replace(`sha256:${f.entry.hash}`, `sha256:${"0".repeat(64)}`);
+    if (kind === "missing-end") text = text.replace(`<!-- END openpack:include ${f.selector} -->`, "");
+    if (kind === "duplicate") text += f.block;
+    if (kind === "incomplete-duplicate") text += `<!-- BEGIN openpack:include ${f.selector} sha256:incomplete`;
+    if (kind === "overlap") text = `<!-- BEGIN openpack:include instructions/outer.md sha256:${"a".repeat(64)} -->\n${text}<!-- END openpack:include instructions/outer.md -->\n`;
+    if (kind === "selector") text = text.replaceAll(f.selector, "instructions/another.md");
+    await writeFile(f.file, text);
+    if (kind === "recorded") await patchManifestEntry(f.manifest, ".runtime/AGENTS.md", { hash: "f".repeat(64) });
+    const runtimeBefore = await readFile(f.file);
+    const manifestBefore = await readFile(f.manifest);
+    await expect(planAdoptLegacyOwnership({ ...f.request, carryDrift: kind === "carry" }))
+      .rejects.toThrow(/block|marker|hash|drift/i);
+    expect(await readFile(f.file)).toEqual(runtimeBefore);
+    expect(await readFile(f.manifest)).toEqual(manifestBefore);
+  });
+
+  it.each(["prefix", "suffix", "mode", "inventory"])("refuses a stale reviewed %s snapshot before manifest writes", async (kind) => {
+    const f = await managedFixture();
+    const plan = await planAdoptLegacyOwnership(f.request);
+    if (kind === "prefix") await writeFile(f.file, `New prefix\n${await readFile(f.file, "utf8")}`);
+    if (kind === "suffix") await writeFile(f.file, `${await readFile(f.file, "utf8")}New suffix\n`);
+    if (kind === "mode") await chmod(f.file, 0o600);
+    if (kind === "inventory") await writeInstallManifest({ ...await readV2({ target: f.target }, f.request.sourceStateKey), adapter: "other", stateKey: "other.local", entries: [] });
+    const before = await readFile(f.manifest);
+    await expect(applyAdoptLegacyOwnership(applyRequest(f.request, plan))).rejects.toThrow(/plan digest|revision|CAS/i);
+    expect(await readFile(f.manifest)).toEqual(before);
+  });
+
+  it.each(["same-adapter", "other-adapter", "ancestor"])("rejects %s overlapping claims", async (kind) => {
+    const f = await managedFixture();
+    const source = await readV2({ target: f.target }, f.request.sourceStateKey);
+    await writeInstallManifest({ ...source,
+      adapter: kind === "other-adapter" ? "other" : adapter.name,
+      stateKey: kind === "other-adapter" ? "other.local" : `${adapter.name}.local.duplicate`,
+      entries: [{ ...f.entry, ...(kind === "ancestor" ? { path: ".runtime", kind: "dir", mode: undefined } : {}) }],
+    });
+    await expect(planAdoptLegacyOwnership(f.request)).rejects.toThrow(/overlapping|duplicate/i);
+  });
+
+  it("does not retire a source against a destination with different recorded metadata", async () => {
+    const f = await managedFixture();
+    const source = await readV2({ target: f.target }, f.request.sourceStateKey);
+    await writeInstallManifest({ ...source, stateKey: f.request.destinationStateKey,
+      entries: [{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.parent, "delivery"), owners: ["different-root"], refCount: 1 }],
+    });
+    await expect(planAdoptLegacyOwnership(f.request)).rejects.toThrow(/not an exact copy/i);
+  });
+
+  it.each(["before", "after"])("recovers an interrupted %s-destination write and then retires the exact source copy", async (when) => {
+    const f = await managedFixture();
+    const before = await readFile(f.file);
+    const plan = await planAdoptLegacyOwnership(f.request);
+    const destinationPath = installManifestPath(f.target, adapter.name, scope(f.request.destinationStateKey));
+    let injected = false;
+    const transport: TargetTransport = { ...localTransport, writeJsonAtomic: async (path, value) => {
+      if (path === destinationPath && !injected && when === "before") { injected = true; throw new Error("interrupted destination"); }
+      await localTransport.writeJsonAtomic(path, value);
+      if (path === destinationPath && !injected && when === "after") { injected = true; throw new Error("interrupted destination"); }
+    } };
+    await expect(applyAdoptLegacyOwnership({ ...applyRequest(f.request, plan), transport })).rejects.toThrow(/interrupted/);
+    await recoverPendingApply(f.target, adapter.name, localTransport, scope(f.request.destinationStateKey));
+    const rerun = await planAdoptLegacyOwnership(f.request);
+    expect(rerun.selected[0]!.action).toBe("retire-covered");
+    await applyAdoptLegacyOwnership(applyRequest(f.request, rerun));
+    expect((await readV2({ target: f.target }, f.request.destinationStateKey)).entries[0]!.hash).toBe(f.entry.hash);
+    expect(await readFile(f.file)).toEqual(before);
+  });
+
+  it("recovers a source-removal interruption using exact before/after inventory CAS", async () => {
+    const f = await managedFixture();
+    const plan = await planAdoptLegacyOwnership(f.request);
+    const transport: TargetTransport = { ...localTransport, rm: async (path) => {
+      await localTransport.rm(path);
+      if (path === f.manifest) throw new Error("interrupted source removal");
+    } };
+    await expect(applyAdoptLegacyOwnership({ ...applyRequest(f.request, plan), transport })).rejects.toThrow(/interrupted source/);
+    await recoverPendingApply(f.target, adapter.name, localTransport, scope(f.request.sourceStateKey));
+    await expect(stat(f.manifest)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(f.file, "utf8")).toBe(f.prefix + f.block + f.suffix);
+  });
+
+  it.each(["prefix", "mode", "inventory"])("preserves concurrent %s changes rather than replaying a partial transaction", async (kind) => {
+    const f = await managedFixture();
+    const plan = await planAdoptLegacyOwnership(f.request);
+    const destinationPath = installManifestPath(f.target, adapter.name, scope(f.request.destinationStateKey));
+    const transport: TargetTransport = { ...localTransport, writeJsonAtomic: async (path, value) => {
+      await localTransport.writeJsonAtomic(path, value);
+      if (path === destinationPath) throw new Error("interrupt after destination");
+    } };
+    await expect(applyAdoptLegacyOwnership({ ...applyRequest(f.request, plan), transport })).rejects.toThrow(/interrupt/);
+    if (kind === "prefix") await writeFile(f.file, `Concurrent prefix\n${await readFile(f.file, "utf8")}`);
+    if (kind === "mode") await chmod(f.file, 0o600);
+    if (kind === "inventory") await writeInstallManifest({ ...await readV2({ target: f.target }, f.request.sourceStateKey), adapter: "other", stateKey: "other.local", entries: [] });
+    const before = await readFile(f.file);
+    const destinationBefore = await readFile(destinationPath);
+    await expect(recoverPendingApply(f.target, adapter.name, localTransport, scope(f.request.destinationStateKey)))
+      .rejects.toThrow(/CAS|inventory/i);
+    expect(await readFile(f.file)).toEqual(before);
+    expect(await readFile(destinationPath)).toEqual(destinationBefore);
+  });
+
+  it("recovers receipt-linked guarded adoption with revisioning off", async () => {
+    const f = await managedFixture();
+    await writeConfig(f.workspace, { schemaVersion: 4, mutationPolicy: { reason: "required", journal: "required", revisioning: { mode: "off" } } });
+    const plan = await planAdoptLegacyOwnership(f.request);
+    const mutation = await GovernedMutation.begin({ workspaceRoot: f.workspace, globalRoot: f.home, commandName: "agentwheel ownership adopt-legacy", reason: "Adopt the coherent fixture block", operationId: "managed-adopt-fixture" });
+    const destinationPath = installManifestPath(f.target, adapter.name, scope(f.request.destinationStateKey));
+    const transport: TargetTransport = { ...localTransport, writeJsonAtomic: async (path, value) => {
+      await localTransport.writeJsonAtomic(path, value);
+      if (path === destinationPath) throw new Error("linked interruption");
+    } };
+    try {
+      await applyAdoptLegacyOwnership({ ...applyRequest(f.request, plan), transport });
+      throw new Error("fixture did not interrupt");
+    } catch (error) {
+      await mutation!.fail(error);
+    }
+    const receipt = await recoverMutationRuntime("managed-adopt-fixture");
+    expect(receipt.runtimeJournals.every((journal) => journal.status === "resolved")).toBe(true);
+    expect(await readFile(f.file, "utf8")).toBe(f.prefix + f.block + f.suffix);
+  });
+});
+
+async function managedFixture() {
+  const home = await tempRoot("agentwheel-block-home-"); isolateProcessRoots(home);
+  const parent = await tempRoot("agentwheel-block-fleet-"); const workspace = join(parent, "profiles/nested");
+  const target = await tempRoot("agentwheel-block-target-"); const pack = await tempRoot("agentwheel-block-pack-");
+  await mkdir(workspace, { recursive: true }); await writeConfig(home, { schemaVersion: 2 });
+  await mkdir(join(pack, "instructions"));
+  await writeFile(join(pack, "openpack.json"), JSON.stringify({ schemaVersion: 2, name: "fixture/managed-adopt", version: "1.0.0", provides: [{ type: "instructions", path: "instructions/AGENTS.md" }] }));
+  await writeFile(join(pack, "instructions/AGENTS.md"), "Historical body.\n");
+  const roots = { home, parent, workspace, target, pack };
+  const seeded = await graphPlan(roots, workspace, { select: ["instructions/AGENTS.md"] });
+  const legacyKey = stateKeyFor(adapter.name, { installationType: "local", targetFingerprint: seeded.targetFingerprint });
+  const legacyLock = legacyLockPath(workspace, seeded.targetFingerprint);
+  await seedPlan(seeded, legacyKey, legacyLock);
+  const source = await readV2({ target }, legacyKey); const entry = source.entries[0]!;
+  const file = join(target, entry.path); const block = await readFile(file, "utf8");
+  const prefix = "# Existing local guidance\r\n\r\nKeep every prefix byte.\r\n\n";
+  const suffix = "\nKeep every suffix byte.\r\n";
+  await writeFile(file, prefix + block + suffix); await chmod(file, 0o640);
+  await writeConfig(parent, { schemaVersion: 3, fleetId: "delivery", packages: [fleetPackage()] });
+  await writeConfig(home, { schemaVersion: 3, fleets: { delivery: { root: parent, requiredPackages: ["core"] } } });
+  await writeFile(join(pack, "instructions/AGENTS.md"), "A newer source body, evaluated separately.\n");
+  const desired = await graphPlan(roots, workspace, { select: ["instructions/AGENTS.md"], freshGraphOnly: true, deferForeignStateCheck: true });
+  const request: AdoptLegacyOwnershipRequest = { targetRoot: target, adapter: adapter.name, installationType: "local", sourceStateKey: legacyKey, destinationStateKey: desired.plan.stateKey!, fromWorkspaceRoot: workspace, workspaceRoot: workspace, globalRoot: home, destinationGraphLockPath: desired.graphLockPath, desiredCoverage: desiredCoverageFromPlan(desired.plan) };
+  return { ...roots, request, file, block, prefix, suffix, entry, legacyLock, manifest: installManifestPath(target, adapter.name, scope(legacyKey)), selector: managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName) };
+}
+
+function sha(text: string): string { return createHash("sha256").update(text).digest("hex"); }

@@ -496,15 +496,27 @@ the same path with the same artifact identity move; the rest stay in the source 
 listed. The current graph groups packages as install does, by installation type and adapter
 configuration, and the command refuses when they resolve to more than one install state or when
 `--installation-type`, `--adapter-config`, or `--adapter-module` differs from what install resolves.
-Runtime bytes must match the recorded hash unless `--carry-drift` keeps that hash, so the next
-install reports drift instead of overwriting local changes. A path another owner still claims blocks the
+For plain entries, runtime bytes must match the recorded hash unless `--carry-drift` keeps that
+hash, so the next install reports drift instead of overwriting local changes. A path another owner still claims blocks the
 plan. A duplicate claim by the same previous owner is listed only when it sits under another legacy
 key of that root with the same proof and the same recorded artifact and hashes; run the command
 again with that key to retire it. Any other duplicate, including one in that root's current state,
 blocks the plan. Apply only the emitted command. It writes the stable manifest first and the legacy
-manifest second, and changes nothing else. A pending apply journal blocks the command. If an apply
-stops after the stable manifest was written, run the dry-run again: paths already in the stable
-state are then retired from the legacy key.
+manifest second without rewriting runtime artifacts. A pending apply journal blocks the command:
+recover the journal before planning again. Once the stable phase has completed, a new reviewed
+dry-run retires the exact source copy left under the legacy key.
+
+Coherent managed instruction blocks are also supported. There must be one complete selected
+marker pair with matching selector, marker digest and recorded body hash; duplicate, overlapping,
+missing or drifted markers are refused. `--carry-drift` is forbidden when a managed block is selected.
+The reviewed plan records the original body hash separately from the whole-file runtime hash,
+prefix/suffix/block digests and byte/mode snapshot. The native phase journals bind these values and
+the whole install-manifest inventory. Initial apply and interrupted recovery require exact reviewed
+before/after state, preserving concurrent edits rather than overwriting them. Additional overlapping
+claims are refused; only an exact source/destination copy from the two-phase transition may remain.
+The runtime file, its prefix, suffix, block and permissions stay unchanged. Adoption preserves the
+recorded source metadata; it does not establish historical Git availability or evaluate a later source
+update. Run ordinary install planning separately for that decision.
 
 ## Core Ideas
 

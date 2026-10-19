@@ -1235,7 +1235,7 @@ ownershipCommand
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
   .option("--adapter-module <path>", "local programmatic adapter module")
   .option("--allow-adapter-code", "allow loading local adapter code", false)
-  .option("--carry-drift", "also move entries whose runtime differs from the recorded hash; the recorded hash is kept", false)
+  .option("--carry-drift", "also move drifted plain entries while keeping the recorded hash; forbidden for managed blocks", false)
   .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
   .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
   .option("--expected-destination-revision <sha256|absent>", "reviewed destination manifest revision; required with --apply")

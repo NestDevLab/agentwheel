@@ -15,7 +15,7 @@ import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
 import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, listInstallManifests, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
-import { installManifestPath } from "./paths.js";
+import { installManifestPath, metadataDir } from "./paths.js";
 import {
   acquireApplyLock,
   applyJournalPath,
@@ -28,6 +28,7 @@ import {
   removeApplyJournal,
   rollbackCompletedOperations,
   type ApplyJournal,
+  type MetadataStateGuards,
   type ApplyLockOptions,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
@@ -46,6 +47,7 @@ import {
   managedInstructionBlockMode,
   managedInstructionSelector,
   readManagedInstructionBlockState,
+  exactManagedInstructionBlockSnapshot,
   removeManagedInstructionBlock,
   writeManagedInstructionBlock,
 } from "./instructions-block.js";
@@ -421,10 +423,11 @@ async function commitJournalState(
 ): Promise<InstallManifest> {
   const manifest = withManifestRevision({
     ...journal.manifest,
-    generatedAt: journal.metadataAudit ? journal.createdAt : now,
+    generatedAt: journal.metadataAudit || journal.metadataGuards ? journal.createdAt : now,
     entries: entries ? entries.sort((a, b) => a.path.localeCompare(b.path)) : journal.manifest.entries,
   });
 
+  if (journal.metadataGuards) await assertMetadataStateGuards(journal, manifest, journal.metadataGuards, transport);
   if (journal.metadataAudit) {
     await assertMetadataAuditGuards(journal, manifest, transport);
     // Intent lands first. A crash leaves an explicit pending journal, never an unaudited release.
@@ -440,13 +443,14 @@ async function commitJournalState(
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
+    if (journal.metadataGuards) await syncMetadataPath(metadataDir(journal.targetRoot), true);
   } else {
     if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport, {
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
     await writeInstallManifest(manifest, transport);
-    if (journal.metadataAudit) await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
+    if (journal.metadataAudit || journal.metadataGuards) await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
       installationType: journal.installationType, stateKey: journal.stateKey,
     }));
   }
@@ -467,6 +471,7 @@ async function commitJournalState(
   }
   const verifiedManifest = await assertCommittedJournalState(journal, manifest, transport);
   if (journal.metadataAudit) await assertMetadataAuditGuards(journal, manifest, transport, true);
+  if (journal.metadataGuards) await assertMetadataStateGuards(journal, manifest, journal.metadataGuards, transport, true);
   await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
@@ -547,32 +552,7 @@ async function assertMetadataAuditGuards(
     || audit.auditFiles.length !== 1 || audit.runtime.length !== 1 || !audit.inventory.length) {
     throw new Error("Invalid metadata-audit transaction; no state was committed.");
   }
-  await assertNoSymlinkPath(journal.targetRoot);
-  await assertNoSymlinkPath(join(journal.targetRoot, ".agentwheel"));
-  const inventory = await listInstallManifests(journal.targetRoot, undefined, transport);
-  const expected = new Map(audit.inventory.map((item) => [item.stateKey, item.revision]));
-  if (expected.size !== audit.inventory.length || inventory.length !== expected.size
-    || expected.get(journal.stateKey!) !== journal.baseRevision) {
-    throw new Error("Metadata-audit inventory changed; recovery requires the reviewed state.");
-  }
-  for (const item of inventory) {
-    await assertNoSymlinkPath(item.path);
-    const before = expected.get(item.stateKey);
-    const accepted = item.stateKey === journal.stateKey
-      ? (item.manifest.revision === after.revision || (!requireAfter && item.manifest.revision === before))
-      : item.manifest.revision === before;
-    if (!before || !sha.test(before) || !accepted) {
-      throw new Error(`Metadata-audit inventory/manifest CAS failed at ${item.stateKey}; concurrent state was preserved.`);
-    }
-  }
-  for (const guard of audit.runtime) {
-    const path = metadataRuntimePath(journal.targetRoot, guard.path);
-    if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
-      || await ownershipRuntimeSnapshot(path) !== guard.snapshotDigest
-      || await transport.hashPath(path) !== guard.hash) {
-      throw new Error(`Metadata-audit runtime CAS failed at ${guard.path}; runtime was preserved.`);
-    }
-  }
+  await assertMetadataStateGuards(journal, after, audit, transport, requireAfter);
   for (const file of audit.auditFiles) {
     const path = metadataAuditPath(audit, file.path);
     await assertNoSymlinkPath(path);
@@ -583,6 +563,58 @@ async function assertMetadataAuditGuards(
       if (await readFile(path, "utf8") !== file.content) throw new Error(`Metadata-audit file changed: ${path}`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT" || requireAfter) throw error;
+    }
+  }
+}
+
+async function assertMetadataStateGuards(
+  journal: ApplyJournal,
+  after: InstallManifestV2,
+  guards: MetadataStateGuards,
+  transport: TargetTransport,
+  requireAfter = false,
+): Promise<void> {
+  const sha = /^[a-f0-9]{64}$/;
+  if (transport.kind !== "local" || (journal.metadataAudit && journal.metadataGuards)
+    || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
+    || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
+    || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
+    || journal.sourceLock || journal.graphLock || journal.graphLockPath || journal.graphLockRemovePath
+    || journal.stateRemoveKey || journal.workspaceConfigPath || journal.workspaceConfig
+    || (journal.baseRevision !== null && !sha.test(journal.baseRevision))
+    || !guards.inventory.length || !guards.runtime.length) {
+    throw new Error("Invalid guarded metadata transaction; no state was committed.");
+  }
+  await assertNoSymlinkPath(journal.targetRoot);
+  await assertNoSymlinkPath(metadataDir(journal.targetRoot));
+  const inventory = await listInstallManifests(journal.targetRoot, undefined, transport);
+  for (const item of inventory) await assertNoSymlinkPath(item.path);
+  const before = new Map(guards.inventory.map((item) => [item.stateKey, item.revision]));
+  if (before.size !== guards.inventory.length || [...before.values()].some((revision) => !sha.test(revision))
+    || (before.get(journal.stateKey!) ?? null) !== journal.baseRevision) {
+    throw new Error("Invalid guarded metadata inventory baseline.");
+  }
+  const next = new Map(before);
+  if (after.entries.length === 0 && !journal.metadataAudit) next.delete(journal.stateKey!);
+  else next.set(journal.stateKey!, after.revision);
+  const actual = new Map(inventory.map((item) => [item.stateKey, item.manifest.revision]));
+  const equals = (expected: Map<string, string>) => actual.size === expected.size
+    && [...expected].every(([key, revision]) => actual.get(key) === revision);
+  if (!equals(next) && (requireAfter || !equals(before))) {
+    throw new Error("Metadata inventory/manifest CAS failed; concurrent state was preserved.");
+  }
+  for (const guard of guards.runtime) {
+    const path = metadataRuntimePath(journal.targetRoot, guard.path);
+    if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
+      || await ownershipRuntimeSnapshot(path) !== guard.snapshotDigest
+      || await transport.hashPath(path) !== guard.hash) {
+      throw new Error(`Metadata runtime CAS failed at ${guard.path}; runtime was preserved.`);
+    }
+    if (guard.managedBlock) {
+      const current = exactManagedInstructionBlockSnapshot(await transport.readFile(path), guard.managedBlock.selector);
+      if (canonicalJson(current) !== canonicalJson(guard.managedBlock)) {
+        throw new Error(`Managed instruction snapshot CAS failed at ${guard.path}.`);
+      }
     }
   }
 }

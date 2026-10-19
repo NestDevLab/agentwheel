@@ -1,5 +1,5 @@
 import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +18,9 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))); roots.length = 0; });
 async function fixture(): Promise<string> { const root = await mkdtemp(join(tmpdir(), "aw-runas-test-")); roots.push(root); return root; }
 function identity(root: string): RunAsIdentity { return { user: "service", uid: 998, gid: 998, home: root, root }; }
+function distinctServiceIdentity(root: string): RunAsIdentity {
+  return { ...identity(root), uid: process.getuid!() === 65534 ? 65533 : 65534 };
+}
 async function trustedNodeFixture(root: string): Promise<string> {
   const executable = join(root, "node");
   await writeFile(executable, "fixture");
@@ -71,17 +74,19 @@ describe("local run-as read transport", () => {
   it("uses exact noninteractive sudo argv, an empty environment and a bounded stdin protocol", async () => {
     const root = await fixture();
     const node = await trustedNodeFixture(root);
+    const service = distinctServiceIdentity(root);
+    expect(statSync(node).uid).toBe(process.getuid!());
     const calls: Array<{ command: string; args: string[]; input?: string }> = [];
     const runner: RunAsRunner = async (command, args, input) => {
       calls.push({ command, args, input });
-      return { stdout: input ? JSON.stringify({ version: 1, result: true }) : "998\n" };
+      return { stdout: input ? JSON.stringify({ version: 1, result: true }) : `${service.uid}\n` };
     };
-    const transport = createRunAsTransport(identity(root), runner, "/fixed/run-as-worker.mjs", node);
+    const transport = createRunAsTransport(service, runner, "/fixed/run-as-worker.mjs", node);
     expect(await transport.pathExists(join(root, "managed"))).toBe(true);
     expect(calls[0]).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", "service", "-H", "--", "/usr/bin/id", "-u"], input: undefined });
     expect(calls[1]?.command).toBe("/usr/bin/sudo");
     expect(calls[1]?.args).toEqual(["-n", "-u", "service", "-H", "--", "/usr/bin/env", "-i",
-      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(node), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
+      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(node), "/fixed/run-as-worker.mjs", "--root", root, "--uid", String(service.uid), "--gid", "998"]);
     expect(JSON.parse(calls[1]!.input!)).toEqual({ version: 1, operation: "pathExists", path: "managed" });
     expect(calls[1]?.args).not.toContain("-c");
     expect(calls[1]?.args).not.toContain(`HOME=${process.env.HOME ?? "/home/example"}`);
@@ -92,10 +97,11 @@ describe("local run-as read transport", () => {
   it("fails closed on sudo denial, a wrong UID, escaping paths and all writes", async () => {
     const root = await fixture();
     const node = await trustedNodeFixture(root);
-    const denied = createRunAsTransport(identity(root), async () => { throw new Error("a password is required"); }, "/fixed/worker", node);
+    const service = distinctServiceIdentity(root);
+    const denied = createRunAsTransport(service, async () => { throw new Error("a password is required"); }, "/fixed/worker", node);
     await expect(denied.pathExists(join(root, "x"))).rejects.toThrow(/sudo preflight failed/);
-    const wrong = createRunAsTransport(identity(root), async () => ({ stdout: "0\n" }), "/fixed/worker", node);
-    await expect(wrong.pathExists(join(root, "x"))).rejects.toThrow(/expected 998/);
+    const wrong = createRunAsTransport(service, async () => ({ stdout: "0\n" }), "/fixed/worker", node);
+    await expect(wrong.pathExists(join(root, "x"))).rejects.toThrow(new RegExp(`expected ${service.uid}`));
     await expect(wrong.pathExists("/etc/passwd")).rejects.toThrow(/escapes/);
     await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(/read-only in PR1/);
     const plan = { hasBlockingChanges: false, installationType: "user", stateKey: "openclaw.user.test" } as InstallPlan;

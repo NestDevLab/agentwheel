@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -24,8 +24,7 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly",
-      "journal-compatibility"
+      "local-run-as-readonly"
     ],
     "strategy": "cherry-pick"
   },
@@ -60,25 +59,6 @@
         "enabled": false
       },
       "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/journal-compatibility",
-      "commits": [
-        "6975c5550f0cae8ce1defee4f5268d37d26c1c02",
-        "3687f20ac5f3298e185c6206202976f4c4d7c377"
-      ],
-      "id": "journal-compatibility",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Path-scoped revision leases and mutation isolation"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
     }

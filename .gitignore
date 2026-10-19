@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+cloudflare/.catalogue-assets/
+cloudflare/.wrangler/
 .turbo/
 .pnpm-store/
 .DS_Store

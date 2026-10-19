@@ -7,3 +7,12 @@ routes = [
   { pattern = "www.nestdev.it/agentwheel/share/*", zone_name = "nestdev.it" },
   { pattern = "www.nestdev.it/agentwheel/catalogue/*", zone_name = "nestdev.it" },
 ]
+
+[build]
+command = "node build-catalogue-assets.mjs"
+watch_dir = ["catalogue-share-worker.js", "catalogue-assets.js", "build-catalogue-assets.mjs", "../docs/catalogue.html"]
+
+[assets]
+directory = ".catalogue-assets"
+binding = "ASSETS"
+run_worker_first = true

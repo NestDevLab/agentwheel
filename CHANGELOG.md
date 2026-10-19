@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.4
+
+- Add governed `pin --packages-file` declaration replacement with schema validation, exact
+  metadata preservation and non-mutating configuration previews via `--dry-run`.
+
 ## 0.21.3
 
 - Add governed `pin <alias> <commit>` source mutations that preserve configured package fields

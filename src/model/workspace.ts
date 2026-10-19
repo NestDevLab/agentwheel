@@ -313,7 +313,25 @@ export async function writeWorkspaceConfig(workspaceRoot: string, config: Worksp
 export async function pinConfiguredPackages(
   workspaceRoot: string,
   input: unknown,
-): Promise<void> {
+  options: { dryRun?: boolean; replacePackages?: boolean } = {},
+): Promise<WorkspaceConfigInput> {
+  if (options.replacePackages) {
+    const packages = z.array(workspacePackageSchema).parse(input);
+    if (new Set(packages.map((pkg) => pkg.name)).size !== packages.length) {
+      throw new Error("Package declarations require unique aliases.");
+    }
+    const path = workspaceConfigPath(workspaceRoot);
+    const config = JSON.parse(await readFile(path, "utf8")) as WorkspaceConfigInput;
+    workspaceConfigSchema.parse(config);
+    // Preserve the authored entries, including absent defaults and extension fields.
+    config.packages = input as WorkspaceConfigInput["packages"];
+    workspaceConfigSchema.parse(config);
+    if (!options.dryRun) {
+      declareMutationPath(path);
+      await writeJsonAtomic(path, config);
+    }
+    return config;
+  }
   const pins = z.array(z.object({
     alias: z.string().min(1),
     commit: z.string().regex(/^[a-f0-9]{40}$/i, "Pin requires an exact 40-hex commit SHA."),
@@ -349,8 +367,11 @@ export async function pinConfiguredPackages(
   // Validate without serializing the parsed result: defaults, package extension
   // fields and unrelated entries must survive this field-only source mutation.
   workspaceConfigSchema.parse(config);
-  declareMutationPath(path);
-  await writeJsonAtomic(path, config);
+  if (!options.dryRun) {
+    declareMutationPath(path);
+    await writeJsonAtomic(path, config);
+  }
+  return config;
 }
 
 export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePackage): WorkspaceConfig {

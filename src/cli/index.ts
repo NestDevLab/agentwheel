@@ -255,7 +255,7 @@ program
 
 program
   .command("pin")
-  .description("pin configured package aliases without resolving sources or touching runtimes")
+  .description("pin configured revisions or replace package declarations without touching runtimes")
   .argument("[alias]", "exact configured package alias")
   .argument("[commit]", "exact 40-hex commit SHA")
   .option("--user", "use the user workspace", false)
@@ -263,17 +263,24 @@ program
   .option("--fleet <id>", "use one registered named fleet")
   .option("-t, --target-root <path>", "explicit workspace root")
   .option("--pins-file <path>", "JSON array of {alias, commit, select?} pins in one mutation")
+  .option("--packages-file <path>", "JSON array replacing the complete configured packages list")
+  .option("--dry-run", "print the complete proposed config as JSON without writing", false)
   .option("--select <type/name>", "replace the complete selection (repeatable or comma-separated)", collectSelectOption)
   .action(async (alias, commit, options) => {
     const workspaceRoot = await workspaceRootFromOptions(normalizeRuntimeScopeOptions(options));
-    if (options.pinsFile ? alias !== undefined || commit !== undefined || options.select !== undefined : !alias || !commit) {
-      throw new Error("Choose pin <alias> <commit> [--select ...] or pin --pins-file <path>, exclusively.");
+    const positional = alias !== undefined || commit !== undefined || options.select !== undefined;
+    if (options.packagesFile ? positional || options.pinsFile : options.pinsFile ? positional : !alias || !commit) {
+      throw new Error("Choose pin <alias> <commit> [--select ...], --pins-file <path>, or --packages-file <path>, exclusively.");
     }
-    const pins: unknown = options.pinsFile
-      ? JSON.parse(await readFile(resolve(options.pinsFile), "utf8"))
+    const inputFile = options.packagesFile ?? options.pinsFile;
+    const input: unknown = inputFile
+      ? JSON.parse(await readFile(resolve(inputFile), "utf8"))
       : [{ alias, commit, ...(options.select === undefined ? {} : { select: options.select }) }];
-    await pinConfiguredPackages(workspaceRoot, pins);
-    console.log("Pinned configured package revisions. Preview: agentwheel plan - Apply: agentwheel install");
+    const config = await pinConfiguredPackages(workspaceRoot, input, {
+      dryRun: options.dryRun, replacePackages: options.packagesFile !== undefined,
+    });
+    if (options.dryRun) console.log(JSON.stringify(config, null, 2));
+    else console.log("Pinned configured packages. Preview: agentwheel plan - Apply: agentwheel install");
   });
 
 program

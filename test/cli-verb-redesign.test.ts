@@ -2288,6 +2288,88 @@ describe("CLI verb redesign", () => {
     await expect(stat(join(cliHome, ".agents"))).rejects.toThrow();
   });
 
+  it("previews and replaces exact package declarations through the governed config-only path", async () => {
+    const workspace = await tempRoot();
+    const stateRoot = join(await tempRoot(), "mutations");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = {
+      schemaVersion: 4, fleetId: "package-test", bootstrapSkills: false,
+      mutationPolicy: {
+        reason: "required", journal: "required",
+        revisioning: {
+          mode: "commit-after-verify", allowNoCommitOverride: false, reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+      packages: [{ name: "old", source: "missing-old" }],
+    };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify(config));
+    await git(workspace, ["init", "-b", "main"]);
+    await git(workspace, ["config", "user.name", "Test"]);
+    await git(workspace, ["config", "user.email", "test@example.test"]);
+    await git(workspace, ["add", ".agentwheel/config.json"]);
+    await git(workspace, ["commit", "-m", "Initialize declaration fixture"]);
+    await runCli(["fleet", "register", "package-test", "--root", workspace, "--required-package", "old"]);
+    const declarations = [
+      { name: "old", source: "git:https://example.invalid/pack.git#main", driver: "local",
+        adapter: "claude", runtimes: ["codex", "claude"], mode: "pinned", requestedRef: "a".repeat(40),
+        select: ["skills/reviewed"], aliases: { "skills/reviewed": "renamed" },
+        overrides: ["other:skills/reviewed"], extension: { retained: true } },
+      { name: "a-second", source: "missing-source", selection: { export: "reviewed" } },
+    ];
+    const input = join(await tempRoot(), "packages.json");
+    await writeFile(input, JSON.stringify(declarations));
+    const args = ["pin", "--packages-file", input, "--fleet", "package-test"];
+    const env = { AGENTWHEEL_MUTATION_STATE_ROOT: stateRoot };
+    const before = await readFile(configPath, "utf8");
+    const head = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    const preview = await runCli([...args, "--dry-run"], { env });
+    expect(JSON.parse(preview.stdout)).toEqual({ ...config, packages: declarations });
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    expect((await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(head);
+    await expect(stat(stateRoot)).rejects.toThrow();
+    await expect(runCli(args, { env })).rejects.toThrow(/mutation reason required/i);
+    await expect(runCli(["--reason", "Forbidden override", "--no-commit", ...args], { env })).rejects.toThrow(/does not allow/i);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    await runCli(["--reason", "Apply reviewed declarations", "--operation-id", "package-fixture", ...args], { env });
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ ...config, packages: declarations });
+    const receipt = JSON.parse(await readFile(join(stateRoot, "receipts", "package-fixture.json"), "utf8"));
+    expect(receipt).toMatchObject({ status: "succeeded", commandName: "agentwheel pin", paths: [{ path: ".agentwheel/config.json" }] });
+    expect((await execFileAsync("git", ["show", "--format=", "--name-only", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(".agentwheel/config.json");
+    expect(await readdir(join(workspace, ".agentwheel"))).toEqual(["config.json"]);
+    await expect(stat(join(cliHome, ".claude"))).rejects.toThrow();
+    await expect(stat(join(cliHome, ".agents"))).rejects.toThrow();
+  }, 30_000);
+
+  it("rejects invalid or mixed package declaration inputs before writes and allows explicit empty declarations", async () => {
+    const workspace = await tempRoot();
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = { schemaVersion: 2, bootstrapSkills: false, packages: [{ name: "old", source: "missing-old" }] };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify(config));
+    const before = await readFile(configPath, "utf8");
+    const input = join(await tempRoot(), "packages.json");
+    const valid = { name: "declared", source: "missing-source" };
+    for (const invalid of [{ packages: [valid] }, [valid, valid], [{ ...valid, runtimes: ["claude", "claude"] }],
+      [{ ...valid, mode: "unknown" }], [{ ...valid, selection: { export: "x" }, select: ["skills/x"] }]]) {
+      await writeFile(input, JSON.stringify(invalid));
+      await expect(runCli(["pin", "--packages-file", input, "--target-root", workspace, "--dry-run"])).rejects.toThrow();
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(input, JSON.stringify([valid]));
+    for (const mixed of [["declared", "a".repeat(40)], ["--pins-file", input], ["--select", "skills/x"]]) {
+      await expect(runCli(["pin", "--packages-file", input, ...mixed, "--target-root", workspace, "--dry-run"])).rejects.toThrow(/exclusively/i);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(input, "[]");
+    const preview = await runCli(["pin", "--packages-file", input, "--target-root", workspace, "--dry-run"]);
+    expect(JSON.parse(preview.stdout)).toEqual({ ...config, packages: [] });
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    await runCli(["pin", "--packages-file", input, "--target-root", workspace]);
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ ...config, packages: [] });
+  }, 30_000);
+
   it.each([{ skills: ["legacy"] }, { selection: { export: "reviewed", exclude: ["skills/old"] } }])(
     "preserves omitted pin selection and replaces the complete explicit selection (%j)", async (selection) => {
       const workspace = await tempRoot();

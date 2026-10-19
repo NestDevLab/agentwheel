@@ -23,7 +23,7 @@ export const commandGovernance = {
   "fleet normalize": "governed-apply-or-recover",
   "cache prune": "governed-apply",
   add: "governed-always",
-  pin: "governed-always",
+  pin: "governed-unless-dry-run",
   list: "incidental-cache",
   search: "incidental-cache",
   try: "incidental-cache",

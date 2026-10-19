@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/legacy-managed-block-0212"
+  ],
+  "claimed_at": "2026-10-19T15:30:48+00:00",
+  "coordination_id": "default",
+  "operation_token": "ec743487-30ae-4a55-b7a5-e63bac484e97",
+  "publication_scope": "stack:legacy-managed-block-0212",
+  "source_ref": "refs/heads/pr/legacy-managed-block-0212",
+  "syncwheel_version": "0.46.1"
+}

@@ -21,12 +21,20 @@ The Worker runs before assets so internal asset paths are not public routes.
 No full-catalogue network fallback exists: missing build assets return 503, and
 resources absent from the built snapshot return 404.
 
-**Preview metadata is now a deployment snapshot.** New entries, names and social
-descriptions become available after rebuilding and deploying this Worker. Registry
-updates alone do not update social previews; the browser catalogue remains live.
-Before any separately approved deployment, build with current registry data and
-check that representative recently added native and Vercel links resolve. This
-change does not configure automatic deployment or change routes, DNS or billing.
+**Preview metadata and the HTML template are deployment snapshots.** New entries,
+names, social descriptions and changes to `docs/catalogue.html` become available
+after rebuilding and deploying this Worker. Registry updates alone do not update
+social previews; the browser catalogue remains live.
+
+Before any separately approved deployment:
+
+- Rebuild with current registry data to refresh preview metadata.
+- Rebuild and redeploy after changes to `docs/catalogue.html` to refresh the frozen
+  preview template too.
+- Check representative recently added native and Vercel links and the expected
+  template changes after deployment.
+
+This change does not configure automatic deployment or change routes, DNS or billing.
 
 ## Verification
 
@@ -34,13 +42,14 @@ From the repository root:
 
 ```sh
 pnpm exec vitest run test/catalogue-share-worker.test.ts test/catalogue-site.test.ts
-node cloudflare/benchmark-catalogue-worker.mjs --baseline-ref origin/main
+node cloudflare/benchmark-catalogue-worker.mjs
 ```
 
 The benchmark compares the baseline Worker against the candidate with real public
 datasets and in-memory responses, excluding network latency. It reports process
 CPU for first calls and median/P95 across 30 measured calls. Baseline source must
-be the revision before this optimization; after merge, supply that revision
+be the revision before this optimization. The default is pinned to
+`432bbbb2c612641c2b7517a3e439c1c7bf07d704`; use `--baseline-ref` to override it
 explicitly. Optional `--catalogue /path/catalogue-data.json` and
 `--vercel-index /path/catalogue-vercel-index.json` pin local fixtures. The builder
 accepts those same two fixture paths as positional arguments for offline builds.

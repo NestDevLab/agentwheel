@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.0
+
+- Add opt-in `provider.headLease: "path-scoped"` for disjoint concurrent journal commits.
+  Verify every intervening commit, protect provider configuration and manifests, and preserve
+  exact operation paths, content, hooks, and recovery. Existing policies retain exact HEAD leases.
+- Scope clean-working-tree preflights to Agentwheel state while retaining global index and conflict
+  checks. Preserve unrelated dirty bytes even when another writer commits them during an operation.
+
 ## 0.20.20
 
 - Let a configured package opt into selected runtime adapters with `runtimes` across profile, agent,

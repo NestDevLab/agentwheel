@@ -23,6 +23,8 @@ import {
   type RuntimeJournalReceipt,
 } from "./receipts.js";
 import {
+  assertHeadLease,
+  isAgentwheelWritablePath,
   collectIntroducedPaths,
   currentHead,
   discoverGitRepository,
@@ -124,6 +126,13 @@ export class GovernedMutation {
           `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}. ${dirtyDeclaredPaths.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
         );
       }
+      if (options.requireCleanWorkingTree && baseline) {
+        const dirty = [...baseline.changed.keys()].filter(isAgentwheelWritablePath);
+        if (dirty.length > 0) throw new Error(
+          `Mutation requires clean Agentwheel paths: ${dirty.join(", ")}. ${dirty.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
+        );
+      }
+      if (policy.revisioning.mode === "commit-after-verify" && repository) await assertGitPreflight(repository);
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,
@@ -288,6 +297,8 @@ export class GovernedMutation {
       ...declaredMutationPaths(),
       ...readMutationPathDeclarations(this.receipt.operationId),
     ])].sort((a, b) => a.localeCompare(b));
+    if (this.receipt.provider) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
+      await currentHead(this.receipt.repositoryRoot), this.receipt.noCommit ? [] : declarations, this.receipt.provider);
     return collectIntroducedPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, this.baseline, declarations);
   }
 
@@ -385,7 +396,9 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
   try {
     let paths = receipt.paths;
     const head = await currentHead(repositoryRoot);
-    if (paths.length === 0 && head === expectedHead) {
+    if (paths.length === 0) {
+      const declarations = readMutationPathDeclarations(receipt.operationId);
+      await assertHeadLease(repositoryRoot, expectedHead, head, receipt.noCommit ? [] : declarations, provider);
       paths = await collectIntroducedPaths(
         repositoryRoot,
         expectedHead,
@@ -447,11 +460,13 @@ export async function recoverMutationRuntime(
     if (receipt.repositoryRoot && receipt.expectedHead && baseline) {
       const declarations = readMutationPathDeclarations(receipt.operationId);
       const repository = await discoverGitRepository(receipt.repositoryRoot);
-      if (!repository || repository.root !== receipt.repositoryRoot || repository.head !== receipt.expectedHead) {
+      if (!repository || repository.root !== receipt.repositoryRoot) {
         throw new Error(
           `Mutation '${receipt.operationId}' repository HEAD lease changed before runtime recovery.`,
         );
       }
+      await assertHeadLease(receipt.repositoryRoot, receipt.expectedHead, repository.head,
+        receipt.noCommit ? [] : declarations, receipt.provider);
       await assertGitPreflight(repository);
       await collectIntroducedPaths(receipt.repositoryRoot, receipt.expectedHead, baseline, declarations);
     }

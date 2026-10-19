@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readlink, readdir } from "node:fs/promises";
 import { posix, relative, resolve, sep } from "node:path";
+import type { RevisionProviderConfigInput } from "../model/mutation.js";
 import type { RevisionPath } from "./protocol.js";
 import { runProcess } from "./process.js";
 
@@ -41,6 +42,52 @@ export async function assertGitPreflight(repository: GitRepositoryState): Promis
   }
 }
 
+/** Missing policy retains the v1 exact-HEAD contract, including old durable receipts. */
+export async function assertHeadLease(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  paths: string[],
+  provider?: RevisionProviderConfigInput | null,
+): Promise<void> {
+  if (head === expectedHead) return;
+  if (provider?.headLease !== "path-scoped" || paths.length === 0) {
+    throw new Error(`Git HEAD lease mismatch: expected ${expectedHead}, found ${head}.`);
+  }
+  // Trust the original committed policy, never an uncommitted configuration expansion.
+  const config = await runProcess("git", ["-C", repositoryRoot, "show", `${expectedHead}:.agentwheel/config.json`], {
+    allowExitCodes: [0, 128],
+  });
+  let committedLease: unknown;
+  try {
+    committedLease = JSON.parse(config.stdout.toString("utf8")).mutationPolicy?.revisioning?.provider?.headLease;
+  } catch { /* A missing or invalid committed configuration cannot widen the lease. */ }
+  if (committedLease !== "path-scoped") {
+    throw new Error("Path-scoped HEAD lease requires committed provider policy at expectedHead.");
+  }
+  const ancestor = await runProcess("git", ["-C", repositoryRoot, "merge-base", "--is-ancestor", expectedHead, head], {
+    allowExitCodes: [0, 1],
+  });
+  if (ancestor.exitCode !== 0) throw new Error("Git HEAD lease does not descend from expectedHead.");
+  const protectedPaths = [...paths, ".agentwheel/config.json", ".syncwheel/manifest.json"];
+  const commits = (await runProcess("git", ["-C", repositoryRoot, "rev-list", `${expectedHead}..${head}`]))
+    .stdout.toString("utf8").trim().split("\n").filter(Boolean);
+  for (const commit of commits) {
+    // Inspect each commit against every parent, with renames expanded into delete/add.
+    // A net diff would miss change/revert and hidden changes on merged branches.
+    const touched = splitNull((await runProcess("git", ["-C", repositoryRoot, "diff-tree", "--root", "-m",
+      "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", commit])).stdout);
+    if (touched.some((path) => protectedPaths.some((protectedPath) =>
+      path === protectedPath || path.startsWith(`${protectedPath}/`) || protectedPath.startsWith(`${path}/`)))) {
+      throw new Error(`Git HEAD lease overlaps protected paths in intervening commit ${commit}.`);
+    }
+  }
+}
+
+export function isAgentwheelWritablePath(path: string): boolean {
+  return /^\.agentwheel(?:\/|$)/u.test(path) || /^profiles\/[^/]+\/\.agentwheel(?:\/|$)/u.test(path);
+}
+
 export async function snapshotRepository(repositoryRoot: string): Promise<RepositorySnapshot> {
   const paths = await changedRepositoryPaths(repositoryRoot);
   const changed = new Map<string, string | null>();
@@ -57,7 +104,18 @@ export async function collectIntroducedPaths(
   const after = await snapshotRepository(repositoryRoot);
   const touchedPreexisting = new Set<string>();
   for (const [path, hash] of before.changed) {
-    if (!after.changed.has(path) || after.changed.get(path) !== hash) touchedPreexisting.add(path);
+    if (declaredPaths.includes(path)) touchedPreexisting.add(path);
+    else if (!after.changed.has(path)) {
+      const head = await currentHead(repositoryRoot);
+      const ancestor = await runProcess("git", ["-C", repositoryRoot, "merge-base", "--is-ancestor", expectedHead, head], {
+        allowExitCodes: [0, 1],
+      });
+      // Another writer may commit the very bytes already present at begin. This is
+      // preservation only when both the current tree and working bytes prove it.
+      if (head === expectedHead || ancestor.exitCode !== 0
+        || await hashWorkingPath(repositoryRoot, path) !== hash
+        || await hashHeadPath(repositoryRoot, head, path) !== hash) touchedPreexisting.add(path);
+    } else if (after.changed.get(path) !== hash) touchedPreexisting.add(path);
   }
   if (touchedPreexisting.size > 0) {
     throw new Error(`Mutation touched pre-existing dirty paths: ${[...touchedPreexisting].sort().join(", ")}.`);

@@ -47,7 +47,21 @@ def main() -> int:
 
     syncwheel = load_module("agentwheel_syncwheel_fault_bridge", scripts / "syncwheel.py")
 
+    class FaultJournalBackend(getattr(syncwheel, "JournalRevisionBackend", syncwheel.SyncwheelRevisionBackend)):
+        def checkpoint(self, observed_phase):
+            if observed_phase == phase and durable_marker(marker, phase):
+                raise protocol.RevisionProviderError(
+                    f"injected Agentwheel black-box fault after {phase}"
+                )
+
     class FaultBackend(syncwheel.SyncwheelRevisionBackend):
+        def for_request(self, request):
+            selector = getattr(super(), "for_request", None)
+            selected = selector(request) if selector else self
+            if isinstance(selected, getattr(syncwheel, "JournalRevisionBackend", type(None))):
+                return FaultJournalBackend(protocol)
+            return self
+
         def checkpoint(self, observed_phase):
             if observed_phase == phase and durable_marker(marker, phase):
                 raise protocol.RevisionProviderError(

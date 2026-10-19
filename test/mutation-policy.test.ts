@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { commandGovernance, commandGovernanceMode, isGovernedCommand, requiresCleanMutationPreflight } from "../src/mutation/commands.js";
 import { GovernedMutation, mergeMutationPolicies, recoverMutationRuntime, resumeMutation } from "../src/mutation/coordinator.js";
 import { declareMutationPath } from "../src/mutation/declarations.js";
+import { assertHeadLease } from "../src/mutation/repository.js";
 import { invokeRevisionProvider } from "../src/mutation/providers.js";
 import {
   revisionPathSchema,
@@ -57,6 +58,170 @@ afterEach(async () => {
 });
 
 describe.sequential("mutation policy and revision provider v1", () => {
+  it("defaults legacy provider configurations to an exact HEAD lease", async () => {
+    expect(revisionProviderConfigSchema.parse({ kind: "git", protocolVersion: 1 }).headLease).toBeUndefined();
+    const { repo, globalRoot } = await governedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Exact lease" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/HEAD lease/);
+  });
+
+  it.each([false, true])("accepts disjoint advancement and preserves external dirt committed by another writer (resume=%s)", async (resume) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    await writeFile(join(repo, "notes.txt"), "external dirty bytes\n");
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Disjoint lease", requireCleanWorkingTree: true });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await git(repo, ["add", "notes.txt"]);
+    await git(repo, ["commit", "-m", "Record external bytes"]);
+    const parent = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    let result;
+    if (resume) {
+      await mutation!.fail(new Error("Interrupted before collection"));
+      await updateMutationReceipt(await readMutationReceipt(mutation!.operationId), { status: "handler-succeeded", paths: [] });
+      result = await resumeMutation(mutation!.operationId, "recover");
+    } else result = await mutation!.complete();
+    expect(result.status).toBe("succeeded");
+    expect(result.paths.map((entry) => entry.path)).toEqual(["feature.txt"]);
+    expect((await git(repo, ["rev-parse", "HEAD^"])).trim()).toBe(parent);
+    expect(await readFile(join(repo, "notes.txt"), "utf8")).toBe("external dirty bytes\n");
+    expect(await git(repo, ["status", "--porcelain"])).toBe("");
+  });
+
+  it.each(["overlap", "revert", "merge", "rename", "delete", "config", "manifest"])("rejects path-scoped %s history", async (kind) => {
+    const { repo } = await pathScopedRepo();
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (kind === "merge") await git(repo, ["switch", "-c", "side"]);
+    const path = kind === "config" ? ".agentwheel/config.json" : kind === "manifest" ? ".syncwheel/manifest.json" : "notes.txt";
+    if (kind === "rename") {
+      await git(repo, ["mv", "notes.txt", "renamed.txt"]);
+      await git(repo, ["commit", "-m", "Rename protected path"]);
+    } else if (kind === "delete") {
+      await git(repo, ["rm", "notes.txt"]);
+      await git(repo, ["commit", "-m", "Delete protected path"]);
+    } else await commitExternal(repo, path, "changed\n");
+    if (kind === "revert") await git(repo, ["revert", "--no-edit", "HEAD"]);
+    if (kind === "merge") {
+      await git(repo, ["switch", "main"]);
+      await commitExternal(repo, "outside.txt", "outside\n");
+      await git(repo, ["merge", "--no-ff", "side", "-m", "Merge protected side"]);
+    }
+    await expect(assertHeadLease(repo, expected, (await git(repo, ["rev-parse", "HEAD"])).trim(), ["notes.txt"], scopedProvider))
+      .rejects.toThrow(/overlaps protected/);
+  });
+
+  it("refuses a dirty config that widens an originally exact lease", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const raw = JSON.parse(await readFile(workspaceConfigPath(repo), "utf8"));
+    raw.mutationPolicy.revisioning.provider.headLease = "path-scoped";
+    await writeFile(workspaceConfigPath(repo), JSON.stringify(raw));
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Untrusted widening" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/committed provider policy/);
+  });
+
+  it.each([".agentwheel/locks/test.json", "profiles/test/.agentwheel/locks/test.json"])("rejects Agentwheel dirt at %s", async (path) => {
+    const { repo, globalRoot } = await governedRepo();
+    await mkdir(join(repo, path, ".."), { recursive: true });
+    await writeFile(join(repo, path), "dirty\n");
+    await expect(GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Scoped clean tree", requireCleanWorkingTree: true }))
+      .rejects.toThrow(/clean Agentwheel paths/);
+  });
+
+  it("preserves unrelated dirt with exact segment boundaries", async () => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const dirty = ["notes.txt", ".agentwheel-extra/file", "profiles/test/.agentwheel-extra/file", "profiles/test/nested/.agentwheel/file"];
+    for (const path of dirty) {
+      await mkdir(join(repo, path, ".."), { recursive: true });
+      await writeFile(join(repo, path), "external dirty bytes\n");
+    }
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Preserve unrelated work", requireCleanWorkingTree: true });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    expect((await mutation!.complete()).status).toBe("succeeded");
+    for (const path of dirty) expect(await readFile(join(repo, path), "utf8")).toBe("external dirty bytes\n");
+  });
+
+  it("cannot claim preexisting dirty paths even after another writer commits them", async () => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    await writeFile(join(repo, "notes.txt"), "external dirt\n");
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Preserve original ownership" });
+    await git(repo, ["add", "notes.txt"]);
+    await git(repo, ["commit", "-m", "External commit"]);
+    expect(() => declareMutationPath(join(repo, "notes.txt"))).toThrow(/dirty/);
+    await mutation!.fail(new Error("Expected declaration refusal"));
+  });
+
+  it.each([false, true])("retains exact HEAD for empty and noCommit operations (noCommit=%s)", async (noCommit) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Exact terminal no-op", noCommit });
+    if (noCommit) {
+      declareMutationPath(join(repo, "feature.txt"));
+      await writeFile(join(repo, "feature.txt"), "feature\n");
+    }
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/HEAD lease/);
+  });
+
+  it.each([false, true])("recovers after collection on a disjoint parent (providerCommitted=%s)", async (providerCommitted) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Recover committed lease" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    const expectedHead = (await readMutationReceipt(mutation!.operationId)).expectedHead!;
+    await mutation!.fail(new Error("Interrupted handler"));
+    let receipt = await readMutationReceipt(mutation!.operationId);
+    const paths = [{ path: "feature.txt", beforeSha256: null, afterSha256: sha256(Buffer.from("feature\n")) }];
+    receipt = await updateMutationReceipt(receipt, { paths, status: "mutation-applied" });
+    const request = revisionProviderRequestSchema.parse({ protocolVersion: 1, action: "finalize", operationId: receipt.operationId,
+      repositoryRoot: repo, expectedHead, commandName: receipt.commandName, reason: receipt.reason, noCommit: false, paths });
+    if (providerCommitted) await invokeRevisionProvider(scopedProvider, request, { workspaceRoot: repo });
+    const committed = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    expect((await resumeMutation(receipt.operationId, "recover")).status).toBe("succeeded");
+    if (providerCommitted) expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(committed);
+  });
+
+  it.skipIf(localSyncwheelSource === undefined)("uses a real journal provider across disjoint advancement and durable recovery", async () => {
+    const source = await snapshotSyncwheelSource(localSyncwheelSource!);
+    for (const phase of ["prepared", "product_committed", "verified"]) {
+      const fixture = await tempRoot("agentwheel-journal-provider-");
+      const repo = await syncwheelProviderRepo(source, fixture, true);
+      const bridgeSource = await readFile(join(process.cwd(), "test/fixtures/revision-provider-v1/syncwheel-fault-bridge.py"));
+      const bridge = join(fixture, "bridge.py");
+      await writeFile(bridge, bridgeSource, { mode: 0o700 });
+      const provider = { kind: "command" as const, id: "syncwheel", protocolVersion: 1 as const, headLease: "path-scoped" as const,
+        command: [bridge, source, phase, join(fixture, "faulted")], executableSha256: sha256(bridgeSource), trustBoundary: "entrypoint" as const };
+      await mkdir(join(repo, ".agentwheel"), { recursive: true });
+      await writeFile(workspaceConfigPath(repo), JSON.stringify({ schemaVersion: 4, mutationPolicy: {
+        ...mutationPolicy(), revisioning: { ...mutationPolicy().revisioning, provider },
+      } }));
+      await git(repo, ["add", ".agentwheel/config.json"]);
+      await git(repo, ["commit", "-m", "Configure journal provider"]);
+      const expectedHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+      const base = { protocolVersion: 1, operationId: `journal-${phase.replaceAll("_", "-")}`, repositoryRoot: repo,
+        expectedHead, commandName: "agentwheel lock", reason: "Verify journal recovery", noCommit: false,
+        paths: [{ path: "feature.txt", beforeSha256: null, afterSha256: sha256(Buffer.from("feature\n")) }] };
+      await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "check", paths: [] }), { workspaceRoot: repo });
+      await commitExternal(repo, "outside.txt", "outside\n");
+      await writeFile(join(repo, "feature.txt"), "feature\n");
+      const preflight = revisionProviderRequestSchema.parse({ ...base, action: "preflight" });
+      if (phase === "prepared") await expect(invokeRevisionProvider(provider, preflight, { workspaceRoot: repo })).rejects.toThrow(/injected/);
+      else {
+        await invokeRevisionProvider(provider, preflight, { workspaceRoot: repo });
+        await expect(invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "finalize" }), { workspaceRoot: repo })).rejects.toThrow(/injected/);
+      }
+      const response = await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "recover" }), { workspaceRoot: repo });
+      expect(response).toMatchObject({ status: "verified", draftStackId: null, controlCommitSha: null, published: false });
+      expect(await git(repo, ["status", "--porcelain"])).toBe("");
+      expect((await git(repo, ["show", "--format=", "--name-only", "HEAD"])).trim()).toBe("feature.txt");
+    }
+  }, 120_000);
+
   it("keeps v1-v3 compatible while making mutationPolicy a strict v4-only field", () => {
     for (const schemaVersion of [1, 2, 3] as const) {
       expect(workspaceConfigSchema.parse({ schemaVersion }).schemaVersion).toBe(schemaVersion);
@@ -544,7 +709,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
       globalRoot,
       commandName: "agentwheel install",
       reason: "Refuse a dirty dynamically planned install path",
-      requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
+      requireCleanWorkingTree: false,
     });
     let runtimeSideEffects = 0;
     let declarationError: unknown;
@@ -609,7 +774,7 @@ describe.sequential("mutation policy and revision provider v1", () => {
       globalRoot,
       commandName: "agentwheel install",
       reason: "Report a dynamically declared dirty install path",
-      requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
+      requireCleanWorkingTree: false,
     });
     let declarationError: unknown;
     try {
@@ -738,8 +903,8 @@ else {
     expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(before);
   });
 
-  it("recovers a receipt-bound journal after an injected post-copy crash and commits only verified declarative state", async () => {
-    const { repo, globalRoot } = await governedRepo();
+  it.each([false, true])("recovers a receipt-bound journal after a post-copy crash (pathScoped=%s)", async (pathScoped) => {
+    const { repo, globalRoot } = await (pathScoped ? pathScopedRepo() : governedRepo());
     const sourceRoot = await tempRoot("agentwheel-crash-source-");
     const runtimeRoot = await tempRoot("agentwheel-crash-runtime-");
     const sourcePath = join(sourceRoot, "rule.md");
@@ -804,6 +969,7 @@ else {
     }]);
     expect(await readFile(join(runtimeRoot, ".runtime", "rules", "rule.md"), "utf8")).toBe("recovered runtime rule\n");
 
+    if (pathScoped) await commitExternal(repo, "outside.txt", "outside\n");
     const recovered = await recoverMutationRuntime("runtime-crash-1");
     expect(recovered.status).toBe("succeeded");
     expect(recovered.runtimeJournals[0]?.status).toBe("resolved");
@@ -1516,7 +1682,7 @@ async function snapshotSyncwheelSource(sourceRoot: string): Promise<string> {
   return snapshot;
 }
 
-async function syncwheelProviderRepo(syncwheelSource: string, root: string): Promise<string> {
+async function syncwheelProviderRepo(syncwheelSource: string, root: string, journal = false): Promise<string> {
   const origin = join(root, "origin.git");
   const repo = join(root, "repo");
   await execFileAsync("git", ["init", "--bare", "-q", origin]);
@@ -1559,6 +1725,10 @@ async function syncwheelProviderRepo(syncwheelSource: string, root: string): Pro
     },
     channels: [],
   }, null, 2)}\n`, "utf8");
+  if (journal) await writeFile(join(repo, ".syncwheel", "manifest.json"), JSON.stringify({
+    version: 2, repository_mode: "journal", syncwheel_tracking: "git-tracked",
+    journal: { branch: "main", remote: "origin", include: ["**"], exclude: [], max_file_bytes: 10485760, interval: "30m" },
+  }));
   await execFileAsync("python3", [
     join(syncwheelSource, "scripts", "syncwheel.py"),
     "hooks",
@@ -1575,7 +1745,7 @@ async function syncwheelProviderRepo(syncwheelSource: string, root: string): Pro
   await git(repo, ["add", ".gitignore", "base.txt", ".syncwheel/manifest.json"]);
   await git(repo, ["commit", "-q", "-m", "test: initialize Syncwheel provider fixture"]);
   await git(repo, ["push", "-q", "-u", "origin", "main"]);
-  await git(repo, ["switch", "-q", "-c", "main-integration", "main"]);
+  if (!journal) await git(repo, ["switch", "-q", "-c", "main-integration", "main"]);
   return repo;
 }
 
@@ -1632,4 +1802,23 @@ function emptyGraphLock(targetFingerprint: string): GraphLock {
       plainNameIncumbents: [],
     },
   };
+}
+
+const scopedProvider = { kind: "git" as const, id: "git", protocolVersion: 1 as const, headLease: "path-scoped" as const };
+
+async function pathScopedRepo() {
+  const fixture = await governedRepo();
+  const raw = JSON.parse(await readFile(workspaceConfigPath(fixture.repo), "utf8"));
+  raw.mutationPolicy.revisioning.provider = scopedProvider;
+  await writeFile(workspaceConfigPath(fixture.repo), JSON.stringify(raw));
+  await git(fixture.repo, ["add", ".agentwheel/config.json"]);
+  await git(fixture.repo, ["commit", "-m", "Enable path-scoped lease"]);
+  return fixture;
+}
+
+async function commitExternal(repo: string, path: string, content: string) {
+  await mkdir(join(repo, path, ".."), { recursive: true });
+  await writeFile(join(repo, path), content);
+  await git(repo, ["add", "--", path]);
+  await git(repo, ["commit", "-m", "Record external change"]);
 }

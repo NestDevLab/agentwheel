@@ -42,6 +42,27 @@ Providers are one of:
   those remain inside the explicitly declared provider deployment trust boundary. The provider runs
   in a dedicated process group, and timeout or output-limit enforcement kills the complete group.
 
+Both providers accept optional `headLease: "exact" | "path-scoped"`. Omission means `exact`,
+including in existing receipts; it does not change protocol v1 or its wire fixtures.
+
+With `exact`, an operation commit must have `expectedHead` as its only parent. With
+`path-scoped`, its single parent may descend from `expectedHead` only when **every intervening
+commit** is disjoint from the declared paths, `.agentwheel/config.json`, and
+`.syncwheel/manifest.json`. Verification visits all parents of merges and expands renames into
+removed/added paths; change-and-revert history remains an overlap even when the net tree matches.
+Exact product paths and before/after hashes are still verified. Branch and index compare-and-swap,
+hooks, reason/trailers, and apply-journal verification remain mandatory.
+
+A widened lease requires both the original receipt's provider policy and
+`mutationPolicy.revisioning.provider.headLease` in the repository-root
+`.agentwheel/config.json` committed at `expectedHead` to be `path-scoped`. Dirty config cannot
+widen that lease. Global-only or nested-workspace policy without this committed root policy
+retains exact-HEAD behavior. The built-in provider uses this policy for preflight, commit, and
+recovery; command providers must implement the corresponding policy themselves (Syncwheel's
+journal provider supports it), and Agentwheel independently verifies their terminal commits.
+Recovery uses the original receipt and persisted declarations, never the current workspace policy.
+Empty/no-commit operations retain exact HEAD: v1 requires `resultingHead == expectedHead`.
+
 User/global policy is the baseline for standard Agentwheel commands. A selected local or fleet
 workspace may strengthen it and may select its own commit provider, but cannot turn off global
 commit-after-verify, weaken a required reason or journal, or enable `--no-commit` when either
@@ -61,12 +82,17 @@ For a successful governed command:
 2. Snapshot HEAD, index safety, and pre-existing dirty paths; persist the prospective path
    declaration journal; call provider `check` while the operation has made no writes.
 3. Run the command. Writers with statically known paths declare them before associated runtime
-   apply. Commands whose exact declarative paths emerge only during planning require a completely
-   clean working tree first. Initially dirty intended paths therefore fail before side effects.
+   apply. Commands requesting `requireCleanWorkingTree` require clean `.agentwheel/**` and
+   `profiles/*/.agentwheel/**` paths (exact path-segment boundaries). Index and conflict checks
+   remain repository-wide. Initially dirty intended paths always fail before side effects,
+   including declarations made after another writer commits those paths.
 4. Verify command-specific runtime and generated-state postconditions. A failed handler or failed
    postcheck is `partial` or `postcheck-failed` and is never eligible for ordinary finalize.
 5. Compare the repository against the original snapshot. Reject changed pre-existing dirt and any
-   newly dirty path outside the declaration journal. Record each exact before/after SHA-256.
+   newly dirty path outside the declaration journal. The complete dirty baseline is preserved,
+   including unrelated paths. A pre-existing path disappearing from Git's dirty set is preserved
+   only when HEAD descended from the baseline and both its committed and working bytes match the
+   original snapshot; those bytes never become operation output. Record exact before/after SHA-256.
 6. Call provider `preflight`, then `finalize`. A provider or hook failure records
    `commit-pending`; `mutation finalize` or `mutation recover` retries without rerunning the
    command handler.
@@ -74,7 +100,7 @@ For a successful governed command:
 Apply journals written during governed installs use journal v2 and carry the operation id, reason,
 and no-commit decision. This recovery contract also applies when journaling is required but Git
 revisioning is off. A crash may leave a receipt-bound journal. `mutation recover-runtime` validates
-the original HEAD and exact declarations when present without repeating clean-only provider
+the original HEAD lease and exact declarations when present without repeating clean-only provider
 `check`, resumes the linked local journal, verifies its postconditions, then calls provider
 `preflight` and `recover` when revisioning is enabled. Legacy v1 or differently owned journals
 cannot be adopted by a governed operation.
@@ -145,9 +171,9 @@ implementations should consume byte-equivalent fixtures or pin their published S
 
 ## Built-in Git provider
 
-The built-in provider requires an attached branch, unchanged HEAD, clean index, no conflicts or
+The built-in provider requires an attached branch, a valid HEAD lease, clean index, no conflicts or
 in-progress merge/rebase/cherry-pick/revert, configured author and committer identities, and no
-tracked `.syncwheel/manifest.json`. It constructs a temporary index from `expectedHead`, stages
+tracked `.syncwheel/manifest.json`. It constructs a temporary index from the verified current parent, stages
 only declared paths, runs executable `pre-commit`, `prepare-commit-msg`, and `commit-msg` hooks,
 revalidates the exact index and full reason/trailers, creates the commit, and compare-and-swaps the
 branch and real index. It does not reset, push, publish, or create an empty commit.

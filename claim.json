@@ -1,0 +1,12 @@
+{
+  "changed_refs": [
+    "refs/heads/fix/catalogue-worker-follow-up",
+    "refs/heads/pr/local-run-as-transport"
+  ],
+  "claimed_at": "2026-10-19T08:01:29+00:00",
+  "coordination_id": "default",
+  "operation_token": "e54aa4e0-df72-40c0-8ed7-90e48889fbea",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/fix/catalogue-worker-follow-up",
+  "syncwheel_version": "0.45.7"
+}

@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -24,7 +24,6 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "mgt0406-runas-readonly",
       "local-run-as-readonly",
       "local-run-as-transport",
       "catalogue-worker-follow-up"
@@ -46,25 +45,6 @@
         "enabled": false
       },
       "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/mgt0406-runas-readonly",
-      "commits": [
-        "967b645c95f4829f8079043740b0ae78e4c45555",
-        "ff7582fd517674764beab6730b8d7e4309c2c91e"
-      ],
-      "id": "mgt0406-runas-readonly",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "MGT-0406 local run-as read-only transport"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
     },

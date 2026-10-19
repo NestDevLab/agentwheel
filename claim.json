@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/mgt0478-add-runtimes"
   ],
-  "claimed_at": "2026-10-19T19:07:19+00:00",
+  "claimed_at": "2026-10-19T20:43:03+00:00",
   "coordination_id": "default",
-  "operation_token": "0f75ba7f-0b00-44fe-8b6a-a133f799d0fe",
+  "operation_token": "402d0b34-983c-4a59-9809-a4696af39abc",
   "publication_scope": "stack:mgt0478-add-runtimes",
   "source_ref": "refs/heads/pr/mgt0478-add-runtimes",
-  "syncwheel_version": "0.46.4"
+  "syncwheel_version": "0.46.5"
 }

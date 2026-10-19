@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -24,8 +24,7 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly",
-      "local-run-as-transport"
+      "local-run-as-readonly"
     ],
     "strategy": "cherry-pick"
   },
@@ -60,27 +59,6 @@
         "enabled": false
       },
       "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/local-run-as-transport",
-      "commits": [
-        "a7f3bc27676ad89ba3c2b142132df1d91ca4de09",
-        "5806f32b72b847992819dcd883145daba8235bba",
-        "09ab3252365c6d65b10b0fa0eb5f19b73fae90ae",
-        "22a8910459a2f92c4a48e8de29f1d4da85f37d37"
-      ],
-      "id": "local-run-as-transport",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
     }

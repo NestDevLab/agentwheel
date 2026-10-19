@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -64,22 +64,22 @@
       "target_remote": "origin"
     },
     {
-      "id": "legacy-managed-block-0212",
-      "branch": "pr/legacy-managed-block-0212",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/legacy-managed-block-0212",
       "commits": [
         "1ce9a835363e5be460577f740181a10c72ea47f8"
       ],
-      "state": "published",
+      "id": "legacy-managed-block-0212",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Guarded metadata-only legacy managed-block adoption"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Guarded metadata-only legacy managed-block adoption"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

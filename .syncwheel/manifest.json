@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -25,8 +25,7 @@
     "stacks": [
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
-      "local-run-as-transport",
-      "catalogue-worker-follow-up"
+      "local-run-as-transport"
     ],
     "strategy": "cherry-pick"
   },
@@ -77,24 +76,6 @@
       "integration_branch": "main-integration",
       "meta": {
         "purpose": "Read-only local run-as transport"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "fix/catalogue-worker-follow-up",
-      "commits": [
-        "d1645b160671643ca3467f0ebcf1f1c10fe05e0a"
-      ],
-      "id": "catalogue-worker-follow-up",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Document preview snapshots and pin CPU benchmark baseline"
       },
       "publication": {
         "enabled": true

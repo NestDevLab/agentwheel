@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/legacy-managed-block-0212"
-  ],
-  "claimed_at": "2026-10-19T15:30:48+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T16:06:29+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "ec743487-30ae-4a55-b7a5-e63bac484e97",
-  "publication_scope": "stack:legacy-managed-block-0212",
+  "operation_token": "009dbcbb-674c-4a0f-be0d-608dcd8a5bb1",
+  "publication_scope": "close:legacy-managed-block-0212",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/legacy-managed-block-0212",
   "syncwheel_version": "0.46.1"
 }

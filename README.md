@@ -617,6 +617,18 @@ containing only `alias`, `commit` and optional `select`:
 ]
 ```
 
+To replace the complete package declaration list without resolving sources, use
+`pin --packages-file reviewed-packages.json --fleet delivery --dry-run`. The file must be a JSON
+array of workspace package entries with unique names; an empty array explicitly removes all
+package declarations. The preview prints the complete proposed config as JSON and writes nothing.
+Review it, then run the same command without `--dry-run` and with `--reason` to apply through the
+normal mutation policy, durable receipt and revision provider. This changes only desired source
+config; it does not install or remove runtime artifacts. Run normal runtime plans before installing.
+All non-package fields are preserved, as are the supplied package order, omitted defaults, metadata
+and extension fields. Package entries must pass the workspace schema. `--packages-file` cannot be
+combined with positional pins, `--pins-file` or `--select`. Existing pin forms also accept
+`--dry-run` for a non-mutating config preview.
+
 The batch cannot be combined with positional pins or `--select`. Every entry is validated before
 the config write; duplicate aliases and extra fields are refused. An omitted `select` preserves
 that package's selection; an explicit list replaces only that package's complete selection. The

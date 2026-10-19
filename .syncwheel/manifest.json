@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -64,20 +64,20 @@
       "target_remote": "origin"
     },
     {
-      "id": "ownership-release-claim-0211",
-      "branch": "pr/ownership-release-claim-0211",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/ownership-release-claim-0211",
       "commits": [
         "2ab2f9c6bdef7329f564696888a1772f7e3b9d41"
       ],
-      "state": "published",
+      "id": "ownership-release-claim-0211",
+      "integration_branch": "main-integration",
+      "meta": {},
       "publication": {
         "enabled": true
       },
-      "meta": {}
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

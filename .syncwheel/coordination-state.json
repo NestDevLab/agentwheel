@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/mgt0478-add-runtimes": "00bdf22b4696497078a5768f4f6136798be2d1fe"
+    "refs/heads/pr/pin-package-declarations": "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -28,6 +28,7 @@
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
+    "refs/heads/pr/pin-package-declarations": "e2a4bd7711c30a97c7f4656e8bae29a413887102",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -46,7 +47,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T20:43:03+00:00",
+  "created_at": "2026-10-19T23:05:51+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -90,6 +91,7 @@
     "refs/heads/pr/ownership-release-claim": null,
     "refs/heads/pr/ownership-release-claim-0211": "2ab2f9c6bdef7329f564696888a1772f7e3b9d41",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
+    "refs/heads/pr/pin-package-declarations": "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
     "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
@@ -152,7 +154,8 @@
       "stacks": [
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
-        "mgt0478-add-runtimes"
+        "mgt0478-add-runtimes",
+        "pin-package-declarations"
       ],
       "strategy": "cherry-pick"
     },
@@ -197,16 +200,30 @@
         "id": "mgt0478-add-runtimes",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/pin-package-declarations",
+        "commits": [
+          "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a"
+        ],
+        "id": "pin-package-declarations",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "402d0b34-983c-4a59-9809-a4696af39abc",
-  "parent_state": "245653dacc24fbb432eca77869bc690486e8b930",
+  "operation_token": "934ad980-82b0-46c1-a67d-5bb1d374ac61",
+  "parent_state": "c926ef41ad1234217661383e7123c2e0082f706c",
   "projection_status": "partial",
-  "publication_id": "c4dcb11f-4c9b-4002-985d-597afec47edc",
-  "publication_scope": "stack:mgt0478-add-runtimes",
+  "publication_id": "acf45c5d-4b53-426f-a3ab-ab3878e7ef03",
+  "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.46.5",
   "tombstones": [

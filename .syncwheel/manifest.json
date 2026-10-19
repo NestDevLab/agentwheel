@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -64,22 +64,22 @@
       "target_remote": "origin"
     },
     {
-      "id": "mgt0478-add-runtimes",
-      "branch": "pr/mgt0478-add-runtimes",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/mgt0478-add-runtimes",
       "commits": [
         "bf539ca5a3fbcc8157f5bb6261ca9fb5c9ab96da"
       ],
-      "state": "published",
+      "id": "mgt0478-add-runtimes",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Expose explicit runtime restrictions in add"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Expose explicit runtime restrictions in add"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

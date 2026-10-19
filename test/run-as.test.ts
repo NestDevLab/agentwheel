@@ -18,6 +18,12 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))); roots.length = 0; });
 async function fixture(): Promise<string> { const root = await mkdtemp(join(tmpdir(), "aw-runas-test-")); roots.push(root); return root; }
 function identity(root: string): RunAsIdentity { return { user: "service", uid: 998, gid: 998, home: root, root }; }
+async function trustedNodeFixture(root: string): Promise<string> {
+  const executable = join(root, "node");
+  await writeFile(executable, "fixture");
+  await chmod(executable, 0o555);
+  return executable;
+}
 
 describe("local run-as schema and identity", () => {
   it("requires a named service account and rejects SSH fields, root and relative roots", () => {
@@ -64,17 +70,18 @@ describe("local run-as schema and identity", () => {
 describe("local run-as read transport", () => {
   it("uses exact noninteractive sudo argv, an empty environment and a bounded stdin protocol", async () => {
     const root = await fixture();
+    const node = await trustedNodeFixture(root);
     const calls: Array<{ command: string; args: string[]; input?: string }> = [];
     const runner: RunAsRunner = async (command, args, input) => {
       calls.push({ command, args, input });
       return { stdout: input ? JSON.stringify({ version: 1, result: true }) : "998\n" };
     };
-    const transport = createRunAsTransport(identity(root), runner, "/fixed/run-as-worker.mjs", process.execPath);
+    const transport = createRunAsTransport(identity(root), runner, "/fixed/run-as-worker.mjs", node);
     expect(await transport.pathExists(join(root, "managed"))).toBe(true);
     expect(calls[0]).toEqual({ command: "/usr/bin/sudo", args: ["-n", "-u", "service", "-H", "--", "/usr/bin/id", "-u"], input: undefined });
     expect(calls[1]?.command).toBe("/usr/bin/sudo");
     expect(calls[1]?.args).toEqual(["-n", "-u", "service", "-H", "--", "/usr/bin/env", "-i",
-      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(process.execPath), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
+      `HOME=${root}`, "PATH=/usr/local/bin:/usr/bin:/bin", realpathSync(node), "/fixed/run-as-worker.mjs", "--root", root, "--uid", "998", "--gid", "998"]);
     expect(JSON.parse(calls[1]!.input!)).toEqual({ version: 1, operation: "pathExists", path: "managed" });
     expect(calls[1]?.args).not.toContain("-c");
     expect(calls[1]?.args).not.toContain(`HOME=${process.env.HOME ?? "/home/example"}`);
@@ -84,9 +91,10 @@ describe("local run-as read transport", () => {
 
   it("fails closed on sudo denial, a wrong UID, escaping paths and all writes", async () => {
     const root = await fixture();
-    const denied = createRunAsTransport(identity(root), async () => { throw new Error("a password is required"); }, "/fixed/worker", process.execPath);
+    const node = await trustedNodeFixture(root);
+    const denied = createRunAsTransport(identity(root), async () => { throw new Error("a password is required"); }, "/fixed/worker", node);
     await expect(denied.pathExists(join(root, "x"))).rejects.toThrow(/sudo preflight failed/);
-    const wrong = createRunAsTransport(identity(root), async () => ({ stdout: "0\n" }), "/fixed/worker", process.execPath);
+    const wrong = createRunAsTransport(identity(root), async () => ({ stdout: "0\n" }), "/fixed/worker", node);
     await expect(wrong.pathExists(join(root, "x"))).rejects.toThrow(/expected 998/);
     await expect(wrong.pathExists("/etc/passwd")).rejects.toThrow(/escapes/);
     await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(/read-only in PR1/);

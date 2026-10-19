@@ -24,7 +24,8 @@
     "branch": "main-integration",
     "stacks": [
       "ccp011-ownership-supersession",
-      "local-run-as-readonly"
+      "local-run-as-readonly",
+      "adopt-legacy-managed-block-0212"
     ],
     "strategy": "cherry-pick"
   },
@@ -61,6 +62,20 @@
       "state": "draft",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "adopt-legacy-managed-block-0212",
+      "branch": "pr/adopt-legacy-managed-block-0212",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",

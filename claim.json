@@ -1,0 +1,11 @@
+{
+  "changed_refs": [],
+  "claimed_at": "2026-10-19T14:43:47+00:00",
+  "closed": true,
+  "coordination_id": "default",
+  "operation_token": "ca429c47-7f9a-4054-9b5e-e2bf16abf1cb",
+  "publication_scope": "close:ownership-release-claim",
+  "reason": "abandoned",
+  "source_ref": "refs/heads/pr/ownership-release-claim",
+  "syncwheel_version": "0.45.8"
+}

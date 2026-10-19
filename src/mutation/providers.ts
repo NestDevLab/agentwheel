@@ -12,7 +12,7 @@ import {
   type RevisionProviderRequest,
   type RevisionProviderResponse,
 } from "./protocol.js";
-import { assertGitPreflight, currentHead, discoverGitRepository, snapshotRepository, verifyRevisionPaths, type RepositorySnapshot } from "./repository.js";
+import { assertHeadLease, assertGitPreflight, currentHead, discoverGitRepository, snapshotRepository, verifyRevisionPaths, type RepositorySnapshot } from "./repository.js";
 import { runProcess } from "./process.js";
 
 export interface InvokeProviderOptions {
@@ -40,7 +40,7 @@ export async function invokeRevisionProvider(
   const config = revisionProviderConfigSchema.parse(configInput);
   const request = revisionProviderRequestSchema.parse(input);
   const raw = config.kind === "git"
-    ? await invokeGitProvider(config.id, request)
+    ? await invokeGitProvider(config.id, request, config)
     : await invokeCommandProvider(
         config.command,
         config.executableSha256,
@@ -56,7 +56,7 @@ export async function invokeRevisionProvider(
   const response = revisionProviderResponseSchema.parse(raw);
   assertProviderCorrelation(config.id, request, response);
   assertProviderStatus(response);
-  await assertProviderSemantics(request, response);
+  await assertProviderSemantics(request, response, config);
   return response;
 }
 
@@ -190,6 +190,7 @@ function immutableDescriptorExecutablePath(): string {
 async function assertProviderSemantics(
   request: RevisionProviderRequest,
   response: RevisionProviderResponse,
+  config: RevisionProviderConfigInput,
 ): Promise<void> {
   if (response.action !== "finalize" && response.action !== "recover") return;
   if (response.expectedHead !== request.expectedHead) {
@@ -229,6 +230,7 @@ async function assertProviderSemantics(
     await verifyOperationCommit(
       request as Extract<RevisionProviderRequest, { action: "finalize" | "recover" }>,
       response.productCommitSha,
+      config,
     );
     const terminalCommit = response.controlCommitSha ?? response.productCommitSha;
     if (response.resultingHead !== terminalCommit) {
@@ -261,7 +263,7 @@ async function assertProviderSemantics(
   }
 }
 
-async function invokeGitProvider(providerId: string, request: RevisionProviderRequest): Promise<RevisionProviderResponse> {
+async function invokeGitProvider(providerId: string, request: RevisionProviderRequest, config: RevisionProviderConfigInput): Promise<RevisionProviderResponse> {
   const repository = await discoverGitRepository(request.repositoryRoot);
   if (!repository || repository.root !== resolve(request.repositoryRoot)) {
     throw new Error(`Git revision provider requires the repository root itself: ${request.repositoryRoot}.`);
@@ -274,9 +276,12 @@ async function invokeGitProvider(providerId: string, request: RevisionProviderRe
       }
       const planDigest = providerPlanDigest(request);
       const existing = await findOperationCommit(request.repositoryRoot, request.operationId, planDigest);
-      if (!existing) throw new Error(`Git HEAD lease mismatch: expected ${request.expectedHead}, found ${repository.head}.`);
-      await verifyOperationCommit(asTerminalRequest(request, "recover"), existing);
-      return revisionProviderResponseSchema.parse(baseResponse(providerId, request, "prepared"));
+      if (existing) {
+        await verifyOperationCommit(asTerminalRequest(request, "recover"), existing, config);
+        return revisionProviderResponseSchema.parse(baseResponse(providerId, request, "prepared"));
+      }
+      await assertHeadLease(request.repositoryRoot, request.expectedHead, repository.head,
+        request.noCommit ? [] : request.paths.map((entry) => entry.path), config);
     }
     await assertGitPreflight(repository);
     await assertGitProviderCompatible(request.repositoryRoot);
@@ -284,26 +289,27 @@ async function invokeGitProvider(providerId: string, request: RevisionProviderRe
     return revisionProviderResponseSchema.parse(baseResponse(providerId, request, request.action === "check" ? "ready" : "prepared"));
   }
   if (request.action === "release") return revisionProviderResponseSchema.parse(baseResponse(providerId, request, "released"));
-  return finalizeGit(providerId, request);
+  return finalizeGit(providerId, request, config);
 }
 
 async function finalizeGit(
   providerId: string,
   request: Extract<RevisionProviderRequest, { action: "finalize" | "recover" }>,
+  config: RevisionProviderConfigInput,
 ): Promise<RevisionProviderResponse> {
   const planDigest = providerPlanDigest(request);
   const existing = await findOperationCommit(request.repositoryRoot, request.operationId, planDigest);
   if (existing) {
-    await verifyOperationCommit(request, existing);
-    await realignIndexAfterRecoveredCommit(request.repositoryRoot, request.expectedHead, existing);
+    await verifyOperationCommit(request, existing, config);
+    const parent = (await runProcess("git", ["-C", request.repositoryRoot, "rev-parse", `${existing}^`])).stdout.toString("utf8").trim();
+    await realignIndexAfterRecoveredCommit(request.repositoryRoot, parent, existing);
     return terminalResponse(providerId, request, "already-verified", existing, await currentHead(request.repositoryRoot));
   }
 
   const repository = await discoverGitRepository(request.repositoryRoot);
   if (!repository) throw new Error(`No Git repository at ${request.repositoryRoot}.`);
-  if (repository.head !== request.expectedHead) {
-    throw new Error(`Git HEAD lease mismatch: expected ${request.expectedHead}, found ${repository.head}.`);
-  }
+  await assertHeadLease(request.repositoryRoot, request.expectedHead, repository.head,
+    request.noCommit ? [] : request.paths.map((entry) => entry.path), config);
   await assertGitPreflight(repository);
   await assertGitProviderCompatible(request.repositoryRoot);
   await assertGitIdentity(request.repositoryRoot);
@@ -313,14 +319,14 @@ async function finalizeGit(
   }
 
   const indexLease = await captureIndexLease(request.repositoryRoot);
-  await assertIndexTree(request.repositoryRoot, request.expectedHead);
+  await assertIndexTree(request.repositoryRoot, repository.head);
   const hookBaseline = await snapshotRepository(request.repositoryRoot);
   const tempRoot = await mkdtemp(join(tmpdir(), "agentwheel-git-index-"));
   const indexPath = join(tempRoot, "index");
   const env = { ...process.env, GIT_INDEX_FILE: indexPath };
   let commitSha: string;
   try {
-    await runProcess("git", ["-C", request.repositoryRoot, "read-tree", request.expectedHead], { env });
+    await runProcess("git", ["-C", request.repositoryRoot, "read-tree", repository.head], { env });
     await runProcess("git", ["-C", request.repositoryRoot, "add", "--", ...request.paths.map((entry) => entry.path)], { env });
     const staged = splitNull((await runProcess("git", ["-C", request.repositoryRoot, "diff", "--cached", "--name-only", "-z"], { env })).stdout);
     assertExactSet(staged, request.paths.map((entry) => entry.path), "temporary Git index");
@@ -336,7 +342,7 @@ async function finalizeGit(
     await verifyTemporaryIndexPaths(request, env);
     const message = await readFile(messagePath, "utf8");
     assertCommitMessageContract(message, request, planDigest);
-    commitSha = (await runProcess("git", ["-C", request.repositoryRoot, "commit-tree", tree, "-p", request.expectedHead], {
+    commitSha = (await runProcess("git", ["-C", request.repositoryRoot, "commit-tree", tree, "-p", repository.head], {
       env,
       input: message,
     })).stdout.toString("utf8").trim();
@@ -353,10 +359,10 @@ async function finalizeGit(
     `agentwheel ${request.operationId}`,
     branchRef,
     commitSha,
-    request.expectedHead,
+    repository.head,
   ]);
   await replaceIndexCas(request.repositoryRoot, indexLease, commitSha);
-  await verifyOperationCommit(request, commitSha);
+  await verifyOperationCommit(request, commitSha, config);
   return terminalResponse(providerId, request, "verified", commitSha, commitSha);
 }
 
@@ -439,9 +445,12 @@ async function findOperationCommit(repositoryRoot: string, operationId: string, 
 async function verifyOperationCommit(
   request: Extract<RevisionProviderRequest, { action: "finalize" | "recover" }>,
   commitSha: string,
+  config: RevisionProviderConfigInput,
 ): Promise<void> {
+  const parents = (await runProcess("git", ["-C", request.repositoryRoot, "rev-list", "--parents", "-n", "1", commitSha])).stdout.toString("utf8").trim().split(/\s+/u);
+  if (parents.length !== 2) throw new Error(`Operation commit ${commitSha} must have exactly one parent.`);
   const parent = (await runProcess("git", ["-C", request.repositoryRoot, "rev-parse", `${commitSha}^`])).stdout.toString("utf8").trim();
-  if (parent !== request.expectedHead) throw new Error(`Recovered operation commit ${commitSha} has unexpected parent ${parent}.`);
+  await assertHeadLease(request.repositoryRoot, request.expectedHead, parent, request.paths.map((entry) => entry.path), config);
   const committedPaths = splitNull((await runProcess("git", [
     "-C",
     request.repositoryRoot,
@@ -455,7 +464,7 @@ async function verifyOperationCommit(
   assertExactSet(committedPaths, request.paths.map((entry) => entry.path), `operation commit ${commitSha}`);
   for (const entry of request.paths) {
     const after = await hashGitObject(request.repositoryRoot, `${commitSha}:${entry.path}`);
-    if (after !== entry.afterSha256) {
+    if (after !== entry.afterSha256 || await hashGitObject(request.repositoryRoot, `${parent}:${entry.path}`) !== entry.beforeSha256) {
       throw new Error(`Operation commit ${commitSha} content mismatch for ${entry.path}.`);
     }
   }

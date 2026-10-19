@@ -5,10 +5,13 @@ export const REVISION_PROVIDER_PROTOCOL_VERSION = 1 as const;
 
 const providerIdSchema = z.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9._-]*$/i);
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+// Absence means exact. Keep the field absent when parsing legacy receipt digests.
+const headLeaseSchema = z.enum(["exact", "path-scoped"]).optional();
 
 export const gitRevisionProviderSchema = z.object({
   kind: z.literal("git"),
   id: providerIdSchema.default("git"),
+  headLease: headLeaseSchema,
   protocolVersion: z.literal(REVISION_PROVIDER_PROTOCOL_VERSION),
 }).strict();
 
@@ -28,6 +31,7 @@ export const commandRevisionProviderSchema = z.object({
   executableSha256: sha256Schema,
   trustBoundary: z.literal("entrypoint"),
   timeoutMs: z.number().int().min(100).max(300_000).default(30_000),
+  headLease: headLeaseSchema,
   protocolVersion: z.literal(REVISION_PROVIDER_PROTOCOL_VERSION),
 }).strict();
 

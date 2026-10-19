@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/local-run-as-transport": "22a8910459a2f92c4a48e8de29f1d4da85f37d37"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -17,7 +15,7 @@
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
-    "refs/heads/pr/local-run-as-transport": "03e70b1f6e7b3db2ba99792d42ac26741d411c7f",
+    "refs/heads/pr/local-run-as-transport": "91a42c800c7f5486360439a8febeeb1e0975712f",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/mgt0406-runas-readonly": "99f0c6918792ae62fd1537c1b2b8da3ee0fedb27",
@@ -40,7 +38,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T09:05:42+00:00",
+  "created_at": "2026-10-19T09:14:52+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -139,8 +137,7 @@
       "branch": "main-integration",
       "stacks": [
         "ccp011-ownership-supersession",
-        "local-run-as-readonly",
-        "local-run-as-transport"
+        "local-run-as-readonly"
       ],
       "strategy": "cherry-pick"
     },
@@ -170,33 +167,16 @@
         "integration_branch": "main-integration",
         "state": "draft",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/local-run-as-transport",
-        "commits": [
-          "a7f3bc27676ad89ba3c2b142132df1d91ca4de09",
-          "5806f32b72b847992819dcd883145daba8235bba",
-          "09ab3252365c6d65b10b0fa0eb5f19b73fae90ae",
-          "22a8910459a2f92c4a48e8de29f1d4da85f37d37"
-        ],
-        "id": "local-run-as-transport",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "03faf6ce-71e5-46d0-a52e-5785feb32ae1",
-  "parent_state": "251f32fec58dd5a062e57be61550d27bb57b0b0d",
+  "operation_token": "b0665547-4241-4f3e-bbad-e1d0f428acc7",
+  "parent_state": "e94acfe43422f73a4357798967a2884f60e01400",
   "projection_status": "partial",
-  "publication_id": "acd208f9-c24e-4fd0-b2a4-25faf1dcdc24",
-  "publication_scope": "stack:local-run-as-transport",
+  "publication_id": "f349d470-6499-4725-a77f-82647347ed57",
+  "publication_scope": "close:local-run-as-transport",
   "schema_version": 2,
   "syncwheel_version": "0.45.7",
   "tombstones": [
@@ -703,6 +683,14 @@
       "ref": "refs/heads/fix/catalogue-worker-follow-up",
       "remote_tip": null,
       "stack": "catalogue-worker-follow-up"
+    },
+    {
+      "branch": "pr/local-run-as-transport",
+      "closed_at": "2026-10-19T09:14:42+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/local-run-as-transport",
+      "remote_tip": null,
+      "stack": "local-run-as-transport"
     }
   ]
 }

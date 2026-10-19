@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/journal-compatibility": "3687f20ac5f3298e185c6206202976f4c4d7c377"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -13,7 +11,7 @@
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
-    "refs/heads/pr/journal-compatibility": "bc49c08c75411a81151394472845f643ea7308df",
+    "refs/heads/pr/journal-compatibility": "c7ad9c2378ac2e08b2d2cecc2e65a75e81b7eda2",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
@@ -41,7 +39,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-19T14:10:37+00:00",
+  "created_at": "2026-10-19T14:18:17+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -141,8 +139,7 @@
       "branch": "main-integration",
       "stacks": [
         "ccp011-ownership-supersession",
-        "local-run-as-readonly",
-        "journal-compatibility"
+        "local-run-as-readonly"
       ],
       "strategy": "cherry-pick"
     },
@@ -172,31 +169,16 @@
         "integration_branch": "main-integration",
         "state": "draft",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/journal-compatibility",
-        "commits": [
-          "6975c5550f0cae8ce1defee4f5268d37d26c1c02",
-          "3687f20ac5f3298e185c6206202976f4c4d7c377"
-        ],
-        "id": "journal-compatibility",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "48a229f0-2b22-4c03-a3db-825a67724e82",
-  "parent_state": "cf771efdccf32f751ef74a73a6ff373e71f65998",
+  "operation_token": "1af82039-0f3c-4f1b-a33f-ed0b2833e10b",
+  "parent_state": "dd7912538f017c80035ab6c78878b041a7b4cc53",
   "projection_status": "partial",
-  "publication_id": "1bffda67-bdb1-4a9d-90cc-92dda6e80cda",
-  "publication_scope": "stack:journal-compatibility",
+  "publication_id": "d3acecbc-b7fd-4132-8f74-c3525d55d3b7",
+  "publication_scope": "close:journal-compatibility",
   "schema_version": 2,
   "syncwheel_version": "0.45.8",
   "tombstones": [
@@ -711,6 +693,14 @@
       "ref": "refs/heads/pr/local-run-as-transport",
       "remote_tip": null,
       "stack": "local-run-as-transport"
+    },
+    {
+      "branch": "pr/journal-compatibility",
+      "closed_at": "2026-10-19T14:18:07+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/journal-compatibility",
+      "remote_tip": null,
+      "stack": "journal-compatibility"
     }
   ]
 }

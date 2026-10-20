@@ -29,8 +29,7 @@
       "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
-      "fleet-policy-audited-handoff",
-      "provider-timeout-bound"
+      "fleet-policy-audited-handoff"
     ],
     "strategy": "cherry-pick"
   },
@@ -158,24 +157,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "provider-timeout-bound",
-      "branch": "pr/provider-timeout-bound",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "24cfc045a79f420aef1f932479da4534b82857ab"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Accept bounded command provider timeouts up to ten minutes"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

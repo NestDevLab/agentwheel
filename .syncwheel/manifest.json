@@ -26,7 +26,8 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
-      "pin-package-declarations"
+      "pin-package-declarations",
+      "normalize-workspace-owner-prefix"
     ],
     "strategy": "cherry-pick"
   },
@@ -99,6 +100,22 @@
       },
       "meta": {
         "purpose": "Replace package declarations through governed native pin without source resolution"
+      }
+    },
+    {
+      "id": "normalize-workspace-owner-prefix",
+      "branch": "pr/normalize-workspace-owner-prefix",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Accept exact workspace-prefixed package owners during fleet normalization"
       }
     }
   ],

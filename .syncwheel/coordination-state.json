@@ -1,6 +1,7 @@
 {
   "changed_refs": {
-    "refs/heads/pr/fleet-policy-audited-handoff": "2f69bdd762e296dbfdae70ea8f2ac301f1c54587"
+    "refs/heads/pr/local-run-as-install": "fdecfbd872369983589d129886e5b248632e10a2",
+    "refs/heads/pr/local-run-as-ownership-plan": "71b1392c1656013cba0f69bbe027a16a875177dc"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -22,6 +23,8 @@
     "refs/heads/pr/legacy-managed-block-0212": "92aeb8c0360a24c2e0e23f609ebe68781839e252",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
+    "refs/heads/pr/local-run-as-install": "2c0825b0643eaa87a7d29116a51ffa0d8ab4fff1",
+    "refs/heads/pr/local-run-as-ownership-plan": "b9a3d68796565737a9515c0054c560fcd2e5044a",
     "refs/heads/pr/local-run-as-transport": "91a42c800c7f5486360439a8febeeb1e0975712f",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
@@ -50,7 +53,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-20T03:58:55+00:00",
+  "created_at": "2026-10-20T06:07:17+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -85,6 +88,8 @@
     "refs/heads/pr/legacy-managed-block-0212": "1ce9a835363e5be460577f740181a10c72ea47f8",
     "refs/heads/pr/legacy-recovery-report": "54e24e13168c49647c8aa74aabbde499b2204146",
     "refs/heads/pr/legacy-state-recovery-02011": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
+    "refs/heads/pr/local-run-as-install": "fdecfbd872369983589d129886e5b248632e10a2",
+    "refs/heads/pr/local-run-as-ownership-plan": "71b1392c1656013cba0f69bbe027a16a875177dc",
     "refs/heads/pr/local-run-as-transport": "22a8910459a2f92c4a48e8de29f1d4da85f37d37",
     "refs/heads/pr/merge-managed-self-normalization": "d1ed81494b942690f2de9e94e86d7583418644e0",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "76f6da95755a5bf751026b3712e62ffbc1f6f013",
@@ -164,7 +169,9 @@
         "pin-package-declarations",
         "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
-        "fleet-policy-audited-handoff"
+        "fleet-policy-audited-handoff",
+        "local-run-as-install",
+        "local-run-as-ownership-plan"
       ],
       "strategy": "cherry-pick"
     },
@@ -265,18 +272,46 @@
         "id": "fleet-policy-audited-handoff",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/local-run-as-install",
+        "commits": [
+          "fdecfbd872369983589d129886e5b248632e10a2"
+        ],
+        "id": "local-run-as-install",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/local-run-as-ownership-plan",
+        "commits": [
+          "71b1392c1656013cba0f69bbe027a16a875177dc"
+        ],
+        "id": "local-run-as-ownership-plan",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "532da556-7a38-4909-8c00-66ef61e72997",
-  "parent_state": "7233ff89661bb0e3adda0a4cfec760e3eee0ce2a",
+  "operation_token": "642c8f8e-c70f-4cde-ad1f-6f5ee1a14aca",
+  "parent_state": "5cdd2aa8a179d6f7a6ebf65eed8f1ddef0706cb3",
   "projection_status": "partial",
-  "publication_id": "8bac120b-e468-40a1-8960-cefd247f3101",
+  "publication_id": "9c3d34bc-1735-43f3-b1e6-52f1f7f38cc4",
   "publication_scope": "partial",
   "schema_version": 2,
-  "syncwheel_version": "0.46.7",
+  "syncwheel_version": "0.46.6",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

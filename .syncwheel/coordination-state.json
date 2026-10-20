@@ -21,7 +21,7 @@
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
     "refs/heads/pr/local-run-as-install": "99f817917bfe2f4f8b39179647a60d319784cd4d",
-    "refs/heads/pr/local-run-as-ownership-plan": "b9a3d68796565737a9515c0054c560fcd2e5044a",
+    "refs/heads/pr/local-run-as-ownership-plan": "20e1930036031a8b2e8777c4bf23aa215dc34caa",
     "refs/heads/pr/local-run-as-transport": "91a42c800c7f5486360439a8febeeb1e0975712f",
     "refs/heads/pr/mgt-0244-owner-diagnostics": "72f551ea3dcf5418d6a80ae9d2b12680c57fcd12",
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
@@ -50,7 +50,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-20T06:14:45+00:00",
+  "created_at": "2026-10-20T06:16:29+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -166,8 +166,7 @@
         "pin-package-declarations",
         "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
-        "fleet-policy-audited-handoff",
-        "local-run-as-ownership-plan"
+        "fleet-policy-audited-handoff"
       ],
       "strategy": "cherry-pick"
     },
@@ -268,30 +267,16 @@
         "id": "fleet-policy-audited-handoff",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/local-run-as-ownership-plan",
-        "commits": [
-          "71b1392c1656013cba0f69bbe027a16a875177dc"
-        ],
-        "id": "local-run-as-ownership-plan",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "ef5c6b5e-a895-4224-8d9d-8428f1eb6d10",
-  "parent_state": "724d95f4709d7d2549f8f98ca1a68ba872f1909b",
+  "operation_token": "f47dae6e-20f6-4094-acfc-e3b112da633f",
+  "parent_state": "1e23303c828276a70d67fc2a04e69fc8dc0beb20",
   "projection_status": "partial",
-  "publication_id": "d54c77c3-788d-4ce8-942e-83e147aa15e1",
-  "publication_scope": "close:local-run-as-install",
+  "publication_id": "b6beca97-1f6c-45c3-82d5-6d5a1ba1bda7",
+  "publication_scope": "close:local-run-as-ownership-plan",
   "schema_version": 2,
   "syncwheel_version": "0.46.6",
   "tombstones": [
@@ -854,6 +839,18 @@
       "ref": "refs/heads/pr/local-run-as-install",
       "remote_tip": null,
       "stack": "local-run-as-install"
+    },
+    {
+      "archive": {
+        "planDigest": "fb84ae51e2a0884f0eb8fb0aa66eeed5abe0e9d4837d4396d406e315436bcb8d",
+        "retentionDays": 30
+      },
+      "branch": "pr/local-run-as-ownership-plan",
+      "closed_at": "2026-10-20T06:16:19+00:00",
+      "reason": "archived",
+      "ref": "refs/heads/pr/local-run-as-ownership-plan",
+      "remote_tip": null,
+      "stack": "local-run-as-ownership-plan"
     }
   ]
 }

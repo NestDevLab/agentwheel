@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/provider-timeout-bound"
-  ],
-  "claimed_at": "2026-10-20T09:00:43+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-20T09:08:53+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "df829d63-adfe-42b8-975a-b011352f53cd",
-  "publication_scope": "partial",
+  "operation_token": "970f4d5b-7c3a-44d4-aa7d-8d20eea0e349",
+  "publication_scope": "close:provider-timeout-bound",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/provider-timeout-bound",
   "syncwheel_version": "0.46.6"
 }

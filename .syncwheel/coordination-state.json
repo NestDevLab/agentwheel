@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/normalize-workspace-owner-prefix": "46fd118c4cc5c817f5b2d604630f7ed0cdeea658"
+    "refs/heads/pr/handoff-explicit-source-state": "85d6021a73cb19f8c601d9b4a3b20657b14c2f93"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -14,6 +14,7 @@
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
+    "refs/heads/pr/handoff-explicit-source-state": "2e63f4c34a113c42a93f46e9d3b658e2909ea294",
     "refs/heads/pr/journal-compatibility": "c7ad9c2378ac2e08b2d2cecc2e65a75e81b7eda2",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
@@ -48,7 +49,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-20T00:23:53+00:00",
+  "created_at": "2026-10-20T01:17:38+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -74,6 +75,7 @@
     "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620",
     "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371",
     "refs/heads/pr/fleet-qualified-ownership-handoff": "127fc7368d93a00fc633346d801059572b66213c",
+    "refs/heads/pr/handoff-explicit-source-state": "85d6021a73cb19f8c601d9b4a3b20657b14c2f93",
     "refs/heads/pr/journal-compatibility": "3687f20ac5f3298e185c6206202976f4c4d7c377",
     "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
@@ -158,7 +160,8 @@
         "local-run-as-readonly",
         "mgt0478-add-runtimes",
         "pin-package-declarations",
-        "normalize-workspace-owner-prefix"
+        "normalize-workspace-owner-prefix",
+        "handoff-explicit-source-state"
       ],
       "strategy": "cherry-pick"
     },
@@ -231,15 +234,29 @@
         "id": "normalize-workspace-owner-prefix",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/handoff-explicit-source-state",
+        "commits": [
+          "85d6021a73cb19f8c601d9b4a3b20657b14c2f93"
+        ],
+        "id": "handoff-explicit-source-state",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "144040a8-cde0-4e7d-b1df-9ec0fccf690b",
-  "parent_state": "ca38d8a1a14767844e9ee70ab12be43b4f07367a",
+  "operation_token": "b1e62427-bcfb-40f8-b617-537000d319ea",
+  "parent_state": "2568fce149b9a80a7af0300f513fc00ef22cd38c",
   "projection_status": "partial",
-  "publication_id": "54cbff2a-2156-4701-a4d5-5ff3cb992e17",
+  "publication_id": "65382cf0-898c-4d14-ac3d-67661de6c0ef",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.46.6",

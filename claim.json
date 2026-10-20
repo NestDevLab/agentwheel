@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/normalize-workspace-owner-prefix"
+  ],
+  "claimed_at": "2026-10-20T00:23:53+00:00",
+  "coordination_id": "default",
+  "operation_token": "144040a8-cde0-4e7d-b1df-9ec0fccf690b",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/normalize-workspace-owner-prefix",
+  "syncwheel_version": "0.46.6"
+}

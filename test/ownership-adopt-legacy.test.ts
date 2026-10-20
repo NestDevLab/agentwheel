@@ -296,6 +296,27 @@ describe("legacy ownership adoption", () => {
       .rejects.toThrow(/Fleet target/i);
   });
 
+  it("plans run-as legacy claims through the transport without enabling adoption", async () => {
+    const fixture = await createFixture({ ownLegacy: false });
+    const request = await adoptRequest(fixture, fixture.scratch);
+    const reads: string[] = [];
+    const noWrite = async () => { throw new Error("unexpected target write"); };
+    const transport: TargetTransport = {
+      ...localTransport, kind: "local-run-as", description: "local-run-as://service:998@fixture",
+      readFile: async (path) => { reads.push(path); return localTransport.readFile(path); },
+      mkdirExclusive: noWrite, writeFileAtomic: noWrite, writeJsonAtomic: noWrite, atomicCopy: noWrite, rm: noWrite,
+    };
+    const local = await planAdoptLegacyOwnership(request);
+    const plan = await planAdoptLegacyOwnership({ ...request, transport });
+    expect(plan.selected).toEqual(local.selected);
+    expect(plan.planDigest).not.toBe(local.planDigest);
+    expect(reads).toContain(fixture.legacyManifestPath);
+    const otherIdentity = await planAdoptLegacyOwnership({ ...request, transport: { ...transport, description: "local-run-as://service:999@fixture" } });
+    expect(otherIdentity.planDigest).not.toBe(plan.planDigest);
+    await expect(applyAdoptLegacyOwnership({ ...applyRequest(request, plan), transport }))
+      .rejects.toThrow(/requires a local filesystem transport/);
+  });
+
   it("refuses unsupported source state before selecting entries", async () => {
     const fixture = await createFixture({ ownLegacy: false });
     const request = await adoptRequest(fixture, fixture.scratch);
@@ -661,6 +682,20 @@ async function tempRoot(prefix: string): Promise<string> {
 }
 
 describe("coherent managed-block legacy adoption", () => {
+  it("uses a worker snapshot for run-as managed blocks and refuses a missing snapshot capability", async () => {
+    const f = await managedFixture();
+    const snapshots: string[] = [];
+    const transport: TargetTransport = {
+      ...localTransport, kind: "local-run-as", description: "local-run-as://service:998@fixture",
+      ownershipSnapshot: async (path) => { snapshots.push(path); return ownershipRuntimeSnapshot(path); },
+    };
+    const plan = await planAdoptLegacyOwnership({ ...f.request, transport });
+    expect(snapshots).toEqual([f.file]);
+    expect(plan.selected[0]!.runtimeSnapshotDigest).toBe(await ownershipRuntimeSnapshot(f.file));
+    await expect(planAdoptLegacyOwnership({ ...f.request, transport: { ...transport, ownershipSnapshot: undefined } }))
+      .rejects.toThrow(/service-user runtime snapshot/);
+  });
+
   it("moves metadata while preserving block hash, full file, prefix, suffix, mode and legacy lock", async () => {
     const f = await managedFixture();
     const before = await readFile(f.file);

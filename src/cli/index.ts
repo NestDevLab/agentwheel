@@ -1313,7 +1313,7 @@ ownershipCommand
       throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
     }
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
-    if (target.transport === "local-run-as") throw new Error("Legacy ownership adoption cannot mutate local-run-as targets in PR1.");
+    if (target.transport === "local-run-as" && options.apply) throw new Error("Legacy ownership adoption cannot mutate local-run-as targets in PR1.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const groups = new Map<string, PackageGraphGroup>();
     for (const pkg of packagesForCliTarget(config.packages, target, plainInstallOptions)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
@@ -1386,6 +1386,7 @@ ownershipCommand
       ? await applyAdoptLegacyOwnership(request)
       : await planAdoptLegacyOwnership(request);
     const destinationRevision = result.destination.revision ?? "absent";
+    const applySupported = target.transport !== "local-run-as";
     const applyArgs = [
       "agentwheel", "ownership", "adopt-legacy",
       "--source-state-key", result.source.stateKey,
@@ -1402,9 +1403,9 @@ ownershipCommand
       "--expected-inventory-revision", result.manifestInventoryRevision,
       "--apply",
     ];
-    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    const applyCommand = applySupported ? applyArgs.map(shellQuoteArgument).join(" ") : null;
     if (options.json) {
-      console.log(JSON.stringify({ ...result, applyCommand }, null, 2));
+      console.log(JSON.stringify({ ...result, ...(applySupported ? {} : { applySupported }), applyCommand }, null, 2));
       return;
     }
     console.log(`${options.apply ? "Adopted legacy ownership" : "Legacy ownership adoption plan"}: ${result.selected.length} entr${result.selected.length === 1 ? "y" : "ies"}`);
@@ -1420,7 +1421,9 @@ ownershipCommand
     for (const entry of result.retained) console.log(`  retained ${entry.path} (${entry.reason}, ${entry.owner})`);
     for (const entry of result.remainingDuplicates) console.log(`  duplicate claim remains in ${entry.stateKey}: ${entry.path}`);
     console.log(`Plan digest: ${result.planDigest}`);
-    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
+    if (!options.apply) console.log(applySupported
+      ? `Apply from ${target.workspaceRoot}: ${applyCommand}`
+      : "Read-only plan: local-run-as ownership adoption is not yet enabled.");
   });
 
 const mcpCommand = program

@@ -62,7 +62,7 @@ Agentwheel also accepts `transport: "local-run-as"` on a named Linux agent with 
 required `runAs` account. It resolves `root: "home"` to that account's passwd home
 and reads runtime files and install manifests through a path-checked, service-user
 worker. In the first release this transport is **read-only**: plans, status, and
-ownership recovery reports work; installs, uninstalls, journal recovery, and
+ownership recovery reports and legacy adoption previews work; installs, uninstalls, journal recovery, and
 other target mutations fail before writes. An absolute target root must be owned
 by the account and equal its home for home-rooted mappings. SSH and ordinary
 local transports retain their existing layouts.
@@ -88,6 +88,12 @@ operator ALL=(service) NOPASSWD: AGENTWHEEL_RUN_AS_ID, AGENTWHEEL_RUN_AS_READ
 
 `ownership recovery-plan` requires `--fleet` for registered Fleet targets;
 it may omit `--fleet` for a nested workspace outside any Fleet.
+
+Legacy adoption previews read runtime claims and full ownership snapshots through
+the worker. Their digest includes the run-as endpoint identity. Workspace source
+locks remain caller-side. Adoption apply remains disabled, and previews do not
+advertise an executable apply command for this transport. This does not enable
+fleet normalization or ownership migration.
 
 | Harness | Artifact | `local` | `user` | Notes |
 |---|---|---|---|---|

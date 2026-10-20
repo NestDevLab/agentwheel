@@ -77,7 +77,7 @@ export interface MetadataStateGuards {
 }
 
 export interface MetadataAuditTransaction extends MetadataStateGuards {
-  kind: "ownership-release";
+  kind: "ownership-release" | "ownership-handoff";
   workspaceRoot: string;
   operationId: string;
   planDigest: string;
@@ -124,7 +124,7 @@ export async function ownershipRuntimeSnapshot(path: string): Promise<string> {
 export function metadataAuditPath(audit: MetadataAuditTransaction, path: string): string {
   mutationOperationIdSchema.parse(audit.operationId);
   if (resolve(audit.workspaceRoot) !== audit.workspaceRoot
-    || path !== `.agentwheel/ownership-releases/${audit.operationId}.json`) {
+    || path !== `.agentwheel/${audit.kind === "ownership-handoff" ? "ownership-handoffs" : "ownership-releases"}/${audit.operationId}.json`) {
     throw new Error("Invalid ownership release audit path.");
   }
   return join(audit.workspaceRoot, ...path.split("/"));

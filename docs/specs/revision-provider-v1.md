@@ -63,10 +63,35 @@ journal provider supports it), and Agentwheel independently verifies their termi
 Recovery uses the original receipt and persisted declarations, never the current workspace policy.
 Empty/no-commit operations retain exact HEAD: v1 requires `resultingHead == expectedHead`.
 
-User/global policy is the baseline for standard Agentwheel commands. A selected local or fleet
-workspace may strengthen it and may select its own commit provider, but cannot turn off global
-commit-after-verify, weaken a required reason or journal, or enable `--no-commit` when either
-policy forbids it.
+User/global policy is the baseline for standard Agentwheel commands. An existing registered Fleet
+containing the selected workspace contributes its authenticated policy next; the selected workspace
+contributes its explicit policy last. Fleet containment uses the canonical ownership resolver and
+validates the registered Fleet contract. Overlapping registrations fail closed; an unregistered
+ancestor config supplies no policy. New workspace directories use their closest existing ancestor
+only to establish Fleet containment. This never creates a registration or merges package declarations.
+
+Each more-specific explicit commit policy may select its own provider. Required reasons and journals
+are cumulative; commit-after-verify cannot be disabled by a revisioning-off child, and a no-commit
+override remains forbidden if any contributing commit policy forbids it. Without a containing Fleet,
+the existing HOME/selected-workspace behavior remains unchanged.
+
+Ownership handoff now supplies the previously missing declarative product:
+`.agentwheel/ownership-handoffs/<operation-id>.json` in the selected workspace. The CLI always
+uses this audited path; programmatic callers select it with `workspaceRoot` (an active governed
+mutation also selects it). The intent contains only operation/reason, target/state identity,
+selector/path, old/new owners, revisions and hashes, never manifest entries, merge-removal values
+or runtime/configuration payloads. An ignored audit path is refused under commit-after-verify.
+Provider rejection occurs before ownership metadata writes. Existing exact ownership, complete
+merge-contribution, hash, revision, target and transport checks still apply; semantic plugins remain
+unsupported.
+
+The audit and owner-only manifest update share the existing durable metadata journal. Runtime bytes,
+modes, unrelated claims and the complete manifest inventory are guarded throughout commit/recovery;
+no runtime operations are scheduled. The audit is immutable intent, not standalone completion proof.
+After interruption, use `mutation recover-runtime <operation-id>`, then ordinary
+`mutation recover <operation-id>` if finalization remains pending. Repeating the handoff is refused;
+the linked journal reuses the same UUID/content and accepts only exact before/after metadata states.
+Policy inheritance does not make remote recovery supported: governed SSH applies remain refused.
 
 `--reason <text>` supplies the complete reason and `--operation-id <id>` supplies a stable
 1-to-63-character correlation id matching `[A-Za-z0-9][A-Za-z0-9_-]*`. `--no-commit` is accepted

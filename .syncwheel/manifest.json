@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -87,76 +87,76 @@
       "target_remote": "origin"
     },
     {
-      "id": "pin-package-declarations",
-      "branch": "pr/pin-package-declarations",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/pin-package-declarations",
       "commits": [
         "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a"
       ],
-      "state": "published",
+      "id": "pin-package-declarations",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Replace package declarations through governed native pin without source resolution"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Replace package declarations through governed native pin without source resolution"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "normalize-workspace-owner-prefix",
-      "branch": "pr/normalize-workspace-owner-prefix",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/normalize-workspace-owner-prefix",
       "commits": [
         "46fd118c4cc5c817f5b2d604630f7ed0cdeea658"
       ],
-      "state": "published",
+      "id": "normalize-workspace-owner-prefix",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Accept exact workspace-prefixed package owners during fleet normalization"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Accept exact workspace-prefixed package owners during fleet normalization"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "handoff-explicit-source-state",
-      "branch": "pr/handoff-explicit-source-state",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/handoff-explicit-source-state",
       "commits": [
         "85d6021a73cb19f8c601d9b4a3b20657b14c2f93"
       ],
-      "state": "published",
+      "id": "handoff-explicit-source-state",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Select an authentic source state explicitly for ownership handoff"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Select an authentic source state explicitly for ownership handoff"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "fleet-policy-audited-handoff",
-      "branch": "pr/fleet-policy-audited-handoff",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/fleet-policy-audited-handoff",
       "commits": [
         "2f69bdd762e296dbfdae70ea8f2ac301f1c54587"
       ],
-      "state": "published",
+      "id": "fleet-policy-audited-handoff",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Inherit containing Fleet policy and audit governed ownership handoffs"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Inherit containing Fleet policy and audit governed ownership handoffs"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

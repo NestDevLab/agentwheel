@@ -30,7 +30,7 @@ export const commandRevisionProviderSchema = z.object({
   }),
   executableSha256: sha256Schema,
   trustBoundary: z.literal("entrypoint"),
-  timeoutMs: z.number().int().min(100).max(300_000).default(30_000),
+  timeoutMs: z.number().int().min(100).max(600_000).default(30_000),
   headLease: headLeaseSchema,
   protocolVersion: z.literal(REVISION_PROVIDER_PROTOCOL_VERSION),
 }).strict();

@@ -32,7 +32,7 @@ Providers are one of:
 
 - `git`: Agentwheel's built-in exact-path Git provider.
 - `command`: an absolute executable and fixed arguments in `command`. `executableSha256` pins the
-  entrypoint, `timeoutMs` bounds it, and `trustBoundary: "entrypoint"` explicitly acknowledges
+  entrypoint, `timeoutMs` bounds it (100–600000 ms; default 30000 ms), and `trustBoundary: "entrypoint"` explicitly acknowledges
   that provider-owned imports or subprocesses are part of the external provider deployment trust
   boundary. On Linux, Agentwheel hashes the configured file, copies those exact verified bytes to
   a private mode-0700 directory, opens the snapshot read-only, unlinks it, and executes it through

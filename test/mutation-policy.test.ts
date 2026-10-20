@@ -222,6 +222,24 @@ describe.sequential("mutation policy and revision provider v1", () => {
     }
   }, 120_000);
 
+  it("bounds command provider timeouts at ten minutes without changing the default", () => {
+    const provider = {
+      kind: "command",
+      id: "bounded-command",
+      command: [process.execPath],
+      executableSha256: nodeExecutableSha256,
+      trustBoundary: "entrypoint",
+      protocolVersion: 1,
+    };
+    expect(revisionProviderConfigSchema.parse(provider)).toMatchObject({ timeoutMs: 30_000 });
+    for (const timeoutMs of [100, 300_000, 600_000]) {
+      expect(revisionProviderConfigSchema.parse({ ...provider, timeoutMs })).toMatchObject({ timeoutMs });
+    }
+    for (const timeoutMs of [99, 600_001, 600_000.5]) {
+      expect(() => revisionProviderConfigSchema.parse({ ...provider, timeoutMs })).toThrow();
+    }
+  });
+
   it("keeps v1-v3 compatible while making mutationPolicy a strict v4-only field", () => {
     for (const schemaVersion of [1, 2, 3] as const) {
       expect(workspaceConfigSchema.parse({ schemaVersion }).schemaVersion).toBe(schemaVersion);

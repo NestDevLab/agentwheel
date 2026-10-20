@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.6
+
+- Add explicit source-state selection to ownership handoff without changing configured agents,
+  runtime contents, or the existing exact owner, merge-contribution, hash and revision checks.
+
 ## 0.21.5
 
 - Accept exact workspace-prefixed package owners during fleet normalization, while retaining

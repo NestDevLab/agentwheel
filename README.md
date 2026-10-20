@@ -139,6 +139,23 @@ refused unless `--carry-drift` is passed: the dry-run prints the runtime hash, t
 `--expected-runtime-hash <sha256>`, and the manifest keeps the recorded hash so the next install
 still reports the drift. Merge and managed-block entries never carry drift.
 
+Use `--source-state-key <exact-key>` when an existing source manifest must be selected explicitly.
+This is a command-local equivalent of a named agent's `stateKey`; it does not edit agent configuration,
+move state files, or reconstruct graph locks. The key must be canonical and match the selected adapter
+and installation type. The existing target identity, source owner, exact merge contribution, hash,
+revision, pending-journal and migration guards still apply. For example:
+
+```bash
+agentwheel ownership handoff mcp/example.json --local --agent local-codex \
+  --source-state-key codex.user.existing-state \
+  --from-workspace-root /old/workspace --to-workspace-root /new/workspace --dry-run
+```
+
+Apply only the same reviewed selection with `--expected-hash` and `--expected-revision`. An explicit
+key is never inferred from other claims and does not allow incomplete merge ownership or drift to
+be carried for merge artifacts.
+
+
 For a one-time MCP rename, keep the legacy artifact in a dedicated cutover workspace rather than
 the canonical desired-state profile. Set the legacy manifest `stateKey` on its named agent, then
 preview one runtime at a time:

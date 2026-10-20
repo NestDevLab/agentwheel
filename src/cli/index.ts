@@ -1031,6 +1031,7 @@ ownershipCommand
   .option("--from-workspace-root <path>", "current owning workspace root")
   .option("--from-unknown-owner", "hand off an artifact recorded as workspace:unknown", false)
   .requiredOption("--to-workspace-root <path>", "new owning workspace root")
+  .option("--source-state-key <key>", "explicit source install-manifest state key for this handoff only")
   .option("--to-fleet <id>", "qualify the new owner with a registered fleet id")
   .option("--expected-hash <sha256>", "expected recorded artifact hash; required when applying")
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
@@ -1064,9 +1065,21 @@ ownershipCommand
     if (!artifactType || !artifactName || extra.length > 0) {
       throw new Error(`Ownership handoff selector must be exactly type/name: ${selector}`);
     }
-    const target = targets[0];
+    const target = options.sourceStateKey === undefined
+      ? targets[0]
+      : { ...targets[0], stateKey: options.sourceStateKey };
+    if (options.sourceStateKey !== undefined
+      && (stateKeyFor(target.adapter, { stateKey: options.sourceStateKey }) !== options.sourceStateKey
+        || !options.sourceStateKey.startsWith(`${target.adapter}.`))) {
+      throw new Error("The source state key must be exact, canonical, and scoped to the selected adapter.");
+    }
     const state = await resolveCliTargetState(target, normalizedOptions);
     const { adapter, installationType } = state;
+    if (options.sourceStateKey !== undefined
+      && options.sourceStateKey !== `${adapter.name}.${installationType}`
+      && !options.sourceStateKey.startsWith(`${adapter.name}.${installationType}.`)) {
+      throw new Error("The source state key must match the selected installation type.");
+    }
     if (state.migration) {
       throw new Error(
         "Migrate the target state before ownership handoff by running a full agentwheel install for this target.",

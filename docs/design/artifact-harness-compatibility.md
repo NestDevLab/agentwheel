@@ -72,6 +72,12 @@ worker must be regular files that the service UID cannot own or write. One
 worker copy is staged per process and removed on exit, SIGINT, or SIGTERM.
 Each `sudo` child has a 120-second timeout, and worker `readFile` accepts only
 regular files.
+The source-staging module prepares versioned, bounded byte snapshots for future
+install support. It rejects links and special files, validates the complete
+entry hierarchy and content hash, and carries fixed private modes rather than
+source ownership or source paths. Source ancestors must be trusted and stable;
+this module does not provide target confinement or enable writes. Target write,
+command, recovery and ownership-migration support remain unavailable.
 
 For a dedicated operator and service account, grant only the UID check and the
 read worker invocation. Replace the example account, home, UID/GID, and Node

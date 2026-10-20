@@ -27,7 +27,8 @@
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
       "pin-package-declarations",
-      "normalize-workspace-owner-prefix"
+      "normalize-workspace-owner-prefix",
+      "handoff-explicit-source-state"
     ],
     "strategy": "cherry-pick"
   },
@@ -118,6 +119,22 @@
       },
       "meta": {
         "purpose": "Accept exact workspace-prefixed package owners during fleet normalization"
+      }
+    },
+    {
+      "id": "handoff-explicit-source-state",
+      "branch": "pr/handoff-explicit-source-state",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Select an authentic source state explicitly for ownership handoff"
       }
     }
   ],

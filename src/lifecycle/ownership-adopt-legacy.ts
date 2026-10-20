@@ -261,9 +261,6 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   if (transport.kind === "ssh") {
     throw new Error("Legacy ownership adoption does not support SSH targets; legacy SSH state does not prove its endpoint.");
   }
-  if (transport.kind === "local-run-as") {
-    throw new Error("local-run-as is read-only in PR1; legacy ownership adoption is not supported.");
-  }
   const input = await normalizeRequest(request);
   const { targetRoot, adapter, installationType } = input;
   await assertNoPendingJournals(targetRoot, adapter, transport);
@@ -291,6 +288,9 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   const selectedPaths = new Set(selectedEntries.map((entry) => entry.path));
   const hasManagedBlock = selectedEntries.some((entry) => entry.mode === "managed-block");
   if (hasManagedBlock && request.carryDrift) throw new Error("--carry-drift is forbidden for managed instruction block adoption.");
+  if (hasManagedBlock && transport.kind !== "local" && !transport.ownershipSnapshot) {
+    throw new Error("Legacy ownership planning requires a service-user runtime snapshot for managed blocks.");
+  }
   const selected: AdoptLegacyOwnershipEntry[] = [];
   for (const entry of selectedEntries) {
     const runtimePath = containedArtifactPath(targetRoot, entry.path);
@@ -301,7 +301,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     if (managedBlock && managedBlock.hash !== entry.hash) {
       throw new Error(`Managed instruction block hash differs from its recorded manifest hash at ${entry.path}; adoption is refused.`);
     }
-    const runtimeSnapshotDigest = hasManagedBlock ? await ownershipRuntimeSnapshot(runtimePath) : undefined;
+    const runtimeSnapshotDigest = hasManagedBlock ? (transport.kind === "local" ? await ownershipRuntimeSnapshot(runtimePath) : await transport.ownershipSnapshot!(runtimePath)) : undefined;
     const runtimeHash = await transport.pathExists(runtimePath) ? await transport.hashPath(runtimePath) : null;
     const drift = managedBlock ? false : runtimeHash !== entry.hash;
     if (drift && request.carryDrift !== true) {
@@ -337,7 +337,8 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   const guardedInventory = hasManagedBlock ? await listInstallManifests(targetRoot, undefined, transport) : undefined;
   if (guardedInventory) {
     for (const item of guardedInventory) {
-      await assertNoSymlinkPath(item.path);
+      // Run-as manifest reads already reject symlink components inside the worker.
+      if (transport.kind === "local") await assertNoSymlinkPath(item.path);
       for (const other of item.manifest.entries) {
         const otherPath = containedArtifactPath(targetRoot, other.path);
         for (const entry of selectedEntries) {
@@ -373,6 +374,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   }
 
   const withoutDigest = {
+    ...(transport.kind === "local-run-as" ? { transport: { kind: transport.kind, description: transport.description } } : {}),
     adapter,
     installationType,
     targetRoot,

@@ -8,6 +8,7 @@ export interface TargetTransport {
   mkdirExclusive(path: string): Promise<void>;
   hashPath(path: string): Promise<string>;
   readFile(path: string): Promise<string>;
+  ownershipSnapshot?(path: string): Promise<string>;
   listDir(path: string): Promise<string[]>;
   writeFileAtomic(path: string, content: string): Promise<void>;
   writeJsonAtomic(path: string, data: unknown): Promise<void>;

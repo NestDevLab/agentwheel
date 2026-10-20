@@ -1,8 +1,9 @@
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { ownershipRuntimeSnapshot } from "./ownership-snapshot.js";
 import { hashPath } from "../utils/fs.js";
 
-export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir";
+export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir" | "ownershipSnapshot";
 export interface ReadRequest { version: 1; operation: ReadOperation; path: string }
 
 /** Resolve a relative target path without following symlink components. */
@@ -41,7 +42,7 @@ async function rejectNestedLinks(path: string): Promise<void> {
 }
 
 export async function executeRead(root: string, request: ReadRequest): Promise<unknown> {
-  if (request.version !== 1 || !["pathExists", "hashPath", "readFile", "listDir"].includes(request.operation)) {
+  if (request.version !== 1 || !["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot"].includes(request.operation)) {
     throw new Error("Unsupported run-as read protocol request.");
   }
   const path = await containedReadPath(root, request.path);
@@ -54,6 +55,7 @@ export async function executeRead(root: string, request: ReadRequest): Promise<u
   if (request.operation === "pathExists") return exists;
   if (request.operation === "listDir" && !exists) return [];
   if (!exists) throw new Error("Run-as target path does not exist.");
+  if (request.operation === "ownershipSnapshot") return ownershipRuntimeSnapshot(path);
   if (request.operation === "hashPath") {
     await rejectNestedLinks(path);
     return hashPath(path);

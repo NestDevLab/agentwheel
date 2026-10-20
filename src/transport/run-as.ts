@@ -113,6 +113,7 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
     pathExists: async (path) => Boolean(await run("pathExists", path)),
     hashPath: async (path) => String(await run("hashPath", path)),
     readFile: async (path) => String(await run("readFile", path)),
+    ownershipSnapshot: async (path) => String(await run("ownershipSnapshot", path)),
     listDir: async (path) => (await run("listDir", path)) as string[],
     mkdirExclusive: async () => { throw new Error(readonlyError); },
     writeFileAtomic: async () => { throw new Error(readonlyError); },

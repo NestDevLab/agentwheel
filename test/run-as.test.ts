@@ -128,6 +128,22 @@ describe("local run-as read transport", () => {
     }
   });
 
+  it("computes ownership snapshots in the worker, including ignored bytes and file modes", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "__pycache__"));
+    const file = join(root, "__pycache__", "cache.pyc");
+    await writeFile(file, "first", { mode: 0o600 });
+    const request = { version: 1 as const, operation: "ownershipSnapshot" as const, path: "." };
+    const before = await executeRead(root, request);
+    await writeFile(file, "second");
+    const changed = await executeRead(root, request);
+    expect(changed).not.toBe(before);
+    await chmod(file, 0o640);
+    expect(await executeRead(root, request)).not.toBe(changed);
+    await symlink("/etc/passwd", join(root, "__pycache__", "escape"));
+    await expect(executeRead(root, request)).rejects.toThrow(/Unsupported ownership runtime path/);
+  });
+
   it("rejects directory reads through the worker readFile operation", async () => {
     const root = await fixture();
     await mkdir(join(root, "directory"));

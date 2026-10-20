@@ -145,6 +145,57 @@ describe("fleet normalization", () => {
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
   });
 
+  it.each([
+    { owners: ["workspace:core"] },
+    { owners: ["core", "workspace:core"] },
+  ])("transfers only validated package owners in either workspace notation: $owners", async ({ owners }) => {
+    const state = await installedFixture({ destinationState: "absent" });
+    await setSourceOwners(state, owners);
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const destinationBefore = await readFile(state.destinationRuntimeFile);
+    const request = { destinationFleet: "delivery", from: "user" as const, packages: ["core"], globalRoot: state.home };
+    const plan = await planFleetNormalization(request);
+    expect(plan.packages.map((entry) => entry.name)).toEqual(["core"]);
+    expect(plan.destination.root).toBe(state.destination);
+    expect(plan.installedState.transfers).toHaveLength(1);
+
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
+    expect(manifest.targetRoot).toBe(state.destinationRuntime);
+    expect(manifest.entries[0].owners).toEqual(owners);
+    expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
+    expect((await readConfig(state.home)).packages).toEqual([]);
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    expect(await readFile(state.destinationRuntimeFile)).toEqual(destinationBefore);
+  });
+
+  it.each([
+    { owners: ["workspace:core", "workspace:other"] },
+    { owners: ["workspace:core", "other"] },
+    { owners: ["workspace:core-extra"] },
+  ])("refuses owners outside the exact validated package selection: $owners", async ({ owners }) => {
+    const state = await installedFixture({ destinationState: "absent" });
+    await setSourceOwners(state, owners);
+    for (const root of [state.home, state.destination]) {
+      const config = await readConfig(root);
+      config.packages.push(pkg("other"));
+      await writeConfig(root, config);
+    }
+    const sourceBefore = await readFile(state.sourceManifest);
+    const configBefore = await readFile(join(state.home, ".agentwheel", "config.json"));
+    const runtimeBefore = await readFile(state.runtimeFile);
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery", from: "user", packages: ["core"], globalRoot: state.home,
+    })).rejects.toThrow(/partial ownership|not covered/i);
+
+    expect(await readFile(state.sourceManifest)).toEqual(sourceBefore);
+    expect(await readFile(join(state.home, ".agentwheel", "config.json"))).toEqual(configBefore);
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
+  });
+
   it("rejects a derived handoff when destination runtime bytes are missing", async () => {
     const state = await installedFixture({ destinationRuntime: "different", destinationState: "absent" });
     await rm(state.destinationRuntimeFile);
@@ -1215,6 +1266,16 @@ async function installedFixture(options: {
     legacyDestinationGraphLock,
     stableDestinationGraphLock,
   };
+}
+
+async function setSourceOwners(state: Awaited<ReturnType<typeof installedFixture>>, owners: string[]): Promise<void> {
+  const manifest = JSON.parse(await readFile(state.sourceManifest, "utf8"));
+  manifest.entries[0].owners = owners;
+  manifest.entries[0].refCount = owners.length;
+  await writeFile(state.sourceManifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const graph = JSON.parse(await readFile(state.sourceGraphLock!, "utf8"));
+  graph.canonical.artifacts[0].owners = owners;
+  await writeFile(state.sourceGraphLock!, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
 }
 
 async function directInstalledFixture(installationType = "local", installRoot?: string) {

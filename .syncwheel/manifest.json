@@ -30,7 +30,6 @@
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
-      "local-run-as-install",
       "local-run-as-ownership-plan"
     ],
     "strategy": "cherry-pick"
@@ -159,24 +158,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "local-run-as-install",
-      "branch": "pr/local-run-as-install",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "fdecfbd872369983589d129886e5b248632e10a2"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Service-user install transport with guarded mutation protocol"
-      }
     },
     {
       "id": "local-run-as-ownership-plan",

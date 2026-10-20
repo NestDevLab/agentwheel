@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { mutationPolicySchema, type MutationPolicy } from "../model/mutation.js";
 import { readWorkspaceConfig } from "../model/workspace.js";
+import { resolveWorkspaceOwnershipScope } from "../model/fleet.js";
+import { pathExists } from "../utils/fs.js";
 import {
   beginMutationPathDeclarations,
   declareMutationPath,
@@ -580,7 +582,14 @@ export async function mutationPolicyForWorkspace(
   if (resolve(workspaceRoot) === resolve(globalRoot)) return scoped;
   const globalConfig = await readWorkspaceConfig(globalRoot);
   const global = globalConfig.schemaVersion === 4 ? globalConfig.mutationPolicy : undefined;
-  return mergeMutationPolicies(global, scoped);
+  // Resolve the existing registration and its contract, never infer a Fleet from ancestry alone.
+  // init may select a not-yet-created directory; its closest existing ancestor establishes containment.
+  let existingRoot = resolve(workspaceRoot);
+  while (!(await pathExists(existingRoot)) && dirname(existingRoot) !== existingRoot) existingRoot = dirname(existingRoot);
+  const owner = await resolveWorkspaceOwnershipScope(existingRoot, { globalRoot });
+  const fleetConfig = owner.fleetId ? await readWorkspaceConfig(owner.root) : undefined;
+  const fleet = fleetConfig?.schemaVersion === 4 ? fleetConfig.mutationPolicy : undefined;
+  return mergeMutationPolicies(mergeMutationPolicies(global, fleet), scoped);
 }
 
 export function mergeMutationPolicies(

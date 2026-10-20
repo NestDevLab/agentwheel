@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.7
+
+- Inherit authenticated containing-Fleet mutation policy without weakening required reasons, journals or no-commit restrictions.
+- Record native ownership-handoff intent as an exact-path repository audit, with guarded metadata recovery and no runtime payload in the audit.
+
 ## 0.21.6
 
 - Add explicit source-state selection to ownership handoff without changing configured agents,

@@ -1093,6 +1093,10 @@ ownershipCommand
       }
     }
     const request = {
+      workspaceRoot: await workspaceRootFromOptions(normalizedOptions),
+      reason: options.reason,
+      operationId: options.operationId,
+      noCommit: options.commit === false,
       installationType,
       stateKey: state.stableStateKey,
       targetRoot: state.installRoot,
@@ -5252,7 +5256,7 @@ async function governedCommandContext(command: Command, options: GlobalMutationO
     workspaceRoot,
     anticipatedPaths,
     requireCleanWorkingTree: requiresCleanMutationPreflight(path),
-    requiresDeclarativeRepositoryDelta: path === "ownership handoff",
+
   };
 }
 

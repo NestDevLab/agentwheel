@@ -1,3 +1,5 @@
+import { applyAuditedOwnershipHandoff } from "./ownership-handoff-audit.js";
+import { activeMutationMetadata } from "../mutation/coordinator.js";
 import { resolve } from "node:path";
 import { readInstallManifest, writeInstallManifest } from "../install/manifest.js";
 import { stateKeyFor, type InstallStateScope } from "../install/paths.js";
@@ -12,6 +14,12 @@ import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 export { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 
 export interface OwnershipHandoffRequest extends InstallStateScope {
+  /** Explicit selected configuration scope; the CLI always supplies this for native audit/governance. */
+  workspaceRoot?: string;
+  reason?: string;
+  operationId?: string;
+  noCommit?: boolean;
+  globalRoot?: string;
   targetRoot: string;
   adapter: string;
   artifactType: string;
@@ -53,6 +61,9 @@ export async function planArtifactOwnershipHandoff(request: OwnershipHandoffRequ
 export async function applyArtifactOwnershipHandoff(request: OwnershipHandoffRequest): Promise<OwnershipHandoffPlan> {
   if (!request.expectedHash || !request.expectedRevision) {
     throw new Error("Applying an ownership handoff requires expectedHash and expectedRevision from a reviewed dry-run.");
+  }
+  if (request.workspaceRoot || activeMutationMetadata()) {
+    return applyAuditedOwnershipHandoff(request, validateOwnershipHandoff);
   }
   const transport = request.transport ?? localTransport;
   assertGovernedRuntimeTransportSupported(transport);

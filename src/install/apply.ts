@@ -542,7 +542,7 @@ async function assertMetadataAuditGuards(
 ): Promise<void> {
   const audit = journal.metadataAudit!;
   const sha = /^[a-f0-9]{64}$/;
-  if (transport.kind !== "local" || audit.kind !== "ownership-release"
+  if (transport.kind !== "local" || (audit.kind !== "ownership-release" && audit.kind !== "ownership-handoff")
     || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
     || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
     || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length

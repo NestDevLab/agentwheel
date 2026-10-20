@@ -50,6 +50,31 @@ describe("ownership handoff explicit source state", () => {
     expect(await readFile(f.graphSentinel, "utf8")).toBe("unchanged graph sentinel\n");
   });
 
+  it("commits one native audit when the CLI uses commit-after-verify", async () => {
+    const f = await fixture();
+    const config = JSON.parse(await readFile(f.config, "utf8"));
+    config.schemaVersion = 4;
+    config.mutationPolicy = { reason: "required", journal: "required", revisioning: {
+      mode: "commit-after-verify", allowNoCommitOverride: false, reasonInCommit: "full",
+      provider: { kind: "git", protocolVersion: 1 },
+    } };
+    await writeFile(f.config, JSON.stringify(config));
+    const git = async (args: string[]) => (await exec("git", ["-C", f.workspace, ...args])).stdout;
+    await git(["init", "-b", "main"]); await git(["config", "user.name", "Fixture Maintainer"]);
+    await git(["config", "user.email", "fixture@example.test"]);
+    await git(["add", ".agentwheel"]); await git(["commit", "-m", "Declare governed fixture"]);
+    const m = await readInstallManifest(f.target, "codex", localTransport, f.scope);
+    if (!m) throw new Error("Missing fixture manifest");
+    const before = await readFile(f.config);
+    const result = await f.run(["--source-state-key", f.key, "--expected-hash", "a".repeat(64),
+      "--expected-revision", m.revision, "--operation-id", "cli-handoff", "--reason", "Transfer reviewed ownership"]);
+    expect(result.stderr).toContain("cli-handoff: succeeded");
+    expect((await git(["show", "--pretty=", "--name-only", "HEAD"])).trim())
+      .toBe(".agentwheel/ownership-handoffs/cli-handoff.json");
+    expect(await readFile(f.runtimeFile)).toEqual(f.runtimeBefore);
+    expect(await readFile(f.config)).toEqual(before);
+  });
+
   it.each([
     ["missing key", "codex.local.missing", /No install manifest/],
     ["wrong adapter", "claude.local.legacy", /scoped to the selected adapter/],

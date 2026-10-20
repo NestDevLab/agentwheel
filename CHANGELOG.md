@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.5
+
+- Accept exact workspace-prefixed package owners during fleet normalization, while retaining
+  complete package coverage and rejecting unrelated or partially selected owners.
+
 ## 0.21.4
 
 - Add governed `pin --packages-file` declaration replacement with schema validation, exact

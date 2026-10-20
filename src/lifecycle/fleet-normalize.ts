@@ -627,7 +627,7 @@ async function inspectInstalledState(
       if (!sourceGraphArtifacts.has(graphEntryIdentity(sourceEntry.entry))) {
         throw new Error(`Source manifest entry is not covered by its graph lock: ${sourceEntry.renderedPath}`);
       }
-      if (sourceEntry.entry.owners.some((owner) => !selected.has(owner))) {
+      if (sourceEntry.entry.owners.some((owner) => !ownerMatchesPackage(owner, selected))) {
         throw new Error(`Partial ownership at ${sourceEntry.renderedPath} includes packages outside the normalization selection.`);
       }
       const destinationRenderedPath = renderedEntryPathForRoot(destinationState.installRoot, sourceEntry.entry.path);

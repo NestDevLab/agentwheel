@@ -415,6 +415,10 @@ changed manifest, or changed graph lock fails closed. The transaction transfers 
 ownership and invalidates covered graph locks before removing the source declaration; it does not
 rewrite runtime bytes.
 
+Package owners may use the exact selected declaration name or `workspace:<name>`. Every owner
+must match a validated selected package; a matching name prefix or an additional unselected owner
+does not grant coverage. This does not change the destination workspace or runtime target.
+
 If an interrupted apply leaves a pending normalization journal, recover the same source and
 destination explicitly:
 

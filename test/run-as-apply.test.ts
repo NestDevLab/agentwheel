@@ -28,7 +28,9 @@ async function fixture() {
       return { stdout: JSON.stringify({ version: 1, result: await executeRequest(target, process.getuid!(), process.getgid!(), request) }) };
     } catch (error) { return { stdout: JSON.stringify({ version: 1, error: { message: String(error), code: (error as NodeJS.ErrnoException).code } }) }; }
   };
-  const transport = createRunAsTransport({ user: "fixture", uid: process.getuid!(), gid: process.getgid!(), home: target, root: target }, runner);
+  // The injected runner executes the helper directly, never the Node argv.
+  // Python is a required system-owned binary; /usr/bin/node is optional.
+  const transport = createRunAsTransport({ user: "fixture", uid: process.getuid!(), gid: process.getgid!(), home: target, root: target }, runner, "/fixture/run-as-worker.mjs", "/usr/bin/python3");
   return { target, source, transport, requests, fail: (path: string) => { failPath = path; } };
 }
 const stateKey = `openclaw.user.${"a".repeat(64)}`;

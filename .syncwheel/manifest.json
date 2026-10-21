@@ -29,8 +29,7 @@
       "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
-      "fleet-policy-audited-handoff",
-      "local-run-as-migration"
+      "fleet-policy-audited-handoff"
     ],
     "strategy": "cherry-pick"
   },
@@ -158,24 +157,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "local-run-as-migration",
-      "branch": "pr/local-run-as-migration",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "a9d36bfaf8c8771f15ae2eebce09adcdb0826aaf"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Enable reviewed service-user ownership migration and stable release"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

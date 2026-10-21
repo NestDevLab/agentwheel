@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/local-run-as-migration"
+  ],
+  "claimed_at": "2026-10-21T09:29:55+00:00",
+  "coordination_id": "default",
+  "operation_token": "dc868301-557f-4fed-8f35-51849af4940c",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/local-run-as-migration",
+  "syncwheel_version": "0.46.8"
+}

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { declareMutationPath } from "../mutation/declarations.js";
-import { link, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -37,7 +37,10 @@ import {
   assertNoSymlinkPath,
   metadataAuditPath,
   metadataRuntimePath,
-  ownershipRuntimeSnapshot,
+  observeOwnershipRuntime,
+  assertOwnershipMetadataTransportSupported,
+  assertOwnershipMetadataJournalLinked,
+  assertOwnershipMetadataAuditPaths,
   syncMetadataPath,
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
@@ -118,7 +121,7 @@ export async function recoverPendingApply(
 ): Promise<InstallManifest | undefined> {
   assertGovernedRuntimeTransportSupported(transport);
   if (transport.kind === "local-run-as" && !expectedLink) throw new Error("Run-as recovery requires a caller-owned durable receipt link.");
-  const validateJournal = (journal: ApplyJournal): void => {
+  const validateJournal = async (journal: ApplyJournal): Promise<void> => {
     if (expectedLink) {
       if (expectedLink.path !== applyJournalPath(targetRoot, adapter, scope)) throw new Error("Recovery receipt journal path mismatch.");
       assertLinkedApplyJournal(journal, expectedLink.path, expectedLink.operationId, expectedLink.journalDigest, expectedLink.transportDescription, transport);
@@ -127,6 +130,8 @@ export async function recoverPendingApply(
       }
     }
     assertApplyJournalRecoveryAllowed(journal);
+    if (journal.metadataAudit || journal.metadataGuards) assertOwnershipMetadataTransportSupported(transport, journal);
+    await assertOwnershipMetadataAuditPaths(journal, transport);
     assertRunAsPlanSupported({ operations: journal.operations, adapterCode: journal.manifest.adapterCode } as InstallPlan, transport);
     if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
       throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
@@ -135,13 +140,13 @@ export async function recoverPendingApply(
   await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
   const preflightJournal = await readApplyJournal(targetRoot, adapter, transport, scope);
   if (!preflightJournal) return undefined;
-  validateJournal(preflightJournal);
+  await validateJournal(preflightJournal);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
     await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
-    validateJournal(journal);
+    await validateJournal(journal);
     if (expectedLink?.resolveOnly) {
       await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
       return journal.manifest;
@@ -446,6 +451,7 @@ export async function commitManifestMetadataJournal(
   if (journal.mode !== "uninstall" || journal.operations.length !== 0) {
     throw new Error("Manifest metadata journal must contain no runtime operations.");
   }
+  assertOwnershipMetadataTransportSupported(transport, journal);
   return commitJournalState(journal, transport, undefined, journal.createdAt);
 }
 
@@ -455,6 +461,8 @@ async function commitJournalState(
   entries: InstallManifestEntry[] | undefined,
   now: string,
 ): Promise<InstallManifest> {
+  if (journal.metadataAudit || journal.metadataGuards) await assertOwnershipMetadataJournalLinked(journal, transport);
+  await assertOwnershipMetadataAuditPaths(journal, transport);
   const manifest = withManifestRevision({
     ...journal.manifest,
     generatedAt: journal.metadataAudit || journal.metadataGuards ? journal.createdAt : now,
@@ -467,8 +475,9 @@ async function commitJournalState(
     // Intent lands first. A crash leaves an explicit pending journal, never an unaudited release.
     for (const file of journal.metadataAudit.auditFiles) {
       const path = metadataAuditPath(journal.metadataAudit, file.path);
+      await assertOwnershipMetadataAuditPaths(journal, transport);
       declareMutationPath(path);
-      await writeAuditFileExclusive(path, file.content);
+      await writeAuditFileExclusive(path, file.content, () => assertOwnershipMetadataAuditPaths(journal, transport));
     }
     await assertMetadataAuditGuards(journal, manifest, transport);
   }
@@ -477,14 +486,14 @@ async function commitJournalState(
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
-    if (journal.metadataGuards) await syncMetadataPath(metadataDir(journal.targetRoot), true);
+    if (journal.metadataGuards && transport.kind === "local") await syncMetadataPath(metadataDir(journal.targetRoot), true);
   } else {
     if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport, {
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
     await writeInstallManifest(manifest, transport);
-    if (journal.metadataAudit || journal.metadataGuards) await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
+    if ((journal.metadataAudit || journal.metadataGuards) && transport.kind === "local") await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
       installationType: journal.installationType, stateKey: journal.stateKey,
     }));
   }
@@ -575,8 +584,9 @@ async function assertMetadataAuditGuards(
   requireAfter = false,
 ): Promise<void> {
   const audit = journal.metadataAudit!;
+  await assertOwnershipMetadataAuditPaths(journal, transport);
   const sha = /^[a-f0-9]{64}$/;
-  if (transport.kind !== "local" || (audit.kind !== "ownership-release" && audit.kind !== "ownership-handoff")
+  if (transport.kind === "ssh" || (audit.kind !== "ownership-release" && audit.kind !== "ownership-handoff")
     || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
     || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
     || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
@@ -609,7 +619,7 @@ async function assertMetadataStateGuards(
   requireAfter = false,
 ): Promise<void> {
   const sha = /^[a-f0-9]{64}$/;
-  if (transport.kind !== "local" || (journal.metadataAudit && journal.metadataGuards)
+  if (transport.kind === "ssh" || (journal.metadataAudit && journal.metadataGuards)
     || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
     || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
     || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
@@ -619,10 +629,13 @@ async function assertMetadataStateGuards(
     || !guards.inventory.length || !guards.runtime.length) {
     throw new Error("Invalid guarded metadata transaction; no state was committed.");
   }
-  await assertNoSymlinkPath(journal.targetRoot);
-  await assertNoSymlinkPath(metadataDir(journal.targetRoot));
+  assertOwnershipMetadataTransportSupported(transport, journal);
+  if (transport.kind === "local") {
+    await assertNoSymlinkPath(journal.targetRoot);
+    await assertNoSymlinkPath(metadataDir(journal.targetRoot));
+  }
   const inventory = await listInstallManifests(journal.targetRoot, undefined, transport);
-  for (const item of inventory) await assertNoSymlinkPath(item.path);
+  if (transport.kind === "local") for (const item of inventory) await assertNoSymlinkPath(item.path);
   const before = new Map(guards.inventory.map((item) => [item.stateKey, item.revision]));
   if (before.size !== guards.inventory.length || [...before.values()].some((revision) => !sha.test(revision))
     || (before.get(journal.stateKey!) ?? null) !== journal.baseRevision) {
@@ -640,7 +653,7 @@ async function assertMetadataStateGuards(
   for (const guard of guards.runtime) {
     const path = metadataRuntimePath(journal.targetRoot, guard.path);
     if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
-      || await ownershipRuntimeSnapshot(path) !== guard.snapshotDigest
+      || (await observeOwnershipRuntime(path, transport)).snapshotDigest !== guard.snapshotDigest
       || await transport.hashPath(path) !== guard.hash) {
       throw new Error(`Metadata runtime CAS failed at ${guard.path}; runtime was preserved.`);
     }
@@ -653,14 +666,41 @@ async function assertMetadataStateGuards(
   }
 }
 
-async function writeAuditFileExclusive(path: string, content: string): Promise<void> {
+async function createPrivateAuditDirectory(path: string): Promise<void> {
+  try {
+    const existing = await lstat(path);
+    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error(`Invalid audit directory: ${path}`);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await createPrivateAuditDirectory(dirname(path));
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const existing = await lstat(path);
+    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error(`Invalid audit directory: ${path}`);
+    return;
+  }
+  // Clear inherited SGID/ACL group access only on a directory created by this call.
+  await chmod(path, 0o700);
+  await syncMetadataPath(path, true);
+  await syncMetadataPath(dirname(path), true);
+}
+
+async function writeAuditFileExclusive(path: string, content: string, validateCallerPath: () => Promise<void>): Promise<void> {
   await assertNoSymlinkPath(path);
-  await mkdir(dirname(path), { recursive: true });
+  await createPrivateAuditDirectory(dirname(path));
+  await assertNoSymlinkPath(path);
+  // Directory creation can inherit group/ACL state; validate the complete chain before opening bytes.
+  await validateCallerPath();
   await syncMetadataPath(dirname(dirname(path)), true);
   const temporary = `${path}.pending-${randomUUID()}`;
   try {
     const handle = await open(temporary, "wx", 0o600);
     try {
+      await handle.chmod(0o600);
       await handle.writeFile(content, "utf8");
       await handle.sync();
     } finally {

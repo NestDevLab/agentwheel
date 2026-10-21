@@ -6,7 +6,8 @@ import type { GraphLock } from "../model/graph-lock.js";
 import type { ExactManagedInstructionBlockSnapshot } from "./instructions-block.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
-import type { RuntimeJournalReceipt } from "../mutation/receipts.js";
+import { assertCallerRunAsWritePath } from "../transport/caller-write-trust.js";
+import { readMutationReceipt, type RuntimeJournalReceipt } from "../mutation/receipts.js";
 import type { InstallOperation } from "./plan.js";
 import { metadataDir, stateKeyFor, type InstallStateScope } from "./paths.js";
 import {
@@ -104,6 +105,64 @@ export async function assertNoSymlinkPath(path: string): Promise<void> {
 export { ownershipRuntimeSnapshot } from "../transport/ownership-snapshot.js";
 import { ownershipRuntimeSnapshot } from "../transport/ownership-snapshot.js";
 
+export async function observeOwnershipRuntime(
+  path: string,
+  transport: TargetTransport = localTransport,
+): Promise<{ kind: "file" | "dir"; snapshotDigest: string }> {
+  if (transport.kind === "ssh") throw new Error("Ownership metadata observations do not support SSH.");
+  if (transport.kind === "local-run-as") {
+    if (!transport.ownershipObservation) throw new Error("Run-as ownership metadata requires confined ownership observations.");
+    const observation = await transport.ownershipObservation(path);
+    if (!observation || (observation.kind !== "file" && observation.kind !== "dir")
+      || !/^[a-f0-9]{64}$/u.test(observation.snapshotDigest)) {
+      throw new Error("Invalid confined ownership observation.");
+    }
+    return observation;
+  }
+  const info = await lstat(path);
+  if (!info.isFile() && !info.isDirectory()) throw new Error(`Unsupported ownership runtime path: ${path}`);
+  return { kind: info.isDirectory() ? "dir" : "file", snapshotDigest: await ownershipRuntimeSnapshot(path) };
+}
+
+/** Planning may observe freely; metadata writes require a caller-owned durable mutation. */
+export function assertOwnershipMetadataTransportSupported(transport: TargetTransport, journal?: ApplyJournal): void {
+  if (transport.kind === "ssh") throw new Error("Ownership metadata mutations do not support SSH.");
+  if (transport.kind !== "local-run-as") return;
+  assertGovernedRuntimeTransportSupported(transport);
+  if (!transport.ownershipObservation) throw new Error("Run-as ownership metadata requires confined ownership observations before writes.");
+  const active = activeMutationMetadata();
+  if (!active || (journal && (journal.version !== 2 || journal.mutation?.operationId !== active.operationId
+    || journal.mutation.reason !== active.reason || journal.mutation.noCommit !== active.noCommit))) {
+    throw new Error("Run-as ownership metadata requires a caller-owned durable mutation receipt before writes.");
+  }
+}
+
+/** Audit intent belongs to the caller, and every ancestor must remain outside service control. */
+export async function assertOwnershipMetadataAuditPaths(journal: ApplyJournal, transport: TargetTransport): Promise<void> {
+  if (transport.kind !== "local-run-as" || !journal.metadataAudit) return;
+  assertOwnershipMetadataTransportSupported(transport, journal);
+  for (const file of journal.metadataAudit.auditFiles) {
+    await assertCallerRunAsWritePath(metadataAuditPath(journal.metadataAudit, file.path), [transport.runAsIdentity!]);
+  }
+}
+
+/** Recheck the caller-side link before allowing a service-owned journal to commit metadata. */
+export async function assertOwnershipMetadataJournalLinked(journal: ApplyJournal, transport: TargetTransport): Promise<void> {
+  assertOwnershipMetadataTransportSupported(transport, journal);
+  if (transport.kind !== "local-run-as") return;
+  const receipt = await readMutationReceipt(journal.mutation!.operationId);
+  const path = applyJournalPath(journal.targetRoot, journal.adapter, { installationType: journal.installationType, stateKey: journal.stateKey });
+  const link = receipt.runtimeJournals.find((entry) => entry.path === path && entry.status !== "resolved");
+  const identity = transport.runAsIdentity!;
+  if (!link || link.transport !== transport.kind || !link.runAsIdentity
+    || link.runAsIdentity.user !== identity.user || link.runAsIdentity.uid !== identity.uid
+    || link.runAsIdentity.gid !== identity.gid || link.runAsIdentity.home !== identity.home
+    || link.runAsIdentity.root !== identity.root) {
+    throw new Error("Run-as ownership metadata journal has no matching caller-owned durable receipt link.");
+  }
+  assertLinkedApplyJournal(journal, path, receipt.operationId, link.journalDigest, link.transportDescription, transport);
+}
+
 export function metadataAuditPath(audit: MetadataAuditTransaction, path: string): string {
   mutationOperationIdSchema.parse(audit.operationId);
   if (resolve(audit.workspaceRoot) !== audit.workspaceRoot
@@ -189,6 +248,8 @@ export async function acquireApplyLock(
 
 export async function writeApplyJournal(journal: ApplyJournal, transport: TargetTransport = localTransport): Promise<void> {
   assertGovernedRuntimeTransportSupported(transport);
+  if (journal.metadataAudit || journal.metadataGuards) assertOwnershipMetadataTransportSupported(transport, journal);
+  await assertOwnershipMetadataAuditPaths(journal, transport);
   const path = applyJournalPath(journal.targetRoot, journal.adapter, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,

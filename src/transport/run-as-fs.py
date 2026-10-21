@@ -148,7 +148,7 @@ class Filesystem:
                 reject('Tree entry or depth limit exceeded')
             info = self.info(target)
             entry = {'path': suffix, 'kind': 'dir' if stat.S_ISDIR(info.st_mode) else 'file',
-                     'mode': stat.S_IMODE(info.st_mode) & 0o777}
+                     'mode': stat.S_IMODE(info.st_mode) & (0o7777 if include_ignored else 0o777)}
             output.append(entry)
             if entry['kind'] == 'dir':
                 for name in self.names(target):
@@ -180,6 +180,7 @@ class Filesystem:
                         # Persist the new inode before publishing its parent entry.
                         child = self.child(prefix, part)
                         with self.opened(child, os.O_RDONLY | os.O_DIRECTORY) as child_fd:
+                            os.fchmod(child_fd, 0o700)
                             os.fsync(child_fd)
                         os.fsync(fd)
                 prefix = self.child(prefix, part)
@@ -193,6 +194,7 @@ class Filesystem:
         with self.parent(path, True) as (fd, name):
             os.mkdir(name, 0o700, dir_fd=fd)
             with self.opened(path, os.O_RDONLY | os.O_DIRECTORY) as child_fd:
+                os.fchmod(child_fd, 0o700)
                 os.fsync(child_fd)
             os.fsync(fd)
 

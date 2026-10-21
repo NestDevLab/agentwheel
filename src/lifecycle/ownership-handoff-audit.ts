@@ -1,12 +1,13 @@
+import { assertCallerRunAsWritePath } from "../transport/caller-write-trust.js";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { commitManifestMetadataJournal } from "../install/apply.js";
 import { listInstallManifests, readInstallManifest } from "../install/manifest.js";
 import { installManifestPath } from "../install/paths.js";
 import {
-  acquireApplyLock, assertGovernedRuntimeTransportSupported, assertNoSymlinkPath,
+  acquireApplyLock, assertOwnershipMetadataTransportSupported, assertNoSymlinkPath,
   listAllApplyJournals, metadataRuntimePath, mutationMetadataForApplyJournal,
-  ownershipRuntimeSnapshot, writeApplyJournal, type ApplyJournal,
+  observeOwnershipRuntime, writeApplyJournal, type ApplyJournal,
 } from "../install/transaction.js";
 import { activeMutationMetadata, GovernedMutation } from "../mutation/coordinator.js";
 import { declareMutationPath } from "../mutation/declarations.js";
@@ -36,9 +37,8 @@ export async function applyAuditedOwnershipHandoff(
   });
   try {
     const transport = request.transport ?? localTransport;
-    assertGovernedRuntimeTransportSupported(transport);
-    // The durable audit is a local repository product. Remote handoffs retain their existing guards.
-    if (transport.kind !== "local") throw new Error("Audited ownership handoff supports local targets only.");
+    assertOwnershipMetadataTransportSupported(transport);
+    if (transport.kind === "local-run-as") await assertCallerRunAsWritePath(auditPath, [transport.runAsIdentity!]);
     await assertNoSymlinkPath(workspaceRoot);
     await assertNoSymlinkPath(auditPath);
     if ((existing ?? mutation?.metadata())?.revisionMode === "commit-after-verify") {
@@ -48,13 +48,14 @@ export async function applyAuditedOwnershipHandoff(
       if (ignored.exitCode === 0) throw new Error("Ownership handoff audit path is Git-ignored; declare it before handing off ownership.");
     }
     const scope = { installationType: request.installationType, stateKey: request.stateKey };
-    await assertNoSymlinkPath(join(request.targetRoot, ".agentwheel"));
+    if (transport.kind === "local") await assertNoSymlinkPath(join(request.targetRoot, ".agentwheel"));
+    else await transport.pathExists(join(request.targetRoot, ".agentwheel"));
     const lock = await acquireApplyLock(request.targetRoot, request.adapter, transport, {}, scope);
     try {
       if ((await listAllApplyJournals(request.targetRoot, undefined, transport)).length) {
         throw new Error("Cannot hand off ownership while an apply journal is pending. Recover the same operation first.");
       }
-      if (await transport.pathExists(auditPath)) throw new Error("Ownership handoff intent already exists; recover the same operation instead of applying again.");
+      if (await localTransport.pathExists(auditPath)) throw new Error("Ownership handoff intent already exists; recover the same operation instead of applying again.");
       // All original target, owner, exact contribution, hash and revision checks run while locked.
       const plan = await observe(request, transport);
       if (plan.drifted && !request.expectedRuntimeHash) {
@@ -65,17 +66,19 @@ export async function applyAuditedOwnershipHandoff(
         throw new Error("Ownership handoff manifest changed while locked; replan required.");
       }
       const inventory = await listInstallManifests(request.targetRoot, undefined, transport);
-      for (const item of inventory) await assertNoSymlinkPath(item.path);
+      if (transport.kind === "local") for (const item of inventory) await assertNoSymlinkPath(item.path);
       const runtimePath = metadataRuntimePath(request.targetRoot, plan.path);
       // The full merged file is guarded privately; only hashes enter the public audit.
-      const runtime = [{ path: plan.path, hash: await transport.hashPath(runtimePath), snapshotDigest: await ownershipRuntimeSnapshot(runtimePath) }];
+      const runtime = [{ path: plan.path, hash: await transport.hashPath(runtimePath), snapshotDigest: (await observeOwnershipRuntime(runtimePath, transport)).snapshotDigest }];
       const reason = existing?.reason ?? mutation?.metadata().reason ?? request.reason ?? "Ownership handoff";
       const intent = { schemaVersion: 1, event: "ownership-handoff-intent", operationId, reason,
         // Explicit whitelist: never serialize manifest entries, mergeRemoval or runtime/config values.
         plan: { adapter: plan.adapter, installationType: manifest.installationType, stateKey: manifest.stateKey,
           targetRoot: plan.targetRoot, selector: plan.selector, path: plan.path,
           artifactHash: plan.artifactHash, runtimeHash: plan.runtimeHash, drifted: plan.drifted,
-          manifestRevision: plan.manifestRevision, fromOwner: plan.fromOwner, toOwner: plan.toOwner },
+          manifestRevision: plan.manifestRevision, fromOwner: plan.fromOwner, toOwner: plan.toOwner,
+          ...(plan.transport ? { transport: plan.transport, planDigest: plan.planDigest,
+            runtimeSnapshotDigest: plan.runtimeSnapshotDigest, manifestInventoryRevision: plan.manifestInventoryRevision } : {}) },
         completion: "Verify the linked runtime journal and mutation receipt; intent alone is not completion.",
       };
       const content = `${JSON.stringify(intent, null, 2)}\n`;
@@ -92,7 +95,7 @@ export async function applyAuditedOwnershipHandoff(
         manifest: { ...manifest, entries: manifest.entries.map((entry) =>
           entry.artifactType === request.artifactType && entry.artifactName === request.artifactName
             ? { ...entry, workspaceOwner: plan.toOwner } : entry) },
-        metadataAudit: { kind: "ownership-handoff", workspaceRoot, operationId, planDigest: sha256,
+        metadataAudit: { kind: "ownership-handoff", workspaceRoot, operationId, planDigest: plan.planDigest ?? sha256,
           inventory: inventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })), runtime,
           auditFiles: [{ path: `.agentwheel/ownership-handoffs/${operationId}.json`, content, sha256 }] },
       };

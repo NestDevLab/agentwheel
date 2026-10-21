@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,7 +43,7 @@ def wrap(name):
     def call(*args,**kwargs):
         if name=='fsync':
             event=[name,label(args[0])]
-            if events and events[-1][0]==config.get('failAfter'):
+            if events and (events[-1][0]==config.get('failAfter') or (config.get('failAfter')=='mkdir' and events[-1][0]=='fchmod' and len(events)>1 and events[-2][0]=='mkdir')):
                 events.append(['fsync-failed',event[1]])
                 raise OSError(errno.EIO,'Injected durability failure')
         elif name=='fchmod': event=[name,label(args[0])]
@@ -92,6 +92,14 @@ describe.skipIf(!linuxUser)("Linux openat2 confined filesystem", () => {
     expect(request(root, "readFile", { path: "missing" }).error?.code).toBe("ENOENT");
     expect(request(root, "mkdirExclusive", { path: "parents/lock" }).error).toBeUndefined();
     expect(request(root, "mkdirExclusive", { path: "parents/lock" }).error?.code).toBe("EEXIST");
+  });
+
+  it("clears inherited setgid on every newly created private directory", async () => {
+    const root = await fixture();
+    await chmod(root, 0o2700);
+    expect(request(root, "mkdirExclusive", { path: "parents/lock" }).error).toBeUndefined();
+    expect((await stat(join(root, "parents"))).mode & 0o7777).toBe(0o700);
+    expect((await stat(join(root, "parents", "lock"))).mode & 0o7777).toBe(0o700);
   });
 
   it("copies byte-exact trees and restores modes, ignored content and empty directories", async () => {
@@ -209,8 +217,9 @@ describe.skipIf(!linuxUser)("Linux openat2 confined filesystem", () => {
       if (event[0] === "mkdir") {
         // The new directory inode and its parent's entry must both be durable
         // before the next mutation, including every newly created ancestor.
-        expect(events[i + 1]).toEqual(["fsync", event[1]]);
-        expect(events[i + 2]).toEqual(["fsync", event[2]]);
+        expect(events[i + 1]).toEqual(["fchmod", event[1]]);
+        expect(events[i + 2]).toEqual(["fsync", event[1]]);
+        expect(events[i + 3]).toEqual(["fsync", event[2]]);
       } else if (event[0] === "fchmod") {
         expect(events[i + 1]).toEqual(["fsync", event[1]]);
       } else if (event[0] === "rename") {
@@ -239,6 +248,19 @@ describe.skipIf(!linuxUser)("Linux openat2 confined filesystem", () => {
       expect(traced.error?.code).toBe("EIO");
       expect(traced.events.some(event => event[0] === "fsync-failed")).toBe(true);
     }
+  });
+
+  it("preserves privileged permission bits in ownership snapshots and refuses to restore them", async () => {
+    const root = await fixture();
+    await writeFile(join(root, "privileged"), "fixture", { mode: 0o600 });
+    await chmod(join(root, "privileged"), 0o4600);
+    const exact = request(root, "snapshot", { path: "privileged", includeIgnored: true }).result;
+    expect(exact).toEqual([{ path: "", kind: "file", mode: 0o4600, content: content("fixture") }]);
+    expect(request(root, "snapshot", { path: "privileged", includeIgnored: false }).result)
+      .toEqual([{ path: "", kind: "file", mode: 0o600, content: content("fixture") }]);
+    expect(request(root, "copyWithin", { source: "privileged", path: "backup" }).error?.code).toBe("EINVAL");
+    expect(request(root, "pathExists", { path: "backup" }).result).toBe(false);
+    expect(request(root, "installSnapshot", { path: "backup", entries: exact }).error?.code).toBe("EINVAL");
   });
 
   it("never follows an adversarial concurrently replaced directory symlink", async () => {

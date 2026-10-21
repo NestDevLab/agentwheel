@@ -27,7 +27,7 @@ function assertEntryPath(path: string): void {
   }
 }
 
-function payloadHash(payload: RunAsCopyPayload): string {
+export function hashRunAsCopyPayload(payload: RunAsCopyPayload): string {
   const fileHash = (content: string) => createHash("sha256").update("file\0").update(Buffer.from(content, "base64")).digest("hex");
   if (payload.kind === "file") {
     const root = payload.entries[0]!;
@@ -76,7 +76,7 @@ export function validateRunAsCopyPayload(value: unknown): RunAsCopyPayload {
       throw new Error("Run-as staged entry has no parent directory.");
     }
   }
-  if (payloadHash(payload) !== payload.hash) throw new Error("Run-as staged content hash mismatch.");
+  if (hashRunAsCopyPayload(payload) !== payload.hash) throw new Error("Run-as staged content hash mismatch.");
   return payload;
 }
 

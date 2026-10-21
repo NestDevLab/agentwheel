@@ -77,13 +77,13 @@ describe("run-as CLI safeguards", () => {
     expect(JSON.parse(await readFile(report, "utf8"))).toMatchObject({ targetRoot: target });
   });
 
-  it.skipIf(process.getuid?.() === 0)("refuses profile apply before touching a local-run-as target", async () => {
+  it.skipIf(process.getuid?.() === 0)("refuses profile reload before touching a local-run-as target", async () => {
     const { workspace, target, home, config } = await fixture();
     config.agents = { service: { adapter: "openclaw", root: target, transport: "local-run-as", runAs: userInfo().username, installationType: "user" } };
     await writeConfig(workspace, config);
-    const result = await runCli(workspace, home, ["install", "--profile", "service"]);
+    const result = await runCli(workspace, home, ["install", "--profile", "service", "--reload-runtimes"]);
     expect(result.code).not.toBe(0);
-    expect(result.stderr).toMatch(/local-run-as is read-only in PR1/);
+    expect(result.stderr).toMatch(/local-run-as refuses.*reload/);
     expect(await readdir(target)).toEqual([]);
   });
 });

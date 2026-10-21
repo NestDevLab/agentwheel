@@ -79,7 +79,7 @@ describe("local run-as read transport", () => {
     const calls: Array<{ command: string; args: string[]; input?: string }> = [];
     const runner: RunAsRunner = async (command, args, input) => {
       calls.push({ command, args, input });
-      return { stdout: input ? JSON.stringify({ version: 1, result: true }) : `${service.uid}\n` };
+      return { stdout: input ? JSON.stringify({ version: 1, result: JSON.parse(input).operation === "readFile" ? "content" : true }) : `${service.uid}\n` };
     };
     const transport = createRunAsTransport(service, runner, "/fixed/run-as-worker.mjs", node);
     expect(await transport.pathExists(join(root, "managed"))).toBe(true);
@@ -94,7 +94,7 @@ describe("local run-as read transport", () => {
     expect(calls.filter(({ args }) => args.at(-2) === "/usr/bin/id" && args.at(-1) === "-u")).toHaveLength(1);
   });
 
-  it("fails closed on sudo denial, a wrong UID, escaping paths and all writes", async () => {
+  it("fails closed on sudo denial, a wrong UID, escaping paths and mutations before a valid preflight", async () => {
     const root = await fixture();
     const node = await trustedNodeFixture(root);
     const service = distinctServiceIdentity(root);
@@ -103,9 +103,9 @@ describe("local run-as read transport", () => {
     const wrong = createRunAsTransport(service, async () => ({ stdout: "0\n" }), "/fixed/worker", node);
     await expect(wrong.pathExists(join(root, "x"))).rejects.toThrow(new RegExp(`expected ${service.uid}`));
     await expect(wrong.pathExists("/etc/passwd")).rejects.toThrow(/escapes/);
-    await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(/read-only in PR1/);
-    const plan = { hasBlockingChanges: false, installationType: "user", stateKey: "openclaw.user.test" } as InstallPlan;
-    await expect(applyCombinedInstallPlan(plan, { transport: wrong })).rejects.toThrow(/read-only in PR1/);
+    await expect(wrong.writeFileAtomic(join(root, "x"), "data")).rejects.toThrow(new RegExp(`expected ${service.uid}`));
+    const plan = { hasBlockingChanges: false, adapter: "openclaw", targetRoot: root, operations: [], baseRevision: null, installationType: "user", stateKey: "openclaw.user.test" } as InstallPlan;
+    await expect(applyCombinedInstallPlan(plan, { transport: wrong })).rejects.toThrow(new RegExp(`expected ${service.uid}`));
   });
 
   it("rejects a service-owned or writable Node executable before sudo", async () => {
@@ -114,11 +114,34 @@ describe("local run-as read transport", () => {
     await writeFile(executable, "fixture");
     const currentUid = process.getuid!();
     if (currentUid > 0) {
-      expect(() => createRunAsTransport({ ...identity(root), uid: currentUid }, async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable is writable/);
+      expect(() => createRunAsTransport({ ...identity(root), uid: currentUid }, async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable must be an immutable/);
     }
     await chmod(executable, 0o666);
-    expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable is writable/);
+    expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", executable)).toThrow(/Node executable must be an immutable/);
     expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", "node")).toThrow(/must be absolute/);
+  });
+
+  it("shares validation snapshots only with the named UID despite restrictive caller umask", async () => {
+    const root = await fixture(), node = await trustedNodeFixture(root), service = distinctServiceIdentity(root);
+    let snapshot: string | undefined;
+    const runner: RunAsRunner = async (_command, _args, input) => {
+      if (!input) return { stdout: String(service.uid) };
+      const request = JSON.parse(input);
+      if (request.operation === "validateOpenClawConfig") {
+        snapshot = request.validationSnapshot;
+        expect(statSync(snapshot!).mode & 0o777).toBe(0o440);
+        const { execFileSync } = await import("node:child_process");
+        const acl = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", "import os,struct,json,sys; a=os.getxattr(sys.argv[1],'system.posix_acl_access'); print(json.dumps([struct.unpack('<HHI',a[i:i+8]) for i in range(4,len(a),8)]))", snapshot!], { encoding: "utf8" }));
+        expect(acl).toEqual([[1,4,4294967295], [2,4,service.uid], [4,0,4294967295], [16,4,4294967295], [32,0,4294967295]]);
+      }
+      return { stdout: JSON.stringify({ version: 1, result: request.operation === "readFile" ? "{}" : request.operation === "probe" ? true : null }) };
+    };
+    const transport = createRunAsTransport(service, runner, "/fixed/worker", node);
+    const oldMask = process.umask(0o077);
+    try { await transport.validateOpenClawConfig!(join(root, "candidate.json")); }
+    finally { process.umask(oldMask); }
+    expect(snapshot).toBeDefined();
+    expect(() => statSync(snapshot!)).toThrow(/ENOENT/);
   });
 
   it("times out stalled child processes with and without request input", async () => {
@@ -141,7 +164,7 @@ describe("local run-as read transport", () => {
     await chmod(file, 0o640);
     expect(await executeRead(root, request)).not.toBe(changed);
     await symlink("/etc/passwd", join(root, "__pycache__", "escape"));
-    await expect(executeRead(root, request)).rejects.toThrow(/Unsupported ownership runtime path/);
+    await expect(executeRead(root, request)).rejects.toThrow(/symbolic links|symlink/);
   });
 
   it("rejects directory reads through the worker readFile operation", async () => {
@@ -160,6 +183,6 @@ describe("local run-as read transport", () => {
     await expect(containedReadPath(root, "/etc/passwd")).rejects.toThrow(/contained/);
     await expect(containedReadPath(root, "x\\y")).rejects.toThrow(/contained/);
     await symlink("/etc/passwd", join(root, "escape"));
-    await expect(executeRead(root, { version: 1, operation: "readFile", path: "escape" })).rejects.toThrow(/symlink/);
+    await expect(executeRead(root, { version: 1, operation: "readFile", path: "escape" })).rejects.toThrow(/symbolic links|symlink/);
   });
 });

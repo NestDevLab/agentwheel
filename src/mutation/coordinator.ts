@@ -1,3 +1,5 @@
+import { localTransport, createRunAsTransport } from "../transport/index.js";
+import { resolveRunAsIdentity } from "../transport/run-as-identity.js";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -476,16 +478,28 @@ export async function recoverMutationRuntime(
     }
 
     mutation = GovernedMutation.activateExisting(receipt, baseline, lock);
-    const [{ recoverPendingApply }, { readLinkedLocalApplyJournal, removeApplyJournal, localPathExists }] = await Promise.all([
+    const [{ recoverPendingApply }, { readLinkedLocalApplyJournal }] = await Promise.all([
       import("../install/apply.js"),
       import("../install/transaction.js"),
     ]);
     let missingReservation = false;
     for (const entry of pending) {
-      if (entry.transport !== "local") {
+      if (entry.transport === "ssh") {
         throw new Error(`Runtime recovery for ${entry.transportDescription} is unsupported until a durable remote recovery protocol exists.`);
       }
-      const exists = await localPathExists(entry.path);
+      let transport = localTransport;
+      if (entry.transport === "local-run-as") {
+        const pinned = entry.runAsIdentity!;
+        const current = resolveRunAsIdentity(pinned.user, pinned.root);
+        if (!sameRunAsIdentity(pinned, current)) {
+          throw new Error(`Runtime recovery run-as identity changed for ${pinned.user}.`);
+        }
+        transport = createRunAsTransport(current);
+      }
+      if (transport.description !== entry.transportDescription) {
+        throw new Error(`Runtime recovery transport does not match its durable receipt for ${entry.path}.`);
+      }
+      const exists = await transport.pathExists(entry.path);
       if (!exists) {
         if (entry.status === "reserved") {
           await resolveMutationRuntimeJournal(receipt.operationId, entry.path);
@@ -503,20 +517,18 @@ export async function recoverMutationRuntime(
         receipt.operationId,
         entry.journalDigest,
         entry.transportDescription,
+        transport,
       );
       if (journal.mutation?.reason !== receipt.reason || journal.mutation.noCommit !== receipt.noCommit) {
         throw new Error(`Runtime apply journal ${entry.path} mutation metadata does not match its durable receipt.`);
       }
-      if (entry.status === "resolving") {
-        await removeApplyJournal(journal.targetRoot, journal.adapter, undefined, {
-          installationType: journal.installationType,
-          stateKey: journal.stateKey,
-        });
-        continue;
-      }
-      const recovered = await recoverPendingApply(journal.targetRoot, journal.adapter, undefined, {
+      const recovered = await recoverPendingApply(journal.targetRoot, journal.adapter, transport, {
         installationType: journal.installationType,
         stateKey: journal.stateKey,
+      }, {
+        path: entry.path, operationId: receipt.operationId, journalDigest: entry.journalDigest,
+        transportDescription: entry.transportDescription, reason: receipt.reason, noCommit: receipt.noCommit,
+        resolveOnly: entry.status === "resolving",
       });
       if (!recovered) throw new Error(`Runtime apply journal ${entry.path} could not be recovered deterministically.`);
     }
@@ -674,6 +686,7 @@ function upsertRuntimeJournal(
     existing.transport !== link.transport
     || existing.transportDescription !== link.transportDescription
     || existing.journalDigest !== link.journalDigest
+    || !sameRunAsIdentity(existing.runAsIdentity, link.runAsIdentity)
   )) {
     throw new Error(`Runtime journal link collision for ${link.path}.`);
   }
@@ -681,4 +694,13 @@ function upsertRuntimeJournal(
     ...entries.filter((entry) => entry.path !== link.path),
     { ...link, status },
   ].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function sameRunAsIdentity(
+  left: RuntimeJournalReceipt["runAsIdentity"],
+  right: RuntimeJournalReceipt["runAsIdentity"],
+): boolean {
+  if (!left || !right) return left === right;
+  return left.user === right.user && left.uid === right.uid && left.gid === right.gid
+    && left.home === right.home && left.root === right.root;
 }

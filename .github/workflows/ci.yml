@@ -41,6 +41,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Real isolated local-run-as service install
+        run: sudo env GITHUB_ACTIONS=true PATH="$PATH" python3 scripts/run-as-smoke.py --isolated-ci --cli "$PWD/dist/index.js" --node "$(command -v node)"
+
       - name: Real CLI fleet install, update, and recovery
         run: python3 scripts/cli-dogfood.py --evidence-dir "${{ runner.temp }}/cli-dogfood"
 

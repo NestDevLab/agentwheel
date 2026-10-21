@@ -1836,10 +1836,11 @@ async function runInstallCommand(
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
-  if (behavior.apply && targets.some((target) => target.transport === "local-run-as")) {
-    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
-  }
+
   for (const target of targets) {
+    if (target.transport === "local-run-as" && (target.reloadRuntimes || shouldReloadRuntimes(normalizedOptions))) {
+      throw new Error("local-run-as refuses runtime reload before writes.");
+    }
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForCliTarget(config.packages, target, targetOptions), nameOrSource, targetOptions, target) : undefined;
@@ -2351,8 +2352,10 @@ function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSour
     : options;
 }
 
-async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; warn?: (message: string) => void }) {
+async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; reloadRuntimes?: boolean; restartRuntimes?: boolean; warn?: (message: string) => void }) {
   const adapterOptions = adapterOptionsForTarget(target, options);
+  if (target.transport === "local-run-as" && (target.reloadRuntimes || shouldReloadRuntimes(options))) throw new Error("local-run-as refuses runtime reload before writes.");
+  if (target.transport === "local-run-as" && adapterOptions.adapterModule) throw new Error("local-run-as refuses programmatic adapters before loading code.");
   return resolveAdapter({
     adapter: target.adapter,
     adapterConfig: adapterOptions.adapterConfig,

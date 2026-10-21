@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/handoff-from-fleet"
-  ],
-  "claimed_at": "2026-10-21T12:46:47+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-21T12:54:23+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "d5ba81d3-0eef-4a2c-a1a4-1d642f9583bb",
-  "publication_scope": "partial",
+  "operation_token": "a84d5194-2a1f-4392-9f53-5e2c8c448b7f",
+  "publication_scope": "close:handoff-from-fleet",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/handoff-from-fleet",
   "syncwheel_version": "0.46.8"
 }

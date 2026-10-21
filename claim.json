@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/handoff-from-fleet"
+  ],
+  "claimed_at": "2026-10-21T12:46:47+00:00",
+  "coordination_id": "default",
+  "operation_token": "d5ba81d3-0eef-4a2c-a1a4-1d642f9583bb",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/handoff-from-fleet",
+  "syncwheel_version": "0.46.8"
+}

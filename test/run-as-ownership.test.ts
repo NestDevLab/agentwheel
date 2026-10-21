@@ -169,6 +169,62 @@ describe.skipIf(process.platform !== "linux" || uid === 0).sequential("confined 
     expect(handedOff.entries[0]?.workspaceOwner).toBe(workspaceOwnerForRoot(f.workspace));
   }, 30_000);
 
+  it("round-trips fleet-qualified service ownership with exact audited fromOwner and unchanged runtime and sibling claims", async () => {
+    const f = await fixture();
+    const sibling = { ...f.entry, path: ".openclaw/skills/retained", artifactName: "retained", installName: "retained",
+      logicalSelector: "skills/retained", workspaceOwner: workspaceOwnerForRoot(f.home) };
+    await writeInstallManifest({ ...f.manifest, entries: [f.entry, sibling] });
+    const before = await f.transport.ownershipObservation!(f.artifact);
+    const request = { targetRoot: f.target, workspaceRoot: f.workspace, globalRoot: f.home, adapter: "openclaw",
+      installationType: "user", stateKey: sourceKey, artifactType: "skills", artifactName: "fixture",
+      fromWorkspaceRoot: f.scratch, toWorkspaceRoot: f.scratch, toFleetId: "delivery", transport: f.transport,
+      reason: "Round-trip reviewed synthetic ownership", operationId: "service-qualify" };
+    const first = await planArtifactOwnershipHandoff(request);
+    await applyArtifactOwnershipHandoff({ ...request, expectedHash: first.artifactHash, expectedRevision: first.manifestRevision,
+      planDigest: first.planDigest, expectedInventoryRevision: first.manifestInventoryRevision });
+    const qualified = await readInstallManifest(f.target, "openclaw", f.transport, { installationType: "user", stateKey: sourceKey });
+    if (!qualified || qualified.version !== 2) throw new Error("Expected a v2 qualified handoff manifest");
+    expect(qualified.entries[0]?.workspaceOwner).toBe(workspaceOwnerForRoot(f.scratch, "delivery"));
+    expect(qualified?.entries[1]).toEqual(sibling);
+    const reverse = { ...request, toFleetId: undefined, fromFleetId: "delivery", operationId: "service-unqualify" };
+    const plan = await planArtifactOwnershipHandoff(reverse);
+    expect(plan.fromOwner).toBe(workspaceOwnerForRoot(f.scratch, "delivery"));
+    expect(plan.toOwner).toBe(workspaceOwnerForRoot(f.scratch));
+    expect(plan.planDigest).not.toBe(first.planDigest);
+    await applyArtifactOwnershipHandoff({ ...reverse, expectedHash: plan.artifactHash, expectedRevision: plan.manifestRevision,
+      planDigest: plan.planDigest, expectedInventoryRevision: plan.manifestInventoryRevision });
+    const audit = JSON.parse(await readFile(join(f.workspace, ".agentwheel/ownership-handoffs/service-unqualify.json"), "utf8"));
+    expect(audit.plan.fromOwner).toBe(workspaceOwnerForRoot(f.scratch, "delivery"));
+    expect(audit.plan.transport.identity).toEqual(f.transport.runAsIdentity);
+    expect((await readInstallManifest(f.target, "openclaw", f.transport, { installationType: "user", stateKey: sourceKey }))?.entries)
+      .toEqual([f.entry, sibling]);
+    expect(await f.transport.ownershipObservation!(f.artifact)).toEqual(before);
+  });
+
+  it.each(["digest", "inventory", "source-revision", "runtime-mode", "owner", "root", "hash"])("rejects a fleet-source handoff with stale or wrong %s without claim or audit writes", async kind => {
+    const f = await fixture();
+    await writeInstallManifest({ ...f.manifest, entries: [{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.scratch, "delivery") }] });
+    const request = { targetRoot: f.target, workspaceRoot: f.workspace, globalRoot: f.home, adapter: "openclaw",
+      installationType: "user", stateKey: sourceKey, artifactType: "skills", artifactName: "fixture",
+      fromWorkspaceRoot: f.scratch, fromFleetId: "delivery", toWorkspaceRoot: f.scratch, transport: f.transport,
+      reason: "Reject changed synthetic source ownership", operationId: `reject-source-${kind}` };
+    const plan = await planArtifactOwnershipHandoff(request);
+    if (kind === "inventory") await writeInstallManifest({ ...f.manifest, adapter: "other", stateKey: "other.user.fixture", entries: [] });
+    if (kind === "source-revision") await writeInstallManifest({ ...f.manifest, generatedAt: "2026-01-02T00:00:00.000Z",
+      entries: [{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.scratch, "delivery") }] });
+    if (kind === "runtime-mode") await chmod(join(f.artifact, "SKILL.md"), 0o600);
+    const manifestPath = installManifestPath(f.target, "openclaw", { installationType: "user", stateKey: sourceKey });
+    const before = await readFile(manifestPath), runtime = await f.transport.ownershipObservation!(f.artifact);
+    await expect(applyArtifactOwnershipHandoff({ ...request, expectedHash: kind === "hash" ? "0".repeat(64) : plan.artifactHash,
+      expectedRevision: plan.manifestRevision, planDigest: kind === "digest" ? "f".repeat(64) : plan.planDigest,
+      expectedInventoryRevision: plan.manifestInventoryRevision,
+      ...(kind === "owner" ? { fromFleetId: "another" } : {}), ...(kind === "root" ? { fromWorkspaceRoot: f.workspace } : {}),
+    })).rejects.toThrow(/stale|replan|precondition/i);
+    expect(await readFile(manifestPath)).toEqual(before);
+    expect(await f.transport.ownershipObservation!(f.artifact)).toEqual(runtime);
+    await expect(readFile(join(f.workspace, ".agentwheel/ownership-handoffs", `${request.operationId}.json`))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it.each(["user", "uid", "gid", "home", "root"] as const)("pins the service %s in every reviewed plan", async field => {
     const f = await fixture();
     const plans = [await planAdoptLegacyOwnership(f.adopt), await planReleaseOwnership(f.release)];

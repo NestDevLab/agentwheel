@@ -139,6 +139,25 @@ refused unless `--carry-drift` is passed: the dry-run prints the runtime hash, t
 `--expected-runtime-hash <sha256>`, and the manifest keeps the recorded hash so the next install
 still reports the drift. Merge and managed-block entries never carry drift.
 
+Qualify a Fleet-owned source with `--from-fleet <id>` together with its exact
+`--from-workspace-root`; use `--to-fleet <id>` for a Fleet-owned destination. Both IDs must
+be registered at the specified roots. These options qualify ownership, whereas `--fleet`
+selects the governing workspace. `--from-fleet` cannot be combined with
+`--from-unknown-owner`. For example, preview returning one entry to its original plain owner:
+
+```bash
+agentwheel ownership handoff skills/example-skill --local --agent local-codex --installation-type user \
+  --source-state-key codex.user.existing-state \
+  --from-workspace-root /fleet/control --from-fleet example-fleet \
+  --to-workspace-root /original/workspace --dry-run
+```
+
+Reverse handoffs require a fresh reviewed plan against the post-handoff state; they do not
+reuse old manifest revisions or erase audit history. For run-as targets, also pass the reviewed
+`--plan-digest` and `--expected-inventory-revision` when applying. The qualified old/new owner
+identities are included in the native plan, its digest and the audit. Each handoff changes the
+inventory revision, so review subsequent operations against their exact intermediate states.
+
 Use `--source-state-key <exact-key>` when an existing source manifest must be selected explicitly.
 This is a command-local equivalent of a named agent's `stateKey`; it does not edit agent configuration,
 move state files, or reconstruct graph locks. The key must be canonical and match the selected adapter

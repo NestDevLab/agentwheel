@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -97,6 +98,63 @@ describe("artifact ownership handoff", () => {
     expect(updated?.version).toBe(2);
     if (!updated || updated.version !== 2) throw new Error("missing updated fleet handoff fixture manifest");
     expect(updated.entries[0]?.workspaceOwner).toBe(workspaceOwnerForRoot(workspaceRoot, "delivery"));
+  });
+
+  it("round-trips plain and fleet-qualified owners while preserving merged contributions, blocks and sibling claims", async () => {
+    const f = await roundTripFixture();
+    const bytes = await Promise.all([readFile(f.configPath), readFile(f.instructionsPath)]);
+    const modes = await Promise.all([stat(f.configPath), stat(f.instructionsPath)]);
+    const original = await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope);
+    if (!original || original.version !== 2) throw new Error("Missing round-trip manifest");
+    for (const [artifactType, artifactName, operation] of [["mcp", "example.json", "mcp"], ["instructions", "AGENTS.md", "instructions"]]) {
+      const before = await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope);
+      if (!before || before.version !== 2) throw new Error("Missing source manifest");
+      const selected = before.entries.find(entry => entry.artifactType === artifactType && entry.artifactName === artifactName)!;
+      const request = { targetRoot: f.targetRoot, workspaceRoot: f.workspaceRoot, globalRoot: f.workspaceRoot, adapter: "codex", ...f.scope,
+        artifactType, artifactName, fromWorkspaceRoot: f.workspaceRoot, toWorkspaceRoot: f.workspaceRoot,
+        toFleetId: "delivery", expectedHash: selected.hash, expectedRevision: before.revision, operationId: `${operation}-qualify` };
+      expect((await planArtifactOwnershipHandoff(request)).fromOwner).toBe(workspaceOwnerForRoot(f.workspaceRoot));
+      await applyArtifactOwnershipHandoff(request);
+      const qualified = await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope);
+      if (!qualified || qualified.version !== 2) throw new Error("Missing qualified manifest");
+      expect(qualified.entries.filter(entry => entry.artifactType !== artifactType || entry.artifactName !== artifactName))
+        .toEqual(before.entries.filter(entry => entry !== selected));
+      const reverse = { ...request, toFleetId: undefined, fromFleetId: "delivery", expectedRevision: qualified.revision, operationId: `${operation}-unqualify` };
+      const reversePlan = await planArtifactOwnershipHandoff(reverse);
+      expect(reversePlan.fromOwner).toBe(workspaceOwnerForRoot(f.workspaceRoot, "delivery"));
+      expect(reversePlan.toOwner).toBe(workspaceOwnerForRoot(f.workspaceRoot));
+      await applyArtifactOwnershipHandoff(reverse);
+      const audit = JSON.parse(await readFile(join(f.workspaceRoot, ".agentwheel/ownership-handoffs", `${operation}-unqualify.json`), "utf8"));
+      expect(audit.plan.fromOwner).toBe(workspaceOwnerForRoot(f.workspaceRoot, "delivery"));
+      expect((await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope))?.entries).toEqual(original.entries);
+    }
+    expect(await readFile(f.configPath)).toEqual(bytes[0]); expect(await readFile(f.instructionsPath)).toEqual(bytes[1]);
+    expect((await stat(f.configPath)).mode).toBe(modes[0].mode); expect((await stat(f.instructionsPath)).mode).toBe(modes[1].mode);
+  });
+
+  it("requires an explicit valid source fleet and its exact current root and owner", async () => {
+    const f = await localFixture();
+    const original = await readFile(f.manifestPath);
+    await expect(planArtifactOwnershipHandoff({ ...f.request, fromFleetId: "../delivery" })).rejects.toThrow();
+    await expect(planArtifactOwnershipHandoff({ ...f.request, fromFleetId: "delivery", fromWorkspaceRoot: undefined })).rejects.toThrow(/fromWorkspaceRoot|source.*root/i);
+    await expect(planArtifactOwnershipHandoff({ ...f.request, fromFleetId: "delivery", fromWorkspaceRoot: undefined, fromUnknownOwner: true })).rejects.toThrow(/unknown|fromWorkspaceRoot|source.*root/i);
+    await expect(planArtifactOwnershipHandoff({ ...f.request, fromFleetId: "delivery" })).rejects.toThrow(/Old owner precondition failed/);
+    expect(await readFile(f.manifestPath)).toEqual(original);
+    const manifest = await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope);
+    if (!manifest || manifest.version !== 2) throw new Error("Missing source manifest");
+    await writeInstallManifest({ ...manifest, entries: manifest.entries.map((entry, index) => index === 0
+      ? { ...entry, workspaceOwner: workspaceOwnerForRoot(f.fromWorkspaceRoot, "delivery") } : entry) });
+    const current = await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope);
+    if (!current) throw new Error("Missing qualified source manifest");
+    const qualifiedBefore = await readFile(f.manifestPath);
+    const reverse = { ...f.request, fromFleetId: "delivery", expectedRevision: current.revision };
+    await expect(planArtifactOwnershipHandoff({ ...reverse, fromFleetId: "another" })).rejects.toThrow(/Old owner/);
+    await expect(planArtifactOwnershipHandoff({ ...reverse, fromWorkspaceRoot: f.toWorkspaceRoot })).rejects.toThrow(/Old owner/);
+    await expect(applyArtifactOwnershipHandoff({ ...reverse, expectedRevision: "0".repeat(64) })).rejects.toThrow(/Manifest revision/);
+    const plan = await planArtifactOwnershipHandoff(reverse);
+    expect(plan.fromOwner).toBe(workspaceOwnerForRoot(f.fromWorkspaceRoot, "delivery"));
+    expect(await readFile(f.manifestPath)).toEqual(qualifiedBefore);
+    expect((await readInstallManifest(f.targetRoot, "codex", localTransport, f.scope))?.revision).toBe(current.revision);
   });
 
   it("rejects owner, hash, and revision mismatches without writing", async () => {
@@ -394,4 +452,30 @@ function manifestFixture(targetRoot: string, hash: string, fromWorkspaceRoot: st
       },
     ],
   };
+}
+
+async function roundTripFixture() {
+  const targetRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-roundtrip-target-"));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "agentwheel-owner-roundtrip-workspace-"));
+  roots.push(targetRoot, workspaceRoot);
+  const scope = { installationType: "local", stateKey: "codex.local.roundtrip" };
+  await mkdir(join(workspaceRoot, ".agentwheel"));
+  await writeFile(join(workspaceRoot, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, packages: [] }));
+  await mkdir(join(targetRoot, ".codex"));
+  const configPath = join(targetRoot, ".codex/config.toml"), instructionsPath = join(targetRoot, "AGENTS.md");
+  await writeFile(configPath, '[mcp_servers.example]\ncommand = "example"\nargs = ["--demo"]\n\n[mcp_servers.retained]\ncommand = "retained"\n\n[unmanaged]\nkeep = true\n');
+  const body = "reviewed instructions\n", hash = createHash("sha256").update(body).digest("hex");
+  await writeFile(instructionsPath, `unmanaged prefix\n<!-- BEGIN openpack:include instructions/AGENTS.md sha256:${hash} -->\n${body}<!-- END openpack:include instructions/AGENTS.md -->\nunmanaged suffix\n`);
+  await chmod(configPath, 0o640); await chmod(instructionsPath, 0o600);
+  const common = { kind: "file" as const, sourceHash: "c".repeat(64), updatedAt: "2026-01-01T00:00:00.000Z", channel: "managed" as const,
+    owners: ["fixture"], refCount: 1, dependencyRole: "root" as const, workspaceOwner: workspaceOwnerForRoot(workspaceRoot) };
+  await writeInstallManifest({ version: 2, adapter: "codex", ...scope, targetRoot, generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending-roundtrip-revision", legacy: false,
+    entries: [
+      { ...common, path: ".codex/config.toml", artifactType: "mcp", artifactName: "example.json", installName: "example.json", hash: "a".repeat(64),
+        mergeStrategy: "codex-toml-mcp", mergeRemoval: { mcpServers: { example: { command: "example", args: ["--demo"] } } } },
+      { ...common, path: "AGENTS.md", artifactType: "instructions", artifactName: "AGENTS.md", installName: "AGENTS.md", logicalSelector: "instructions/AGENTS.md", mode: "managed-block", hash },
+      { ...common, path: ".codex/config.toml", artifactType: "mcp", artifactName: "retained.json", installName: "retained.json", hash: "b".repeat(64),
+        workspaceOwner: workspaceOwnerForRoot(join(workspaceRoot, "other-owner")), mergeStrategy: "codex-toml-mcp", mergeRemoval: { mcpServers: { retained: { command: "retained" } } } },
+    ] });
+  return { targetRoot, workspaceRoot, scope, configPath, instructionsPath };
 }

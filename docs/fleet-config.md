@@ -360,6 +360,16 @@ normal apply lock, then atomically changes only that entry's `workspaceOwner`. L
 targets share this transport-neutral behavior. It never copies, removes, or rewrites the runtime
 artifact.
 
+For Fleet-qualified ownership, use `--from-fleet <id>` with the exact
+`--from-workspace-root` and/or `--to-fleet <id>` with `--to-workspace-root`.
+Both Fleet/root pairs are validated against registration before target access. These qualifiers
+do not select another target or change `--source-state-key`. The source qualifier is incompatible
+with `--from-unknown-owner`. A reverse transfer uses the qualified destination as its source and
+a fresh reviewed plan, manifest revision and (for run-as) plan digest and inventory revision.
+Only the selected entry's workspace owner changes: merge contributions, managed blocks, package
+owners, sibling claims and runtime contents are preserved. Audit history is retained; revisions
+are content hashes recomputed from the resulting manifest, not mutable counters to restore.
+
 ## Exact MCP retirement
 
 Use a separate, temporary Fleet workspace when a renamed MCP server must be removed after its

@@ -2,9 +2,9 @@
   "changed_refs": [
     "refs/heads/pr/local-run-as-apply"
   ],
-  "claimed_at": "2026-10-21T08:17:18+00:00",
+  "claimed_at": "2026-10-21T08:35:02+00:00",
   "coordination_id": "default",
-  "operation_token": "3e4af327-4b3a-43ed-b80a-46bb326348c2",
+  "operation_token": "9efea09d-fffc-46e5-b5ce-976d179857cb",
   "publication_scope": "partial",
   "source_ref": "refs/heads/pr/local-run-as-apply",
   "syncwheel_version": "0.46.8"

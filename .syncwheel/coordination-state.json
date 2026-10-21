@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/local-run-as-apply": "929a9de681eb8e949585a528a34a8643fe3b04b4"
+    "refs/heads/pr/local-run-as-apply": "a6ede8f8b9433ee5a56d2925cd0235572fad1a5f"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -22,7 +22,7 @@
     "refs/heads/pr/legacy-managed-block-0212": "92aeb8c0360a24c2e0e23f609ebe68781839e252",
     "refs/heads/pr/legacy-recovery-report": "9ac0bf46650258b0d787eaba813c7d502866442c",
     "refs/heads/pr/legacy-state-recovery-02011": "308ccb9a4b510102d273e2bdf6ea674cd78b2314",
-    "refs/heads/pr/local-run-as-apply": "08ddc0c93e06e73bd3784be72429ba5d49e5d3e3",
+    "refs/heads/pr/local-run-as-apply": "a7c32e7cd091cc10130a48cd6e2477a21c7601c9",
     "refs/heads/pr/local-run-as-install": "99f817917bfe2f4f8b39179647a60d319784cd4d",
     "refs/heads/pr/local-run-as-ownership-plan": "20e1930036031a8b2e8777c4bf23aa215dc34caa",
     "refs/heads/pr/local-run-as-transport": "91a42c800c7f5486360439a8febeeb1e0975712f",
@@ -54,7 +54,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-21T08:17:18+00:00",
+  "created_at": "2026-10-21T08:35:02+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -89,7 +89,7 @@
     "refs/heads/pr/legacy-managed-block-0212": "1ce9a835363e5be460577f740181a10c72ea47f8",
     "refs/heads/pr/legacy-recovery-report": "54e24e13168c49647c8aa74aabbde499b2204146",
     "refs/heads/pr/legacy-state-recovery-02011": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
-    "refs/heads/pr/local-run-as-apply": "929a9de681eb8e949585a528a34a8643fe3b04b4",
+    "refs/heads/pr/local-run-as-apply": "a6ede8f8b9433ee5a56d2925cd0235572fad1a5f",
     "refs/heads/pr/local-run-as-install": "fdecfbd872369983589d129886e5b248632e10a2",
     "refs/heads/pr/local-run-as-ownership-plan": "71b1392c1656013cba0f69bbe027a16a875177dc",
     "refs/heads/pr/local-run-as-transport": "22a8910459a2f92c4a48e8de29f1d4da85f37d37",
@@ -284,7 +284,9 @@
         "branch": "pr/local-run-as-apply",
         "commits": [
           "f8a94ea4f8cacdf6b128c9143601d7bc7596455b",
-          "929a9de681eb8e949585a528a34a8643fe3b04b4"
+          "929a9de681eb8e949585a528a34a8643fe3b04b4",
+          "771b091f333b7b991dcb2799ebb0d610cab17ae8",
+          "a6ede8f8b9433ee5a56d2925cd0235572fad1a5f"
         ],
         "id": "local-run-as-apply",
         "integration_branch": "main-integration",
@@ -294,10 +296,10 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "3e4af327-4b3a-43ed-b80a-46bb326348c2",
-  "parent_state": "628bc7d2c8262453de93fa16da74763707c9eb61",
+  "operation_token": "9efea09d-fffc-46e5-b5ce-976d179857cb",
+  "parent_state": "f8017c907d360d07792ccff9fb0014e93ba6315b",
   "projection_status": "partial",
-  "publication_id": "47b8aff1-9947-4a91-b039-c2fa599504d5",
+  "publication_id": "21f904b0-1d7f-4031-a1a0-c967cefae18c",
   "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.46.8",

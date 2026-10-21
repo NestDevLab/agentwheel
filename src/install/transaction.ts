@@ -6,6 +6,7 @@ import type { GraphLock } from "../model/graph-lock.js";
 import type { ExactManagedInstructionBlockSnapshot } from "./instructions-block.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import type { RuntimeJournalReceipt } from "../mutation/receipts.js";
 import type { InstallOperation } from "./plan.js";
 import { metadataDir, stateKeyFor, type InstallStateScope } from "./paths.js";
 import {
@@ -157,6 +158,8 @@ export async function acquireApplyLock(
   options: ApplyLockOptions = {},
   scope: InstallStateScope = {},
 ): Promise<ApplyLock> {
+  assertGovernedRuntimeTransportSupported(transport);
+  if (transport.kind === "local-run-as") await transport.prepareApply!();
   const lockPath = applyLockPath(targetRoot, adapter, scope);
   const ownerPath = join(lockPath, "owner.json");
   const metadata = {
@@ -185,17 +188,12 @@ export async function acquireApplyLock(
 }
 
 export async function writeApplyJournal(journal: ApplyJournal, transport: TargetTransport = localTransport): Promise<void> {
-  if (transport.kind === "local-run-as") throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+  assertGovernedRuntimeTransportSupported(transport);
   const path = applyJournalPath(journal.targetRoot, journal.adapter, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
   });
-  let link: {
-    path: string;
-    transport: Exclude<TargetTransport["kind"], "local-run-as">;
-    transportDescription: string;
-    journalDigest: string;
-  } | undefined;
+  let link: Omit<RuntimeJournalReceipt, "status"> | undefined;
   if (journal.mutation) {
     const digest = applyJournalLinkDigest(journal, transport);
     if (journal.mutation.journalDigest && journal.mutation.journalDigest !== digest) {
@@ -214,6 +212,7 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
       transport: transport.kind,
       transportDescription: transport.description,
       journalDigest: digest,
+      ...(transport.kind === "local-run-as" ? { runAsIdentity: transport.runAsIdentity! } : {}),
     };
     await reserveActiveRuntimeJournal(link);
   }
@@ -281,9 +280,26 @@ export async function readLinkedLocalApplyJournal(
   operationId: string,
   expectedDigest: string,
   expectedTransportDescription: string,
+  transport: TargetTransport = localTransport,
 ): Promise<ApplyJournal> {
+  assertGovernedRuntimeTransportSupported(transport);
+  if (transport.description !== expectedTransportDescription) throw new Error("Runtime apply journal transport does not match its durable receipt.");
   const absolutePath = resolve(path);
-  const journal = parseApplyJournal(JSON.parse(await readFile(absolutePath, "utf8")));
+  const journal = parseApplyJournal(JSON.parse(await transport.readFile(absolutePath)));
+  assertLinkedApplyJournal(journal, absolutePath, operationId, expectedDigest, expectedTransportDescription, transport);
+  return journal;
+}
+
+/** Validate the exact journal object that recovery will consume while holding the runtime lock. */
+export function assertLinkedApplyJournal(
+  journal: ApplyJournal,
+  absolutePath: string,
+  operationId: string,
+  expectedDigest: string,
+  expectedTransportDescription: string,
+  transport: TargetTransport,
+): void {
+  if (transport.description !== expectedTransportDescription) throw new Error("Runtime apply journal transport does not match its durable receipt.");
   if (journal.version !== 2 || !journal.mutation) {
     throw new Error(`Runtime apply journal ${absolutePath} is not linked to a governed mutation.`);
   }
@@ -292,13 +308,13 @@ export async function readLinkedLocalApplyJournal(
       `Runtime apply journal ${absolutePath} belongs to mutation ${journal.mutation.operationId}, not ${operationId}.`,
     );
   }
-  if (journal.mutation.transport?.kind !== "local"
+  if (journal.mutation.transport?.kind !== transport.kind
     || journal.mutation.transport.description !== expectedTransportDescription) {
     throw new Error(`Runtime apply journal ${absolutePath} transport metadata does not match its durable receipt.`);
   }
   if (journal.mutation.journalDigest !== expectedDigest
     || applyJournalLinkDigest(journal, {
-      kind: "local",
+      kind: transport.kind,
       description: expectedTransportDescription,
     }) !== expectedDigest) {
     throw new Error(`Runtime apply journal ${absolutePath} digest does not match its durable receipt.`);
@@ -310,11 +326,13 @@ export async function readLinkedLocalApplyJournal(
   if (absolutePath !== expectedPath) {
     throw new Error(`Runtime apply journal path mismatch: expected ${expectedPath}, found ${absolutePath}.`);
   }
-  return journal;
+  assertApplyJournalCompletedOperations(journal);
 }
 
-export async function removeApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport, scope: InstallStateScope = {}): Promise<void> {
-  const existing = await readApplyJournal(targetRoot, adapter, transport, scope);
+export const readLinkedApplyJournal = readLinkedLocalApplyJournal;
+
+export async function removeApplyJournal(targetRoot: string, adapter: string, transport: TargetTransport = localTransport, scope: InstallStateScope = {}, consumedJournal?: ApplyJournal): Promise<void> {
+  const existing = consumedJournal ?? await readApplyJournal(targetRoot, adapter, transport, scope);
   const path = applyJournalPath(targetRoot, adapter, scope);
   if (existing?.mutation) await beginResolveMutationRuntimeJournal(existing.mutation.operationId, path);
   await transport.rm(applyJournalPath(targetRoot, adapter, scope));
@@ -364,11 +382,11 @@ export function mutationMetadataForApplyJournal(): ApplyJournal["mutation"] {
 }
 
 export function assertGovernedRuntimeTransportSupported(transport: TargetTransport): void {
-  if (transport.kind === "local-run-as") {
-    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
+  if (transport.kind === "local-run-as" && (!transport.runAsIdentity || !transport.prepareApply)) {
+    throw new Error("Local run-as apply requires a pinned identity and apply preparation.");
   }
   const active = activeMutationMetadata();
-  if (active && transport.kind !== "local") {
+  if (active && transport.kind === "ssh") {
     throw new Error(
       `Governed runtime apply refuses ${transport.description} before writes; durable remote journal recovery is not implemented.`,
     );
@@ -387,7 +405,7 @@ export function applyJournalLinkDigest(
       reason: journal.mutation.reason,
       noCommit: journal.mutation.noCommit,
     },
-    transport,
+    transport: { kind: transport.kind, description: transport.description },
     mode: journal.mode ?? "apply",
     adapter: journal.adapter,
     installationType: journal.installationType ?? null,
@@ -400,6 +418,14 @@ export function applyJournalLinkDigest(
     stateRemoveKey: journal.stateRemoveKey ?? null,
     workspaceConfigPath: journal.workspaceConfigPath ?? null,
     operations: journal.operations,
+    // Preserve existing local v2 receipt digests across upgrades. Run-as is a
+    // new contract: every caller-side write payload must be pinned.
+    ...(transport.kind === "local-run-as" ? {
+      manifest: journal.manifest,
+      sourceLock: journal.sourceLock ?? null,
+      graphLock: journal.graphLock ?? null,
+      workspaceConfig: journal.workspaceConfig ?? null,
+    } : {}),
     ...(journal.metadataAudit ? { metadataAudit: journal.metadataAudit, manifest: journal.manifest } : {}),
     ...(journal.metadataGuards ? { metadataGuards: journal.metadataGuards, manifest: journal.manifest } : {}),
   })).digest("hex");
@@ -434,6 +460,7 @@ function parseApplyJournal(value: unknown): ApplyJournal {
       journalDigest: parseJournalDigest(journal.mutation.journalDigest),
     };
   }
+  assertApplyJournalCompletedOperations(journal);
   return journal;
 }
 
@@ -442,7 +469,7 @@ function parseMutationTransport(value: unknown): NonNullable<NonNullable<ApplyJo
     throw new Error("Governed runtime apply journal is missing transport metadata.");
   }
   const record = value as { kind?: unknown; description?: unknown };
-  if ((record.kind !== "local" && record.kind !== "ssh")
+  if ((record.kind !== "local" && record.kind !== "ssh" && record.kind !== "local-run-as")
     || typeof record.description !== "string"
     || record.description.length === 0
     || record.description.length > 1024) {
@@ -478,7 +505,7 @@ export async function recordBackup(
   scope: InstallStateScope = {},
 ): Promise<ApplyJournalCompletedOperation> {
   const hadExisting = await transport.pathExists(operation.destPath);
-  if (!hadExisting || transport.kind !== "local" || (operation.action !== "update" && operation.action !== "remove" && operation.action !== "create")) {
+  if (!hadExisting || transport.kind === "ssh" || (operation.action !== "update" && operation.action !== "remove" && operation.action !== "create")) {
     return {
       index,
       destPath: operation.destPath,
@@ -488,9 +515,16 @@ export async function recordBackup(
   }
 
   const backupPath = join(applyBackupDir(targetRoot, adapter, scope), String(index));
-  await rm(backupPath, { recursive: true, force: true });
-  await mkdir(dirname(backupPath), { recursive: true });
-  await cp(operation.destPath, backupPath, { recursive: operation.kind === "dir", dereference: true });
+  if (transport.kind === "local-run-as") {
+    assertGovernedRuntimeTransportSupported(transport);
+    await transport.rm(backupPath);
+    if (!transport.copyWithin) throw new Error("Run-as backups require confined target copies.");
+    await transport.copyWithin(operation.destPath, backupPath, operation.kind);
+  } else {
+    await rm(backupPath, { recursive: true, force: true });
+    await mkdir(dirname(backupPath), { recursive: true });
+    await cp(operation.destPath, backupPath, { recursive: operation.kind === "dir", dereference: true });
+  }
   return {
     index,
     destPath: operation.destPath,
@@ -506,7 +540,10 @@ export async function rollbackCompletedOperations(
 ): Promise<void> {
   for (const item of [...completed].sort((a, b) => b.index - a.index)) {
     if (item.hadExisting && item.backupPath) {
-      await transport.atomicCopy(item.backupPath, item.destPath, item.kind);
+      if (transport.kind === "local-run-as") {
+        if (!transport.copyWithin) throw new Error("Run-as rollback requires confined target copies.");
+        await transport.copyWithin(item.backupPath, item.destPath, item.kind);
+      } else await transport.atomicCopy(item.backupPath, item.destPath, item.kind);
     } else if (!item.hadExisting) {
       await transport.rm(item.destPath);
     } else {
@@ -556,5 +593,31 @@ export async function localPathExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Progress is mutable, but may only reference the immutable operation and its deterministic backup. */
+export function assertApplyJournalCompletedOperations(journal: ApplyJournal): void {
+  if (!Array.isArray(journal.operations) || !Array.isArray(journal.completed)) throw new Error("Invalid apply journal operations or progress.");
+  const indices = new Set<number>();
+  for (const item of journal.completed) {
+    if (!item || !Number.isSafeInteger(item.index) || item.index < 0 || indices.has(item.index)) {
+      throw new Error("Invalid or duplicate apply journal completion index.");
+    }
+    indices.add(item.index);
+    const operation = journal.operations[item.index];
+    if (!operation || !["create", "update", "remove"].includes(operation.action)
+      || item.destPath !== operation.destPath || item.kind !== operation.kind
+      || typeof item.hadExisting !== "boolean"
+      || (item.completed !== undefined && typeof item.completed !== "boolean")) {
+      throw new Error("Apply journal completion does not match its immutable operation.");
+    }
+    const expectedBackup = join(applyBackupDir(journal.targetRoot, journal.adapter, {
+      installationType: journal.installationType, stateKey: journal.stateKey,
+    }), String(item.index));
+    if ((item.backupPath !== undefined && (item.backupPath !== expectedBackup || !item.hadExisting))
+      || (journal.mutation?.transport?.kind === "local-run-as" && item.hadExisting && item.backupPath !== expectedBackup)) {
+      throw new Error("Apply journal completion has an invalid deterministic backup path.");
+    }
   }
 }

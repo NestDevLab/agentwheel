@@ -68,10 +68,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   if (isCompositeWorkspaceProfile(profile)) {
     throw new Error(`Composite profile '${options.profile}' must be executed through member delegation.`);
   }
-  if (!options.dryRun && profile.runtimes.some((runtime) =>
-    resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId).transport === "local-run-as")) {
-    throw new Error("local-run-as is read-only in PR1; apply and runtime mutations are not supported.");
-  }
+
 
   const packages = options.source
     ? [await packageFromSource(options.source, options)]
@@ -95,6 +92,9 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   }
   for (const runtime of profile.runtimes) {
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
+    if (target.transport === "local-run-as" && (target.adapterModule || target.reloadRuntimes || runtime.reloadRuntimes || options.reloadRuntimes)) {
+      throw new Error("local-run-as refuses programmatic adapters and runtime reload before writes.");
+    }
     const runtimePackages = options.source ? packages : packagesForTarget(packages, target);
     const transport = transportForTarget(target);
     const adapter = await resolveAdapter({

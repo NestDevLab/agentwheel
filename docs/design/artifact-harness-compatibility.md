@@ -58,48 +58,69 @@ path, not from the inverse Codex/Copilot path.
 
 ## Built-In Matrix
 
-Agentwheel also accepts `transport: "local-run-as"` on a named Linux agent with a
-required `runAs` account. It resolves `root: "home"` to that account's passwd home
-and reads runtime files and install manifests through a path-checked, service-user
-worker. In the first release this transport is **read-only**: plans, status, and
-ownership recovery reports and legacy adoption previews work; installs, uninstalls, journal recovery, and
-other target mutations fail before writes. An absolute target root must be owned
-by the account and equal its home for home-rooted mappings. SSH and ordinary
-local transports retain their existing layouts.
-The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
-`AGENTWHEEL_RUN_AS_NODE` may select another absolute path). The executable and
-worker must be regular files that the service UID cannot own or write. One
-worker copy is staged per process and removed on exit, SIGINT, or SIGTERM.
-Each `sudo` child has a 120-second timeout, and worker `readFile` accepts only
-regular files.
-The source-staging module prepares versioned, bounded byte snapshots for future
-install support. It rejects links and special files, validates the complete
-entry hierarchy and content hash, and carries fixed private modes rather than
-source ownership or source paths. Source ancestors must be trusted and stable;
-this module does not provide target confinement or enable writes. Target write,
-command, recovery and ownership-migration support remain unavailable.
+Agentwheel accepts `transport: "local-run-as"` on a named Linux agent with a
+required `runAs` account. Home-rooted mappings use that account's passwd home;
+the absolute install root must equal it and have the pinned account's UID/GID.
+Plans, status, install, uninstall and durable journal recovery use a service-user
+worker. Ownership adoption previews remain available; adoption apply and Fleet
+normalization require the separate migration support.
 
-For a dedicated operator and service account, grant only the UID check and the
-read worker invocation. Replace the example account, home, UID/GID, and Node
-path with the resolved values on the target host; the Node path must be its
-canonical absolute path. Validate the resulting file with `visudo -cf` before
-installing it in sudoers. The wildcard covers the random, caller-owned worker
-staging directory and should be granted only to a trusted operator:
+Requirements are Linux 5.6+ with `openat2`, a supported 64-bit architecture
+(x86-64, AArch64 or RISC-V), Python 3 and noninteractive sudo. The immutable Node
+worker delegates filesystem operations to its packaged Python helper using
+`RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS` and directory
+file descriptors. Unsupported kernels, identities, paths or helpers fail closed
+before the apply lock. SSH and ordinary local transports keep their layouts.
+This confines worker path resolution, including concurrent symlink replacement;
+it does not prevent an already running process of the same UID from relocating
+an opened directory inode or changing installed content after a write.
+
+Caller-owned source staging supplies bounded bytes and planned hashes, never
+source paths or credentials. Sources must have trusted, stable ancestors.
+Files default to `0600` and directories to `0700`; backup/rollback preserves
+existing modes. Symlinks, hardlinks, special files, malformed entry trees and
+snapshots over 8 MiB, 4096 entries or 64 path components are rejected. Target
+manifests, locks, backups and journals belong to the service user; source graph
+locks and governed receipts remain in the caller workspace. Recovery revalidates
+the receipt's pinned user, UID, GID, home and root before target access.
+
+Programmatic adapters, semantic plugin operations, arbitrary commands and runtime
+reloads are rejected before install writes. The sole subprocess capability is
+OpenClaw `config validate --json`, through a dedicated operation with fixed argv
+and a scrubbed environment. It invokes Node with `openclaw.mjs` from a trusted
+package root (default `/usr/local/lib/node_modules/openclaw`, caller override
+`AGENTWHEEL_RUN_AS_OPENCLAW_ROOT`). The full package tree, contained symlink
+dependencies, executable and ancestors must be immutable to the service UID and
+supplementary groups. Group/world-writable ancestor masks are rejected even
+when the owning group differs, covering named POSIX ACL grants. Service-owned installations are rejected. Validation reads a confined candidate
+and uses a temporary caller-owned immutable config snapshot, preventing a target
+symlink swap during the native validator read. Any `$include` key is rejected recursively; use self-contained rendered config
+for this transport. Python runs in
+isolated mode (`-I`), excluding service user startup files. Operator-managed runtime
+code is a prerequisite, and validation does not grant general command execution.
+See [OpenClaw's validation contract](https://docs.openclaw.ai/cli/config).
+
+The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
+`AGENTWHEEL_RUN_AS_NODE` may choose another absolute path) and `/usr/bin/python3`.
+Node, Python, worker and helper must be regular files the service UID cannot own
+or write. Worker/helper copies are staged per caller process and removed on exit,
+SIGINT or SIGTERM. Sudo children have a 120-second timeout. An operator grants
+sudo explicitly; Agentwheel never edits sudoers. Replace the synthetic account,
+home, UID/GID and canonical Node path before validating an operator's grant with
+`visudo -cf`. The caller-owned staging wildcard is suitable only for a trusted
+operator:
 
 ```sudoers
 Cmnd_Alias AGENTWHEEL_RUN_AS_ID = /usr/bin/id -u
-Cmnd_Alias AGENTWHEEL_RUN_AS_READ = /usr/bin/env -i HOME=/home/example PATH=/usr/local/bin\:/usr/bin\:/bin /usr/bin/node /tmp/agentwheel-run-as-*/run-as-worker.mjs --root /home/example --uid 998 --gid 998
-operator ALL=(service) NOPASSWD: AGENTWHEEL_RUN_AS_ID, AGENTWHEEL_RUN_AS_READ
+Cmnd_Alias AGENTWHEEL_RUN_AS_WORKER = /usr/bin/env -i HOME=/home/example PATH=/usr/local/bin\:/usr/bin\:/bin /usr/bin/node /tmp/agentwheel-run-as-*/run-as-worker.mjs --root /home/example --uid 998 --gid 998
+operator ALL=(service) NOPASSWD: AGENTWHEEL_RUN_AS_ID, AGENTWHEEL_RUN_AS_WORKER
 ```
 
 `ownership recovery-plan` requires `--fleet` for registered Fleet targets;
-it may omit `--fleet` for a nested workspace outside any Fleet.
-
-Legacy adoption previews read runtime claims and full ownership snapshots through
-the worker. Their digest includes the run-as endpoint identity. Workspace source
-locks remain caller-side. Adoption apply remains disabled, and previews do not
-advertise an executable apply command for this transport. This does not enable
-fleet normalization or ownership migration.
+it may omit it for a nested workspace outside any Fleet. Legacy previews read
+runtime manifests and full ownership snapshots in the worker, with the endpoint
+identity in their digest. They do not advertise an executable adoption command
+until migration apply support is enabled.
 
 | Harness | Artifact | `local` | `user` | Notes |
 |---|---|---|---|---|

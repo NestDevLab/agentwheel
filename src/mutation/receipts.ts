@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, link, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { z } from "zod";
 import { revisionProviderConfigSchema } from "../model/mutation.js";
 import { revisionPathSchema, revisionProviderResultSchema, mutationOperationIdSchema } from "./protocol.js";
@@ -30,13 +30,27 @@ const receiptStatusSchema = z.enum([
   "failed",
 ]);
 
+const runAsPathSchema = z.string().min(1).max(4096).refine((path) => isAbsolute(path) && resolve(path) === path);
+const runAsIdentitySchema = z.object({
+  user: z.string().regex(/^[a-z_][a-z0-9_-]*[$]?$/i).refine((user) => user !== "root"),
+  uid: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  gid: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  home: runAsPathSchema,
+  root: runAsPathSchema.refine((path) => path !== parse(path).root),
+}).strict();
+
 export const runtimeJournalSchema = z.object({
   path: z.string().min(1).max(4096),
   status: z.enum(["reserved", "pending", "resolving", "resolved"]),
-  transport: z.enum(["local", "ssh"]),
+  transport: z.enum(["local", "ssh", "local-run-as"]),
+  runAsIdentity: runAsIdentitySchema.optional(),
   transportDescription: z.string().min(1).max(1024),
   journalDigest: z.string().regex(/^[a-f0-9]{64}$/),
-}).strict();
+}).strict().superRefine((journal, ctx) => {
+  if ((journal.transport === "local-run-as") !== (journal.runAsIdentity !== undefined)) {
+    ctx.addIssue({ code: "custom", path: ["runAsIdentity"], message: "Only local-run-as journals require a pinned run-as identity." });
+  }
+});
 export type RuntimeJournalReceipt = z.infer<typeof runtimeJournalSchema>;
 
 const mutationReceiptBaseSchema = z.object({

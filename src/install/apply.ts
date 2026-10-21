@@ -10,6 +10,7 @@ import type { GraphLock } from "../model/graph-lock.js";
 import { canonicalGraphLockJson, readGraphLock, writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { assertRunAsPlanSupported } from "../transport/run-as-policy.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
 import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, listInstallManifests, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
@@ -21,6 +22,7 @@ import {
   applyJournalPath,
   assertGovernedRuntimeTransportSupported,
   assertApplyJournalRecoveryAllowed,
+  assertLinkedApplyJournal,
   listApplyJournals,
   localPathExists,
   readApplyJournal,
@@ -97,22 +99,52 @@ export async function applyCombinedInstallPlan(plan: InstallPlan, options: Apply
   return applyPlanTransactionally(plan, options);
 }
 
+export interface ApplyRecoveryLink {
+  path: string;
+  operationId: string;
+  journalDigest: string;
+  transportDescription: string;
+  reason: string;
+  noCommit: boolean;
+  resolveOnly?: boolean;
+}
+
 export async function recoverPendingApply(
   targetRoot: string,
   adapter: string,
   transport: TargetTransport = localTransport,
   scope: { installationType?: string; stateKey?: string } = {},
+  expectedLink?: ApplyRecoveryLink,
 ): Promise<InstallManifest | undefined> {
   assertGovernedRuntimeTransportSupported(transport);
+  if (transport.kind === "local-run-as" && !expectedLink) throw new Error("Run-as recovery requires a caller-owned durable receipt link.");
+  const validateJournal = (journal: ApplyJournal): void => {
+    if (expectedLink) {
+      if (expectedLink.path !== applyJournalPath(targetRoot, adapter, scope)) throw new Error("Recovery receipt journal path mismatch.");
+      assertLinkedApplyJournal(journal, expectedLink.path, expectedLink.operationId, expectedLink.journalDigest, expectedLink.transportDescription, transport);
+      if (journal.mutation?.reason !== expectedLink.reason || journal.mutation.noCommit !== expectedLink.noCommit) {
+        throw new Error("Runtime apply journal mutation metadata does not match its durable receipt.");
+      }
+    }
+    assertApplyJournalRecoveryAllowed(journal);
+    assertRunAsPlanSupported({ operations: journal.operations, adapterCode: journal.manifest.adapterCode } as InstallPlan, transport);
+    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
+      throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
+    }
+  };
+  await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
+  const preflightJournal = await readApplyJournal(targetRoot, adapter, transport, scope);
+  if (!preflightJournal) return undefined;
+  validateJournal(preflightJournal);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
     await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
-    assertApplyJournalRecoveryAllowed(journal);
-
-    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
-      throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
+    validateJournal(journal);
+    if (expectedLink?.resolveOnly) {
+      await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
+      return journal.manifest;
     }
 
     const now = new Date().toISOString();
@@ -121,7 +153,7 @@ export async function recoverPendingApply(
     for (const [index, operation] of journal.operations.entries()) {
       assertOperationContained(operation, journal.targetRoot);
       const started = startedByIndex.get(index);
-      if (started?.completed || (started && await operationLanded(operation, transport))) {
+      if (started && await operationLanded(operation, transport)) {
         started.completed = true;
         await writeApplyJournal(journal, transport);
         const entry = await entryForCompletedOperation(operation, transport, now, journal.graphLockDigest);
@@ -131,7 +163,7 @@ export async function recoverPendingApply(
 
       if (operationNeedsSource(operation) && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
         await rollbackStartedOperations(journal, transport);
-        await removeApplyJournal(targetRoot, adapter, transport, scope);
+        await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
         return undefined;
       }
 
@@ -196,6 +228,7 @@ async function applyPlanTransactionally(
   }
 
   assertGovernedRuntimeTransportSupported(transport);
+  assertRunAsPlanSupported(plan, transport);
 
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock, scope);
   try {
@@ -297,6 +330,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
   assertGovernedRuntimeTransportSupported(transport);
+  assertRunAsPlanSupported(plan, transport);
 
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
@@ -475,7 +509,7 @@ async function commitJournalState(
   await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
-  });
+  }, journal);
   if (await readApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
@@ -732,7 +766,7 @@ async function applyOperation(
     } else if (operation.mergeStrategy) {
       throw new Error(`Merge strategy '${operation.mergeStrategy}' is not implemented by apply.`);
     } else {
-      await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
+      await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind, operation.desiredHash);
     }
     const hash = await transport.hashPath(operation.destPath);
     if (!operation.mergeStrategy && hash !== operation.desiredHash) {
@@ -1383,6 +1417,11 @@ async function validateOpenClawConfig(
   destPath: string,
   transport: TargetTransport,
 ): Promise<void> {
+  if (transport.kind === "local-run-as") {
+    if (!transport.validateOpenClawConfig) throw new Error("Run-as transport lacks the allowlisted OpenClaw validator.");
+    await transport.validateOpenClawConfig(configPath);
+    return;
+  }
   if (!transport.execFile) {
     throw new Error(`Cannot validate OpenClaw config over ${transport.description}: transport does not support command execution.`);
   }

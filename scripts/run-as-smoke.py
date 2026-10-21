@@ -59,7 +59,6 @@ def smoke(args):
             'on a disposable runner; do not run on a persistent host.')
     cli, node = args.cli.resolve(strict=True), args.node.resolve(strict=True)
     require(cli.is_file() and node.is_file(), 'Built CLI and Node executable must be files')
-    require(Path('/usr/bin/node').is_file(), 'Default run-as /usr/bin/node is required')
     require(Path('/usr/bin/python3').is_file(), 'Default helper /usr/bin/python3 is required')
     for executable in ('/usr/sbin/useradd', '/usr/sbin/userdel', '/usr/sbin/groupdel',
                        '/usr/bin/sudo', '/usr/bin/test', '/usr/sbin/nologin'):
@@ -77,7 +76,7 @@ def smoke(args):
         caller_home, workspace, pack = (caller / name for name in ('home', 'workspace', 'pack'))
         for path in (caller_home, workspace, pack):
             path.mkdir(mode=0o700)
-        env = {'HOME': str(caller_home), 'XDG_CONFIG_HOME': str(caller_home / '.config'),
+        env = {'AGENTWHEEL_RUN_AS_NODE': str(node), 'HOME': str(caller_home), 'XDG_CONFIG_HOME': str(caller_home / '.config'),
                'XDG_CACHE_HOME': str(caller_home / '.cache'),
                'XDG_STATE_HOME': str(caller_home / '.local/state'),
                'PATH': str(node.parent) + ':/usr/local/bin:/usr/bin:/bin'}
@@ -201,7 +200,7 @@ console.log(JSON.stringify({valid: true}));
                 'Unexpected caller-side runtime output')
         require({path.name for path in base.iterdir()} == {'caller', 'service-home', 'untouched-sibling', 'validator'},
                 'Unexpected sibling runtime output')
-        print('PASS: default sudo/Node/Python transport, private source, service validation, '
+        print('PASS: sudo/explicit Node/Python transport, private source, service validation, '
               'ownership/modes, manifest partitioning, status and read-only no-op replan', flush=True)
     except Exception as error:
         failure = error

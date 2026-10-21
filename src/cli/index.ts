@@ -1029,6 +1029,7 @@ ownershipCommand
   .description("transfer one managed artifact between Agentwheel workspace roots")
   .argument("<selector>", "exact artifact selector in type/name form")
   .option("--from-workspace-root <path>", "current owning workspace root")
+  .option("--from-fleet <id>", "qualify the current owner with a registered fleet id")
   .option("--from-unknown-owner", "hand off an artifact recorded as workspace:unknown", false)
   .requiredOption("--to-workspace-root <path>", "new owning workspace root")
   .option("--source-state-key <key>", "explicit source install-manifest state key for this handoff only")
@@ -1059,6 +1060,22 @@ ownershipCommand
     if (Boolean(options.fromWorkspaceRoot) === (options.fromUnknownOwner === true)) {
       throw new Error("Ownership handoff requires exactly one of --from-workspace-root or --from-unknown-owner.");
     }
+    if (options.fromFleet !== undefined && (!options.fromWorkspaceRoot || options.fromUnknownOwner)) {
+      throw new Error("--from-fleet requires --from-workspace-root and cannot be combined with --from-unknown-owner.");
+    }
+    const fromWorkspaceRoot = options.fromWorkspaceRoot === undefined ? undefined : normalizeCliPath(options.fromWorkspaceRoot);
+    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
+    // Owner qualification is independent of the workspace/target selected by --fleet.
+    for (const [id, root, label] of [
+      [options.fromFleet, fromWorkspaceRoot, "Source"],
+      [options.toFleet, toWorkspaceRoot, "Destination"],
+    ] as const) {
+      if (id === undefined) continue;
+      const fleet = await showRegisteredFleet(id);
+      if (resolve(fleet.root) !== resolve(root!)) {
+        throw new Error(`${label} fleet '${id}' is registered at ${fleet.root}, not ${root}.`);
+      }
+    }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const targets = await resolveCliTargets(normalizedOptions);
     if (targets.length !== 1) {
@@ -1088,13 +1105,6 @@ ownershipCommand
         "Migrate the target state before ownership handoff by running a full agentwheel install for this target.",
       );
     }
-    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
-    if (options.toFleet) {
-      const fleet = await showRegisteredFleet(options.toFleet);
-      if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
-        throw new Error(`Destination fleet '${options.toFleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
-      }
-    }
     const request = {
       workspaceRoot: await workspaceRootFromOptions(normalizedOptions),
       reason: options.reason,
@@ -1108,7 +1118,7 @@ ownershipCommand
       artifactName,
       ...(options.fromUnknownOwner === true
         ? { fromUnknownOwner: true }
-        : { fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot) }),
+        : { fromWorkspaceRoot, fromFleetId: options.fromFleet }),
       toWorkspaceRoot,
       toFleetId: options.toFleet,
       expectedHash: options.expectedHash,

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -48,6 +48,56 @@ describe("ownership handoff explicit source state", () => {
     expect((await stat(f.runtimeFile)).mode).toBe(mode);
     expect(await readFile(f.config)).toEqual(config);
     expect(await readFile(f.graphSentinel, "utf8")).toBe("unchanged graph sentinel\n");
+  });
+
+  it("round-trips the merged claim with --to-fleet then --from-fleet and audits the qualified source owner", async () => {
+    const f = await fixture(); await registerFixtureFleets(f);
+    const before = await readInstallManifest(f.target, "codex", localTransport, f.scope);
+    if (!before || before.version !== 2) throw new Error("Missing initial manifest");
+    const mode = (await stat(f.runtimeFile)).mode;
+    const forward = ["--source-state-key", f.key, "--from-workspace-root", f.oldOwner, "--to-workspace-root", f.oldOwner,
+      "--to-fleet", "delivery", "--expected-hash", "a".repeat(64), "--expected-revision", before.revision, "--operation-id", "cli-qualify"];
+    await f.invoke(forward);
+    const qualified = await readInstallManifest(f.target, "codex", localTransport, f.scope);
+    if (!qualified || qualified.version !== 2) throw new Error("Missing fleet-qualified manifest");
+    expect(qualified.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(f.oldOwner, "delivery"));
+    expect(qualified.entries[1]).toEqual(before.entries[1]);
+    const reverse = ["--source-state-key", f.key, "--from-workspace-root", f.oldOwner, "--from-fleet", "delivery",
+      "--to-workspace-root", f.oldOwner, "--expected-hash", "a".repeat(64), "--expected-revision", qualified.revision];
+    const preview = await f.invoke([...reverse, "--dry-run", "--json"]);
+    expect(JSON.parse(preview.stdout)).toMatchObject({ fromOwner: workspaceOwnerForRoot(f.oldOwner, "delivery"), toOwner: workspaceOwnerForRoot(f.oldOwner) });
+    await f.invoke([...reverse, "--operation-id", "cli-unqualify"]);
+    const after = await readInstallManifest(f.target, "codex", localTransport, f.scope);
+    expect(after?.entries).toEqual(before.entries);
+    const auditDirectory = join(f.workspace, ".agentwheel/ownership-handoffs");
+    const audits = await Promise.all((await readdir(auditDirectory)).filter(name => name.endsWith(".json"))
+      .map(async name => JSON.parse(await readFile(join(auditDirectory, name), "utf8"))));
+    expect(audits).toHaveLength(2);
+    expect(audits).toContainEqual(expect.objectContaining({ plan: expect.objectContaining({
+      fromOwner: workspaceOwnerForRoot(f.oldOwner, "delivery"), toOwner: workspaceOwnerForRoot(f.oldOwner),
+    }) }));
+    expect(await readFile(f.runtimeFile)).toEqual(f.runtimeBefore);
+    expect((await stat(f.runtimeFile)).mode).toBe(mode);
+    expect(await readFile(f.config, "utf8")).toBe(f.configBefore);
+    expect(await readFile(f.graphSentinel, "utf8")).toBe("unchanged graph sentinel\n");
+  });
+
+  it.each([
+    ["invalid fleet", "invalid", /Invalid|fleet|format/i],
+    ["unregistered fleet", "unregistered", /Unknown fleet/],
+    ["missing source root", "missing-root", /from-workspace-root|source.*root/i],
+    ["unknown-owner conflict", "unknown", /unknown|from-workspace-root|source.*root/i],
+    ["wrong registered root", "registered-root", /Source fleet.*registered/i],
+    ["wrong recorded owner", "owner", /Old owner precondition failed/],
+  ])("rejects --from-fleet %s before changing runtime or claims", async (_label, kind, error) => {
+    const f = await fixture(); await registerFixtureFleets(f);
+    const args = ["--source-state-key", f.key, "--to-workspace-root", f.workspace, "--dry-run", "--from-fleet",
+      kind === "invalid" ? "../invalid" : kind === "unregistered" ? "missing" : "delivery"];
+    if (kind !== "missing-root" && kind !== "unknown") args.push("--from-workspace-root", kind === "registered-root" ? f.workspace : f.oldOwner);
+    if (kind === "unknown") args.push("--from-unknown-owner");
+    await expect(f.invoke(args)).rejects.toMatchObject({ stderr: expect.stringMatching(error) });
+    expect(await readFile(f.manifest)).toEqual(f.manifestBefore);
+    expect(await readFile(f.runtimeFile)).toEqual(f.runtimeBefore);
   });
 
   it("commits one native audit when the CLI uses commit-after-verify", async () => {
@@ -149,10 +199,19 @@ async function fixture() {
       workspaceOwner: workspaceOwnerForRoot(join(root, "unrelated-owner")) }],
   }, localTransport);
   const manifest = installManifestPath(target, "codex", scope);
-  return { workspace, target, config, graphSentinel, runtimeFile, key, scope, manifest,
+  return { workspace, target, config, graphSentinel, runtimeFile, key, scope, manifest, oldOwner, home,
+    configBefore: await readFile(config, "utf8"),
+    invoke: (args: string[]) => exec("node", [cli, "--no-update-check", "ownership", "handoff", "mcp/example.json",
+      "--local", "--agent", "runtime", ...args], { cwd: workspace, env: { ...process.env, HOME: home }, maxBuffer: 2 * 1024 * 1024 }),
     manifestBefore: await readFile(manifest), runtimeBefore: await readFile(runtimeFile),
     run: (args: string[]) => exec("node", [cli, "--no-update-check", "ownership", "handoff", "mcp/example.json",
       "--local", "--agent", "runtime", "--from-workspace-root", oldOwner, "--to-workspace-root", workspace, ...args],
     { cwd: workspace, env: { ...process.env, HOME: home }, maxBuffer: 2 * 1024 * 1024 }),
   };
+}
+
+async function registerFixtureFleets(f: Awaited<ReturnType<typeof fixture>>) {
+  await mkdir(join(f.home, ".agentwheel"), { recursive: true });
+  await writeFile(join(f.home, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, packages: [],
+    fleets: { delivery: { root: f.oldOwner, requiredPackages: ["fixture"] } } }));
 }

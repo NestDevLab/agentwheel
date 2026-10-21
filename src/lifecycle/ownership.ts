@@ -13,6 +13,7 @@ import { acquireApplyLock, assertGovernedRuntimeTransportSupported, listApplyJou
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
+import { fleetIdSchema } from "../model/workspace.js";
 export { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 
 export interface OwnershipHandoffRequest extends InstallStateScope {
@@ -26,8 +27,9 @@ export interface OwnershipHandoffRequest extends InstallStateScope {
   adapter: string;
   artifactType: string;
   artifactName: string;
-  // exactly one of these two selects the current owner
+  // Select a workspace root (optionally Fleet-qualified) or the unknown owner.
   fromWorkspaceRoot?: string;
+  fromFleetId?: string;
   fromUnknownOwner?: boolean;
   toWorkspaceRoot: string;
   toFleetId?: string;
@@ -130,6 +132,11 @@ async function validateOwnershipHandoff(
   request: OwnershipHandoffRequest,
   transport: TargetTransport,
 ): Promise<OwnershipHandoffPlan> {
+  if (request.fromFleetId !== undefined && (request.fromWorkspaceRoot === undefined || request.fromUnknownOwner === true)) {
+    throw new Error("A source fleet requires fromWorkspaceRoot and cannot be combined with fromUnknownOwner.");
+  }
+  if (request.fromFleetId !== undefined) fleetIdSchema.parse(request.fromFleetId);
+  if (request.toFleetId !== undefined) fleetIdSchema.parse(request.toFleetId);
   const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
   if (request.expectedHash) assertSha256(request.expectedHash, "expected artifact hash");
   if (request.expectedRevision) assertSha256(request.expectedRevision, "expected manifest revision");
@@ -160,7 +167,7 @@ async function validateOwnershipHandoff(
   const entry = matches[0];
   const fromOwner = request.fromUnknownOwner === true
     ? unknownWorkspaceOwner
-    : workspaceOwnerForRoot(request.fromWorkspaceRoot!);
+    : workspaceOwnerForRoot(request.fromWorkspaceRoot!, request.fromFleetId);
   const toOwner = workspaceOwnerForRoot(request.toWorkspaceRoot, request.toFleetId);
   if (fromOwner === toOwner) throw new Error("Ownership handoff requires different workspace roots.");
   if (entry.workspaceOwner !== fromOwner) {

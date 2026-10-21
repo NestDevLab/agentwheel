@@ -167,7 +167,8 @@
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "f8a94ea4f8cacdf6b128c9143601d7bc7596455b"
+        "f8a94ea4f8cacdf6b128c9143601d7bc7596455b",
+        "929a9de681eb8e949585a528a34a8643fe3b04b4"
       ],
       "state": "published",
       "publication": {

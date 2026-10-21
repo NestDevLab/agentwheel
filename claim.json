@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/local-run-as-apply"
-  ],
-  "claimed_at": "2026-10-21T08:45:06+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-21T08:53:25+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "7c4aca5c-057e-45c5-87ba-1a24e7c0f99b",
-  "publication_scope": "partial",
+  "operation_token": "1bb3184b-75df-41e5-a3d1-14d586a76db4",
+  "publication_scope": "close:local-run-as-apply",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/local-run-as-apply",
   "syncwheel_version": "0.46.8"
 }

@@ -17,6 +17,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 
 
 def require(condition, message):
@@ -70,6 +72,9 @@ def smoke(args):
     created = False
     service_gid = None
     failure = None
+    confidentiality_stop = threading.Event()
+    confidentiality_thread = None
+    confidentiality = {}
     try:
         caller = base / 'caller'
         caller.mkdir(mode=0o700)
@@ -149,10 +154,18 @@ assert.equal(process.getuid(), fs.statSync(home).uid); assert.notEqual(process.g
 assert.ok(path.dirname(config).startsWith('/tmp/agentwheel-validate-'));
 assert.equal(path.basename(config), 'openclaw.json');
 assert.notEqual(fs.statSync(config).uid, process.getuid());
-assert.equal(fs.statSync(config).mode & 0o777, 0o444);
+assert.equal(fs.statSync(config).mode & 0o777, 0o440);
+assert.equal(fs.statSync(path.dirname(config)).mode & 0o777, 0o710);
 assert.equal(JSON.parse(fs.readFileSync(config)).env.vars.AW_SMOKE_REFERENCE, '${AW_SMOKE_EXTERNAL_VALUE}');
 for (const key of ['AW_SMOKE_EXTERNAL_VALUE', 'GITHUB_TOKEN', 'GH_TOKEN', 'AWS_SECRET_ACCESS_KEY']) assert.equal(process.env[key], undefined);
 fs.writeFileSync(path.join(home, 'validator-invocation.json'), JSON.stringify({argv: process.argv.slice(2), uid: process.getuid(), gid: process.getgid(), config}), {mode: 0o600});
+const ack = path.join(home, 'validation-confidentiality-ok');
+const deadline = Date.now() + 60_000;
+while (!fs.existsSync(ack) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+assert.ok(fs.existsSync(ack), 'confidentiality observer timed out');
+assert.equal(fs.statSync(ack).uid, process.getuid());
+assert.equal(fs.statSync(ack).mode & 0o777, 0o600);
+assert.deepEqual(JSON.parse(fs.readFileSync(ack)), {fileReadDenied: true, directoryListDenied: true});
 console.log(JSON.stringify({valid: true}));
 """)
         validator.chmod(0o644)
@@ -173,7 +186,84 @@ console.log(JSON.stringify({valid: true}));
         require(not target['hasBlockingChanges'] and target['summary']['create'] == 2,
                 f'Expected skill and settings creates: {target}')
         require(tree_snapshot(service_home) == initial_target, 'Initial graph plan wrote to target')
+        unrelated = pwd.getpwnam('nobody')
+        require(unrelated.pw_uid not in (0, identity.pw_uid)
+                and unrelated.pw_gid != identity.pw_gid, 'Expected a distinct unrelated UID/GID')
+        invocation = service_home / 'validator-invocation.json'
+        ack = service_home / 'validation-confidentiality-ok'
+
+        def acknowledge(value):
+            # Root records the result as a private service-owned fixture file.
+            pending = ack.with_name(ack.name + '.pending')
+            fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                os.write(fd, json.dumps(value).encode())
+                os.fchown(fd, identity.pw_uid, identity.pw_gid)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.rename(pending, ack)
+
+        def observe_confidentiality():
+            try:
+                deadline = time.monotonic() + 70
+                while not confidentiality_stop.is_set() and time.monotonic() < deadline:
+                    try:
+                        call = json.loads(invocation.read_text())
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        confidentiality_stop.wait(0.025)
+                        continue
+                    config = Path(call['config'])
+                    require(config.parent.parent == Path('/tmp')
+                            and config.parent.name.startswith('agentwheel-validate-')
+                            and config.name == 'openclaw.json', 'Unexpected validation snapshot path')
+                    require(config.is_file(), 'Snapshot disappeared before confidentiality checks')
+                    # This real third-UID process receives the known filename;
+                    # unreadability must come from permissions, not obscurity.
+                    probe = r"""import json, os, pathlib, sys
+snapshot=pathlib.Path(sys.argv[1])
+result={}
+for key, action in [('fileReadDenied', snapshot.read_bytes),
+                    ('directoryListDenied', lambda: os.listdir(snapshot.parent))]:
+    try:
+        action()
+    except PermissionError:
+        result[key]=True
+    else:
+        raise RuntimeError('Unrelated user unexpectedly accessed '+key)
+print(json.dumps(result))
+"""
+                    command = ['/usr/bin/sudo', '-n', '-u', unrelated.pw_name, '--',
+                               '/usr/bin/python3', '-I', '-c', probe, str(config)]
+                    print('CHECK unrelated UID snapshot read and directory-list denial', flush=True)
+                    result = subprocess.run(command, cwd='/', env=env, capture_output=True,
+                                            text=True, timeout=10)
+                    require(result.returncode == 0,
+                            f'Confidentiality probe failed: {result.stdout} {result.stderr}')
+                    checked = json.loads(result.stdout)
+                    require(checked == {'fileReadDenied': True, 'directoryListDenied': True},
+                            f'Incomplete confidentiality checks: {checked}')
+                    require(config.is_file(), 'Snapshot disappeared during confidentiality checks')
+                    confidentiality.update(checked)
+                    acknowledge(checked)
+                    return
+                raise RuntimeError('Confidentiality observer did not see the live validation snapshot')
+            except Exception as error:
+                confidentiality['error'] = str(error)
+                if not ack.exists():
+                    try:
+                        acknowledge({'error': str(error)})
+                    except OSError:
+                        pass
+
+        confidentiality_thread = threading.Thread(target=observe_confidentiality,
+                                                   name='validation-confidentiality', daemon=True)
+        confidentiality_thread.start()
         installed = json.loads(run(aw + ['install', *scope, '--format', 'json'], cwd=workspace, env=env).stdout)
+        confidentiality_thread.join(timeout=15)
+        require(not confidentiality_thread.is_alive(), 'Confidentiality observer did not finish')
+        require(confidentiality == {'fileReadDenied': True, 'directoryListDenied': True},
+                f'Validation confidentiality checks failed: {confidentiality}')
         require(installed['applied'], 'CLI install did not report apply')
         installed_skill = service_home / '.openclaw/skills/fixture/SKILL.md'
         require(installed_skill.read_bytes() == skill.read_bytes(), 'Installed skill bytes differ')
@@ -220,11 +310,17 @@ console.log(JSON.stringify({valid: true}));
         require({path.name for path in base.iterdir()} == {'caller', 'service-home', 'untouched-sibling', 'validator', 'trusted-tools'},
                 'Unexpected sibling runtime output')
         print('PASS: sudo/explicit Node/Python transport, private source, service validation, '
+              'unrelated UID snapshot read/list denial, '
               'ownership/modes, manifest partitioning, status and read-only no-op replan', flush=True)
     except Exception as error:
         failure = error
     finally:
         cleanup_errors = []
+        confidentiality_stop.set()
+        if confidentiality_thread is not None:
+            confidentiality_thread.join(timeout=15)
+            if confidentiality_thread.is_alive():
+                cleanup_errors.append('Confidentiality observer did not stop before fixture cleanup')
         cleanup_env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin'}
         if created:
             try:

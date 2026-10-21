@@ -121,7 +121,7 @@ describe("local run-as read transport", () => {
     expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", "node")).toThrow(/must be absolute/);
   });
 
-  it("makes immutable validation snapshots readable despite restrictive caller umask", async () => {
+  it("shares validation snapshots only with the named UID despite restrictive caller umask", async () => {
     const root = await fixture(), node = await trustedNodeFixture(root), service = distinctServiceIdentity(root);
     let snapshot: string | undefined;
     const runner: RunAsRunner = async (_command, _args, input) => {
@@ -129,7 +129,10 @@ describe("local run-as read transport", () => {
       const request = JSON.parse(input);
       if (request.operation === "validateOpenClawConfig") {
         snapshot = request.validationSnapshot;
-        expect(statSync(snapshot!).mode & 0o777).toBe(0o444);
+        expect(statSync(snapshot!).mode & 0o777).toBe(0o440);
+        const { execFileSync } = await import("node:child_process");
+        const acl = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", "import os,struct,json,sys; a=os.getxattr(sys.argv[1],'system.posix_acl_access'); print(json.dumps([struct.unpack('<HHI',a[i:i+8]) for i in range(4,len(a),8)]))", snapshot!], { encoding: "utf8" }));
+        expect(acl).toEqual([[1,4,4294967295], [2,4,service.uid], [4,0,4294967295], [16,4,4294967295], [32,0,4294967295]]);
       }
       return { stdout: JSON.stringify({ version: 1, result: request.operation === "readFile" ? "{}" : request.operation === "probe" ? true : null }) };
     };

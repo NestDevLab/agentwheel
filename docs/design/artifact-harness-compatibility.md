@@ -93,7 +93,9 @@ package root (default `/usr/local/lib/node_modules/openclaw`, caller override
 dependencies, executable and ancestors must be immutable to the service UID and
 supplementary groups. Group/world-writable ancestor masks are rejected even
 when the owning group differs, covering named POSIX ACL grants. Service-owned installations are rejected. Validation reads a confined candidate
-and uses a temporary caller-owned immutable config snapshot, preventing a target
+and uses a temporary caller-owned immutable config snapshot, with Linux POSIX
+ACLs granting read access only to the caller and intended service UID (other
+users cannot traverse its directory or read the file), preventing a target
 symlink swap during the native validator read. Any `$include` key is rejected recursively; use self-contained rendered config
 for this transport. Python runs in
 isolated mode (`-I`), excluding service user startup files. Operator-managed runtime
@@ -102,7 +104,9 @@ See [OpenClaw's validation contract](https://docs.openclaw.ai/cli/config).
 
 The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
 `AGENTWHEEL_RUN_AS_NODE` may choose another absolute path) and `/usr/bin/python3`.
-Node, Python, worker and helper must be regular files the service UID cannot own
+Linux POSIX ACL support on the caller temporary filesystem is required for
+OpenClaw validation; unsupported ACLs fail closed. Node, Python, worker and
+helper must be regular files the service UID cannot own
 or write. Worker/helper copies are staged per caller process and removed on exit,
 SIGINT or SIGTERM. Sudo children have a 120-second timeout. An operator grants
 sudo explicitly; Agentwheel never edits sudoers. Replace the synthetic account,

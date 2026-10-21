@@ -17,6 +17,27 @@ const workerPath = fileURLToPath(new URL("./run-as-worker.js", import.meta.url))
 const nodePath = process.env.AGENTWHEEL_RUN_AS_NODE ?? "/usr/bin/node";
 const runAsTimeoutMs = 120_000;
 const commandError = "local-run-as permits only the dedicated OpenClaw config validation operation; arbitrary commands are forbidden.";
+// Caller-side sharing grants only the intended service UID access. Linux ACL
+// masks are encoded directly through Python's stdlib; no shell or ACL utility.
+const validationAclScript = `import os,stat,struct,sys
+uid=int(sys.argv[2])
+if uid <= 0 or uid == os.geteuid(): raise RuntimeError("distinct non-root service UID required")
+def acl(owner,service,mask):
+    entries=[(1,owner,0xffffffff),(2,service,uid),(4,0,0xffffffff),(16,mask,0xffffffff),(32,0,0xffffffff)]
+    return struct.pack("<I",2)+b"".join(struct.pack("<HHI",*entry) for entry in entries)
+d=os.open(sys.argv[1],os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+try:
+    ds=os.fstat(d)
+    if ds.st_uid != os.geteuid() or stat.S_IMODE(ds.st_mode) != 0o700: raise RuntimeError("private caller directory required")
+    f=os.open("openclaw.json",os.O_RDONLY|os.O_NOFOLLOW,dir_fd=d)
+    try:
+        fs=os.fstat(f)
+        if fs.st_uid != os.geteuid() or not stat.S_ISREG(fs.st_mode) or fs.st_nlink != 1 or stat.S_IMODE(fs.st_mode) != 0o600: raise RuntimeError("private caller file required")
+        os.setxattr(f,"system.posix_acl_access",acl(4,4,4))
+    finally: os.close(f)
+    os.setxattr(d,"system.posix_acl_access",acl(7,1,1))
+finally: os.close(d)
+`;
 const stagedWorkers = new Map<string, { directory: string; worker: string }>();
 let cleanupInstalled = false;
 
@@ -25,7 +46,7 @@ function cleanupStagedWorkers(): void {
   stagedWorkers.clear();
 }
 
-function stageWorkerOnce(worker: string): string {
+function stageWorkerOnce(worker: string, helperSource: string): string {
   const existing = stagedWorkers.get(worker);
   if (existing) return existing.worker;
   const directory = mkdtempSync(join("/tmp", "agentwheel-run-as-"));
@@ -33,7 +54,6 @@ function stageWorkerOnce(worker: string): string {
     const staged = join(directory, "run-as-worker.mjs");
     copyFileSync(worker, staged);
     const helper = join(directory, "run-as-fs.py");
-    const helperSource = fileURLToPath(new URL("./run-as-fs.py", import.meta.url));
     copyFileSync(helperSource, helper);
     chmodSync(helper, 0o444);
     chmodSync(staged, 0o444);
@@ -83,10 +103,10 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
   if (runner === defaultRunAsRunner) {
     accessSync(worker, constants.R_OK);
     const trustedWorker = trust(worker, "worker");
-    trust(fileURLToPath(new URL("./run-as-fs.py", import.meta.url)), "filesystem helper");
+    const trustedHelper = trust(fileURLToPath(new URL("./run-as-fs.py", import.meta.url)), "filesystem helper");
     // Recovery planning may set TMPDIR to a private 0700 directory. The worker
     // needs a caller-owned staging directory traversable by the service user.
-    stagedWorker = stageWorkerOnce(trustedWorker);
+    stagedWorker = stageWorkerOnce(trustedWorker, trustedHelper);
   }
   const prefix = ["-n", "-u", identity.user, "-H", "--"];
   let preflight: Promise<void> | undefined;
@@ -164,10 +184,16 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
       const content = String(await run("readFile", path));
       const directory = mkdtempSync(join("/tmp", "agentwheel-validate-"));
       try {
+        chmodSync(directory, 0o700);
         const snapshot = join(directory, "openclaw.json");
-        writeFileSync(snapshot, content, { mode: 0o444, flag: "wx" });
-        chmodSync(snapshot, 0o444);
-        chmodSync(directory, 0o711);
+        writeFileSync(snapshot, content, { mode: 0o600, flag: "wx" });
+        chmodSync(snapshot, 0o600);
+        const python = trust("/usr/bin/python3", "Python executable");
+        try {
+          await execFileAsync(python, ["-I", "-c", validationAclScript, directory, String(identity.uid)], {
+            timeout: 10_000, maxBuffer: 4096, env: { PATH: "/usr/bin:/bin" },
+          });
+        } catch { throw new Error("OpenClaw validation snapshot requires Linux POSIX ACL support for the service UID."); }
         await run("validateOpenClawConfig", path, {
           validatorRoot: process.env.AGENTWHEEL_RUN_AS_OPENCLAW_ROOT ?? "/usr/local/lib/node_modules/openclaw",
           validationSnapshot: snapshot,

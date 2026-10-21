@@ -1035,6 +1035,8 @@ ownershipCommand
   .option("--to-fleet <id>", "qualify the new owner with a registered fleet id")
   .option("--expected-hash <sha256>", "expected recorded artifact hash; required when applying")
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required for run-as handoff")
+  .option("--expected-inventory-revision <sha256>", "reviewed full inventory revision; required for run-as handoff")
   .option("--carry-drift", "accept a file or directory whose runtime differs from the recorded hash; the recorded hash is kept", false)
   .option("--expected-runtime-hash <sha256>", "expected drifted runtime hash; required when applying with --carry-drift")
   .option("--adapter <adapter>", "built-in adapter")
@@ -1049,6 +1051,7 @@ ownershipCommand
   .option("--agent <name>", "named agent from merged config")
   .option("--profile <name>", "workspace runtime profile (must resolve to one target)")
   .option("--dry-run", "validate all preconditions without writing the manifest", false)
+  .option("--json", "print the complete deterministic ownership handoff plan", false)
   .action(async (selector, options) => {
     if (!options.dryRun && (!options.expectedHash || !options.expectedRevision)) {
       throw new Error("Applying an ownership handoff requires --expected-hash and --expected-revision from a reviewed --dry-run.");
@@ -1110,6 +1113,8 @@ ownershipCommand
       toFleetId: options.toFleet,
       expectedHash: options.expectedHash,
       expectedRevision: options.expectedRevision,
+      planDigest: options.planDigest,
+      expectedInventoryRevision: options.expectedInventoryRevision,
       carryDrift: options.carryDrift === true,
       expectedRuntimeHash: options.expectedRuntimeHash,
       transport: transportForTarget(target),
@@ -1117,6 +1122,7 @@ ownershipCommand
     const result = options.dryRun
       ? await planArtifactOwnershipHandoff(request)
       : await applyArtifactOwnershipHandoff(request);
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
     console.log(`${options.dryRun ? "Ownership handoff plan" : "Ownership handed off"}: ${result.selector}`);
     console.log(`Target: ${result.adapter}/${result.installationType ?? "default"} at ${result.targetRoot}`);
     console.log(`Path: ${result.path}`);
@@ -1124,6 +1130,8 @@ ownershipCommand
     if (result.drifted) console.log(`Runtime hash: ${result.runtimeHash} (drift carried; the recorded hash is kept)`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
+    if (result.planDigest) console.log(`Plan digest: ${result.planDigest}`);
+    if (result.manifestInventoryRevision) console.log(`Inventory revision: ${result.manifestInventoryRevision}`);
   });
 
 ownershipCommand
@@ -1313,7 +1321,6 @@ ownershipCommand
       throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
     }
     if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
-    if (target.transport === "local-run-as" && options.apply) throw new Error("Legacy ownership adoption cannot mutate local-run-as targets in PR1.");
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
     const groups = new Map<string, PackageGraphGroup>();
     for (const pkg of packagesForCliTarget(config.packages, target, plainInstallOptions)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
@@ -1386,7 +1393,6 @@ ownershipCommand
       ? await applyAdoptLegacyOwnership(request)
       : await planAdoptLegacyOwnership(request);
     const destinationRevision = result.destination.revision ?? "absent";
-    const applySupported = target.transport !== "local-run-as";
     const applyArgs = [
       "agentwheel", "ownership", "adopt-legacy",
       "--source-state-key", result.source.stateKey,
@@ -1403,9 +1409,9 @@ ownershipCommand
       "--expected-inventory-revision", result.manifestInventoryRevision,
       "--apply",
     ];
-    const applyCommand = applySupported ? applyArgs.map(shellQuoteArgument).join(" ") : null;
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
     if (options.json) {
-      console.log(JSON.stringify({ ...result, ...(applySupported ? {} : { applySupported }), applyCommand }, null, 2));
+      console.log(JSON.stringify({ ...result, applyCommand }, null, 2));
       return;
     }
     console.log(`${options.apply ? "Adopted legacy ownership" : "Legacy ownership adoption plan"}: ${result.selected.length} entr${result.selected.length === 1 ? "y" : "ies"}`);
@@ -1421,9 +1427,7 @@ ownershipCommand
     for (const entry of result.retained) console.log(`  retained ${entry.path} (${entry.reason}, ${entry.owner})`);
     for (const entry of result.remainingDuplicates) console.log(`  duplicate claim remains in ${entry.stateKey}: ${entry.path}`);
     console.log(`Plan digest: ${result.planDigest}`);
-    if (!options.apply) console.log(applySupported
-      ? `Apply from ${target.workspaceRoot}: ${applyCommand}`
-      : "Read-only plan: local-run-as ownership adoption is not yet enabled.");
+    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
   });
 
 const mcpCommand = program

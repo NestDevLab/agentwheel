@@ -422,6 +422,50 @@ current directory, then fallback to the current directory. `--all-detected` is a
 for applying to every runtime marker found in the current directory or `--target-root`; `--all` remains
 reserved for configured agents.
 
+### Linux service-user targets
+
+A named `local-run-as` agent installs into another non-root account's passwd home.
+Run Agentwheel from the caller's workspace: sources, graph locks and receipts stay
+with the caller; confined reads, writes, manifests and rollback run as the service.
+A non-login account works with an explicitly configured noninteractive sudo grant.
+Add the agent/profile to a workspace that already declares its source packages:
+
+```jsonc
+{
+  "schemaVersion": 4,
+  "agents": {
+    "service": {
+      "adapter": "openclaw",
+      "root": "/home/example",
+      "transport": "local-run-as",
+      "runAs": "example",
+      "installationType": "user"
+    }
+  },
+  "profiles": { "service": { "runtimes": [{ "agent": "service" }] } }
+}
+```
+
+```bash
+agentwheel plan --local --profile service
+agentwheel --reason "Install reviewed service profile" install --local --profile service
+```
+
+Require durable journaling in the workspace mutation policy while retaining its
+revision policy. Linux 5.6+ `openat2`, Python 3 and immutable worker/interpreter
+paths are required. OpenClaw validation additionally needs Linux POSIX ACLs and a
+trusted immutable OpenClaw package; includes, programmatic adapters, arbitrary
+commands and runtime reloads are rejected. See the [transport requirements and
+sudo example](docs/design/artifact-harness-compatibility.md#built-in-matrix).
+
+Changing transport creates a distinct state identity. Inspect legacy claims with
+`ownership recovery-plan`, then review the exact JSON plan from `adopt-legacy`,
+`retire-stale`, `release-claim` or `handoff --dry-run --json`. Apply only with its
+matching digest and revisions. These commands preserve runtime bytes and modes;
+a caller-home manifest is never reused as service-home ownership evidence.
+Same-fleet normalization is limited to one service endpoint. Cross-account
+migration and runtime restarts are separate operations.
+
 ### Target state identity
 
 Graph-backed installs keep two target fingerprints with different purposes:

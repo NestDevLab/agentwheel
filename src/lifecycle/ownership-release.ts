@@ -1,12 +1,12 @@
+import { assertCallerRunAsWritePath } from "../transport/caller-write-trust.js";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { commitManifestMetadataJournal } from "../install/apply.js";
 import { computeInstallManifestInventoryRevision, listInstallManifests, readInstallManifest } from "../install/manifest.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
 import {
-  acquireApplyLock, assertNoSymlinkPath, listAllApplyJournals, metadataRuntimePath,
-  mutationMetadataForApplyJournal, ownershipRuntimeSnapshot, writeApplyJournal,
+  acquireApplyLock, assertOwnershipMetadataTransportSupported, assertNoSymlinkPath, listAllApplyJournals, metadataRuntimePath,
+  mutationMetadataForApplyJournal, observeOwnershipRuntime, writeApplyJournal,
   type ApplyJournal,
 } from "../install/transaction.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
@@ -15,6 +15,7 @@ import { declareMutationPath } from "../mutation/declarations.js";
 import { mutationOperationIdSchema, mutationReasonSchema } from "../mutation/protocol.js";
 import { discoverGitRepository } from "../mutation/repository.js";
 import { runProcess } from "../mutation/process.js";
+import { ownershipRunAsEndpoint } from "./ownership-retire-stale.js";
 import { localTransport, type TargetTransport } from "../transport/index.js";
 
 export interface ReleaseOwnershipRequest {
@@ -91,8 +92,10 @@ export async function applyReleaseOwnership(request: ReleaseOwnershipRequest) {
 
 async function applyLocked(request: ReleaseOwnershipRequest, operationId: string, auditPath: string) {
   const transport = request.transport ?? localTransport;
-  if (transport.kind !== "local") throw new Error("Ownership release supports local targets only.");
-  await assertNoSymlinkPath(join(resolve(request.targetRoot), ".agentwheel"));
+  assertOwnershipMetadataTransportSupported(transport);
+  if (transport.kind === "local-run-as") await assertCallerRunAsWritePath(auditPath, [transport.runAsIdentity!]);
+  if (transport.kind === "local") await assertNoSymlinkPath(join(resolve(request.targetRoot), ".agentwheel"));
+  else await transport.pathExists(join(resolve(request.targetRoot), ".agentwheel"));
   await assertNoSymlinkPath(auditPath);
   const lock = await acquireApplyLock(resolve(request.targetRoot), request.adapter, transport, {}, {
     installationType: request.installationType, stateKey: request.stateKey,
@@ -106,7 +109,7 @@ async function applyLocked(request: ReleaseOwnershipRequest, operationId: string
       || plan.manifestInventoryRevision !== request.expectedInventoryRevision) {
       throw new Error("Stale ownership release plan, manifest or inventory; replan required.");
     }
-    if (await transport.pathExists(auditPath)) throw new Error(`Ownership release audit already exists: ${auditPath}`);
+    if (await localTransport.pathExists(auditPath)) throw new Error(`Ownership release audit already exists: ${auditPath}`);
     declareMutationPath(auditPath);
     declareMutationPath(plan.source.manifestPath);
     const manifest = await readInstallManifest(plan.targetRoot, plan.adapter, transport, {
@@ -160,7 +163,8 @@ async function applyLocked(request: ReleaseOwnershipRequest, operationId: string
 
 async function observe(request: ReleaseOwnershipRequest) {
   const transport = request.transport ?? localTransport;
-  if (transport.kind !== "local") throw new Error("Ownership release supports local targets only.");
+  if (transport.kind === "ssh") throw new Error("Ownership release does not support SSH targets.");
+  const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
   const targetRoot = resolve(request.targetRoot);
   const workspaceRoot = resolve(request.workspaceRoot);
   const reason = mutationReasonSchema.parse(request.reason.trim());
@@ -170,9 +174,10 @@ async function observe(request: ReleaseOwnershipRequest) {
   }
   const runtimePath = metadataRuntimePath(targetRoot, request.path);
   await assertNoSymlinkPath(workspaceRoot);
-  await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
+  if (transport.kind === "local") await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
+  else await transport.pathExists(join(targetRoot, ".agentwheel"));
   const manifests = await listInstallManifests(targetRoot, undefined, transport);
-  for (const item of manifests) await assertNoSymlinkPath(item.path);
+  if (transport.kind === "local") for (const item of manifests) await assertNoSymlinkPath(item.path);
   const source = manifests.find((item) => item.stateKey === request.stateKey);
   const manifest = source?.manifest;
   if (!manifest || manifest.version !== 2 || manifest.adapter !== request.adapter
@@ -199,12 +204,12 @@ async function observe(request: ReleaseOwnershipRequest) {
       }
     }
   }
-  const snapshotDigest = await ownershipRuntimeSnapshot(runtimePath);
-  const runtimeKind = (await lstat(runtimePath)).isDirectory() ? "dir" : "file";
+  const { snapshotDigest, kind: runtimeKind } = await observeOwnershipRuntime(runtimePath, transport);
   if (runtimeKind !== entry.kind) throw new Error("Selected runtime kind does not match the manifest claim.");
   const runtimeHash = await transport.hashPath(runtimePath);
   const inventory = manifests.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision }));
   const plan = {
+    ...(endpoint ? { transport: endpoint } : {}),
     adapter: request.adapter,
     installationType: request.installationType,
     targetRoot, workspaceRoot, owner,

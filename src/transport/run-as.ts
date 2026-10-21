@@ -135,6 +135,7 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
     if (response.version !== 1 || !("result" in response)) throw new Error("Invalid run-as worker response.");
     const schema = operation === "pathExists" || operation === "probe" ? z.boolean()
       : operation === "hashPath" || operation === "ownershipSnapshot" ? z.string().regex(/^[a-f0-9]{64}$/)
+      : operation === "ownershipObservation" ? z.object({ kind: z.enum(["file", "dir"]), snapshotDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
       : operation === "readFile" ? z.string()
       : operation === "listDir" ? z.array(z.string().min(1).refine((name) => !/[\\/\0]/.test(name) && name !== "." && name !== ".."))
       : z.null();
@@ -163,6 +164,7 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
     hashPath: async (path) => String(await run("hashPath", path)),
     readFile: async (path) => String(await run("readFile", path)),
     ownershipSnapshot: async (path) => String(await run("ownershipSnapshot", path)),
+    ownershipObservation: async (path) => await run("ownershipObservation", path) as { kind: "file" | "dir"; snapshotDigest: string },
     listDir: async (path) => (await run("listDir", path)) as string[],
     mkdirExclusive: async (path) => { await prepareApply(); await run("mkdirExclusive", path); },
     writeFileAtomic: async (path, content) => { await prepareApply(); await run("writeFileAtomic", path, { content }); },

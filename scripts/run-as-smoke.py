@@ -309,9 +309,123 @@ print(json.dumps(result))
                 'Unexpected caller-side runtime output')
         require({path.name for path in base.iterdir()} == {'caller', 'service-home', 'untouched-sibling', 'validator', 'trusted-tools'},
                 'Unexpected sibling runtime output')
+        # Round-trip one exact claim through reviewed metadata-only CLI plans.
+        # Both commands retain the selected source state; the recipient is a
+        # separate caller-owned workspace, not a different runtime endpoint.
+        recipient = caller / 'recipient-workspace'
+        (recipient / '.agentwheel').mkdir(parents=True, mode=0o700)
+        write_json(recipient / '.agentwheel/config.json', {
+            'schemaVersion': 4, 'packages': [],
+            'mutationPolicy': {'reason': 'required', 'journal': 'required', 'revisioning': {'mode': 'off'}}})
+        artifact = installed_skill.parent
+        artifact_before = tree_snapshot(artifact)
+        manifest_before = json.loads(manifests[0].read_text())
+        selected_entries = [entry for entry in manifest_before['entries']
+                            if entry['artifactType'] == 'skills' and entry['artifactName'] == 'fixture']
+        require(len(selected_entries) == 1, 'Expected exactly one handoff claim')
+        original_owner = selected_entries[0]['workspaceOwner']
+        selected_path = selected_entries[0]['path']
+        graph_paths = sorted((workspace / '.agentwheel/locks').rglob('*.graph-lock.json'))
+        require(graph_paths, 'Expected caller graph-lock provenance before handoff')
+        graph_before = {str(path): path.read_bytes() for path in graph_paths}
+        source_locks = {str(path): path.read_bytes() for path in
+                        (service_home / '.agentwheel').glob('*.source-lock.json')}
+        audit_directory = workspace / '.agentwheel/ownership-handoffs'
+        audits_before = set(audit_directory.glob('*.json'))
+        for old_workspace, new_workspace in ((workspace, recipient), (recipient, workspace)):
+            handoff = aw + ['ownership', 'handoff', 'skills/fixture', *scope,
+                            '--source-state-key', key,
+                            '--from-workspace-root', str(old_workspace),
+                            '--to-workspace-root', str(new_workspace), '--json']
+            runtime_before_review = tree_snapshot(service_home)
+            reviewed = json.loads(run(handoff + ['--dry-run'], cwd=workspace, env=env).stdout)
+            require(tree_snapshot(service_home) == runtime_before_review, 'Handoff dry-run wrote to target')
+            require(reviewed['targetRoot'] == str(service_home)
+                    and reviewed['stateKey'] == key and reviewed['path'] == selected_path,
+                    'Handoff plan selected a different endpoint, manifest or artifact')
+            expected_identity = {'user': user, 'uid': identity.pw_uid, 'gid': identity.pw_gid,
+                                 'home': str(service_home), 'root': str(service_home)}
+            require(reviewed['transport']['identity'] == expected_identity, 'Handoff did not pin service identity')
+            fields = [('planDigest', '--plan-digest'),
+                      ('manifestInventoryRevision', '--expected-inventory-revision'),
+                      ('artifactHash', '--expected-hash'), ('manifestRevision', '--expected-revision')]
+            flags = []
+            for field, flag in fields:
+                value = reviewed.get(field)
+                require(isinstance(value, str) and len(value) == 64
+                        and all(character in '0123456789abcdef' for character in value),
+                        f'Missing reviewed handoff field: {field}')
+                flags.extend([flag, value])
+            applied = json.loads(run(handoff + flags, cwd=workspace, env=env).stdout)
+            require(applied == reviewed, 'Applied handoff differed from its exact reviewed plan')
+            require(tree_snapshot(artifact) == artifact_before, 'Ownership handoff changed runtime bytes/modes/UID/GID')
+            current = json.loads(manifests[0].read_text())
+            transferred = [entry for entry in current['entries'] if entry['path'] == selected_path]
+            require(len(transferred) == 1
+                    and transferred[0]['workspaceOwner'] == 'workspace-root:' + str(new_workspace),
+                    'Service manifest claim did not transfer to the reviewed workspace')
+        require(json.loads(manifests[0].read_text())['entries'] == manifest_before['entries'],
+                'Round-trip handoff did not restore every original claim')
+        require(original_owner == 'workspace-root:' + str(workspace), 'Unexpected original workspace owner')
+        new_audits = set(audit_directory.glob('*.json')) - audits_before
+        require(len(new_audits) == 2, 'Expected one caller audit per handoff')
+        for audit in new_audits:
+            info = audit.stat()
+            require(info.st_uid == os.geteuid() and info.st_uid != identity.pw_uid
+                    and stat.S_IMODE(info.st_mode) == 0o600, 'Handoff audit has wrong caller owner/mode')
+            denied = run(['/usr/bin/sudo', '-n', '-u', user, '--', '/usr/bin/test', '-r', audit],
+                         cwd=base, env=env, expected=None)
+            require(denied.returncode != 0, 'Service user could read a private caller handoff audit')
+        require({str(path): path.read_bytes() for path in graph_paths} == graph_before,
+                'Handoff changed caller graph provenance')
+        require({str(path): path.read_bytes() for path in
+                 (service_home / '.agentwheel').glob('*.source-lock.json')} == source_locks,
+                'Handoff changed service source-lock provenance')
+        final_before = tree_snapshot(service_home)
+        final_plan = json.loads(run(aw + ['install', *scope, '--dry-run', '--format', 'json'],
+                                    cwd=workspace, env=env).stdout)
+        require(not final_plan['applied'] and len(final_plan['targets']) == 1
+                and final_plan['targets'][0]['summary']['skip'] == 2
+                and not final_plan['targets'][0]['hasBlockingChanges'], 'Round-trip replan was not a no-op')
+        require(all(final_plan['targets'][0]['summary'][name] == 0 for name in
+                    ('create', 'update', 'remove', 'drift', 'conflict', 'plugin')),
+                'Round-trip left pending runtime changes')
+        require(tree_snapshot(service_home) == final_before, 'Final round-trip replan wrote to runtime')
+        require(tree_snapshot(pack) == source_before and tree_snapshot(sibling) == sibling_before,
+                'Ownership round-trip changed source or sibling state')
+
+        # Release is an explicit final metadata-only action. Do not reinstall
+        # afterward: retaining the runtime bytes without a claim is intentional.
+        release = aw + ['ownership', 'release-claim', 'skills/fixture', *scope,
+                        '--state-key', key, '--from-workspace-root', str(workspace),
+                        '--path', selected_path, '--json']
+        release_before = tree_snapshot(service_home)
+        reviewed_release = json.loads(run(release, cwd=workspace, env=env).stdout)
+        require(tree_snapshot(service_home) == release_before, 'Release dry-run wrote to runtime')
+        released = json.loads(run(release + ['--apply', '--plan-digest', reviewed_release['planDigest'],
+                                             '--expected-source-revision', reviewed_release['source']['revision'],
+                                             '--expected-inventory-revision', reviewed_release['manifestInventoryRevision']],
+                                  cwd=workspace, env=env).stdout)
+        require(released['applied'] and released['retainedEntries'] == 1, 'Reviewed claim release did not apply exactly')
+        require(tree_snapshot(artifact) == artifact_before, 'Claim release changed runtime bytes/modes/UID/GID')
+        expected_entries = [entry for entry in manifest_before['entries'] if entry['path'] != selected_path]
+        require(json.loads(manifests[0].read_text())['entries'] == expected_entries,
+                'Claim release changed unrelated settings ownership')
+        release_audit = Path(released['auditPath'])
+        require(release_audit.parent == workspace / '.agentwheel/ownership-releases'
+                and release_audit.stat().st_uid == os.geteuid()
+                and stat.S_IMODE(release_audit.stat().st_mode) == 0o600, 'Release audit was not caller-private')
+        denied = run(['/usr/bin/sudo', '-n', '-u', user, '--', '/usr/bin/test', '-r', release_audit],
+                     cwd=base, env=env, expected=None)
+        require(denied.returncode != 0, 'Service user could read the private caller release audit')
+        require({str(path): path.read_bytes() for path in graph_paths} == graph_before
+                and {str(path): path.read_bytes() for path in
+                     (service_home / '.agentwheel').glob('*.source-lock.json')} == source_locks,
+                'Claim release changed source graph/lock provenance')
+
         print('PASS: sudo/explicit Node/Python transport, private source, service validation, '
               'unrelated UID snapshot read/list denial, '
-              'ownership/modes, manifest partitioning, status and read-only no-op replan', flush=True)
+              'ownership/modes, manifest partitioning, status, reviewed handoff round-trip/no-op replan and claim release', flush=True)
     except Exception as error:
         failure = error
     finally:

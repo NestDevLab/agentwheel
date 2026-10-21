@@ -1,13 +1,15 @@
+import { createHash } from "node:crypto";
+import { canonicalJson, ownershipRunAsEndpoint } from "./ownership-retire-stale.js";
 import { applyAuditedOwnershipHandoff } from "./ownership-handoff-audit.js";
 import { activeMutationMetadata } from "../mutation/coordinator.js";
 import { resolve } from "node:path";
-import { readInstallManifest, writeInstallManifest } from "../install/manifest.js";
+import { computeInstallManifestInventoryRevision, readInstallManifest, writeInstallManifest } from "../install/manifest.js";
 import { stateKeyFor, type InstallStateScope } from "../install/paths.js";
 import { assertExactMergeContribution, hasMergeRemovalContent } from "../install/merge-removal.js";
 import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
 import { defaultInstallationType } from "../model/adapter.js";
 import type { InstallManifestEntry } from "../model/manifest.js";
-import { acquireApplyLock, assertGovernedRuntimeTransportSupported, listApplyJournals } from "../install/transaction.js";
+import { acquireApplyLock, assertGovernedRuntimeTransportSupported, listApplyJournals, observeOwnershipRuntime } from "../install/transaction.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
@@ -31,6 +33,8 @@ export interface OwnershipHandoffRequest extends InstallStateScope {
   toFleetId?: string;
   expectedHash?: string;
   expectedRevision?: string;
+  planDigest?: string;
+  expectedInventoryRevision?: string;
   // plain files/dirs only, the manifest keeps the recorded hash
   carryDrift?: boolean;
   expectedRuntimeHash?: string;
@@ -50,6 +54,10 @@ export interface OwnershipHandoffPlan {
   manifestRevision: string;
   fromOwner: string;
   toOwner: string;
+  planDigest?: string;
+  manifestInventoryRevision?: string;
+  runtimeSnapshotDigest?: string;
+  transport?: ReturnType<typeof ownershipRunAsEndpoint>;
 }
 
 export const unknownWorkspaceOwner = "workspace:unknown";
@@ -62,7 +70,15 @@ export async function applyArtifactOwnershipHandoff(request: OwnershipHandoffReq
   if (!request.expectedHash || !request.expectedRevision) {
     throw new Error("Applying an ownership handoff requires expectedHash and expectedRevision from a reviewed dry-run.");
   }
-  if (request.workspaceRoot || activeMutationMetadata()) {
+  if (request.transport?.kind === "local-run-as") {
+    if (!request.workspaceRoot && !activeMutationMetadata()) throw new Error("Run-as ownership handoff requires a caller-owned governed workspace.");
+    if (!request.planDigest || !request.expectedInventoryRevision) {
+      throw new Error("Run-as ownership handoff requires reviewed planDigest and expectedInventoryRevision.");
+    }
+    assertSha256(request.planDigest, "reviewed plan digest");
+    assertSha256(request.expectedInventoryRevision, "expected inventory revision");
+  }
+  if (request.workspaceRoot || activeMutationMetadata() || request.transport?.kind === "local-run-as") {
     return applyAuditedOwnershipHandoff(request, validateOwnershipHandoff);
   }
   const transport = request.transport ?? localTransport;
@@ -114,6 +130,7 @@ async function validateOwnershipHandoff(
   request: OwnershipHandoffRequest,
   transport: TargetTransport,
 ): Promise<OwnershipHandoffPlan> {
+  const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
   if (request.expectedHash) assertSha256(request.expectedHash, "expected artifact hash");
   if (request.expectedRevision) assertSha256(request.expectedRevision, "expected manifest revision");
   if (request.expectedRuntimeHash) {
@@ -165,7 +182,11 @@ async function validateOwnershipHandoff(
     throw new Error(`Runtime hash precondition failed for ${entry.path}: the artifact is no longer drifted`);
   }
 
-  return {
+  const observation = endpoint ? await observeOwnershipRuntime(destPath, transport) : undefined;
+  if (observation && observation.kind !== entry.kind) throw new Error(`Runtime kind differs from the reviewed ownership claim at ${entry.path}.`);
+  const manifestInventoryRevision = endpoint ? await computeInstallManifestInventoryRevision(request.targetRoot, undefined, transport) : undefined;
+  const plan = {
+    ...(endpoint ? { transport: endpoint, runtimeSnapshotDigest: observation!.snapshotDigest, manifestInventoryRevision } : {}),
     adapter: request.adapter,
     installationType: request.installationType,
     stateKey: request.stateKey,
@@ -179,6 +200,15 @@ async function validateOwnershipHandoff(
     fromOwner,
     toOwner,
   };
+  if (!endpoint) return plan;
+  const planDigest = createHash("sha256").update(canonicalJson(plan)).digest("hex");
+  if (request.expectedInventoryRevision && request.expectedInventoryRevision !== manifestInventoryRevision) {
+    throw new Error("Stale ownership handoff manifest inventory; replan required.");
+  }
+  if (request.planDigest && request.planDigest !== planDigest) {
+    throw new Error("Stale ownership handoff plan digest, runtime snapshot or service identity; replan required.");
+  }
+  return { ...plan, planDigest };
 }
 
 async function verifiedEntryHash(

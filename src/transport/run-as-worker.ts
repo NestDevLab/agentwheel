@@ -14,7 +14,7 @@ const relativePath = z.string().min(1).max(4096).refine((path) => path === "." |
   && !path.includes("\\") && !path.includes("\0") && path.split("/").every((part) => part !== "" && part !== "." && part !== "..")), { message: "Run-as path is not a contained relative path." });
 const requestSchema = z.object({
   version: z.literal(1),
-  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
+  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
   path: relativePath,
   validatorRoot: z.string().optional(), validationSnapshot: z.string().optional(), content: z.string().optional(), source: relativePath.optional(), payload: z.unknown().optional(),
 }).strict();
@@ -61,8 +61,8 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
   const fs = (operation: string, fields: Record<string, unknown> = {}) => filesystem(root, uid, gid, { operation, path: request.path, ...fields });
   if (["pathExists", "listDir", "mkdirExclusive", "rm", "probe"].includes(request.operation)) return fs(request.operation);
   if (request.operation === "readFile") return Buffer.from(String(await fs("readFile")), "base64").toString("utf8");
-  if (request.operation === "hashPath" || request.operation === "ownershipSnapshot") {
-    const entries = z.array(snapshotEntrySchema).min(1).max(4096).parse(await fs("snapshot", { includeIgnored: request.operation === "ownershipSnapshot" }));
+  if (request.operation === "hashPath" || request.operation === "ownershipSnapshot" || request.operation === "ownershipObservation") {
+    const entries = z.array(snapshotEntrySchema).min(1).max(4096).parse(await fs("snapshot", { includeIgnored: request.operation !== "hashPath" }));
     if (request.operation === "hashPath") {
       const staged = entries.map((entry) => entry.kind === "dir"
         ? { path: entry.path, kind: "dir" as const, mode: 0o700 as const }
@@ -79,7 +79,8 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
     };
     if (entries[0]!.path !== "") throw new Error("Invalid ownership snapshot root.");
     visit(entries[0]!);
-    return hash.digest("hex");
+    const snapshotDigest = hash.digest("hex");
+    return request.operation === "ownershipObservation" ? { kind: entries[0]!.kind, snapshotDigest } : snapshotDigest;
   }
   if (request.operation === "copy") {
     const payload = validateRunAsCopyPayload(request.payload);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.0
+
+- Enable confined Linux service-user installs, uninstalls and receipt-linked recovery with hash-checked byte staging, directory durability and private default modes.
+- Limit service commands to trusted OpenClaw config validation, using caller-owned snapshots shared only with the intended UID through POSIX ACLs; reject includes, programmatic adapters and reloads.
+- Add reviewed service-user ownership adoption, retirement, release and audited handoff with full identity, inventory and runtime snapshot guards; keep audits and recovery receipts caller-owned.
+- Support same-fleet ownership normalization within one service endpoint, with private caller journals, guarded recovery and unchanged runtime bytes. Keep cross-account normalization unsupported.
+
 ## 0.21.7
 
 - Inherit authenticated containing-Fleet mutation policy without weakening required reasons, journals or no-commit restrictions.

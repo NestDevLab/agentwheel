@@ -2,12 +2,16 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   computeInstallManifestInventoryRevision,
+  listInstallManifests,
   readInstallManifest,
 } from "../install/manifest.js";
 import { commitManifestMetadataJournal } from "../install/apply.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
 import {
   acquireApplyLock,
+  assertOwnershipMetadataTransportSupported,
+  observeOwnershipRuntime,
+  type MetadataStateGuards,
   listAllApplyJournals,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
@@ -47,6 +51,7 @@ export interface RetireStaleOwnershipEntry {
   destinationEntryDigest: string;
   runtimeHash: string;
   coverage: "exact" | "abandoned-incomplete-merge";
+  runtimeSnapshotDigest?: string;
 }
 
 export interface RetireStaleOwnershipPlan {
@@ -58,6 +63,8 @@ export interface RetireStaleOwnershipPlan {
   manifestInventoryRevision: string;
   selected: RetireStaleOwnershipEntry[];
   planDigest: string;
+  transport?: ReturnType<typeof ownershipRunAsEndpoint>;
+  metadataGuards?: MetadataStateGuards;
 }
 
 export interface RetireStaleOwnershipResult extends RetireStaleOwnershipPlan {
@@ -77,6 +84,7 @@ export async function applyRetireStaleOwnership(
 ): Promise<RetireStaleOwnershipResult> {
   assertApplyPreconditions(request);
   const transport = request.transport ?? localTransport;
+  assertOwnershipMetadataTransportSupported(transport);
   const lock = await acquireApplyLock(request.targetRoot, request.adapter, transport, {}, {
     installationType: request.installationType,
     stateKey: request.destinationStateKey,
@@ -115,6 +123,7 @@ export async function applyRetireStaleOwnership(
       operations: [],
       completed: [],
       manifest: { ...source, entries: retained },
+      ...(current.metadataGuards ? { metadataGuards: current.metadataGuards } : {}),
     };
     await writeApplyJournal(journal, transport);
     await commitManifestMetadataJournal(journal, transport);
@@ -134,6 +143,7 @@ async function observe(
   transport: TargetTransport,
 ): Promise<RetireStaleOwnershipPlan> {
   const normalized = normalizeRequest(request);
+  const endpoint = ownershipRunAsEndpoint(transport, normalized.targetRoot);
   const source = await requireManifest(normalized, normalized.sourceStateKey, transport, "source");
   const destination = await requireManifest(normalized, normalized.destinationStateKey, transport, "destination");
   const sourceOwner = workspaceOwnerForRoot(normalized.fromWorkspaceRoot, normalized.fromFleetId);
@@ -166,11 +176,14 @@ async function observe(
     const runtimeHash = coverage === "abandoned-incomplete-merge"
       ? await transport.hashPath(containedArtifactPath(normalized.targetRoot, destinationEntry.path))
       : await verifyManifestEntryRuntime(normalized.targetRoot, destinationEntry, transport);
+    const observation = endpoint ? await observeOwnershipRuntime(containedArtifactPath(normalized.targetRoot, destinationEntry.path), transport) : undefined;
+    if (observation && observation.kind !== destinationEntry.kind) throw new Error(`Runtime kind differs from destination ownership at ${destinationEntry.path}.`);
     selected.push({
       path: sourceEntry.path,
       sourceEntryDigest: entryDigest(sourceEntry),
       destinationEntryDigest: entryDigest(destinationEntry),
       runtimeHash,
+      ...(observation ? { runtimeSnapshotDigest: observation.snapshotDigest } : {}),
       coverage,
     });
   }
@@ -181,7 +194,13 @@ async function observe(
     throw new Error("No stale source ownership entries match an exact path in the destination Fleet manifest.");
   }
 
+  const inventory = endpoint ? await listInstallManifests(normalized.targetRoot, undefined, transport) : undefined;
   const withoutDigest = {
+    ...(endpoint ? { transport: endpoint } : {}),
+    ...(inventory ? { metadataGuards: {
+      inventory: inventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
+      runtime: selected.map((entry) => ({ path: entry.path, hash: entry.runtimeHash, snapshotDigest: entry.runtimeSnapshotDigest! })),
+    } } : {}),
     adapter: normalized.adapter,
     installationType: normalized.installationType,
     targetRoot: normalized.targetRoot,
@@ -206,7 +225,7 @@ async function observe(
     },
     manifestInventoryRevision: await computeInstallManifestInventoryRevision(
       normalized.targetRoot,
-      normalized.adapter,
+      endpoint ? undefined : normalized.adapter,
       transport,
     ),
     selected,
@@ -403,4 +422,20 @@ export function canonicalJson(value: unknown): string {
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).filter((key) => record[key] !== undefined).sort()
     .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+/** A reviewed run-as plan binds all account fields and one exact runtime root. */
+export function ownershipRunAsEndpoint(transport: TargetTransport, targetRoot: string) {
+  if (transport.kind !== "local-run-as") return undefined;
+  const identity = transport.runAsIdentity;
+  if (!identity || !identity.user || identity.user === "root"
+    || !Number.isSafeInteger(identity.uid) || identity.uid <= 0
+    || !Number.isSafeInteger(identity.gid) || identity.gid < 0
+    || !identity.home.startsWith("/") || resolve(identity.home) !== identity.home
+    || !identity.root.startsWith("/") || identity.root === "/" || resolve(identity.root) !== identity.root
+    || identity.root !== resolve(targetRoot) || !transport.ownershipObservation) {
+    throw new Error("Run-as ownership requires a pinned same-endpoint identity and full runtime observation.");
+  }
+  return { kind: "local-run-as" as const, description: transport.description,
+    identity: { user: identity.user, uid: identity.uid, gid: identity.gid, home: identity.home, root: identity.root } };
 }

@@ -13,6 +13,8 @@ import { installManifestPath } from "../install/paths.js";
 import type { InstallPlan } from "../install/plan.js";
 import {
   acquireApplyLock,
+  assertOwnershipMetadataTransportSupported,
+  observeOwnershipRuntime,
   listAllApplyJournals,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
@@ -30,7 +32,7 @@ import { localTransport, type TargetTransport } from "../transport/index.js";
 import { pathExists } from "../utils/fs.js";
 import { findLegacyNamedLocks, lockCoversEntry, type HistoricalLock } from "./legacy-recovery-plan.js";
 import { containedArtifactPath, verifyManifestEntryRuntime } from "./ownership.js";
-import { assertExpected, canonicalJson, entryDigest, exactStateKey, requireManifest } from "./ownership-retire-stale.js";
+import { assertExpected, canonicalJson, entryDigest, exactStateKey, requireManifest, ownershipRunAsEndpoint } from "./ownership-retire-stale.js";
 
 export interface AdoptLegacyDesiredArtifact {
   path: string;
@@ -102,6 +104,7 @@ export interface AdoptLegacyOwnershipPlan {
   desiredCoverage: Array<Pick<AdoptLegacyDesiredArtifact, "path" | "artifactType" | "artifactName" | "kind" | "mode" | "logicalSelector">>;
   planDigest: string;
   metadataGuards?: MetadataStateGuards;
+  transport?: ReturnType<typeof ownershipRunAsEndpoint>;
 }
 
 export interface AdoptLegacyOwnershipResult extends AdoptLegacyOwnershipPlan {
@@ -138,9 +141,9 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
   const transport = request.transport ?? localTransport;
   const targetRoot = resolve(request.targetRoot);
   const installationType = request.installationType.trim();
-  if (transport.kind !== "local") throw new Error("Legacy ownership adoption requires a local filesystem transport.");
+  assertOwnershipMetadataTransportSupported(transport);
   const beforeLock = await readInstallManifest(targetRoot, request.adapter, transport, { installationType, stateKey: request.sourceStateKey });
-  if (beforeLock?.entries.some((entry) => entry.mode === "managed-block")) {
+  if (transport.kind === "local" && beforeLock?.entries.some((entry) => entry.mode === "managed-block")) {
     await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
   }
   // apply lock is per root + adapter + installation type, so it covers both state keys
@@ -262,6 +265,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     throw new Error("Legacy ownership adoption does not support SSH targets; legacy SSH state does not prove its endpoint.");
   }
   const input = await normalizeRequest(request);
+  const endpoint = ownershipRunAsEndpoint(transport, input.targetRoot);
   const { targetRoot, adapter, installationType } = input;
   await assertNoPendingJournals(targetRoot, adapter, transport);
 
@@ -288,9 +292,6 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   const selectedPaths = new Set(selectedEntries.map((entry) => entry.path));
   const hasManagedBlock = selectedEntries.some((entry) => entry.mode === "managed-block");
   if (hasManagedBlock && request.carryDrift) throw new Error("--carry-drift is forbidden for managed instruction block adoption.");
-  if (hasManagedBlock && transport.kind !== "local" && !transport.ownershipSnapshot) {
-    throw new Error("Legacy ownership planning requires a service-user runtime snapshot for managed blocks.");
-  }
   const selected: AdoptLegacyOwnershipEntry[] = [];
   for (const entry of selectedEntries) {
     const runtimePath = containedArtifactPath(targetRoot, entry.path);
@@ -301,7 +302,10 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     if (managedBlock && managedBlock.hash !== entry.hash) {
       throw new Error(`Managed instruction block hash differs from its recorded manifest hash at ${entry.path}; adoption is refused.`);
     }
-    const runtimeSnapshotDigest = hasManagedBlock ? (transport.kind === "local" ? await ownershipRuntimeSnapshot(runtimePath) : await transport.ownershipSnapshot!(runtimePath)) : undefined;
+    const observation = endpoint ? await observeOwnershipRuntime(runtimePath, transport) : undefined;
+    if (observation && observation.kind !== entry.kind) throw new Error(`Runtime kind differs from the reviewed claim at ${entry.path}.`);
+    const runtimeSnapshotDigest = observation?.snapshotDigest
+      ?? (hasManagedBlock ? await ownershipRuntimeSnapshot(runtimePath) : undefined);
     const runtimeHash = await transport.pathExists(runtimePath) ? await transport.hashPath(runtimePath) : null;
     const drift = managedBlock ? false : runtimeHash !== entry.hash;
     if (drift && request.carryDrift !== true) {
@@ -334,12 +338,12 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     });
   }
 
-  const guardedInventory = hasManagedBlock ? await listInstallManifests(targetRoot, undefined, transport) : undefined;
+  const guardedInventory = hasManagedBlock || endpoint ? await listInstallManifests(targetRoot, undefined, transport) : undefined;
   if (guardedInventory) {
     for (const item of guardedInventory) {
       // Run-as manifest reads already reject symlink components inside the worker.
       if (transport.kind === "local") await assertNoSymlinkPath(item.path);
-      for (const other of item.manifest.entries) {
+      if (hasManagedBlock) for (const other of item.manifest.entries) {
         const otherPath = containedArtifactPath(targetRoot, other.path);
         for (const entry of selectedEntries) {
           const path = containedArtifactPath(targetRoot, entry.path);
@@ -374,7 +378,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   }
 
   const withoutDigest = {
-    ...(transport.kind === "local-run-as" ? { transport: { kind: transport.kind, description: transport.description } } : {}),
+    ...(endpoint ? { transport: endpoint } : {}),
     adapter,
     installationType,
     targetRoot,
@@ -393,7 +397,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
       owner: input.destinationOwner,
       workspaceRoot: input.workspaceRoot,
     },
-    manifestInventoryRevision: await computeInstallManifestInventoryRevision(targetRoot, hasManagedBlock ? undefined : adapter, transport),
+    manifestInventoryRevision: await computeInstallManifestInventoryRevision(targetRoot, hasManagedBlock || endpoint ? undefined : adapter, transport),
     selected: selected.sort((left, right) => left.path.localeCompare(right.path)),
     retained: retained.sort((left, right) => left.path.localeCompare(right.path) || left.owner.localeCompare(right.owner)),
     remainingDuplicates: remainingDuplicates.sort((left, right) =>

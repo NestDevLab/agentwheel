@@ -62,8 +62,16 @@ Agentwheel accepts `transport: "local-run-as"` on a named Linux agent with a
 required `runAs` account. Home-rooted mappings use that account's passwd home;
 the absolute install root must equal it and have the pinned account's UID/GID.
 Plans, status, install, uninstall and durable journal recovery use a service-user
-worker. Ownership adoption previews remain available; adoption apply and Fleet
-normalization require the separate migration support.
+worker. Reviewed ownership adoption, stale-claim retirement, claim release and
+audited handoff use the same confined transport. Every run-as migration binds
+the complete account identity, manifest inventory, runtime bytes and full mode
+snapshot to its reviewed digest, then checks those guards under the apply lock.
+A caller-owned durable mutation receipt is required before metadata writes;
+audits remain private caller-side files. Fleet normalization supports same-fleet
+ownership handoff within one configured service endpoint; cross-fleet and
+cross-account normalization remain unsupported. Caller normalization journals
+are private, durable and checked against service write access through ancestor
+permissions, supplementary groups and POSIX ACLs before recovery.
 
 Requirements are Linux 5.6+ with `openat2`, a supported 64-bit architecture
 (x86-64, AArch64 or RISC-V), Python 3 and noninteractive sudo. The immutable Node
@@ -78,7 +86,9 @@ an opened directory inode or changing installed content after a write.
 Caller-owned source staging supplies bounded bytes and planned hashes, never
 source paths or credentials. Sources must have trusted, stable ancestors.
 Files default to `0600` and directories to `0700`; backup/rollback preserves
-existing modes. Symlinks, hardlinks, special files, malformed entry trees and
+existing safe modes. Ownership snapshots include all permission bits; backup
+and restore reject privileged permission bits rather than silently stripping
+them. Symlinks, hardlinks, special files, malformed entry trees and
 snapshots over 8 MiB, 4096 entries or 64 path components are rejected. Target
 manifests, locks, backups and journals belong to the service user; source graph
 locks and governed receipts remain in the caller workspace. Recovery revalidates

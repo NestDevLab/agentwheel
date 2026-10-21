@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/local-run-as-apply"
+  ],
+  "claimed_at": "2026-10-21T08:14:29+00:00",
+  "coordination_id": "default",
+  "operation_token": "cfcfbe0d-9a04-4d19-8fba-0f4a25345d4b",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/local-run-as-apply",
+  "syncwheel_version": "0.46.8"
+}

@@ -121,6 +121,26 @@ describe("local run-as read transport", () => {
     expect(() => createRunAsTransport(identity(root), async () => ({ stdout: "" }), "/fixed/worker", "node")).toThrow(/must be absolute/);
   });
 
+  it("makes immutable validation snapshots readable despite restrictive caller umask", async () => {
+    const root = await fixture(), node = await trustedNodeFixture(root), service = distinctServiceIdentity(root);
+    let snapshot: string | undefined;
+    const runner: RunAsRunner = async (_command, _args, input) => {
+      if (!input) return { stdout: String(service.uid) };
+      const request = JSON.parse(input);
+      if (request.operation === "validateOpenClawConfig") {
+        snapshot = request.validationSnapshot;
+        expect(statSync(snapshot!).mode & 0o777).toBe(0o444);
+      }
+      return { stdout: JSON.stringify({ version: 1, result: request.operation === "readFile" ? "{}" : request.operation === "probe" ? true : null }) };
+    };
+    const transport = createRunAsTransport(service, runner, "/fixed/worker", node);
+    const oldMask = process.umask(0o077);
+    try { await transport.validateOpenClawConfig!(join(root, "candidate.json")); }
+    finally { process.umask(oldMask); }
+    expect(snapshot).toBeDefined();
+    expect(() => statSync(snapshot!)).toThrow(/ENOENT/);
+  });
+
   it("times out stalled child processes with and without request input", async () => {
     const args = ["-e", "setInterval(() => {}, 1000)"];
     for (const input of [undefined, "request"]) {

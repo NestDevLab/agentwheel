@@ -166,6 +166,7 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
       try {
         const snapshot = join(directory, "openclaw.json");
         writeFileSync(snapshot, content, { mode: 0o444, flag: "wx" });
+        chmodSync(snapshot, 0o444);
         chmodSync(directory, 0o711);
         await run("validateOpenClawConfig", path, {
           validatorRoot: process.env.AGENTWHEEL_RUN_AS_OPENCLAW_ROOT ?? "/usr/local/lib/node_modules/openclaw",

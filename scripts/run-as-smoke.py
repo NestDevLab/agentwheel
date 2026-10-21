@@ -76,6 +76,24 @@ def smoke(args):
         caller_home, workspace, pack = (caller / name for name in ('home', 'workspace', 'pack'))
         for path in (caller_home, workspace, pack):
             path.mkdir(mode=0o700)
+        # Hosted toolcache/checkouts may use group-writable modes. Provision
+        # immutable root-owned test tooling instead of weakening code trust.
+        tools = base / 'trusted-tools'
+        tools.mkdir(mode=0o755)
+        tools.chmod(0o755)
+        isolated_node = tools / 'node'
+        shutil.copyfile(node, isolated_node)
+        isolated_node.chmod(0o755)
+        node = isolated_node
+        distribution = caller / 'dist'
+        distribution.mkdir(mode=0o700)
+        for name in ('index.js', 'run-as-worker.js', 'run-as-fs.py'):
+            shutil.copyfile(cli.parent / name, distribution / name)
+            (distribution / name).chmod(0o644)
+        # The caller CLI keeps its external dependencies; the service worker
+        # is standalone and never traverses this private caller directory.
+        (caller / 'node_modules').symlink_to(cli.parent.parent / 'node_modules', target_is_directory=True)
+        cli = distribution / 'index.js'
         env = {'AGENTWHEEL_RUN_AS_NODE': str(node), 'HOME': str(caller_home), 'XDG_CONFIG_HOME': str(caller_home / '.config'),
                'XDG_CACHE_HOME': str(caller_home / '.cache'),
                'XDG_STATE_HOME': str(caller_home / '.local/state'),
@@ -101,7 +119,7 @@ def smoke(args):
         settings = pack / 'settings/openclaw.json'
         settings.parent.mkdir(mode=0o700)
         reference = '${AW_SMOKE_EXTERNAL_VALUE}'
-        write_json(settings, {'env': {'vars': {'AW_SMOKE_REFERENCE': reference}}})
+        write_json(settings, {'env': {'vars': {'AW_SMOKE_REFERENCE': '${secret:AW_SMOKE_EXTERNAL_VALUE}'}}})
         write_json(pack / 'openpack.json', {
             'schemaVersion': 2, 'name': 'smoke/run-as', 'version': '1.0.0',
             'provides': [{'type': 'skills', 'path': 'skills'},
@@ -119,6 +137,7 @@ def smoke(args):
         # Caller-owned immutable package, separate from the service's home.
         validator_root = base / 'validator'
         validator_root.mkdir(mode=0o755)
+        validator_root.chmod(0o755)
         env['AGENTWHEEL_RUN_AS_OPENCLAW_ROOT'] = str(validator_root)
         validator = validator_root / 'openclaw.mjs'
         validator.write_text("""import fs from 'node:fs';
@@ -198,7 +217,7 @@ console.log(JSON.stringify({valid: true}));
         require(tree_snapshot(sibling) == sibling_before, 'Sibling sentinel changed')
         require(not (caller_home / '.openclaw').exists() and not (workspace / '.openclaw').exists(),
                 'Unexpected caller-side runtime output')
-        require({path.name for path in base.iterdir()} == {'caller', 'service-home', 'untouched-sibling', 'validator'},
+        require({path.name for path in base.iterdir()} == {'caller', 'service-home', 'untouched-sibling', 'validator', 'trusted-tools'},
                 'Unexpected sibling runtime output')
         print('PASS: sudo/explicit Node/Python transport, private source, service validation, '
               'ownership/modes, manifest partitioning, status and read-only no-op replan', flush=True)

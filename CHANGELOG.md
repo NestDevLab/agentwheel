@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.1
+
+- Add `ownership handoff --from-fleet` to select an exact fleet-qualified source owner, with symmetric registered fleet and workspace-root validation.
+- Support plain-to-fleet-to-plain ownership handoffs while preserving runtime bytes, modes, merged contributions, managed instruction blocks, sibling claims and existing review guards.
+
 ## 0.22.0
 
 - Enable confined Linux service-user installs, uninstalls and receipt-linked recovery with hash-checked byte staging, directory durability and private default modes.

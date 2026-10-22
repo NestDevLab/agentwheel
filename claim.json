@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/retire-stale-target-scope"
+  ],
+  "claimed_at": "2026-10-22T09:14:22+00:00",
+  "coordination_id": "default",
+  "operation_token": "7ec86615-0715-4832-b9f5-8c773fad6ea9",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/retire-stale-target-scope",
+  "syncwheel_version": "0.46.8"
+}

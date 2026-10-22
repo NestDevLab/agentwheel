@@ -1,7 +1,5 @@
 {
-  "changed_refs": {
-    "refs/heads/pr/retire-stale-target-scope": "927737d3b6989949d2af2b00234a88c03f72f5c0"
-  },
+  "changed_refs": {},
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -39,7 +37,7 @@
     "refs/heads/pr/pin-package-declarations": "e2a4bd7711c30a97c7f4656e8bae29a413887102",
     "refs/heads/pr/provider-timeout-bound": "409a76201d089e942c5d566c0027040177c0ccf7",
     "refs/heads/pr/release-0-22-1": "53642b35ee690358a1162f7ffb1882c6d17861b8",
-    "refs/heads/pr/retire-stale-target-scope": "00683892e607803a5af54abb2134d07eeb3dd1e8",
+    "refs/heads/pr/retire-stale-target-scope": "94f67f8d22041df1400898d768525f21414b2ee0",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -58,7 +56,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-22T09:14:22+00:00",
+  "created_at": "2026-10-22T09:24:26+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -180,8 +178,7 @@
         "pin-package-declarations",
         "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
-        "fleet-policy-audited-handoff",
-        "retire-stale-target-scope"
+        "fleet-policy-audited-handoff"
       ],
       "strategy": "cherry-pick"
     },
@@ -282,30 +279,16 @@
         "id": "fleet-policy-audited-handoff",
         "integration_branch": "main-integration",
         "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/retire-stale-target-scope",
-        "commits": [
-          "927737d3b6989949d2af2b00234a88c03f72f5c0"
-        ],
-        "id": "retire-stale-target-scope",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "7ec86615-0715-4832-b9f5-8c773fad6ea9",
-  "parent_state": "ff8811f5c320f820fe03239e519505b0864eef3e",
+  "operation_token": "8ae35673-9418-4951-9040-19f7350001f9",
+  "parent_state": "0738df3ae5c4b01a46992cb2f987bb939aef5eac",
   "projection_status": "partial",
-  "publication_id": "9a098dec-d6b2-4186-98b8-fcad35f907e7",
-  "publication_scope": "partial",
+  "publication_id": "e2e3df6e-b8a0-42e4-91d4-03667e71d0e5",
+  "publication_scope": "close:retire-stale-target-scope",
   "schema_version": 2,
   "syncwheel_version": "0.46.8",
   "tombstones": [
@@ -920,6 +903,14 @@
       "ref": "refs/heads/pr/release-0-22-1",
       "remote_tip": null,
       "stack": "release-0-22-1"
+    },
+    {
+      "branch": "pr/retire-stale-target-scope",
+      "closed_at": "2026-10-22T09:24:17+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/retire-stale-target-scope",
+      "remote_tip": null,
+      "stack": "retire-stale-target-scope"
     }
   ]
 }

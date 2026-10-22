@@ -29,8 +29,7 @@
       "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
-      "fleet-policy-audited-handoff",
-      "release-0-22-1"
+      "fleet-policy-audited-handoff"
     ],
     "strategy": "cherry-pick"
   },
@@ -158,24 +157,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "release-0-22-1",
-      "branch": "pr/release-0-22-1",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "7d4fc1965cd229c6a74ca9a3ac05487f6e17757b"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Release 0.22.1 with symmetric fleet-qualified handoff source selection"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

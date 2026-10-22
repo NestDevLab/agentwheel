@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
@@ -1193,7 +1193,10 @@ ownershipCommand
   .requiredOption("--to-workspace-root <path>", "registered destination Fleet root")
   .requiredOption("--source-state-key <key>", "exact source install-manifest state key")
   .option("--destination-state-key <key>", "exact Fleet-owned destination install-manifest state key (defaults to the stable target state)")
-  .requiredOption("--fleet <id>", "registered destination Fleet")
+  .option("--to-fleet <id>", "registered destination Fleet owner, independent of target workspace scope")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet (also the destination owner unless --to-fleet is set)")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
@@ -1211,18 +1214,48 @@ ownershipCommand
   .option("--json", "print the complete deterministic plan as JSON", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const fleet = await showRegisteredFleet(options.fleet);
+    const destinationFleet = options.toFleet ?? options.fleet;
+    if (!destinationFleet) throw new Error("Stale ownership retirement requires --to-fleet <id> or the legacy --fleet <id> scope.");
+    const fleet = await showRegisteredFleet(destinationFleet);
     const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
     if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
-      throw new Error(`Destination Fleet '${options.fleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+      throw new Error(`Destination Fleet '${destinationFleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+    }
+    const assertDestinationWorkspace = async (workspaceRoot: string, fleetId?: string): Promise<void> => {
+      const fleetRoot = resolve(fleet.root);
+      const canonicalFleetRoot = await realpath(fleetRoot);
+      const within = (root: string, path: string): boolean => {
+        const suffix = relative(root, path);
+        return suffix === "" || (suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix));
+      };
+      if (canonicalFleetRoot !== fleetRoot
+        || (fleetId !== undefined && fleetId !== fleet.id)
+        || !within(fleetRoot, resolve(workspaceRoot))
+        || !within(canonicalFleetRoot, await realpath(workspaceRoot))) {
+        throw new Error(`Resolved target workspace does not belong to destination Fleet '${fleet.id}'.`);
+      }
+    };
+    if (options.toFleet) {
+      // Validate the destination's current registration/config contract as well
+      // as the independently selected caller workspace.
+      await resolveWorkspaceScope({ fleet: fleet.id });
+      // Named run-as target resolution inspects its service root. Validate the
+      // caller workspace scope before resolving any configured runtime target.
+      if (normalizedOptions.targetRoot && !normalizedOptions.workspaceTargetDerived) {
+        await assertDestinationWorkspace(normalizedOptions.targetRoot);
+      }
+      const scope = await resolveCliWorkspaceScope(normalizedOptions);
+      await assertDestinationWorkspace(scope.root, scope.fleetId);
     }
     const targets = await resolveCliTargets(normalizedOptions);
     if (targets.length !== 1) {
       throw new Error(`Stale ownership retirement requires exactly one destination Fleet target, found ${targets.length}.`);
     }
     const target = targets[0]!;
-    if (target.fleetId !== options.fleet || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
-      throw new Error(`Resolved target does not belong to destination Fleet '${options.fleet}'.`);
+    if (options.toFleet) {
+      await assertDestinationWorkspace(target.workspaceRoot, target.fleetId);
+    } else if (target.fleetId !== fleet.id || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
+      throw new Error(`Resolved target does not belong to destination Fleet '${fleet.id}'.`);
     }
     const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
     const adapter = await resolveAdapterForTarget(target, adapterOptions);
@@ -1250,11 +1283,16 @@ ownershipCommand
     const result = options.apply
       ? await applyRetireStaleOwnership(request)
       : await planRetireStaleOwnership(request);
+    const workspaceArgs = options.toFleet
+      ? options.fleet ? ["--fleet", options.fleet]
+        : options.user ? ["--user"]
+          : options.targetRoot ? [] : ["--local"]
+      : ["--fleet", fleet.id];
     const targetArgs = options.profile
       ? ["--profile", options.profile]
       : target.agentName
         ? ["--agent", target.agentName]
-        : ["--adapter", adapter.name, "--target-root", target.targetRoot];
+        : ["--adapter", adapter.name, ...(workspaceArgs.length ? [] : ["--target-root", target.targetRoot])];
     const applyArgs = [
       "agentwheel", "ownership", "retire-stale",
       "--from-workspace-root", request.fromWorkspaceRoot,
@@ -1262,7 +1300,9 @@ ownershipCommand
       "--to-workspace-root", request.toWorkspaceRoot,
       "--source-state-key", request.sourceStateKey,
       "--destination-state-key", request.destinationStateKey,
-      "--fleet", request.toFleetId,
+      ...(options.toFleet ? ["--to-fleet", request.toFleetId] : []),
+      ...workspaceArgs,
+      ...((options.profile || target.agentName) && options.targetRoot ? ["--target-root", normalizedOptions.targetRoot!] : []),
       ...targetArgs,
       "--installation-type", installationType,
       ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),

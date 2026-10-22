@@ -546,6 +546,23 @@ agentwheel ownership retire-stale \
   --fleet <fleet-id> --agent <agent> --json
 ```
 
+To use a target configured in a nested workspace while retiring ownership into its containing
+registered Fleet, run from that workspace and select the destination owner separately:
+
+```bash
+agentwheel ownership retire-stale --local --agent service-agent \
+  --to-fleet <fleet-id> --to-workspace-root <fleet-root> \
+  --from-workspace-root <stale-owner-root> \
+  --source-state-key <stale-state-key> \
+  --destination-state-key <fleet-owned-state-key> --json
+```
+
+`--to-fleet` qualifies the destination owner; `--local`, `--user`, or `--fleet` selects the target
+workspace and its configured transport. The selected workspace must be within the registered
+Fleet root, including after symlink resolution, and cannot identify a different Fleet.
+The original `--fleet <id>` command remains supported for targets configured directly at that
+Fleet root. Neither form changes agent configuration or relaxes contribution and revision guards.
+
 The dry-run still proves exact destination coverage and runtime bytes. Apply only its emitted command,
 which includes the plan, source, destination, and manifest-inventory revisions.
 For duplicate state owned by the same registered Fleet, set both workspace roots to the Fleet root

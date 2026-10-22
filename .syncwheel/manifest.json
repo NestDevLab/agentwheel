@@ -29,8 +29,7 @@
       "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
-      "fleet-policy-audited-handoff",
-      "retire-stale-target-scope"
+      "fleet-policy-audited-handoff"
     ],
     "strategy": "cherry-pick"
   },
@@ -158,24 +157,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "retire-stale-target-scope",
-      "branch": "pr/retire-stale-target-scope",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "927737d3b6989949d2af2b00234a88c03f72f5c0"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Separate stale ownership destination Fleet from target workspace scope"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

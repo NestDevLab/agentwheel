@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/release-0-22-1"
+  ],
+  "claimed_at": "2026-10-22T06:26:26+00:00",
+  "coordination_id": "default",
+  "operation_token": "3e6cfcff-047e-4e1d-b455-7db52a962cf5",
+  "publication_scope": "partial",
+  "source_ref": "refs/heads/pr/release-0-22-1",
+  "syncwheel_version": "0.46.8"
+}

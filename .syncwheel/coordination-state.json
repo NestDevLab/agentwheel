@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/syncwheel/draft/source-scoped-cleanup": "60aa715e0048854ab97af2ec3d3596a9d97a432b"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -53,10 +55,11 @@
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
     "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "ebf2d5ad072e9a6c429e07e1ea568390df1655c2",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0",
+    "refs/heads/syncwheel/draft/source-scoped-cleanup": "e43fded17e59ae79a8688499d064ab362fe1812c",
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-22T09:24:26+00:00",
+  "created_at": "2026-10-24T06:53:35+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -143,6 +146,7 @@
     "refs/heads/syncwheel/draft/released-0-18-2-integration-recovery": "82ac6d171f9ba0320b9125608e0d7fda29544cb5",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "e1f0ec77402b25dfad44c85762e56152a957a3cd",
     "refs/heads/syncwheel/draft/site-card-alignment": "0fe6b7deed0098cee0e1100cb7d2b673c9813bd4",
+    "refs/heads/syncwheel/draft/source-scoped-cleanup": "60aa715e0048854ab97af2ec3d3596a9d97a432b",
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb"
   },
   "manifest": {
@@ -178,7 +182,8 @@
         "pin-package-declarations",
         "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
-        "fleet-policy-audited-handoff"
+        "fleet-policy-audited-handoff",
+        "source-scoped-cleanup"
       ],
       "strategy": "cherry-pick"
     },
@@ -279,16 +284,29 @@
         "id": "fleet-policy-audited-handoff",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "syncwheel/draft/source-scoped-cleanup",
+        "commits": [],
+        "id": "source-scoped-cleanup",
+        "integration_branch": "main-integration",
+        "state": "draft",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "8ae35673-9418-4951-9040-19f7350001f9",
-  "parent_state": "0738df3ae5c4b01a46992cb2f987bb939aef5eac",
+  "operation_token": "5f6a7289-9d7c-4d54-ad45-c77207b3b9c5",
+  "parent_state": "7734afdaa9e76260b260f75568986ba0a49262cc",
   "projection_status": "partial",
-  "publication_id": "e2e3df6e-b8a0-42e4-91d4-03667e71d0e5",
-  "publication_scope": "close:retire-stale-target-scope",
+  "publication_id": "85f80bf0-70a8-4468-806e-e94d37109fa8",
+  "publication_scope": "create:source-scoped-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.46.8",
   "tombstones": [

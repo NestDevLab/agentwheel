@@ -1,11 +1,13 @@
 {
   "changed_refs": [
-    "refs/heads/syncwheel/draft/source-scoped-cleanup"
+    "refs/heads/pr/source-scoped-cleanup"
   ],
-  "claimed_at": "2026-10-24T07:10:30+00:00",
+  "claimed_at": "2026-10-24T07:10:55+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "913cfd5f-1f1b-4d1e-90f0-954389d4a747",
-  "publication_scope": "stack:source-scoped-cleanup",
+  "operation_token": "9a04ad59-5f0a-4a04-a83b-7591dcebfe43",
+  "publication_scope": "promote:source-scoped-cleanup",
+  "reason": "promoted",
   "source_ref": "refs/heads/syncwheel/draft/source-scoped-cleanup",
   "syncwheel_version": "0.46.8"
 }

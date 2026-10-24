@@ -1341,6 +1341,88 @@ describe("CLI verb redesign", () => {
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
   });
 
+  it.each(["install", "update"])("preserves artifacts selected by another root from the same dependency during only-source %s", async (verb) => {
+    const workspace = await tempRoot();
+    const shared = await skillPackageFixture("shared-alpha", "alpha");
+    await mkdir(join(shared, "skills", "shared-beta"), { recursive: true });
+    await writeFile(join(shared, "skills", "shared-beta", "SKILL.md"), "---\nname: shared-beta\ndescription: Shared fixture.\n---\n\n# Beta\n");
+    const rootA = await skillPackageFixture("consumer-a", "A", {
+      requires: { shared: { source: shared, select: ["skills/shared-alpha"] } },
+    });
+    const rootB = await skillPackageFixture("consumer-b", "B", {
+      requires: { shared: { source: shared, select: ["skills/shared-beta"] } },
+    });
+    for (const source of [rootA, rootB]) {
+      await runCli(["add", source, "--adapter", "codex", "--target-root", workspace, "--mode", "tracking"]);
+    }
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    const result = await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
+    const lock = await readTestGraphLock(workspace);
+    expect(lock.canonical.artifacts.some((artifact) => artifact.name === "shared-beta")).toBe(true);
+    const ownerB = lock.canonical.roots.find((root) => root.rootId === "consumer-b")!;
+    expect(lock.canonical.edges.some((edge) => edge.from === ownerB.graphNodeId)).toBe(true);
+    // Applying the same scope twice must not lose the preserved graph contribution.
+    await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
+  });
+
+  it("removes obsolete artifacts exclusively owned by the selected package and its former dependency", async () => {
+    const workspace = await tempRoot();
+    const dependency = await skillPackageFixture("obsolete-dependency", "old dependency");
+    const source = await skillPackageFixture("selected-owner", "selected", {
+      requires: { old: { source: dependency, select: ["skills/obsolete-dependency"] } },
+    });
+    await addSkillToPackage(source, "obsolete-root-skill", "old root skill");
+    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await rm(join(source, "skills", "obsolete-root-skill"), { recursive: true });
+    await writeSkillManifest(source, "selected-owner");
+    const result = await runCli(["install", "selected-owner", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    expect(result.stdout).toContain("REMOVE");
+    for (const name of ["obsolete-root-skill", "obsolete-dependency"]) {
+      await expect(stat(join(workspace, ".agents", "skills", name))).rejects.toThrow();
+      expect((await readCodexManifest(workspace)).entries.some((entry) => entry.artifactName === name)).toBe(false);
+    }
+  });
+
+  it("preserves stale content when its provenance includes an unidentified owner", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("selected-known", "selected");
+    await addSkillToPackage(source, "unidentified-skill", "preserved");
+    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const state = join(workspace, ".agentwheel");
+    const file = (await readdir(state)).find((name) => name.startsWith("codex.local.") && name.endsWith(".install-manifest.json"))!;
+    const manifest = JSON.parse(await readFile(join(state, file), "utf8"));
+    const entry = manifest.entries.find((candidate: TestManifestEntry) => candidate.artifactName === "unidentified-skill");
+    entry.owners.push("unidentified-owner");
+    entry.refCount = entry.owners.length;
+    await writeFile(join(state, file), JSON.stringify(manifest));
+    await rm(join(source, "skills", "unidentified-skill"), { recursive: true });
+    const result = await runCli(["install", "selected-known", "--adapter", "codex", "--target-root", workspace, "--only-source"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "unidentified-skill", "SKILL.md"), "utf8")).resolves.toContain("preserved");
+    expect(manifestEntry(await readCodexManifest(workspace), ".agents/skills/unidentified-skill").owners).toContain("unidentified-owner");
+  });
+
+  it("preserves other packages when installing an explicit source with --only-source", async () => {
+    const workspace = await tempRoot();
+    const alpha = await skillPackageFixture("selected-pack", "selected-v1");
+    const beta = await skillPackageFixture("unrelated-pack", "unrelated-v1");
+    for (const source of [alpha, beta]) {
+      await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    }
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const result = await runCli(["install", alpha, "--adapter", "codex", "--target-root", workspace, "--only-source"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "unrelated-pack", "SKILL.md"), "utf8")).resolves.toContain("unrelated-v1");
+    expect((await readTestGraphLock(workspace)).canonical.roots.map((root) => root.rootId).sort()).toEqual([
+      "selected-pack", "unrelated-pack",
+    ]);
+  });
+
   it("isolates a configured package with --only-source before resolving unrelated packages", async () => {
     const workspace = await tempRoot();
     const source = await skillPackageFixture("only-source-owner", "owner-v1");

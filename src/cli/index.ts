@@ -2974,16 +2974,32 @@ function preserveUnrelatedGraphPackages(
   for (const root of selectedCurrentRoots) {
     if (!previous.canonical.roots.some((candidate) => candidate.rootId === root.rootId)) roots.push(root);
   }
+  // A dependency can be shared by selected and unselected roots. Its old artifacts
+  // and incoming edges remain evidence for the roots that were not resolved.
+  const preservedNodeIds = new Set<string>();
+  if (selectedRootIds.size > 0) {
+    for (const root of previous.canonical.roots) {
+      if (!selectedRootIds.has(root.rootId)) {
+        for (const id of graphRootClosure(previous, root.rootId)) preservedNodeIds.add(id);
+      }
+    }
+  }
+  const replacedOwners = new Set([...selectedPreviousNodeIds].filter((id) => !preservedNodeIds.has(id)));
+  for (const id of selectedRootIds) replacedOwners.add(`workspace:${id}`);
   const currentNodes = current.canonical.nodes.filter((node) => selectedCurrentNodeIds.has(node.id));
-  const previousNodes = previous.canonical.nodes.filter((node) => !selectedPreviousNodeIds.has(node.id));
+  const previousNodes = previous.canonical.nodes
+    .filter((node) => !selectedPreviousNodeIds.has(node.id) || preservedNodeIds.has(node.id))
+    .map((node) => ({ ...node, requiredBy: node.requiredBy.filter((owner) => !replacedOwners.has(owner)) }));
   const selectedCurrentArtifacts = current.canonical.artifacts.filter((artifact) => selectedCurrentNodeIds.has(artifact.graphNodeId));
-  const previousArtifacts = previous.canonical.artifacts.filter((artifact) => !selectedPreviousNodeIds.has(artifact.graphNodeId));
+  const previousArtifacts = previous.canonical.artifacts
+    .filter((artifact) => !selectedPreviousNodeIds.has(artifact.graphNodeId) || preservedNodeIds.has(artifact.graphNodeId))
+    .map((artifact) => ({ ...artifact, owners: artifact.owners.filter((owner) => !replacedOwners.has(owner)) }));
   const edgeTouchesSelected = (from: string, to: string) => selectedCurrentNodeIds.has(from)
     || selectedCurrentNodeIds.has(to);
-  const previousEdge = (edge: { from: string; to: string }) => !selectedPreviousNodeIds.has(edge.from)
-    && !selectedPreviousNodeIds.has(edge.to);
-  const previousIncludeEdge = (edge: { fromNodeId: string; toNodeId: string }) => !selectedPreviousNodeIds.has(edge.fromNodeId)
-    && !selectedPreviousNodeIds.has(edge.toNodeId);
+  const previousEdge = (edge: { from: string; to: string }) => preservedNodeIds.has(edge.from)
+    || (!selectedPreviousNodeIds.has(edge.from) && !selectedPreviousNodeIds.has(edge.to));
+  const previousIncludeEdge = (edge: { fromNodeId: string; toNodeId: string }) => preservedNodeIds.has(edge.fromNodeId)
+    || (!selectedPreviousNodeIds.has(edge.fromNodeId) && !selectedPreviousNodeIds.has(edge.toNodeId));
   const selectedCurrentRootIds = new Set(selectedCurrentRoots.map((root) => root.graphNodeId));
   const currentRootOrNode = (id: string) => selectedCurrentNodeIds.has(id) || selectedCurrentRootIds.has(id);
   const previousRootOrNode = (id: string) => selectedPreviousNodeIds.has(id)
@@ -2994,27 +3010,34 @@ function preserveUnrelatedGraphPackages(
     canonical: {
       ...current.canonical,
       roots,
-      nodes: [...currentNodes, ...previousNodes],
-      edges: [
+      nodes: uniqueBy([...currentNodes.map((node) => {
+        const old = previousNodes.find((candidate) => candidate.id === node.id);
+        return old ? { ...node, requiredBy: sortedUniqueValues([...node.requiredBy, ...old.requiredBy]),
+          selected: sortedUniqueValues([...node.selected, ...old.selected]) } : node;
+      }), ...previousNodes], (node) => node.id),
+      edges: uniqueBy([
         ...current.canonical.edges.filter((edge) => edgeTouchesSelected(edge.from, edge.to)),
         ...previous.canonical.edges.filter(previousEdge),
-      ],
-      includeEdges: [
+      ], (edge) => `${edge.from}\0${edge.alias}\0${edge.to}`),
+      includeEdges: uniqueBy([
         ...current.canonical.includeEdges.filter((edge) => edgeTouchesSelected(edge.fromNodeId, edge.toNodeId)),
         ...previous.canonical.includeEdges.filter(previousIncludeEdge),
-      ],
-      artifacts: [...selectedCurrentArtifacts, ...previousArtifacts],
+      ], graphIncludeEdgeIdentity),
+      artifacts: uniqueBy([...selectedCurrentArtifacts.map((artifact) => {
+        const old = previousArtifacts.find((candidate) => graphArtifactIdentity(candidate) === graphArtifactIdentity(artifact));
+        return old ? { ...artifact, owners: sortedUniqueValues([...artifact.owners, ...old.owners]) } : artifact;
+      }), ...previousArtifacts], graphArtifactIdentity),
       namespacing: [
         ...current.canonical.namespacing.filter((entry) => currentRootOrNode(entry.graphNodeId)),
-        ...previous.canonical.namespacing.filter((entry) => !previousRootOrNode(entry.graphNodeId)),
+        ...previous.canonical.namespacing.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
       ],
       overrides: [
         ...current.canonical.overrides.filter((entry) => currentRootOrNode(entry.graphNodeId) || currentRootOrNode(entry.overriddenGraphNodeId)),
-        ...previous.canonical.overrides.filter((entry) => !previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)),
+        ...previous.canonical.overrides.filter((entry) => (!previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)) || preservedNodeIds.has(entry.graphNodeId)),
       ],
       plainNameIncumbents: [
         ...current.canonical.plainNameIncumbents.filter((entry) => currentRootOrNode(entry.graphNodeId)),
-        ...previous.canonical.plainNameIncumbents.filter((entry) => !previousRootOrNode(entry.graphNodeId)),
+        ...previous.canonical.plainNameIncumbents.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
       ],
     },
   });
@@ -3463,8 +3486,17 @@ function scopeInstallPlanToRoot(
   result: GraphSourcePlanResult,
   rootId: string,
   manifest: InstallManifest | undefined,
+  previousLock?: GraphLock,
 ): GraphSourcePlanResult {
   const scopedOwners = scopedGraphOwnerKeys(result, rootId);
+  const exclusiveOwners = new Set(scopedOwners);
+  if (previousLock) {
+    for (const id of graphRootClosure(previousLock, rootId)) exclusiveOwners.add(id);
+    for (const root of previousLock.canonical.roots) {
+      if (root.rootId === rootId) continue;
+      for (const id of graphRootClosure(previousLock, root.rootId)) exclusiveOwners.delete(id);
+    }
+  }
   const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
   const preservedPaths = new Set<string>();
   const plannedPaths = new Set<string>();
@@ -3472,8 +3504,16 @@ function scopeInstallPlanToRoot(
 
   for (const operation of result.plan.operations) {
     plannedPaths.add(operation.relativeDestPath);
-    if (operationBelongsToScopedRoot(operation, scopedOwners)) {
-      operations.push(operation);
+    const stale = operation.action === "remove" || (operation.action === "drift" && !operation.desiredHash);
+    const exclusivelyOwned = operation.owners?.length
+      && operation.owners.every((owner) => exclusiveOwners.has(owner));
+    if (stale ? exclusivelyOwned : operationBelongsToScopedRoot(operation, scopedOwners)) {
+      const entry = manifestByPath.get(operation.relativeDestPath);
+      const foreignOwners = entry && "owners" in entry && Array.isArray(entry.owners)
+        ? entry.owners.filter((owner): owner is string => typeof owner === "string" && !exclusiveOwners.has(owner)) : [];
+      operations.push(stale || !operation.owners ? operation : {
+        ...operation, owners: sortedUniqueValues([...operation.owners, ...foreignOwners]),
+      });
       continue;
     }
 
@@ -3508,7 +3548,7 @@ function scopeUpdatePlanToRoot(
   previousLock: GraphLock,
   manifest: InstallManifest | undefined,
 ): GraphSourcePlanResult {
-  const scoped = scopeInstallPlanToRoot(result, rootId, manifest);
+  const scoped = scopeInstallPlanToRoot(result, rootId, manifest, previousLock);
   const selectedCurrentNodeIds = graphRootClosure(scoped.bundle.graphLock, rootId);
   const selectedPreviousNodeIds = graphRootClosure(previousLock, rootId);
   const graphLock = preserveUnrelatedGraphPackages(

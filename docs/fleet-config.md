@@ -404,6 +404,15 @@ root configuration remains a blocking error.
 Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
 those on an SSH target, run the command on the remote host after reviewing the dry-run output.
 
+## Source-scoped cleanup
+
+A named package install or update with `--only-source` reconciles that package without resolving
+unrelated configured roots. Sharing a workspace owner or dependency node does not authorize removing
+another package's artifacts. Stale cleanup requires exclusive provenance for the selected root or
+its former dependency closure; co-owned artifacts and unidentified owners are preserved. Obsolete
+artifacts owned only by the selected package are still removed. The graph lock retains unrelated
+roots, shared dependency artifacts and their edges so later scoped runs retain the same protection.
+
 ## Ownership normalization
 
 Selecting a fleet never takes ownership from user state, local state, or another fleet. An intended

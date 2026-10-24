@@ -29,7 +29,8 @@
       "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
-      "fleet-policy-audited-handoff"
+      "fleet-policy-audited-handoff",
+      "source-scoped-cleanup"
     ],
     "strategy": "cherry-pick"
   },
@@ -157,6 +158,22 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "source-scoped-cleanup",
+      "branch": "syncwheel/draft/source-scoped-cleanup",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "draft",
+      "publication": {
+        "enabled": false
+      },
+      "meta": {
+        "purpose": "Preserve unrelated artifacts during source-scoped cleanup"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

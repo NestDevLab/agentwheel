@@ -161,7 +161,7 @@
     },
     {
       "id": "source-scoped-cleanup",
-      "branch": "syncwheel/draft/source-scoped-cleanup",
+      "branch": "pr/source-scoped-cleanup",
       "base": "origin/main",
       "target_remote": "origin",
       "target_branch": "main",
@@ -170,9 +170,9 @@
         "39854d39b0130d6ccc9c70b9cf3ab9606e0779d6",
         "7d37237db2b1c188846064b8745a9ec0f135e66a"
       ],
-      "state": "draft",
+      "state": "published",
       "publication": {
-        "enabled": false
+        "enabled": true
       },
       "meta": {
         "purpose": "Preserve unrelated artifacts during source-scoped cleanup"

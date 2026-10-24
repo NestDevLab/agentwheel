@@ -1355,17 +1355,25 @@ describe("CLI verb redesign", () => {
     for (const source of [rootA, rootB]) {
       await runCli(["add", source, "--adapter", "codex", "--target-root", workspace, "--mode", "tracking"]);
     }
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages.find((pkg: { name: string }) => pkg.name === "consumer-a").aliases = {
+      "shared-alpha:skills/shared-alpha": "renamed-shared-alpha",
+    };
+    await writeFile(configPath, JSON.stringify(config));
     await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
     const result = await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
     expect(result.stdout).not.toContain("REMOVE");
     await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
     const lock = await readTestGraphLock(workspace);
+    expect(lock.canonical.namespacing.length).toBeGreaterThan(0);
     expect(lock.canonical.artifacts.some((artifact) => artifact.name === "shared-beta")).toBe(true);
     const ownerB = lock.canonical.roots.find((root) => root.rootId === "consumer-b")!;
     expect(lock.canonical.edges.some((edge) => edge.from === ownerB.graphNodeId)).toBe(true);
     // Applying the same scope twice must not lose the preserved graph contribution.
     await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
     await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
+    expect((await readTestGraphLock(workspace)).canonical).toEqual(lock.canonical);
   });
 
   it("removes obsolete artifacts exclusively owned by the selected package and its former dependency", async () => {

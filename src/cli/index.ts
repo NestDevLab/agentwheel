@@ -3027,18 +3027,19 @@ function preserveUnrelatedGraphPackages(
         const old = previousArtifacts.find((candidate) => graphArtifactIdentity(candidate) === graphArtifactIdentity(artifact));
         return old ? { ...artifact, owners: sortedUniqueValues([...artifact.owners, ...old.owners]) } : artifact;
       }), ...previousArtifacts], graphArtifactIdentity),
-      namespacing: [
+      namespacing: uniqueBy([
         ...current.canonical.namespacing.filter((entry) => currentRootOrNode(entry.graphNodeId)),
         ...previous.canonical.namespacing.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
-      ],
-      overrides: [
+      ], (entry) => `${entry.graphNodeId}\0${entry.type}\0${entry.name}`),
+      overrides: uniqueBy([
         ...current.canonical.overrides.filter((entry) => currentRootOrNode(entry.graphNodeId) || currentRootOrNode(entry.overriddenGraphNodeId)),
-        ...previous.canonical.overrides.filter((entry) => (!previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)) || preservedNodeIds.has(entry.graphNodeId)),
-      ],
-      plainNameIncumbents: [
+        ...previous.canonical.overrides.filter((entry) => !selectedRootIds.has(entry.rootId)
+          && ((!previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)) || preservedNodeIds.has(entry.graphNodeId))),
+      ], (entry) => `${entry.rootId}\0${entry.selector}`),
+      plainNameIncumbents: uniqueBy([
         ...current.canonical.plainNameIncumbents.filter((entry) => currentRootOrNode(entry.graphNodeId)),
         ...previous.canonical.plainNameIncumbents.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
-      ],
+      ], (entry) => `${entry.adapter}\0${entry.targetFingerprint}\0${entry.type}\0${entry.name}`),
     },
   });
 }

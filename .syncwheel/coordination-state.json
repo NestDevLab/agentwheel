@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/syncwheel/draft/source-scoped-cleanup": "7d37237db2b1c188846064b8745a9ec0f135e66a"
+    "refs/heads/pr/source-scoped-cleanup": "7d37237db2b1c188846064b8745a9ec0f135e66a"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -40,6 +40,7 @@
     "refs/heads/pr/provider-timeout-bound": "409a76201d089e942c5d566c0027040177c0ccf7",
     "refs/heads/pr/release-0-22-1": "53642b35ee690358a1162f7ffb1882c6d17861b8",
     "refs/heads/pr/retire-stale-target-scope": "94f67f8d22041df1400898d768525f21414b2ee0",
+    "refs/heads/pr/source-scoped-cleanup": "82f315b02c7d0f42157b400779366b3209508112",
     "refs/heads/pr/stable-legacy-state-recovery": "7fb529a426fa5a0e75c80a34ba9a4b582f1a56f9",
     "refs/heads/pr/update-legacy-recovery": "1e83a8074462b1e5f45df73c3477d794e9a9c035",
     "refs/heads/release/agentwheel-0.20.9": "ae520f2f2d79458ad0fbb96ded5d0529c6e1f1f9",
@@ -55,11 +56,11 @@
     "refs/heads/syncwheel/draft/mgt-0244-integration-preservation": "ace6b0de7412ad9d387fd76ef6b3ccf6da1b976e",
     "refs/heads/syncwheel/draft/mgt0406-runas-readonly": "ebf2d5ad072e9a6c429e07e1ea568390df1655c2",
     "refs/heads/syncwheel/draft/retire-incomplete-lock": "2037b501d3d14fa3c50949c5478539bf341e67d0",
-    "refs/heads/syncwheel/draft/source-scoped-cleanup": "61a900ad92d565a77ed436db3fb3d34a1c8265a4",
+    "refs/heads/syncwheel/draft/source-scoped-cleanup": "d9f82ddfd57ecf5263b538761634d71e9606d17e",
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-24T07:10:30+00:00",
+  "created_at": "2026-10-24T07:10:55+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -117,6 +118,7 @@
     "refs/heads/pr/release-0-22-1": "7d4fc1965cd229c6a74ca9a3ac05487f6e17757b",
     "refs/heads/pr/retire-stale-target-scope": "927737d3b6989949d2af2b00234a88c03f72f5c0",
     "refs/heads/pr/skill-evolution-v01": "235786b9d30b033eb4bc526fc362230f74bdcbcd",
+    "refs/heads/pr/source-scoped-cleanup": "7d37237db2b1c188846064b8745a9ec0f135e66a",
     "refs/heads/pr/stable-legacy-state-recovery": "0d1acc97c7ccfb7f3d67f47b19b416de65d786fb",
     "refs/heads/pr/update-legacy-recovery": "ac13312efc335f448cc4f028d37983debbdd89f2",
     "refs/heads/release/0.18.0-named-fleets": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
@@ -291,25 +293,24 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "syncwheel/draft/source-scoped-cleanup",
+        "branch": "pr/source-scoped-cleanup",
         "commits": [
           "39854d39b0130d6ccc9c70b9cf3ab9606e0779d6",
           "7d37237db2b1c188846064b8745a9ec0f135e66a"
         ],
         "id": "source-scoped-cleanup",
         "integration_branch": "main-integration",
-        "state": "draft",
         "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "913cfd5f-1f1b-4d1e-90f0-954389d4a747",
-  "parent_state": "feee81d2a3ffdc325634c05c94ce72cb4825dc44",
+  "operation_token": "9a04ad59-5f0a-4a04-a83b-7591dcebfe43",
+  "parent_state": "24b23fb5e8e6830681fd46121b0fd4ddbae6181f",
   "projection_status": "partial",
-  "publication_id": "b3931fc6-12ec-4d68-aedb-1e2ecbc4cc2a",
-  "publication_scope": "stack:source-scoped-cleanup",
+  "publication_id": "acaae559-e831-4d1e-acc3-c1cff6cb5c9d",
+  "publication_scope": "promote:source-scoped-cleanup",
   "schema_version": 2,
   "syncwheel_version": "0.46.8",
   "tombstones": [
@@ -932,6 +933,14 @@
       "ref": "refs/heads/pr/retire-stale-target-scope",
       "remote_tip": null,
       "stack": "retire-stale-target-scope"
+    },
+    {
+      "branch": "syncwheel/draft/source-scoped-cleanup",
+      "closed_at": "2026-10-24T07:10:42+00:00",
+      "reason": "promoted",
+      "ref": "refs/heads/syncwheel/draft/source-scoped-cleanup",
+      "remote_tip": "7d37237db2b1c188846064b8745a9ec0f135e66a",
+      "stack": "source-scoped-cleanup"
     }
   ]
 }

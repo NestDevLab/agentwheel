@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -31,7 +31,8 @@
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
       "mgt0521-mcp-skip",
-      "openclaw-capability-consent"
+      "openclaw-capability-consent",
+      "mgt0521-recovery-head"
     ],
     "strategy": "cherry-pick"
   },
@@ -196,6 +197,22 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "mgt0521-recovery-head",
+      "branch": "pr/mgt0521-recovery-head",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Recover runtime when transaction paths are already committed exactly"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

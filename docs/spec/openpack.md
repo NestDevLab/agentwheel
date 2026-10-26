@@ -248,3 +248,20 @@ OpenPack tools can implement partial conformance:
 - L3: Markdown composition with fragments.
 - L4: dependency graph resolution.
 - L5: schema v3 global skill composition and explicit derivative supersession.
+
+### Composition equivalence across revisions
+
+Injected composition rules share one rendering when the resolved package name,
+fragment selector, marker mode and recursively expanded text agree. Source node
+revisions remain distinct in `composedFrom`, including nested provenance. Revision
+markers are excluded from the text comparison; authored text and include order
+remain significant. Different packages, selectors and marker modes remain separate.
+Conflicting text for the same logical fragment and marker mode fails with an
+explicit revision conflict; select one revision rather than relying on rule order.
+
+Explicit item-level repetitions and authored nested/diamond include paths remain
+meaningful. An injected rule can share an equivalent explicit item rendering.
+Generated `BEGIN`/`END` blocks remain invalid raw source; recomposition starts from
+immutable authored inputs, and repeated rendering of those inputs is deterministic.
+Composition entries and rules reject unknown keys. Parameters and domain scope are
+not supported and cannot silently participate in equivalence.

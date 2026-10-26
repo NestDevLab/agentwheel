@@ -199,6 +199,7 @@ describe("v0.2 wave 2", () => {
       kind: "ssh",
       description: "fake ssh transport",
       async execFile(command, args, options = {}) {
+        if (args.includes("--help")) return "Options: --force";
         executed.push({ command, args, cwd: options.cwd });
         await stat(args.at(-1) ?? "");
       },
@@ -237,6 +238,7 @@ describe("v0.2 wave 2", () => {
       kind: "ssh",
       description: "fake ssh transport",
       async execFile(command, args, options = {}) {
+        if (args.includes("--help")) return "Options: --force";
         executed.push({ command, args, cwd: options.cwd });
         await stat(args.at(-1) ?? "");
       },
@@ -295,6 +297,7 @@ describe("v0.2 wave 2", () => {
       kind: "ssh",
       description: "fake ssh transport",
       async execFile(command, args, options = {}) {
+        if (args.includes("--help")) return "Options: --force";
         executed.push({ command, args, cwd: options.cwd });
         if (args[0] === "plugins" && args[1] === "install") await stat(args.at(-1) ?? "");
       },

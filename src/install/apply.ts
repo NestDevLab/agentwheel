@@ -10,6 +10,7 @@ import type { GraphLock } from "../model/graph-lock.js";
 import { canonicalGraphLockJson, readGraphLock, writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { createOpenClawCapabilityDetector, openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
 import { assertRunAsPlanSupported } from "../transport/run-as-policy.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
@@ -227,6 +228,10 @@ async function applyPlanTransactionally(
 ): Promise<InstallManifest> {
   const transport = options.transport ?? localTransport;
   const scope = { installationType: plan.installationType, stateKey: plan.stateKey };
+  const openClawAcceptCapabilities = createOpenClawCapabilityDetector(async (args) => {
+    if (transport.kind === "local") return (await execFileAsync("openclaw", args, { timeout: 10_000 })).stdout;
+    return transport.execFile?.("openclaw", args, { cwd: plan.targetRoot });
+  });
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
@@ -297,6 +302,7 @@ async function applyPlanTransactionally(
         transport,
         now,
         executePlugins: options.executePlugins,
+        openClawAcceptCapabilities,
         graphLockDigest,
         plan,
       });
@@ -736,6 +742,7 @@ async function applyOperation(
     transport: TargetTransport;
     now: string;
     executePlugins?: boolean;
+    openClawAcceptCapabilities?: () => Promise<boolean>;
     graphLockDigest?: string;
     plan?: InstallPlan;
   },
@@ -746,7 +753,7 @@ async function applyOperation(
       throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
     }
     if (context.executePlugins) {
-      await executePluginInstall(operation, transport);
+      await executePluginInstall(operation, transport, context.openClawAcceptCapabilities);
     }
     return manifestEntryForOperation(operation, {
       now,
@@ -916,8 +923,19 @@ async function applyOperation(
   return undefined;
 }
 
-async function executePluginInstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
-  const commands = semanticInstallCommands(operation);
+async function executePluginInstall(
+  operation: InstallOperation,
+  transport: TargetTransport,
+  openClawAcceptCapabilities?: () => Promise<boolean>,
+): Promise<void> {
+  const commands = await Promise.all(semanticInstallCommands(operation).map(async (command) => {
+    if (command.length !== 5 || command.slice(0, 4).join(" ") !== "openclaw plugins install --force") return command;
+    return openClawPluginInstallCommand({
+      path: command[4]!,
+      dryRun: false,
+      acceptCapabilities: await openClawAcceptCapabilities?.() ?? false,
+    });
+  }));
   if (commands.length === 0) throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
   if (!operation.sourcePath) {
     throw new Error(`Invalid plugin operation missing source path: ${operation.relativeDestPath}`);

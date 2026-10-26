@@ -2769,6 +2769,14 @@ describe("CLI verb redesign", () => {
     expect(events).toEqual([
       {
         name: "openclaw",
+        args: ["plugins", "install", "--help"],
+      },
+      {
+        name: "openclaw",
+        args: ["--version"],
+      },
+      {
+        name: "openclaw",
         args: ["plugins", "install", "--force", expect.stringContaining("profile-reload-plugin")],
       },
       {

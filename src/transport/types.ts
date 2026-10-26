@@ -20,7 +20,7 @@ export interface TargetTransport {
   atomicCopy(source: string, dest: string, kind: "file" | "dir", expectedHash?: string): Promise<void>;
   copyWithin?(source: string, dest: string, kind: "file" | "dir"): Promise<void>;
   rm(path: string): Promise<void>;
-  execFile?(command: string, args: string[], options?: { cwd?: string }): Promise<void>;
+  execFile?(command: string, args: string[], options?: { cwd?: string }): Promise<string | void>;
 }
 
 export interface SshTransportConfig {

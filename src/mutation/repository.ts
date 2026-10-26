@@ -50,6 +50,17 @@ export async function assertHeadLease(
   paths: string[],
   provider?: RevisionProviderConfigInput | null,
 ): Promise<void> {
+  return assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, paths, provider, []);
+}
+
+async function assertHeadLeaseWithRecovery(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  paths: string[],
+  provider: RevisionProviderConfigInput | null | undefined,
+  recoveryPaths: RevisionPath[],
+): Promise<void> {
   if (head === expectedHead) return;
   if (provider?.headLease !== "path-scoped" || paths.length === 0) {
     throw new Error(`Git HEAD lease mismatch: expected ${expectedHead}, found ${head}.`);
@@ -77,9 +88,50 @@ export async function assertHeadLease(
     // A net diff would miss change/revert and hidden changes on merged branches.
     const touched = splitNull((await runProcess("git", ["-C", repositoryRoot, "diff-tree", "--root", "-m",
       "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", commit])).stdout);
-    if (touched.some((path) => protectedPaths.some((protectedPath) =>
-      path === protectedPath || path.startsWith(`${protectedPath}/`) || protectedPath.startsWith(`${path}/`)))) {
-      throw new Error(`Git HEAD lease overlaps protected paths in intervening commit ${commit}.`);
+    for (const path of touched) {
+      if (!protectedPaths.some((protectedPath) => overlaps(path, protectedPath))) continue;
+      const proof = recoveryPaths.find((entry) => entry.path === path && paths.includes(path));
+      if (!proof || overlaps(path, ".agentwheel/config.json") || overlaps(path, ".syncwheel/manifest.json")
+        || await hashHeadPath(repositoryRoot, expectedHead, path) !== proof.beforeSha256
+        || await hashHeadPath(repositoryRoot, commit, path) !== proof.afterSha256
+        || await hashHeadPath(repositoryRoot, head, path) !== proof.afterSha256
+        || await hashWorkingPath(repositoryRoot, path) !== proof.afterSha256) {
+        throw new Error(`Git HEAD lease overlaps protected paths in intervening commit ${commit}.`);
+      }
+    }
+  }
+}
+
+function overlaps(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+/** Only receipt-owned, declared, unchanged bytes can be projected out during recovery. */
+export async function committedRecoveryPaths(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  declarations: string[],
+  receiptPaths: RevisionPath[],
+  provider: RevisionProviderConfigInput | null,
+): Promise<RevisionPath[]> {
+  await verifyRevisionPaths(repositoryRoot, expectedHead, receiptPaths);
+  const committed: RevisionPath[] = [];
+  for (const entry of receiptPaths) {
+    if (!declarations.includes(entry.path)) throw new Error(`Recovery path was not declared: ${entry.path}.`);
+    if (await hashHeadPath(repositoryRoot, head, entry.path) === entry.afterSha256
+      && entry.beforeSha256 !== entry.afterSha256) committed.push(entry);
+  }
+  await assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, declarations, provider, committed);
+  return committed;
+}
+
+export async function verifyCommittedRecoveryPaths(repositoryRoot: string, paths: RevisionPath[]): Promise<void> {
+  const head = await currentHead(repositoryRoot);
+  for (const entry of paths) {
+    if (await hashHeadPath(repositoryRoot, head, entry.path) !== entry.afterSha256
+      || await hashWorkingPath(repositoryRoot, entry.path) !== entry.afterSha256) {
+      throw new Error(`Committed recovery path changed during provider completion: ${entry.path}.`);
     }
   }
 }

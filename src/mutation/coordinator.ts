@@ -28,6 +28,8 @@ import {
 } from "./receipts.js";
 import {
   assertHeadLease,
+  committedRecoveryPaths,
+  verifyCommittedRecoveryPaths,
   isAgentwheelWritablePath,
   collectIntroducedPaths,
   currentHead,
@@ -60,6 +62,7 @@ export class GovernedMutation {
     private receipt: MutationReceipt,
     private readonly baseline: RepositorySnapshot | undefined,
     private readonly lock: MutationLock,
+    private readonly runtimeRecovery = false,
   ) {
     this.operationId = receipt.operationId;
   }
@@ -173,7 +176,7 @@ export class GovernedMutation {
         );
       }
       this.receipt = await updateMutationReceipt(this.receipt, { status: "handler-succeeded" });
-      paths = await this.collectPaths();
+      paths = await this.collectPaths(action === "recover" && this.runtimeRecovery);
       this.receipt = await updateMutationReceipt(this.receipt, { paths, status: "mutation-applied" });
     } catch (error) {
       this.receipt = await updateMutationReceipt(this.receipt, {
@@ -193,12 +196,17 @@ export class GovernedMutation {
       }
 
       const provider = this.policy.revisioning.provider;
-      await invokeRevisionProvider(provider, providerRequest(this.receipt, "preflight", paths), {
+      const request = this.runtimeRecovery && action === "recover"
+        ? await recoveryProviderRequest(this.receipt, paths)
+        : providerRequest(this.receipt, action, paths);
+      await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...request, action: "preflight" }), {
         workspaceRoot: this.receipt.workspaceRoot,
       });
-      const response = await invokeRevisionProvider(provider, providerRequest(this.receipt, action, paths), {
+      if (this.runtimeRecovery) await verifyRecoveryProjection(this.receipt, request);
+      const response = await invokeRevisionProvider(provider, request, {
         workspaceRoot: this.receipt.workspaceRoot,
       });
+      await verifyCompletedRecoveryProjection(this.receipt, request);
       this.receipt = await updateMutationReceipt(this.receipt, {
         status: receiptStatusForProvider(response.status),
         providerResponse: response,
@@ -291,20 +299,28 @@ export class GovernedMutation {
           journal: "required",
           revisioning: { mode: "off" },
         });
-    const mutation = new GovernedMutation(policy, receipt, baseline, lock);
+    const mutation = new GovernedMutation(policy, receipt, baseline, lock, true);
     activeMutation = mutation;
     return mutation;
   }
 
-  private async collectPaths(): Promise<RevisionPath[]> {
+  private async collectPaths(recover = false): Promise<RevisionPath[]> {
     if (!this.receipt.repositoryRoot || !this.receipt.expectedHead || !this.baseline) return [];
     const declarations = [...new Set([
       ...declaredMutationPaths(),
       ...readMutationPathDeclarations(this.receipt.operationId),
     ])].sort((a, b) => a.localeCompare(b));
-    if (this.receipt.provider) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
-      await currentHead(this.receipt.repositoryRoot), this.receipt.noCommit ? [] : declarations, this.receipt.provider);
-    return collectIntroducedPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, this.baseline, declarations);
+    const head = await currentHead(this.receipt.repositoryRoot);
+    const committed = recover && !this.receipt.noCommit
+      ? await committedRecoveryPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, head,
+        declarations, this.receipt.paths, this.receipt.provider)
+      : [];
+    if (this.receipt.provider && !recover) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
+      head, this.receipt.noCommit ? [] : declarations, this.receipt.provider);
+    if (recover && this.receipt.noCommit) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
+      head, [], this.receipt.provider);
+    const introduced = await collectIntroducedPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, this.baseline, declarations);
+    return [...committed, ...introduced].sort((a, b) => a.path.localeCompare(b.path));
   }
 
   private async close(): Promise<void> {
@@ -413,12 +429,16 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
       );
       receipt = await updateMutationReceipt(receipt, { paths, status: "mutation-applied" });
     }
-    await invokeRevisionProvider(provider, providerRequest(receipt, "preflight", paths), {
+    const request = action === "recover" && receipt.runtimeJournals.length > 0
+      ? await recoveryProviderRequest(receipt, paths) : providerRequest(receipt, action, paths);
+    await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...request, action: "preflight" }), {
       workspaceRoot: receipt.workspaceRoot,
     });
-    const response = await invokeRevisionProvider(provider, providerRequest(receipt, action, paths), {
+    if (action === "recover") await verifyRecoveryProjection(receipt, request);
+    const response = await invokeRevisionProvider(provider, request, {
       workspaceRoot: receipt.workspaceRoot,
     });
+    await verifyCompletedRecoveryProjection(receipt, request);
     return updateMutationReceipt(receipt, {
       status: receiptStatusForProvider(response.status),
       providerResponse: response,
@@ -471,8 +491,9 @@ export async function recoverMutationRuntime(
           `Mutation '${receipt.operationId}' repository HEAD lease changed before runtime recovery.`,
         );
       }
-      await assertHeadLease(receipt.repositoryRoot, receipt.expectedHead, repository.head,
-        receipt.noCommit ? [] : declarations, receipt.provider);
+      if (receipt.noCommit) await assertHeadLease(receipt.repositoryRoot, receipt.expectedHead, repository.head, [], receipt.provider);
+      else await committedRecoveryPaths(receipt.repositoryRoot, receipt.expectedHead, repository.head,
+        declarations, receipt.paths, receipt.provider);
       await assertGitPreflight(repository);
       await collectIntroducedPaths(receipt.repositoryRoot, receipt.expectedHead, baseline, declarations);
     }
@@ -626,6 +647,34 @@ export function mergeMutationPolicies(
     journal: global.journal === "required" || scoped.journal === "required" || chosen ? "required" : "off",
     revisioning,
   });
+}
+
+async function recoveryProviderRequest(receipt: MutationReceipt, paths: RevisionPath[]): Promise<RevisionProviderRequest> {
+  const request = providerRequest(receipt, "recover", paths);
+  if (receipt.noCommit) return request;
+  const head = await currentHead(request.repositoryRoot);
+  const committed = await committedRecoveryPaths(request.repositoryRoot, request.expectedHead, head,
+    readMutationPathDeclarations(receipt.operationId), paths, receipt.provider);
+  if (committed.length === 0) return request;
+  const saved = new Set(committed.map((entry) => entry.path));
+  return revisionProviderRequestSchema.parse({ ...request, expectedHead: head,
+    paths: paths.filter((entry) => !saved.has(entry.path)) });
+}
+
+async function verifyCompletedRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest): Promise<void> {
+  if (request.expectedHead === receipt.expectedHead) return;
+  const remaining = new Set(request.paths.map((entry) => entry.path));
+  await verifyCommittedRecoveryPaths(request.repositoryRoot, receipt.paths.filter((entry) => !remaining.has(entry.path)));
+}
+
+async function verifyRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest): Promise<void> {
+  if (request.expectedHead === receipt.expectedHead) return;
+  if (await currentHead(request.repositoryRoot) !== request.expectedHead) throw new Error("Recovery projection HEAD changed.");
+  const verified = await recoveryProviderRequest(receipt, receipt.paths);
+  if (JSON.stringify(verified) !== JSON.stringify(request)) throw new Error("Recovery projection changed before provider completion.");
+  const repository = await discoverGitRepository(request.repositoryRoot);
+  if (!repository) throw new Error("Recovery repository disappeared.");
+  await assertGitPreflight(repository);
 }
 
 function providerRequest(receipt: MutationReceipt, action: RevisionProviderRequest["action"], paths: RevisionPath[]): RevisionProviderRequest {

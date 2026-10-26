@@ -65,6 +65,7 @@ export interface InstallOperation {
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
   exactMergeRemoval?: boolean;
+  exactMergeAdoption?: boolean;
   mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
@@ -312,6 +313,7 @@ async function createPlanFromOperations(
           mergeCreatedDestination: existing?.mergeCreatedDestination,
           currentHash,
           manifestHash: existing?.hash,
+          exactMergeAdoption: true,
           reason: existing
             ? "repairing exact incomplete merge ownership"
             : "force adopting exact unmanaged merge contribution",

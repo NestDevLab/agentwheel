@@ -30,7 +30,8 @@
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
-      "mgt0521-mcp-skip"
+      "mgt0521-mcp-skip",
+      "openclaw-capability-consent"
     ],
     "strategy": "cherry-pick"
   },
@@ -177,6 +178,22 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "openclaw-capability-consent",
+      "branch": "pr/openclaw-capability-consent",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Detect OpenClaw managed plugin capability consent support"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

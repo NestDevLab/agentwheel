@@ -1,15 +1,15 @@
 {
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -78,6 +78,7 @@
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",
+      "integration_commits": [],
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
       },
@@ -86,8 +87,7 @@
       },
       "state": "published",
       "target_branch": "main",
-      "target_remote": "origin",
-      "integration_commits": []
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -180,22 +180,22 @@
       "target_remote": "origin"
     },
     {
-      "id": "openclaw-capability-consent",
-      "branch": "pr/openclaw-capability-consent",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/openclaw-capability-consent",
       "commits": [
         "2b69768f4fd58911e368d057b0179c919c8ed141"
       ],
-      "state": "published",
+      "id": "openclaw-capability-consent",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Detect OpenClaw managed plugin capability consent support"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Detect OpenClaw managed plugin capability consent support"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

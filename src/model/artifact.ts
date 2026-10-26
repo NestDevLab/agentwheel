@@ -36,7 +36,7 @@ export const packageComposeEntrySchema = z.object({
   include: z.string().min(1),
   markers: z.boolean().optional(),
   optional: z.boolean().optional(),
-});
+}).strict();
 export type PackageComposeEntry = z.infer<typeof packageComposeEntrySchema>;
 
 export const packageCompositionRuleSchema = z.object({
@@ -45,7 +45,7 @@ export const packageCompositionRuleSchema = z.object({
   exclude: z.array(z.string().min(1)).optional(),
   runtimes: z.array(z.string().min(1)).optional(),
   markers: z.boolean().optional(),
-});
+}).strict();
 export type PackageCompositionRule = z.infer<typeof packageCompositionRuleSchema>;
 
 export const packageSupersedesEntrySchema = z.object({

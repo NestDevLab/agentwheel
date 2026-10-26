@@ -87,6 +87,7 @@ async function renderGraphIntoRoot(
     const compositionArtifacts = runtimeArtifacts;
     const expandedArtifacts = await expandMarkdownIncludes(compositionArtifacts, staged.root, {
       nodeId: rawNode.node.id,
+      packageName: rawNode.node.name,
       originNodeId: rawNode.node.id,
       additionalComposeEntries: (artifact) => matchingCompositionEntries(
         artifact,
@@ -126,6 +127,7 @@ async function renderGraphIntoRoot(
         includeEdges.set(`${includeEdge.fromNodeId}\0${includeEdge.alias}\0${includeEdge.toNodeId}\0${includeEdge.selector}\0${includeEdge.sourceHash}`, includeEdge);
         return {
           toNodeId: edge.to,
+          packageName: target.rawNode.node.name,
           packageRoot: target.root,
           artifactPaths: target.artifactPaths,
           sourcePath,
@@ -245,6 +247,7 @@ function matchingCompositionEntries(
       packageRoot: candidate.packageRoot,
       artifactPaths: candidate.artifactPaths,
       nodeId: candidate.ownerNodeId,
+      packageName: candidate.ownerPackageName,
       deduplicate: true,
     });
   }

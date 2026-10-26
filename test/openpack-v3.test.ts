@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { packageComposeEntrySchema, packageCompositionRuleSchema } from "../src/model/artifact.js";
 import { claudeAdapter } from "../src/adapters/claude.js";
 import { createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
 import { readPackageManifest } from "../src/model/package.js";
@@ -260,6 +261,70 @@ describe("OpenPack v3", () => {
     const content = await readFile(join(demo!.stagedPath!, "SKILL.md"), "utf8");
     expect(content.match(/Improve once\./g)).toHaveLength(1);
     expect(content.match(/BEGIN openpack:include .*fragments\/evolution\.md/g)).toHaveLength(1);
+  });
+
+  it.each(["parameters", "domain"])("rejects unsupported composition scope field %s", (field) => {
+    expect(packageComposeEntrySchema.safeParse({ include: "fragments/policy.md", [field]: "scope-a" }).success).toBe(false);
+    expect(packageCompositionRuleSchema.safeParse({ target: "skills/*", include: "fragments/policy.md", [field]: "scope-a" }).success).toBe(false);
+  });
+
+  it.each([false, true])("shares equivalent policy revisions, preserving provenance (nested=%s)", async (nested) => {
+    const workspace = await tempRoot();
+    const policyA = join(workspace, "policy-a");
+    const policyB = join(workspace, "policy-b");
+    const standard = join(workspace, "standard");
+    const vendor = join(workspace, "vendor");
+    const body = nested
+      ? "Policy.\n<!-- openpack:include fragments/left.md -->\n<!-- openpack:include fragments/right.md -->\n"
+      : "Policy.\n";
+    for (const [revision, policy] of [policyA, policyB].entries()) {
+      await writeText(join(policy, "fragments", "policy.md"), body);
+      await writeText(join(policy, "fragments", "left.md"), "Left.\n<!-- openpack:include fragments/leaf.md -->\n");
+      await writeText(join(policy, "fragments", "right.md"), "Right.\n<!-- openpack:include fragments/leaf.md -->\n");
+      await writeText(join(policy, "fragments", "leaf.md"), "Leaf.\n");
+      await writeJson(join(policy, "openpack.json"), {
+        schemaVersion: 3, name: "test/policy", version: `1.0.${revision}`,
+        provides: [{ type: "fragments", path: "fragments" }],
+        compositionRules: [{ target: "skills/*", include: "fragments/policy.md" }],
+      });
+    }
+    await writeText(join(vendor, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Revision fixture.\n---\n\n# Demo\n");
+    await writeJson(join(vendor, "openpack.json"), {
+      schemaVersion: 2, name: "test/vendor", version: "1.0.0", provides: [{ type: "skills", path: "skills" }],
+    });
+    await writeJson(join(standard, "openpack.json"), {
+      schemaVersion: 3, name: "test/standard", version: "1.0.0", provides: [],
+      requires: { core: { source: "../policy-b", select: ["fragments/policy.md"] } },
+      compositionRules: [{ target: "skills/*", include: "core:fragments/policy.md" }],
+    });
+    await writeWorkspaceConfig(workspace, {
+      schemaVersion: 1, registry: {}, trust: { allow: ["local:*"] }, packages: [], profiles: {}, agents: {},
+    });
+    const render = () => createGraphSourcePlan({
+      roots: [
+        { rootId: "policy", source: policyA },
+        { rootId: "standard", source: standard },
+        { rootId: "vendor", source: vendor },
+      ],
+      targetRoot: workspace, workspaceRoot: workspace,
+      adapter: claudeAdapter, targetKey: "revision-equivalence", yes: true, readOnly: true,
+    });
+    const first = await render();
+    const demo = first.bundle.artifacts.find((artifact) => artifact.name === "demo")!;
+    const content = await readFile(join(demo.stagedPath!, "SKILL.md"), "utf8");
+    expect(content.match(/Policy\./g)).toHaveLength(1);
+    expect(demo.composedFrom?.filter((entry) => entry.selector.endsWith(":fragments/policy.md"))).toHaveLength(2);
+    if (nested) {
+      // The two authored diamond paths remain meaningful inside one shared rendering.
+      expect(content.match(/Leaf\./g)).toHaveLength(2);
+      expect(demo.composedFrom?.filter((entry) => entry.selector.endsWith(":fragments/leaf.md"))).toHaveLength(2);
+    }
+    const second = await render();
+    const repeatedDemo = second.bundle.artifacts.find((artifact) => artifact.name === "demo")!;
+    expect(await readFile(join(repeatedDemo.stagedPath!, "SKILL.md"), "utf8")).toBe(content);
+    expect(repeatedDemo.composedFrom).toEqual(demo.composedFrom);
+    await writeText(join(policyB, "fragments", "policy.md"), "Divergent policy.\n");
+    await expect(render()).rejects.toThrow(/Conflicting OpenPack composition revisions.*Select one revision explicitly/);
   });
 
   it("lets one declared derivative supersede a colliding direct dependency", async () => {

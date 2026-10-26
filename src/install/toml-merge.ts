@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { parse as parseToml } from "smol-toml";
 import { dirname } from "node:path";
 import { pathExists } from "../utils/fs.js";
 
@@ -20,6 +21,46 @@ export function mismatchedCodexTomlMcpServers(source: JsonRecord, currentContent
   return Object.entries(servers)
     .filter(([name, server]) => extractMcpServerBlock(currentContent, name) !== formatMcpServer(name, server))
     .map(([name]) => name);
+}
+
+/** Verify owned fields without claiming or rewriting user-owned preferences. */
+export function mismatchedManagedCodexTomlMcpServers(source: JsonRecord, currentContent: string): string[] {
+  const servers = extractMcpServers(source);
+  let current: Record<string, unknown> | undefined;
+  try {
+    const parsed = parseToml(currentContent, { integersAsBigInt: "asNeeded" });
+    current = isPlainRecord(parsed.mcp_servers) ? parsed.mcp_servers : undefined;
+  } catch {
+    return Object.keys(servers);
+  }
+  return Object.entries(servers).filter(([name, server]) => {
+    try {
+      // Compare the renderer's owned representation, including omitted empty env tables.
+      const rendered = parseToml(formatMcpServer(name, server), { integersAsBigInt: "asNeeded" });
+      const expected = isPlainRecord(rendered.mcp_servers) ? rendered.mcp_servers[name] : undefined;
+      return !current || !Object.hasOwn(current, name) || !managedValueMatches(current[name], expected);
+    } catch {
+      return true;
+    }
+  }).map(([name]) => name);
+}
+
+function managedValueMatches(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) && actual.length === expected.length
+      && expected.every((value, index) => managedValueMatches(actual[index], value));
+  }
+  if (isPlainRecord(expected)) {
+    return isPlainRecord(actual) && Object.entries(expected)
+      .every(([key, value]) => Object.hasOwn(actual, key) && managedValueMatches(actual[key], value));
+  }
+  return actual === expected;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === null || prototype === Object.prototype;
 }
 
 function extractMcpServers(source: JsonRecord): Record<string, JsonRecord> {

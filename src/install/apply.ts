@@ -45,7 +45,7 @@ import {
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
-import { assertExactMcpMergeContribution, assertExactMergeContribution, assertMergedSourceContribution, hasMergeRemovalContent, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
+import { assertExactMcpMergeContribution, assertExactMergeContribution, assertManagedMergeContribution, assertMergedSourceContribution, hasMergeRemovalContent, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
@@ -835,7 +835,12 @@ async function applyOperation(
       if (!(await transport.pathExists(operation.destPath))) {
         throw new Error(`Merge skip destination disappeared after planning: ${operation.relativeDestPath}`);
       }
-      assertExactMergeContribution(operation.mergeRemoval!, operation.mergeStrategy, await transport.readFile(operation.destPath));
+      // Older pending journals encode exact adoption through these stable reason labels.
+      const exactAdoption = operation.exactMergeAdoption === true
+        || operation.reason === "force adopting exact unmanaged merge contribution"
+        || operation.reason === "repairing exact incomplete merge ownership";
+      const verify = exactAdoption ? assertExactMergeContribution : assertManagedMergeContribution;
+      verify(operation.mergeRemoval!, operation.mergeStrategy, await transport.readFile(operation.destPath));
       verifiedCurrentHash = await transport.hashPath(operation.destPath);
     } else if (!operation.semanticPlugin && !operation.programmaticOperation) {
       if (!(await transport.pathExists(operation.destPath))) {

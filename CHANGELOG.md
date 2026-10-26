@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.2
+
+- Verify owned Codex MCP fields during skip and recovery without rewriting user preferences; retain exact adoption and retirement checks.
+- Share identical composed fragments across source revisions.
+
 ## 0.22.1
 
 - Add `ownership handoff --from-fleet` to select an exact fleet-qualified source owner, with symmetric registered fleet and workspace-root validation.

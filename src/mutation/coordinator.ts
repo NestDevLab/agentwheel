@@ -16,7 +16,7 @@ import {
   resumeMutationPathDeclarations,
 } from "./declarations.js";
 import { invokeRevisionProvider, revisionProviderRejection } from "./providers.js";
-import { mutationOperationIdSchema, mutationReasonSchema, revisionProviderRequestSchema, type RevisionPath, type RevisionProviderRequest } from "./protocol.js";
+import { mutationOperationIdSchema, mutationReasonSchema, revisionProviderRequestSchema, type RevisionPath, type RevisionProviderResponse, type RevisionProviderRequest } from "./protocol.js";
 import {
   acquireMutationLock,
   createMutationReceipt,
@@ -29,7 +29,7 @@ import {
 import {
   assertHeadLease,
   committedRecoveryPaths,
-  verifyCommittedRecoveryPaths,
+  verifyCompletedRecoveryPaths,
   isAgentwheelWritablePath,
   collectIntroducedPaths,
   currentHead,
@@ -63,6 +63,7 @@ export class GovernedMutation {
     private readonly baseline: RepositorySnapshot | undefined,
     private readonly lock: MutationLock,
     private readonly runtimeRecovery = false,
+    private readonly beforeProviderCompletion?: () => void | Promise<void>,
   ) {
     this.operationId = receipt.operationId;
   }
@@ -203,10 +204,11 @@ export class GovernedMutation {
         workspaceRoot: this.receipt.workspaceRoot,
       });
       if (this.runtimeRecovery) await verifyRecoveryProjection(this.receipt, request);
+      await this.beforeProviderCompletion?.();
       const response = await invokeRevisionProvider(provider, request, {
         workspaceRoot: this.receipt.workspaceRoot,
       });
-      await verifyCompletedRecoveryProjection(this.receipt, request);
+      await verifyCompletedRecoveryProjection(this.receipt, request, response);
       this.receipt = await updateMutationReceipt(this.receipt, {
         status: receiptStatusForProvider(response.status),
         providerResponse: response,
@@ -279,6 +281,7 @@ export class GovernedMutation {
     receipt: MutationReceipt,
     baseline: RepositorySnapshot | undefined,
     lock: MutationLock,
+    beforeProviderCompletion?: () => void | Promise<void>,
   ): GovernedMutation {
     if (receipt.revisionMode === "commit-after-verify" && !receipt.provider) {
       throw new Error(`Mutation '${receipt.operationId}' is missing its revision provider recovery policy.`);
@@ -299,7 +302,7 @@ export class GovernedMutation {
           journal: "required",
           revisioning: { mode: "off" },
         });
-    const mutation = new GovernedMutation(policy, receipt, baseline, lock, true);
+    const mutation = new GovernedMutation(policy, receipt, baseline, lock, true, beforeProviderCompletion);
     activeMutation = mutation;
     return mutation;
   }
@@ -438,7 +441,7 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
     const response = await invokeRevisionProvider(provider, request, {
       workspaceRoot: receipt.workspaceRoot,
     });
-    await verifyCompletedRecoveryProjection(receipt, request);
+    await verifyCompletedRecoveryProjection(receipt, request, response);
     return updateMutationReceipt(receipt, {
       status: receiptStatusForProvider(response.status),
       providerResponse: response,
@@ -459,6 +462,8 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
 export interface RecoverMutationRuntimeOptions {
   /** Test-only scheduling seam; durable state is reread after this barrier while the mutation lock is held. */
   afterLockAcquired?: () => void | Promise<void>;
+  /** Test-only barrier after projection validation and before provider completion. */
+  beforeProviderCompletion?: () => void | Promise<void>;
 }
 
 export async function recoverMutationRuntime(
@@ -498,7 +503,7 @@ export async function recoverMutationRuntime(
       await collectIntroducedPaths(receipt.repositoryRoot, receipt.expectedHead, baseline, declarations);
     }
 
-    mutation = GovernedMutation.activateExisting(receipt, baseline, lock);
+    mutation = GovernedMutation.activateExisting(receipt, baseline, lock, options.beforeProviderCompletion);
     const [{ recoverPendingApply }, { readLinkedLocalApplyJournal }] = await Promise.all([
       import("../install/apply.js"),
       import("../install/transaction.js"),
@@ -661,10 +666,13 @@ async function recoveryProviderRequest(receipt: MutationReceipt, paths: Revision
     paths: paths.filter((entry) => !saved.has(entry.path)) });
 }
 
-async function verifyCompletedRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest): Promise<void> {
+async function verifyCompletedRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest, response: RevisionProviderResponse): Promise<void> {
   if (request.expectedHead === receipt.expectedHead) return;
+  if (response.action !== "recover" && response.action !== "finalize") throw new Error("Recovery requires a terminal provider response.");
   const remaining = new Set(request.paths.map((entry) => entry.path));
-  await verifyCommittedRecoveryPaths(request.repositoryRoot, receipt.paths.filter((entry) => !remaining.has(entry.path)));
+  await verifyCompletedRecoveryPaths(request.repositoryRoot, receipt.expectedHead!,
+    readMutationPathDeclarations(receipt.operationId), receipt.paths.filter((entry) => !remaining.has(entry.path)),
+    receipt.provider, response.productCommitSha, request.paths.map((entry) => entry.path), response.controlCommitSha);
 }
 
 async function verifyRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest): Promise<void> {

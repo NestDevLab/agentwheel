@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readlink, readdir } from "node:fs/promises";
-import { posix, relative, resolve, sep } from "node:path";
+import { dirname, posix, relative, resolve, sep } from "node:path";
 import type { RevisionProviderConfigInput } from "../model/mutation.js";
 import type { RevisionPath } from "./protocol.js";
 import { runProcess } from "./process.js";
@@ -60,6 +60,7 @@ async function assertHeadLeaseWithRecovery(
   paths: string[],
   provider: RevisionProviderConfigInput | null | undefined,
   recoveryPaths: RevisionPath[],
+  terminalChanges: Map<string, Set<string>> = new Map(),
 ): Promise<void> {
   if (head === expectedHead) return;
   if (provider?.headLease !== "path-scoped" || paths.length === 0) {
@@ -90,8 +91,10 @@ async function assertHeadLeaseWithRecovery(
       "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", commit])).stdout);
     for (const path of touched) {
       if (!protectedPaths.some((protectedPath) => overlaps(path, protectedPath))) continue;
+      if (terminalChanges.get(commit)?.has(path)) continue;
       const proof = recoveryPaths.find((entry) => entry.path === path && paths.includes(path));
       if (!proof || overlaps(path, ".agentwheel/config.json") || overlaps(path, ".syncwheel/manifest.json")
+        || await gitPathMode(repositoryRoot, commit, path) !== "100644"
         || await hashHeadPath(repositoryRoot, expectedHead, path) !== proof.beforeSha256
         || await hashHeadPath(repositoryRoot, commit, path) !== proof.afterSha256
         || await hashHeadPath(repositoryRoot, head, path) !== proof.afterSha256
@@ -120,19 +123,61 @@ export async function committedRecoveryPaths(
   for (const entry of receiptPaths) {
     if (!declarations.includes(entry.path)) throw new Error(`Recovery path was not declared: ${entry.path}.`);
     if (await hashHeadPath(repositoryRoot, head, entry.path) === entry.afterSha256
-      && entry.beforeSha256 !== entry.afterSha256) committed.push(entry);
+      && entry.beforeSha256 !== entry.afterSha256) {
+      await assertRecoveryFileIdentity(repositoryRoot, expectedHead, head, entry.path);
+      committed.push(entry);
+    }
   }
   await assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, declarations, provider, committed);
   return committed;
 }
 
-export async function verifyCommittedRecoveryPaths(repositoryRoot: string, paths: RevisionPath[]): Promise<void> {
+export async function verifyCompletedRecoveryPaths(
+  repositoryRoot: string,
+  expectedHead: string,
+  declarations: string[],
+  savedPaths: RevisionPath[],
+  provider: RevisionProviderConfigInput | null,
+  productCommitSha: string | null,
+  productPaths: string[],
+  controlCommitSha: string | null,
+): Promise<void> {
   const head = await currentHead(repositoryRoot);
-  for (const entry of paths) {
-    if (await hashHeadPath(repositoryRoot, head, entry.path) !== entry.afterSha256
-      || await hashWorkingPath(repositoryRoot, entry.path) !== entry.afterSha256) {
+  await verifyRevisionPaths(repositoryRoot, expectedHead, savedPaths);
+  for (const entry of savedPaths) {
+    await assertRecoveryFileIdentity(repositoryRoot, expectedHead, head, entry.path);
+    if (await hashHeadPath(repositoryRoot, head, entry.path) !== entry.afterSha256) {
       throw new Error(`Committed recovery path changed during provider completion: ${entry.path}.`);
     }
+  }
+  // Provider semantics already verified the exact product delta and its control parent.
+  // Only those specific commits may change the remaining delta or provider manifest.
+  const terminalChanges = new Map<string, Set<string>>();
+  if (productCommitSha) terminalChanges.set(productCommitSha, new Set(productPaths));
+  if (controlCommitSha) terminalChanges.set(controlCommitSha, new Set([".syncwheel/manifest.json"]));
+  await assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, declarations, provider, savedPaths, terminalChanges);
+}
+
+async function gitPathMode(repositoryRoot: string, head: string, path: string): Promise<string | undefined> {
+  const tree = (await runProcess("git", ["-C", repositoryRoot, "ls-tree", "-z", head, "--", path])).stdout.toString("utf8");
+  const entry = tree.split("\0").find((value) => value.slice(value.indexOf("\t") + 1) === path);
+  return entry?.split(" ")[0];
+}
+
+async function assertRecoveryFileIdentity(repositoryRoot: string, expectedHead: string, head: string, path: string): Promise<void> {
+  if (await gitPathMode(repositoryRoot, expectedHead, path) !== "100644"
+    || await gitPathMode(repositoryRoot, head, path) !== "100644") {
+    throw new Error(`Recovery requires an existing regular non-executable Git file: ${path}.`);
+  }
+  const absolute = resolve(repositoryRoot, ...path.split("/"));
+  const stats = await lstat(absolute);
+  if (!stats.isFile() || (stats.mode & 0o111) !== 0) throw new Error(`Recovery file identity changed: ${path}.`);
+  let ancestor = dirname(absolute);
+  while (true) {
+    if ((await lstat(ancestor)).isSymbolicLink()) throw new Error(`Recovery symlink ancestor is unsupported: ${path}.`);
+    const parent = dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
   }
 }
 

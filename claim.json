@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/fleet-policy-audited-handoff"
-  ],
-  "claimed_at": "2026-10-20T03:58:55+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T16:53:54+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "532da556-7a38-4909-8c00-66ef61e72997",
-  "publication_scope": "partial",
+  "operation_token": "8043cb19-8862-42c4-9bc5-c47e15cb9e7c",
+  "publication_scope": "close:fleet-policy-audited-handoff",
+  "reason": "archived",
   "source_ref": "refs/heads/pr/fleet-policy-audited-handoff",
-  "syncwheel_version": "0.46.7"
+  "syncwheel_version": "0.46.10"
 }

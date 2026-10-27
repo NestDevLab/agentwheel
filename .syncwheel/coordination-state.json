@@ -33,6 +33,7 @@
     "refs/heads/pr/mgt0521-mcp-skip": "5b632eb7fcaba3ce0634f9f1c1607d8cb0187a2a",
     "refs/heads/pr/mgt0521-recovery-head": "ee3c708de301355f210a6f36c84d4c502dc08b9b",
     "refs/heads/pr/normalize-workspace-owner-prefix": "71ef53da8906fd5b1ae6c1bf9bbd4343028a01ff",
+    "refs/heads/pr/openclaw-capability-consent": "37fd12084381062bebae65ba98620b48046204eb",
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
@@ -60,7 +61,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T16:19:20+00:00",
+  "created_at": "2026-10-27T16:20:55+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -109,6 +110,7 @@
     "refs/heads/pr/mgt0521-mcp-skip": "ec3153258aa085e3d625341b5ab96c6da5352b29",
     "refs/heads/pr/mgt0521-recovery-head": null,
     "refs/heads/pr/normalize-workspace-owner-prefix": "46fd118c4cc5c817f5b2d604630f7ed0cdeea658",
+    "refs/heads/pr/openclaw-capability-consent": "d90be1986a5d9495a742b472224ac46e4269b9ce",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/ownership-release-claim": null,
@@ -307,11 +309,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "bf8aada3-3ecc-48a3-8b99-4f5c3003ec83",
-  "parent_state": "dca727499d4ecb986a5815e11f0af8b606644459",
+  "operation_token": "f834f286-279e-401a-95a5-b6fcb10caf16",
+  "parent_state": "064b3590ca1962ab8c63ce03c8f9c74928c53f04",
   "projection_status": "partial",
-  "publication_id": "05b382db-fe96-48ff-b870-09b149131514",
-  "publication_scope": "close:mgt0521-recovery-head",
+  "publication_id": "6387ae3d-3517-4ff6-a679-bc29f294bed3",
+  "publication_scope": "close:openclaw-capability-consent",
   "schema_version": 2,
   "syncwheel_version": "0.46.10",
   "tombstones": [
@@ -958,6 +960,14 @@
       "ref": "refs/heads/pr/mgt0521-recovery-head",
       "remote_tip": null,
       "stack": "mgt0521-recovery-head"
+    },
+    {
+      "branch": "pr/openclaw-capability-consent",
+      "closed_at": "2026-10-27T16:20:46+00:00",
+      "reason": "absorbed",
+      "ref": "refs/heads/pr/openclaw-capability-consent",
+      "remote_tip": null,
+      "stack": "openclaw-capability-consent"
     }
   ]
 }

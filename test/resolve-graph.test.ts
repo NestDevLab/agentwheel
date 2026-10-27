@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -376,6 +377,46 @@ describe("dependency graph resolver", () => {
     expect(locked.nodes).toHaveLength(1);
     expect(locked.nodes[0]?.resolvedCommit).toBe(commit1);
     expect(locked.nodes[0]?.sourceHash).toBe(lock.canonical.nodes[0]?.sourceHash);
+  });
+
+  it("preserves declared Git refs and canonical digest when resolving a locked graph", async () => {
+    const workspace = await tempRoot();
+    const root = join(workspace, "root");
+    const dep = join(workspace, "dep");
+    await writeText(join(dep, "rules", "dep.md"), "# Dependency\n");
+    await writeOpenPack(dep, { name: "acme/ref-dep", provides: [{ type: "rules", path: "rules" }] });
+    await writeText(join(root, "rules", "root.md"), "# Root\n");
+    await writeOpenPack(root, {
+      name: "acme/ref-root",
+      requires: { dep: { source: `git:${dep}#master`, select: ["rules/dep.md"] } },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    for (const [repo, branch] of [[root, "main"], [dep, "master"]] as const) {
+      await git(repo, ["init", "-b", branch]);
+      await git(repo, ["config", "user.name", "Test"]);
+      await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+      await git(repo, ["add", "-A"]);
+      await git(repo, ["commit", "-m", "Initial package"]);
+    }
+    const roots = [{ rootId: "root", source: `git:${root}#main`, mode: "tracking" as const }];
+    const first = await resolveDependencyGraph(roots, { workspaceRoot: workspace, cacheRoot: join(workspace, "cache") });
+    const lock = createGraphLock(first);
+    expect(lock.canonical.nodes.map((node) => node.requestedRef).sort()).toEqual(["main", "master"]);
+    expect(lock.canonical.edges.map((edge) => edge.requestedRef)).toEqual(["master"]);
+    for (const hardMode of [{}, { frozenLock: true }, { offline: true }]) {
+      const locked = await resolveDependencyGraph(roots, {
+        workspaceRoot: workspace, cacheRoot: join(workspace, "cache"),
+        previousLock: lock, lockedResolution: true, ...hardMode,
+      });
+      const nextLock = createGraphLock(locked);
+      expect(nextLock.canonical.nodes.map(({ requestedRef, resolvedCommit }) => ({ requestedRef, resolvedCommit })))
+        .toEqual(lock.canonical.nodes.map(({ requestedRef, resolvedCommit }) => ({ requestedRef, resolvedCommit })));
+      expect(nextLock.canonical.edges).toEqual(lock.canonical.edges);
+      const canonical = canonicalGraphLockJson(nextLock);
+      expect(canonical).toBe(canonicalGraphLockJson(lock));
+      expect(createHash("sha256").update(canonical).digest("hex"))
+        .toBe(createHash("sha256").update(canonicalGraphLockJson(lock)).digest("hex"));
+    }
   });
 
   it("falls back to fresh resolve when a soft lock has ambiguous source matches", async () => {

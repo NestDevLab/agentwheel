@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.4
+
+- Preserve user-owned Codex MCP preferences, nested tables, and TOML values when updating managed server fields.
+- Preserve declared Git branch refs in locked graph provenance so repeated resolution retains the same canonical digest.
+
 ## 0.22.3
 
 - Recover interrupted runtime installs when another commit saved the exact receipt-owned declarative bytes, while retaining strict hash, history, policy, index, and provider verification.

@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { parse as parseToml } from "smol-toml";
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { dirname } from "node:path";
 import { pathExists } from "../utils/fs.js";
 
@@ -10,8 +10,23 @@ export async function mergeCodexTomlMcp(sourcePath: string, destPath: string): P
   const source = JSON.parse(await readFile(sourcePath, "utf8")) as JsonRecord;
   const servers = extractMcpServers(source);
   const current = await pathExists(destPath) ? await readFile(destPath, "utf8") : "";
-  const withoutManaged = removeManagedMcpSections(current, Object.keys(servers));
-  const merged = appendMcpServers(withoutManaged, servers);
+  const parsed = parseToml(current, { integersAsBigInt: "asNeeded" });
+  const currentServers = isPlainRecord(parsed.mcp_servers) ? parsed.mcp_servers : {};
+  const blocks: string[] = [];
+  for (const [name, server] of Object.entries(servers).sort(([a], [b]) => a.localeCompare(b))) {
+    // Use the same owned representation as verification (including null and empty env).
+    const rendered = parseToml(formatMcpServer(name, server), { integersAsBigInt: "asNeeded" });
+    const declared = (rendered.mcp_servers as Record<string, unknown>)[name];
+    const mergedServer = mergeManagedFields(currentServers[name], declared);
+    // Keep the canonical source-only renderer for exact adoption; use native TOML
+    // serialization when user-owned values (dates, big integers, nested tables) remain.
+    blocks.push(managedValueMatches(declared, mergedServer)
+      ? formatMcpServer(name, server)
+      : stringifyToml({ mcp_servers: { [name]: mergedServer } }).trimEnd());
+  }
+  const merged = appendMcpServers(removeManagedMcpSections(current, Object.keys(servers)), blocks);
+  // Never overwrite the destination if an unsupported table shape would produce invalid TOML.
+  parseToml(merged, { integersAsBigInt: "asNeeded" });
   await mkdir(dirname(destPath), { recursive: true });
   await writeFile(destPath, merged, "utf8");
 }
@@ -65,7 +80,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function extractMcpServers(source: JsonRecord): Record<string, JsonRecord> {
   const raw = isRecord(source.mcpServers) ? source.mcpServers : source;
-  const servers: Record<string, JsonRecord> = {};
+  const servers: Record<string, JsonRecord> = Object.create(null);
   for (const [name, value] of Object.entries(raw)) {
     if (!isRecord(value)) continue;
     servers[name] = value;
@@ -77,28 +92,43 @@ function extractMcpServers(source: JsonRecord): Record<string, JsonRecord> {
 }
 
 function removeManagedMcpSections(content: string, serverNames: string[]): string {
-  if (serverNames.length === 0 || content.trim() === "") return content;
   const names = new Set(serverNames);
-  const lines = content.split(/\r?\n/);
   const kept: string[] = [];
   let skipping = false;
-
-  for (const line of lines) {
-    const section = line.match(/^\s*\[([^\]]+)]\s*$/)?.[1];
-    if (section) {
-      const match = section.match(/^mcp_servers\.([^.\]]+)(?:\.|$)/);
-      skipping = match ? names.has(unquoteTomlKey(match[1] ?? "")) : false;
+  let offset = 0;
+  for (const line of content.split(/(?<=\n)/)) {
+    if (line.trimStart().startsWith("[")) {
+      try {
+        // A standalone header can also occur inside a multiline value. Only the TOML
+        // parser can establish that the preceding document ends at a statement boundary.
+        parseToml(content.slice(0, offset), { integersAsBigInt: "asNeeded" });
+        const header = parseToml(line, { integersAsBigInt: "asNeeded" });
+        const servers = isPlainRecord(header.mcp_servers) ? header.mcp_servers : {};
+        skipping = Object.keys(servers).some((name) => names.has(name));
+      } catch {
+        // This line is part of a value, not an independently parseable table header.
+      }
     }
     if (!skipping) kept.push(line);
+    offset += line.length;
   }
-
-  return kept.join("\n").replace(/\n{3,}$/g, "\n\n");
+  return kept.join("");
 }
 
-function appendMcpServers(content: string, servers: Record<string, JsonRecord>): string {
-  const blocks = Object.entries(servers)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, server]) => formatMcpServer(name, server));
+function mergeManagedFields(current: unknown, declared: unknown): unknown {
+  if (!isPlainRecord(declared)) return declared;
+  const merged = isPlainRecord(current) ? { ...current } : {};
+  for (const [key, value] of Object.entries(declared)) {
+    // Define own properties so quoted keys such as "__proto__" remain ordinary TOML keys.
+    Object.defineProperty(merged, key, {
+      value: mergeManagedFields(Object.hasOwn(merged, key) ? merged[key] : undefined, value),
+      enumerable: true, configurable: true, writable: true,
+    });
+  }
+  return merged;
+}
+
+function appendMcpServers(content: string, blocks: string[]): string {
   const prefix = content.trimEnd();
   return `${prefix ? `${prefix}\n\n` : ""}${blocks.join("\n\n")}\n`;
 }

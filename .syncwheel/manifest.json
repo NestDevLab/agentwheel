@@ -26,7 +26,6 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
-      "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
       "mgt0521-mcp-skip",
@@ -80,24 +79,6 @@
       "integration_commits": [],
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/normalize-workspace-owner-prefix",
-      "commits": [
-        "46fd118c4cc5c817f5b2d604630f7ed0cdeea658"
-      ],
-      "id": "normalize-workspace-owner-prefix",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Accept exact workspace-prefixed package owners during fleet normalization"
       },
       "publication": {
         "enabled": true

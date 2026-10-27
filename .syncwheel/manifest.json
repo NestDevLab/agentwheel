@@ -26,7 +26,6 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
-      "pin-package-declarations",
       "normalize-workspace-owner-prefix",
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
@@ -81,24 +80,6 @@
       "integration_commits": [],
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/pin-package-declarations",
-      "commits": [
-        "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a"
-      ],
-      "id": "pin-package-declarations",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Replace package declarations through governed native pin without source resolution"
       },
       "publication": {
         "enabled": true

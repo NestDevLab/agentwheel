@@ -32,7 +32,8 @@
       "fleet-policy-audited-handoff",
       "mgt0521-mcp-skip",
       "openclaw-capability-consent",
-      "mgt0521-recovery-head"
+      "mgt0521-recovery-head",
+      "preserve-mcp-preferences"
     ],
     "strategy": "cherry-pick"
   },
@@ -216,6 +217,20 @@
       "meta": {
         "purpose": "Recover runtime when transaction paths are already committed exactly"
       }
+    },
+    {
+      "id": "preserve-mcp-preferences",
+      "branch": "pr/preserve-mcp-preferences",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {}
     }
   ],
   "syncwheel_tracking": "git-tracked",

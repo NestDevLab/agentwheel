@@ -1,0 +1,11 @@
+{
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T16:19:20+00:00",
+  "closed": true,
+  "coordination_id": "default",
+  "operation_token": "bf8aada3-3ecc-48a3-8b99-4f5c3003ec83",
+  "publication_scope": "close:mgt0521-recovery-head",
+  "reason": "absorbed",
+  "source_ref": "refs/heads/pr/mgt0521-recovery-head",
+  "syncwheel_version": "0.46.10"
+}

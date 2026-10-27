@@ -31,7 +31,6 @@
       "handoff-explicit-source-state",
       "fleet-policy-audited-handoff",
       "mgt0521-mcp-skip",
-      "openclaw-capability-consent",
       "preserve-mcp-preferences"
     ],
     "strategy": "cherry-pick"
@@ -172,24 +171,6 @@
       "integration_branch": "main-integration",
       "meta": {
         "purpose": "Preserve unmanaged MCP preferences when verifying merged skips"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/openclaw-capability-consent",
-      "commits": [
-        "d90be1986a5d9495a742b472224ac46e4269b9ce"
-      ],
-      "id": "openclaw-capability-consent",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Detect OpenClaw managed plugin capability consent support"
       },
       "publication": {
         "enabled": true

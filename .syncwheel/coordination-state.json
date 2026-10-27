@@ -32,7 +32,7 @@
     "refs/heads/pr/mgt0478-add-runtimes": "54e2fc2d67be7d884daf724097615af6fa246035",
     "refs/heads/pr/mgt0521-mcp-skip": "5b632eb7fcaba3ce0634f9f1c1607d8cb0187a2a",
     "refs/heads/pr/mgt0521-recovery-head": "ee3c708de301355f210a6f36c84d4c502dc08b9b",
-    "refs/heads/pr/normalize-workspace-owner-prefix": "71ef53da8906fd5b1ae6c1bf9bbd4343028a01ff",
+    "refs/heads/pr/normalize-workspace-owner-prefix": "133967a71cd4fc394a1d48781516c09de3515dd3",
     "refs/heads/pr/openclaw-capability-consent": "37fd12084381062bebae65ba98620b48046204eb",
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
@@ -62,7 +62,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T16:49:38+00:00",
+  "created_at": "2026-10-27T16:52:55+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -187,7 +187,6 @@
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
         "mgt0478-add-runtimes",
-        "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
         "fleet-policy-audited-handoff",
         "mgt0521-mcp-skip",
@@ -234,20 +233,6 @@
           "00bdf22b4696497078a5768f4f6136798be2d1fe"
         ],
         "id": "mgt0478-add-runtimes",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
-        "branch": "pr/normalize-workspace-owner-prefix",
-        "commits": [
-          "46fd118c4cc5c817f5b2d604630f7ed0cdeea658"
-        ],
-        "id": "normalize-workspace-owner-prefix",
         "integration_branch": "main-integration",
         "target_branch": "main"
       },
@@ -311,11 +296,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "6d72b7eb-7838-44da-9053-5fdf3c3511fd",
-  "parent_state": "fc597d6c0c926226d85ccd4b37e9af16dee36e18",
+  "operation_token": "cbb6f689-af64-4111-92f7-c4fec8139337",
+  "parent_state": "72b82150f12247ea71f6ecaf9faef73ef8b634bf",
   "projection_status": "partial",
-  "publication_id": "637b7837-567c-4cbb-aefb-dcffa20021fa",
-  "publication_scope": "close:pin-package-declarations",
+  "publication_id": "25ff62a3-1731-4393-9bc8-f273d0606021",
+  "publication_scope": "close:normalize-workspace-owner-prefix",
   "schema_version": 2,
   "syncwheel_version": "0.46.10",
   "tombstones": [
@@ -982,6 +967,18 @@
       "ref": "refs/heads/pr/pin-package-declarations",
       "remote_tip": null,
       "stack": "pin-package-declarations"
+    },
+    {
+      "archive": {
+        "planDigest": "3e8984ab7d1c06eedd6cfcd6cb52dbfd3367976c645efd4d01fa12fd4a6be6c0",
+        "retentionDays": 30
+      },
+      "branch": "pr/normalize-workspace-owner-prefix",
+      "closed_at": "2026-10-27T16:52:45+00:00",
+      "reason": "archived",
+      "ref": "refs/heads/pr/normalize-workspace-owner-prefix",
+      "remote_tip": null,
+      "stack": "normalize-workspace-owner-prefix"
     }
   ]
 }

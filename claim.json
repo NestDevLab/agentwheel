@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/pin-package-declarations"
-  ],
-  "claimed_at": "2026-10-19T23:05:50+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T16:49:38+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "934ad980-82b0-46c1-a67d-5bb1d374ac61",
-  "publication_scope": "partial",
+  "operation_token": "6d72b7eb-7838-44da-9053-5fdf3c3511fd",
+  "publication_scope": "close:pin-package-declarations",
+  "reason": "archived",
   "source_ref": "refs/heads/pr/pin-package-declarations",
-  "syncwheel_version": "0.46.5"
+  "syncwheel_version": "0.46.10"
 }

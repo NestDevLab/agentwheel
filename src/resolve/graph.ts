@@ -355,6 +355,8 @@ async function processRequirement(
     if (!satisfiesVersionRange(fetched.version, requirement.version)) {
       throw new Error(`Package ${fetched.name}@${fetched.version} does not satisfy requested version ${requirement.version}`);
     }
+    // Locked fetches use a commit ref for materialization; keep the original declared ref in provenance.
+    const requestedRef = frozen ? frozen.node.requestedRef : fetched.resolved.requestedRef;
     const nodeKey = `${normalized.normalizedSource}\0${fetched.name}`;
 
     let selectionImport = requirement.selection
@@ -386,7 +388,7 @@ async function processRequirement(
           source: fetched.resolved.source,
           normalizedSource: normalized.normalizedSource,
           driver: fetched.resolved.driver,
-          requestedRef: fetched.resolved.requestedRef,
+          requestedRef,
           resolvedCommit: fetched.resolved.resolvedCommit,
           cacheIdentity: fetched.resolved.cacheIdentity,
           sourceHash: fetched.sourceHash,
@@ -447,7 +449,7 @@ async function processRequirement(
         alias: requirement.alias,
         source: requirement.source,
         normalizedSource: normalized.normalizedSource,
-        requestedRef: fetched.resolved.requestedRef,
+        requestedRef,
         version: requirement.version,
         mode: requirement.mode,
         optional: requirement.optional,

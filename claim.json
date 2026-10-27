@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/mgt0521-mcp-skip"
-  ],
-  "claimed_at": "2026-10-26T12:39:00+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T16:54:23+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "c3971872-6ee0-4753-b8ca-d07980654652",
-  "publication_scope": "partial",
+  "operation_token": "a0cef282-33ae-4f89-a9fd-bb95879aa091",
+  "publication_scope": "close:mgt0521-mcp-skip",
+  "reason": "archived",
   "source_ref": "refs/heads/pr/mgt0521-mcp-skip",
-  "syncwheel_version": "0.46.9"
+  "syncwheel_version": "0.46.10"
 }

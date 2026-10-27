@@ -26,7 +26,6 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
-      "mgt0521-mcp-skip",
       "preserve-mcp-preferences"
     ],
     "strategy": "cherry-pick"
@@ -77,24 +76,6 @@
       "integration_commits": [],
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/mgt0521-mcp-skip",
-      "commits": [
-        "ec3153258aa085e3d625341b5ab96c6da5352b29"
-      ],
-      "id": "mgt0521-mcp-skip",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Preserve unmanaged MCP preferences when verifying merged skips"
       },
       "publication": {
         "enabled": true

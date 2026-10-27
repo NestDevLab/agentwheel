@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { commandGovernance, commandGovernanceMode, isGovernedCommand, requiresCleanMutationPreflight } from "../src/mutation/commands.js";
 import { GovernedMutation, mergeMutationPolicies, recoverMutationRuntime, resumeMutation } from "../src/mutation/coordinator.js";
 import { declareMutationPath } from "../src/mutation/declarations.js";
-import { assertHeadLease } from "../src/mutation/repository.js";
+import { assertHeadLease, committedRecoveryPaths } from "../src/mutation/repository.js";
 import { invokeRevisionProvider } from "../src/mutation/providers.js";
 import {
   revisionPathSchema,
@@ -110,6 +110,57 @@ describe.sequential("mutation policy and revision provider v1", () => {
     }
     await expect(assertHeadLease(repo, expected, (await git(repo, ["rev-parse", "HEAD"])).trim(), ["notes.txt"], scopedProvider))
       .rejects.toThrow(/overlaps protected/);
+  });
+
+  it.each(["wrong-hash", "local-drift", "config", "manifest", "revert", "merge", "missing-proof", "undeclared", "before-hash", "legacy", "empty-declarations"])("refuses recovery projection with %s", async (kind) => {
+    const { repo } = await (kind === "legacy" ? governedRepo() : pathScopedRepo());
+    const path = ".agentwheel/locks/saved.graph-lock.json";
+    const before = "original committed bytes\n";
+    await commitExternal(repo, path, before);
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    const after = "original operation bytes\n";
+    const proof: { path: string; beforeSha256: string | null; afterSha256: string } = { path, beforeSha256: sha256(Buffer.from(before)), afterSha256: sha256(Buffer.from(after)) };
+    if (kind === "merge") await git(repo, ["switch", "-c", "side"]);
+    if (kind === "revert" || kind === "merge") await commitExternal(repo, path, "intermediate foreign bytes\n");
+    await commitExternal(repo, path, kind === "wrong-hash" ? "foreign bytes\n" : after);
+    if (kind === "merge") {
+      await git(repo, ["switch", "main"]);
+      await commitExternal(repo, "outside.txt", "unrelated\n");
+      await git(repo, ["merge", "--no-ff", "side", "-m", "Merge hidden mismatch"]);
+    }
+    if (kind === "local-drift") await writeFile(join(repo, path), "local foreign bytes\n");
+    if (kind === "config") await commitExternal(repo, ".agentwheel/config.json", (await readFile(workspaceConfigPath(repo), "utf8")) + "\n");
+    if (kind === "manifest") await commitExternal(repo, ".syncwheel/manifest.json", "{}\n");
+    const head = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (kind === "before-hash") proof.beforeSha256 = "0".repeat(64);
+    await expect(committedRecoveryPaths(repo, expected, head,
+      kind === "undeclared" || kind === "empty-declarations" ? [] : [path],
+      kind === "missing-proof" ? [] : [proof],
+      kind === "legacy" ? { kind: "git", protocolVersion: 1 } : scopedProvider)).rejects.toThrow();
+  });
+
+  it.each(["symlink", "executable", "symlink-parent"])("refuses recovery identity substitution: %s", async (kind) => {
+    const { repo } = await pathScopedRepo();
+    const path = "saved/file.txt";
+    const before = "original bytes\n";
+    const after = "receipt bytes";
+    await commitExternal(repo, path, before);
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await writeFile(join(repo, path), after);
+    const proof = { path, beforeSha256: sha256(Buffer.from(before)), afterSha256: sha256(Buffer.from(after)) };
+    if (kind === "symlink") {
+      await rm(join(repo, path));
+      await symlink(after, join(repo, path));
+    } else if (kind === "executable") await chmod(join(repo, path), 0o755);
+    await git(repo, ["add", path]);
+    await git(repo, ["commit", "-m", "Save substituted identity"]);
+    if (kind === "symlink-parent") {
+      const outside = await tempRoot("agentwheel-path-identity-");
+      await writeFile(join(outside, "file.txt"), after);
+      await rm(join(repo, "saved"), { recursive: true });
+      await symlink(outside, join(repo, "saved"));
+    }
+    await expect(committedRecoveryPaths(repo, expected, (await git(repo, ["rev-parse", "HEAD"])).trim(), [path], [proof], scopedProvider)).rejects.toThrow();
   });
 
   it("refuses a dirty config that widens an originally exact lease", async () => {
@@ -1462,6 +1513,121 @@ if (request.action === "check") {
       "preflight",
       "recover",
     ]);
+    expect((await git(repo, ["status", "--short"])).trim()).toBe("");
+  });
+
+  it.each([false, true, "noCommit", "index", "legacy", "race", "merged-race"] as const)("recovers receipt-proven declarative bytes already committed by another writer (remaining=%s)", async (remaining) => {
+    const { repo, globalRoot } = await (remaining === "legacy" ? governedRepo() : pathScopedRepo());
+    const sourceRoot = await tempRoot("agentwheel-late-crash-source-");
+    const runtimeRoot = await tempRoot("agentwheel-late-crash-runtime-");
+    const sourcePath = join(sourceRoot, "late.md");
+    await writeFile(sourcePath, "late crash rule\n", "utf8");
+    const adapter: AdapterConfig = {
+      name: "late-crash",
+      targets: { rules: { local: { enabled: true, dest: ".runtime/rules" } } },
+    };
+    const artifact: DesiredArtifact = {
+      type: "rules",
+      name: "late.md",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: "rules/late.md",
+      kind: "file",
+      hash: await hashPath(sourcePath),
+      channel: "managed",
+      meta: { logicalSelector: "rules/late.md", dependencyRole: "root", owners: ["late-crash"] },
+    };
+    const plan = await createCombinedInstallPlan([artifact], adapter, runtimeRoot);
+    const graphLockPath = join(repo, ".agentwheel", "locks", "late-crash.graph-lock.json");
+    await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
+    await writeFile(graphLockPath, JSON.stringify(emptyGraphLock("original-target")) + "\n");
+    await git(repo, ["add", ".agentwheel/locks/late-crash.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "Record original graph file identity"]);
+    let injected = false;
+    const crashingTransport: TargetTransport = {
+      ...localTransport,
+      async readFile(path) {
+        if (!injected && path.endsWith(".install-manifest.json") && await pathExists(graphLockPath)) {
+          injected = true;
+          throw new Error("injected crash after declarative write");
+        }
+        return localTransport.readFile(path);
+      },
+    };
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel install",
+      operationId: "late-runtime-crash-1",
+      noCommit: remaining === "noCommit",
+      reason: "Recover after verified declarative state was written",
+      anticipatedPaths: [graphLockPath],
+    });
+    try {
+      await applyCombinedInstallPlan(plan, {
+        transport: crashingTransport,
+        graphLockDigest: "late-crash-lock-digest",
+        graphLock: { path: graphLockPath, lock: emptyGraphLock("late-crash") },
+      });
+      throw new Error("expected injected crash");
+    } catch (error) {
+      await mutation!.fail(error);
+    }
+    expect(await pathExists(graphLockPath)).toBe(true);
+    expect((await readMutationReceipt("late-runtime-crash-1")).runtimeJournals[0]?.status).toBe("pending");
+
+    const original = await readMutationReceipt("late-runtime-crash-1");
+    expect(original.paths).toHaveLength(1);
+    await git(repo, ["add", ".agentwheel/locks/late-crash.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "Save interrupted declarative bytes"]);
+    await commitExternal(repo, "outside.txt", "unrelated later commit\n");
+    if (remaining === true || remaining === "race" || remaining === "merged-race") {
+      // The interrupted operation can own a second declared delta still awaiting revisioning.
+      const { resumeMutationPathDeclarations, endMutationPathDeclarations } = await import("../src/mutation/declarations.js");
+      resumeMutationPathDeclarations(repo, original.operationId);
+      declareMutationPath(join(repo, "remaining.txt"));
+      endMutationPathDeclarations();
+      await writeFile(join(repo, "remaining.txt"), "remaining operation bytes\n");
+    }
+    const savedHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (remaining === "index") {
+      await writeFile(join(repo, "staged.txt"), "foreign staged bytes\n");
+      await git(repo, ["add", "staged.txt"]);
+    }
+    if (remaining === "race" || remaining === "merged-race") {
+      await expect(recoverMutationRuntime("late-runtime-crash-1", {
+        async beforeProviderCompletion() {
+          const originalBytes = await readFile(graphLockPath, "utf8");
+          if (remaining === "merged-race") await git(repo, ["switch", "-c", "race-side"]);
+          await commitExternal(repo, ".agentwheel/locks/late-crash.graph-lock.json", "foreign intermediate bytes\n");
+          await commitExternal(repo, ".agentwheel/locks/late-crash.graph-lock.json", originalBytes);
+          if (remaining === "merged-race") {
+            await git(repo, ["switch", "main"]);
+            await commitExternal(repo, "race-outside.txt", "unrelated branch\n");
+            await git(repo, ["merge", "--no-ff", "race-side", "-m", "Merge hidden recovery race"]);
+          }
+        },
+      })).rejects.toThrow(/overlaps protected/);
+      return;
+    }
+    if (typeof remaining === "string") {
+      await expect(recoverMutationRuntime("late-runtime-crash-1")).rejects.toThrow(remaining === "index" ? /clean Git index/ : /HEAD lease/);
+      expect((await readMutationReceipt(original.operationId)).runtimeJournals[0]?.status).toBe("pending");
+      expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(savedHead);
+      return;
+    }
+    const recovered = await recoverMutationRuntime("late-runtime-crash-1");
+    expect(recovered.status).toBe(remaining === true ? "succeeded" : "no-repository-delta");
+    expect(recovered.expectedHead).toBe(original.expectedHead);
+    expect(recovered.paths).toEqual(expect.arrayContaining(original.paths));
+    expect(recovered.paths).toHaveLength(remaining === true ? 2 : 1);
+    expect(recovered.runtimeJournals[0]?.status).toBe("resolved");
+    const terminalHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (remaining === true) expect((await git(repo, ["show", "--name-only", "--format=", "HEAD"])).trim()).toBe("remaining.txt");
+    else expect(terminalHead).toBe(savedHead);
+    expect(recovered.providerResponse).toMatchObject({ action: "recover", expectedHead: savedHead, status: remaining === true ? "verified" : "no-repository-delta" });
+    expect(await resumeMutation(original.operationId, "recover")).toEqual(recovered);
+    expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(terminalHead);
     expect((await git(repo, ["status", "--short"])).trim()).toBe("");
   });
 

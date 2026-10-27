@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.3
+
+- Recover interrupted runtime installs when another commit saved the exact receipt-owned declarative bytes, while retaining strict hash, history, policy, index, and provider verification.
+
 ## 0.22.2
 
 - Verify owned Codex MCP fields during skip and recovery without rewriting user preferences; retain exact adoption and retirement checks.

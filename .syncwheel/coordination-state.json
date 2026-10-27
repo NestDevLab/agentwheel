@@ -30,7 +30,7 @@
     "refs/heads/pr/mgt-0287-aw1-state-continuity": "56b708d57b562251c135d1135b7233762c3cb340",
     "refs/heads/pr/mgt0406-runas-readonly": "99f0c6918792ae62fd1537c1b2b8da3ee0fedb27",
     "refs/heads/pr/mgt0478-add-runtimes": "54e2fc2d67be7d884daf724097615af6fa246035",
-    "refs/heads/pr/mgt0521-mcp-skip": "5b632eb7fcaba3ce0634f9f1c1607d8cb0187a2a",
+    "refs/heads/pr/mgt0521-mcp-skip": "909099eac93e1657289ec2ba64c393688db70170",
     "refs/heads/pr/mgt0521-recovery-head": "ee3c708de301355f210a6f36c84d4c502dc08b9b",
     "refs/heads/pr/normalize-workspace-owner-prefix": "133967a71cd4fc394a1d48781516c09de3515dd3",
     "refs/heads/pr/openclaw-capability-consent": "37fd12084381062bebae65ba98620b48046204eb",
@@ -62,7 +62,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T16:53:54+00:00",
+  "created_at": "2026-10-27T16:54:23+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -187,7 +187,6 @@
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
         "mgt0478-add-runtimes",
-        "mgt0521-mcp-skip",
         "preserve-mcp-preferences"
       ],
       "strategy": "cherry-pick"
@@ -240,20 +239,6 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "pr/mgt0521-mcp-skip",
-        "commits": [
-          "ec3153258aa085e3d625341b5ab96c6da5352b29"
-        ],
-        "id": "mgt0521-mcp-skip",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
         "branch": "pr/preserve-mcp-preferences",
         "commits": [
           "91d586d0b4fec0d41a23200441d64b74eeb85db9"
@@ -266,11 +251,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "8043cb19-8862-42c4-9bc5-c47e15cb9e7c",
-  "parent_state": "57007843f4317bcc7f9d1a63be670d18bb5a1590",
+  "operation_token": "a0cef282-33ae-4f89-a9fd-bb95879aa091",
+  "parent_state": "02eb8f0d6364d357e8c8fe65b05c1b6368b0faf3",
   "projection_status": "partial",
-  "publication_id": "ad9c6618-14a1-4abd-a2ca-f92771da9c3d",
-  "publication_scope": "close:fleet-policy-audited-handoff",
+  "publication_id": "fbaf3405-d672-48ae-916d-79844f0710a9",
+  "publication_scope": "close:mgt0521-mcp-skip",
   "schema_version": 2,
   "syncwheel_version": "0.46.10",
   "tombstones": [
@@ -973,6 +958,18 @@
       "ref": "refs/heads/pr/fleet-policy-audited-handoff",
       "remote_tip": null,
       "stack": "fleet-policy-audited-handoff"
+    },
+    {
+      "archive": {
+        "planDigest": "039ed4bf27f4208a3879733e881b1d681671cd9d7f6963b84e46e91a039a1e93",
+        "retentionDays": 30
+      },
+      "branch": "pr/mgt0521-mcp-skip",
+      "closed_at": "2026-10-27T16:54:13+00:00",
+      "reason": "archived",
+      "ref": "refs/heads/pr/mgt0521-mcp-skip",
+      "remote_tip": null,
+      "stack": "mgt0521-mcp-skip"
     }
   ]
 }

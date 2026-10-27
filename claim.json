@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/preserve-mcp-preferences"
-  ],
-  "claimed_at": "2026-10-27T16:21:52+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T18:26:02+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "f32d9296-5264-4834-8355-520e459425ba",
-  "publication_scope": "partial",
+  "operation_token": "f0aaeea0-40ff-4879-b1ad-f30e81a0eaa5",
+  "publication_scope": "close:preserve-mcp-preferences",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/preserve-mcp-preferences",
-  "syncwheel_version": "0.46.10"
+  "syncwheel_version": "0.46.12"
 }

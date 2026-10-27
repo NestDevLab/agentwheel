@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/handoff-explicit-source-state"
-  ],
-  "claimed_at": "2026-10-20T01:17:37+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-10-27T16:53:25+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "b1e62427-bcfb-40f8-b617-537000d319ea",
-  "publication_scope": "partial",
+  "operation_token": "8941d13a-0e02-4a8f-87a7-ccc2a4358817",
+  "publication_scope": "close:handoff-explicit-source-state",
+  "reason": "archived",
   "source_ref": "refs/heads/pr/handoff-explicit-source-state",
-  "syncwheel_version": "0.46.6"
+  "syncwheel_version": "0.46.10"
 }

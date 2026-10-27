@@ -1,24 +1,24 @@
 {
   "authority": {
+    "mode": "ai-managed",
     "allow": [
       "source_change"
     ],
     "deny": [
       "destructive_rewrite"
-    ],
-    "mode": "ai-managed"
+    ]
   },
   "channels": [],
   "coordination": {
-    "gc": {
-      "backup_keep": 2,
-      "backup_retention_days": 30,
-      "worktree_grace_days": 7
-    },
-    "id": "default",
     "mode": "active-active",
+    "id": "default",
     "remote": "origin",
-    "state_branch": "syncwheel/state/default"
+    "state_branch": "syncwheel/state/default",
+    "gc": {
+      "worktree_grace_days": 7,
+      "backup_retention_days": 30,
+      "backup_keep": 2
+    }
   },
   "defaults": {
     "base_branch": "main",
@@ -34,8 +34,7 @@
     "stacks": [
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
-      "mgt0478-add-runtimes",
-      "preserve-mcp-preferences"
+      "mgt0478-add-runtimes"
     ],
     "strategy": "cherry-pick"
   },
@@ -86,22 +85,6 @@
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
       },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/preserve-mcp-preferences",
-      "commits": [
-        "91d586d0b4fec0d41a23200441d64b74eeb85db9"
-      ],
-      "id": "preserve-mcp-preferences",
-      "integration_branch": "main-integration",
-      "meta": {},
       "publication": {
         "enabled": true
       },

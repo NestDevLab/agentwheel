@@ -184,7 +184,7 @@
       "base": "origin/main",
       "branch": "pr/openclaw-capability-consent",
       "commits": [
-        "2b69768f4fd58911e368d057b0179c919c8ed141"
+        "d90be1986a5d9495a742b472224ac46e4269b9ce"
       ],
       "id": "openclaw-capability-consent",
       "integration_branch": "main-integration",

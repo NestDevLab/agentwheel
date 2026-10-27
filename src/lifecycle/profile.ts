@@ -4,7 +4,7 @@ import { defaultInstallationType, installRootForAdapterInstallationType, resolve
 import { applyCombinedInstallPlan } from "../install/index.js";
 import type { InstallPlan } from "../install/plan.js";
 import { createGraphSourcePlan, type GraphSourcePlanResult } from "./source-plan.js";
-import { isCompositeWorkspaceProfile, readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
+import { isCompositeWorkspaceProfile, packagesForTarget, readMergedWorkspaceConfig, type WorkspacePackage } from "../model/workspace.js";
 import { resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
 import { resolveProfileRuntimeTarget } from "../runtime/target.js";
@@ -32,6 +32,7 @@ export interface ProfileSyncOptions {
   forceConflict?: boolean;
   forceForeignState?: boolean;
   replaceConflict?: boolean;
+  recoverLegacyState?: boolean;
   noDeps?: boolean;
   includeSuggestions?: boolean;
   suggestionAliases?: string[];
@@ -68,6 +69,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     throw new Error(`Composite profile '${options.profile}' must be executed through member delegation.`);
   }
 
+
   const packages = options.source
     ? [await packageFromSource(options.source, options)]
     : config.packages;
@@ -80,8 +82,20 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
   if (selected && packages.some((pkg) => pkg.selection)) {
     throw new Error("--select/--skill cannot be combined with a package selection import.");
   }
+  if (!options.source) {
+    const adapters = new Set(profile.runtimes.map((runtime) => resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId).adapter));
+    for (const pkg of packages) {
+      if (pkg.runtimes && !pkg.runtimes.some((runtime) => adapters.has(runtime))) {
+        options.warn?.(`Package '${pkg.name}' matches no runtime in profile '${options.profile}'.`);
+      }
+    }
+  }
   for (const runtime of profile.runtimes) {
     const target = resolveProfileRuntimeTarget(runtime, config, options.workspaceRoot, options.installationType, options.fleetId);
+    if (target.transport === "local-run-as" && (target.adapterModule || target.reloadRuntimes || runtime.reloadRuntimes || options.reloadRuntimes)) {
+      throw new Error("local-run-as refuses programmatic adapters and runtime reload before writes.");
+    }
+    const runtimePackages = options.source ? packages : packagesForTarget(packages, target);
     const transport = transportForTarget(target);
     const adapter = await resolveAdapter({
       adapter: target.adapter,
@@ -94,7 +108,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
     const installationType = target.installationType ?? defaultInstallationType;
     resolveInstallationTypeForAdapter(adapter, installationType);
     const graphPlan = await createGraphSourcePlan({
-      roots: packages.map((pkg) => ({
+      roots: runtimePackages.map((pkg) => ({
         rootId: pkg.name,
         source: pkg.source,
         mode: options.mode ?? pkg.mode,
@@ -124,6 +138,7 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
         targetRoot: target.targetRoot,
         transport: transport.kind,
         ssh: target.ssh,
+        runAs: target.runAs,
         stateKey: target.stateKey,
       },
       installationType,
@@ -143,13 +158,16 @@ export async function syncProfile(options: ProfileSyncOptions): Promise<ProfileS
       forceConflict: options.forceConflict,
       forceForeignState: options.forceForeignState,
       replaceConflict: options.replaceConflict,
+      recoverLegacyState: options.recoverLegacyState,
+      allowEmptyRoots: runtimePackages.length === 0,
+      excludedRootIds: options.source ? [] : packages.filter((pkg) => !runtimePackages.includes(pkg)).map((pkg) => pkg.name),
     });
     try {
       const result: ProfileSyncResult = {
         runtime: adapter.name,
-        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport.kind === "ssh"),
+        targetRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport),
         transport: transport.kind,
-        packageName: packages.map((pkg) => pkg.name).join(","),
+        packageName: runtimePackages.map((pkg) => pkg.name).join(",") || "(no packages)",
         plan: graphPlan.plan,
         graphPlan,
         graphLockDigest: graphPlan.graphLockDigest,

@@ -10,7 +10,7 @@ import {
   type ProgrammaticAdapterUninstall,
 } from "../model/adapter.js";
 import type { Artifact, ArtifactType, FileKind } from "../model/artifact.js";
-import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest, type InstallManifestEntry, type InstallManifestV1Entry } from "../model/manifest.js";
+import { legacyUnownedWorkspaceOwner, type DependencyRole, type InstallManifest, type InstallManifestEntry, type InstallManifestV1Entry, type SourceLock } from "../model/manifest.js";
 import type { StagedBundle } from "../staging/staging.js";
 import { renderCodexSubagents } from "../staging/codex-subagents.js";
 import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
@@ -65,6 +65,7 @@ export interface InstallOperation {
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
   exactMergeRemoval?: boolean;
+  exactMergeAdoption?: boolean;
   mode?: ManagedInstructionBlockMode;
   programmaticOperation?: ProgrammaticAdapterOperation;
   programmaticApply?: ProgrammaticAdapterApply;
@@ -88,6 +89,19 @@ export interface MigrationReport {
   dropped: string[];
 }
 
+export interface InstallStateMigration {
+  fromStateKey?: string;
+  fromGraphLockPath: string;
+  fromGraphLockDigest: string;
+  sourceLock?: SourceLock | null;
+}
+
+export interface TargetStateFilePreconditions {
+  graphLockPath: string;
+  graphLockRevision: string | null;
+  sourceLockRevision: string | null;
+}
+
 export interface InstallPlan {
   adapter: string;
   installationType: string;
@@ -97,6 +111,8 @@ export interface InstallPlan {
   hasBlockingChanges: boolean;
   baseRevision: string | null;
   runtimeStateRevision?: string;
+  stateMigration?: InstallStateMigration;
+  targetStateFilePreconditions?: TargetStateFilePreconditions;
   migrationReport?: MigrationReport;
   graphLockDigest?: string;
   adapterCode?: {
@@ -119,6 +135,7 @@ export interface CombinedInstallPlanOptions {
   warn?: (message: string) => void;
   suppressAdapterTargetWarnings?: boolean;
   runtimeStateRevision?: string;
+  stateMigration?: InstallStateMigration;
 }
 
 export async function createInstallPlan(
@@ -136,7 +153,7 @@ export async function createInstallPlan(
     warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
   });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport);
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   const desired: InstallOperation[] = [];
@@ -178,7 +195,7 @@ export async function createCombinedInstallPlan(
     warn: options.suppressAdapterTargetWarnings ? undefined : options.warn,
   });
   const installationType = resolveInstallationTypeForArtifacts(adapter, installableArtifacts.map((artifact) => artifact.type), requestedInstallationType);
-  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport.kind === "ssh");
+  const installRoot = installRootForArtifacts(adapter, targetRoot, installationType, installableArtifacts.map((artifact) => artifact.type), transport);
   await validateArtifactsForInstall(installableArtifacts, adapter, installationType);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(installRoot, adapter.name, transport);
   for (const artifact of installableArtifacts) {
@@ -296,6 +313,7 @@ async function createPlanFromOperations(
           mergeCreatedDestination: existing?.mergeCreatedDestination,
           currentHash,
           manifestHash: existing?.hash,
+          exactMergeAdoption: true,
           reason: existing
             ? "repairing exact incomplete merge ownership"
             : "force adopting exact unmanaged merge contribution",
@@ -463,6 +481,7 @@ async function createPlanFromOperations(
     hasBlockingChanges: operations.some((op) => op.action === "drift" || op.action === "conflict"),
     baseRevision: options.baseRevision ?? manifest?.revision ?? null,
     runtimeStateRevision,
+    stateMigration: options.stateMigration,
     migrationReport: migration.report,
     graphLockDigest: options.graphLockDigest,
     adapterCode: adapter.programmatic ? { modulePath: adapter.programmatic.modulePath, hash: adapter.programmatic.hash } : undefined,

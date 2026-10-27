@@ -8,6 +8,8 @@ import { pathExists, writeJsonAtomic } from "../utils/fs.js";
 import { isSupportedVersionRange } from "../resolve/semver.js";
 import { mutationPolicySchema } from "./mutation.js";
 import { declareMutationPath } from "../mutation/declarations.js";
+import { listAdapters } from "../adapters/index.js";
+import { normalizeArtifactSelectors } from "./selection.js";
 
 const artifactSelectorListSchema = z.array(z.string().min(1));
 export const CURRENT_WORKSPACE_SCHEMA_VERSION = 4 as const;
@@ -49,6 +51,9 @@ const workspacePackageBaseSchema = z.object({
   source: z.string().min(1),
   driver: z.enum(["local", "git", "skillkit", "vercel-skills", "mcp-registry", "clawhub"]).default("local"),
   adapter: z.string().min(1).default("openclaw"),
+  runtimes: z.array(z.string().min(1)).min(1).refine((runtimes) => new Set(runtimes).size === runtimes.length, {
+    message: "Package runtimes must be unique.",
+  }).transform((runtimes) => [...runtimes].sort()).optional(),
   adapterConfig: z.string().min(1).optional(),
   adapterModule: z.string().min(1).optional(),
   adapterCodeHash: z.string().min(16).optional(),
@@ -113,6 +118,7 @@ export const workspaceProfileMemberSchema = z.object({
   id: z.string().min(1).regex(/^[a-z0-9][a-z0-9._-]*$/i),
   workspace: z.string().min(1),
   profile: z.string().min(1),
+  fleet: fleetIdSchema.optional(),
   transport: z.enum(["local", "ssh"]).default("local"),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),
@@ -171,15 +177,27 @@ export const workspaceAgentSchema = z.object({
   root: z.string().min(1),
   installationType: installationTypeSchema.optional(),
   stateKey: installStateKeySchema.optional(),
-  transport: z.enum(["local", "ssh"]).default("local"),
+  transport: z.enum(["local", "ssh", "local-run-as"]).default("local"),
+  runAs: z.string().regex(/^[a-z_][a-z0-9_-]*[$]?$/i).optional(),
   host: z.string().min(1).optional(),
   user: z.string().min(1).optional(),
   port: z.number().int().positive().optional(),
   identityFile: z.string().min(1).optional(),
   reloadCommands: commandListSchema,
 }).superRefine((agent, ctx) => {
-  if (agent.transport !== "ssh") return;
-  if (!agent.host) {
+  if (agent.transport === "local-run-as") {
+    if (!agent.runAs) ctx.addIssue({ code: "custom", path: ["runAs"], message: "Local run-as agents require runAs" });
+    if (agent.runAs === "root") ctx.addIssue({ code: "custom", path: ["runAs"], message: "Local run-as cannot target root" });
+    for (const key of ["host", "user", "port", "identityFile"] as const) {
+      if (agent[key] !== undefined) ctx.addIssue({ code: "custom", path: [key], message: `Local run-as agents cannot set ${key}` });
+    }
+    if (!agent.root.startsWith("/") || resolve(agent.root) !== agent.root) {
+      ctx.addIssue({ code: "custom", path: ["root"], message: "Local run-as root must be an absolute normalized path" });
+    }
+  } else if (agent.runAs !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["runAs"], message: "runAs requires local-run-as transport" });
+  }
+  if (agent.transport === "ssh" && !agent.host) {
     ctx.addIssue({
       code: "custom",
       path: ["host"],
@@ -230,7 +248,25 @@ export const workspaceConfigSchema = z.discriminatedUnion("schemaVersion", [
   workspaceConfigV2Schema,
   workspaceConfigV3Schema,
   workspaceConfigV4Schema,
-]);
+]).superRefine((config, ctx) => {
+  const known = new Set([
+    ...listAdapters().map((adapter) => adapter.name),
+    ...Object.values(config.agents).map((agent) => agent.adapter),
+    ...Object.values(config.profiles).flatMap((profile) => "runtimes" in profile && profile.runtimes
+      ? profile.runtimes.map((runtime) => runtime.agent
+        ? config.agents[runtime.agent]?.adapter ?? runtime.adapter
+        : runtime.adapter)
+      : []),
+  ]);
+  for (const [index, pkg] of config.packages.entries()) {
+    for (const [runtimeIndex, runtime] of (pkg.runtimes ?? []).entries()) {
+      if (!known.has(runtime)) ctx.addIssue({
+        code: "custom", path: ["packages", index, "runtimes", runtimeIndex],
+        message: `Unknown package runtime adapter '${runtime}'. Use a built-in adapter or an adapter declared by an agent/profile runtime.`,
+      });
+    }
+  }
+});
 
 export type WorkspacePackage = z.infer<typeof workspacePackageSchema>;
 export type WorkspaceSelectionImport = z.infer<typeof workspaceSelectionImportSchema>;
@@ -244,6 +280,14 @@ export type WorkspaceProfile = z.infer<typeof workspaceProfileSchema>;
 export type WorkspaceAgent = z.infer<typeof workspaceAgentSchema>;
 export type RegisteredFleet = z.infer<typeof registeredFleetSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
+
+export function packagesForTarget<T extends Pick<WorkspacePackage, "runtimes">>(
+  packages: T[],
+  target: { adapter: string },
+  targetForPackage?: (pkg: T) => { adapter: string },
+): T[] {
+  return packages.filter((pkg) => !pkg.runtimes || pkg.runtimes.includes((targetForPackage?.(pkg) ?? target).adapter));
+}
 export type FleetWorkspaceConfig = Extract<WorkspaceConfig, { schemaVersion: 3 | 4 }>;
 
 export function supportsFleetConfig(config: WorkspaceConfig): config is FleetWorkspaceConfig {
@@ -264,6 +308,70 @@ export async function writeWorkspaceConfig(workspaceRoot: string, config: Worksp
   const path = workspaceConfigPath(workspaceRoot);
   declareMutationPath(path);
   await writeJsonAtomic(path, workspaceConfigSchema.parse(config));
+}
+
+export async function pinConfiguredPackages(
+  workspaceRoot: string,
+  input: unknown,
+  options: { dryRun?: boolean; replacePackages?: boolean } = {},
+): Promise<WorkspaceConfigInput> {
+  if (options.replacePackages) {
+    const packages = z.array(workspacePackageSchema).parse(input);
+    if (new Set(packages.map((pkg) => pkg.name)).size !== packages.length) {
+      throw new Error("Package declarations require unique aliases.");
+    }
+    const path = workspaceConfigPath(workspaceRoot);
+    const config = JSON.parse(await readFile(path, "utf8")) as WorkspaceConfigInput;
+    workspaceConfigSchema.parse(config);
+    // Preserve the authored entries, including absent defaults and extension fields.
+    config.packages = input as WorkspaceConfigInput["packages"];
+    workspaceConfigSchema.parse(config);
+    if (!options.dryRun) {
+      declareMutationPath(path);
+      await writeJsonAtomic(path, config);
+    }
+    return config;
+  }
+  const pins = z.array(z.object({
+    alias: z.string().min(1),
+    commit: z.string().regex(/^[a-f0-9]{40}$/i, "Pin requires an exact 40-hex commit SHA."),
+    select: z.array(z.string().min(1)).min(1).optional(),
+  }).strict()).min(1).parse(input).map((pin) => {
+    const select = pin.select === undefined ? undefined : normalizeArtifactSelectors(pin.select);
+    if (pin.select !== undefined && !select?.length) throw new Error("Explicit pin selection must not be empty.");
+    return { ...pin, select };
+  });
+  if (new Set(pins.map((pin) => pin.alias)).size !== pins.length) {
+    throw new Error("Pin requires unique configured aliases.");
+  }
+  const path = workspaceConfigPath(workspaceRoot);
+  const config = JSON.parse(await readFile(path, "utf8")) as WorkspaceConfigInput;
+  workspaceConfigSchema.parse(config);
+  const updates = pins.map(({ alias, commit, select }) => {
+    const matches = (config.packages ?? []).filter((pkg) => pkg.name === alias);
+    if (matches.length !== 1) {
+      throw new Error(matches.length === 0 ? `Configured package alias not found: ${alias}` : `Ambiguous configured package alias: ${alias}`);
+    }
+    const pkg = matches[0];
+    if (pkg.mode === "tracking") throw new Error(`Configured package ${alias} is tracking; pin requires pinned mode.`);
+    return { pkg, requestedRef: commit, select };
+  });
+  for (const { pkg, requestedRef, select } of updates) {
+    pkg.requestedRef = requestedRef;
+    if (select !== undefined) {
+      pkg.select = select;
+      delete pkg.skills;
+      delete pkg.selection;
+    }
+  }
+  // Validate without serializing the parsed result: defaults, package extension
+  // fields and unrelated entries must survive this field-only source mutation.
+  workspaceConfigSchema.parse(config);
+  if (!options.dryRun) {
+    declareMutationPath(path);
+    await writeJsonAtomic(path, config);
+  }
+  return config;
 }
 
 export function upsertPackage(config: WorkspaceConfigInput, entry: WorkspacePackage): WorkspaceConfig {

@@ -98,6 +98,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 |---|---|
 | `agentwheel search <query>` | Search configured registries and the public enriched/Vercel catalogue; supports stable JSON output for agent reranking. |
 | `agentwheel add <source>` | Validate and save a package entry in `.agentwheel/config.json`; does not touch runtimes. |
+| `agentwheel pin <alias> <commit>` | Change an existing pinned alias's exact commit, preserving its configuration; does not resolve sources or touch runtimes. |
 | `agentwheel plan [name-or-source]` | Preview what `install` would reconcile without writing; supports `--profile <name>` and `--json`. |
 | `agentwheel install` | Reconcile configured packages into the current target or selected fleet. Uses the graph lock as input by default. |
 | `agentwheel install <name-or-source>` | Ensure semantics: configured name/source scopes the install; a new source is added and installed. |
@@ -132,6 +133,48 @@ Apply the same command with the reviewed values added as `--expected-hash <sha25
 journal, rechecks the old owner and the live artifact hash, then atomically updates only the install
 manifest. Run one target at a time; named SSH agents use the same contract through `--agent`.
 
+Use `--from-unknown-owner` instead of `--from-workspace-root` for an entry recorded as
+`workspace:unknown`. A plain file or directory whose runtime no longer matches the recorded hash is
+refused unless `--carry-drift` is passed: the dry-run prints the runtime hash, the apply also needs
+`--expected-runtime-hash <sha256>`, and the manifest keeps the recorded hash so the next install
+still reports the drift. Merge and managed-block entries never carry drift.
+
+Qualify a Fleet-owned source with `--from-fleet <id>` together with its exact
+`--from-workspace-root`; use `--to-fleet <id>` for a Fleet-owned destination. Both IDs must
+be registered at the specified roots. These options qualify ownership, whereas `--fleet`
+selects the governing workspace. `--from-fleet` cannot be combined with
+`--from-unknown-owner`. For example, preview returning one entry to its original plain owner:
+
+```bash
+agentwheel ownership handoff skills/example-skill --local --agent local-codex --installation-type user \
+  --source-state-key codex.user.existing-state \
+  --from-workspace-root /fleet/control --from-fleet example-fleet \
+  --to-workspace-root /original/workspace --dry-run
+```
+
+Reverse handoffs require a fresh reviewed plan against the post-handoff state; they do not
+reuse old manifest revisions or erase audit history. For run-as targets, also pass the reviewed
+`--plan-digest` and `--expected-inventory-revision` when applying. The qualified old/new owner
+identities are included in the native plan, its digest and the audit. Each handoff changes the
+inventory revision, so review subsequent operations against their exact intermediate states.
+
+Use `--source-state-key <exact-key>` when an existing source manifest must be selected explicitly.
+This is a command-local equivalent of a named agent's `stateKey`; it does not edit agent configuration,
+move state files, or reconstruct graph locks. The key must be canonical and match the selected adapter
+and installation type. The existing target identity, source owner, exact merge contribution, hash,
+revision, pending-journal and migration guards still apply. For example:
+
+```bash
+agentwheel ownership handoff mcp/example.json --local --agent local-codex \
+  --source-state-key codex.user.existing-state \
+  --from-workspace-root /old/workspace --to-workspace-root /new/workspace --dry-run
+```
+
+Apply only the same reviewed selection with `--expected-hash` and `--expected-revision`. An explicit
+key is never inferred from other claims and does not allow incomplete merge ownership or drift to
+be carried for merge artifacts.
+
+
 For a one-time MCP rename, keep the legacy artifact in a dedicated cutover workspace rather than
 the canonical desired-state profile. Set the legacy manifest `stateKey` on its named agent, then
 preview one runtime at a time:
@@ -147,6 +190,8 @@ object or exact Codex TOML MCP sections, rejects unexpected manifest entries or 
 revalidates the exact contribution under the apply lock. It removes only the selected legacy
 server; sibling servers and user configuration remain. The command previews by default. A later
 runtime approval must use the same command with `--apply` instead of `--dry-run`.
+
+When stable and legacy manifests disagree, `update --recover-legacy-state` explicitly uses recovered stable state while preserving legacy evidence. Preview the same command with `--dry-run` first.
 
 For a surgical dependency update, start with a dry-run:
 
@@ -396,6 +441,181 @@ current directory, then fallback to the current directory. `--all-detected` is a
 for applying to every runtime marker found in the current directory or `--target-root`; `--all` remains
 reserved for configured agents.
 
+### Linux service-user targets
+
+A named `local-run-as` agent installs into another non-root account's passwd home.
+Run Agentwheel from the caller's workspace: sources, graph locks and receipts stay
+with the caller; confined reads, writes, manifests and rollback run as the service.
+A non-login account works with an explicitly configured noninteractive sudo grant.
+Add the agent/profile to a workspace that already declares its source packages:
+
+```jsonc
+{
+  "schemaVersion": 4,
+  "agents": {
+    "service": {
+      "adapter": "openclaw",
+      "root": "/home/example",
+      "transport": "local-run-as",
+      "runAs": "example",
+      "installationType": "user"
+    }
+  },
+  "profiles": { "service": { "runtimes": [{ "agent": "service" }] } }
+}
+```
+
+```bash
+agentwheel plan --local --profile service
+agentwheel --reason "Install reviewed service profile" install --local --profile service
+```
+
+Require durable journaling in the workspace mutation policy while retaining its
+revision policy. Linux 5.6+ `openat2`, Python 3 and immutable worker/interpreter
+paths are required. OpenClaw validation additionally needs Linux POSIX ACLs and a
+trusted immutable OpenClaw package; includes, programmatic adapters, arbitrary
+commands and runtime reloads are rejected. See the [transport requirements and
+sudo example](docs/design/artifact-harness-compatibility.md#built-in-matrix).
+
+Changing transport creates a distinct state identity. Inspect legacy claims with
+`ownership recovery-plan`, then review the exact JSON plan from `adopt-legacy`,
+`retire-stale`, `release-claim` or `handoff --dry-run --json`. Apply only with its
+matching digest and revisions. These commands preserve runtime bytes and modes;
+a caller-home manifest is never reused as service-home ownership evidence.
+Same-fleet normalization is limited to one service endpoint. Cross-account
+migration and runtime restarts are separate operations.
+
+### Target state identity
+
+Graph-backed installs keep two target fingerprints with different purposes:
+
+- The full target fingerprint records rendering inputs in the graph lock. Adapter code, adapter
+  configuration, and adapter module changes therefore remain visible and can produce a real update.
+- The stable state fingerprint selects the graph lock, install manifest, source lock, and apply
+  journal. It is derived from the contribution scope and effective destination, including the
+  normalized install root and a structured local or SSH endpoint. Adapter implementation evolution
+  that resolves to the same destination reuses the installed state instead of orphaning it.
+
+Changing an artifact destination within the same effective install root is handled as a planned
+transition from the old path to the new path. Changing the effective install root, local/SSH kind, or
+SSH endpoint selects a different target state. SSH state identity requires an explicit host; a display
+label is not endpoint identity.
+
+State created by an older Agentwheel release may be named with the full target fingerprint. For a
+local target, Agentwheel adopts that state only when one canonical graph lock, its v2 install
+manifest, the contribution owner, and target details agree. When a tracked graph lock has advanced
+past the installed manifest, Agentwheel uses the manifest only as prior runtime state and resolves
+the graph fresh; it never treats that newer lock as the previously installed graph. Mixed digests
+inside the owned contribution still fail closed. A supported install or uninstall carries an
+explicit migration and revalidates the old and new state under the shared apply lock before replacing
+the legacy paths. An explicit `stateKey` remains the manifest and source-lock key while its legacy
+graph-lock path moves. Status, dependency inspection, uninstall, and journal commands use the same
+discovery rules.
+
+Agentwheel refuses ambiguous candidates, a graph lock without its correlated manifest, or
+disagreeing stable and legacy state, and preserves those files for manual reconciliation. A pending
+apply journal that embeds and exactly correlates the missing manifest and graph state remains
+discoverable for recovery. Legacy SSH state is also preserved and refused because the old records do
+not prove which endpoint owned it.
+
+After reviewing `agentwheel ownership recovery-plan`, use `--recover-legacy-state` only for an
+invalid local candidate whose historical files must remain preserved. The recovery plan ignores
+that candidate when constructing the new stable state; it does not authorize runtime replacement.
+Adopting matching unmanaged files still requires `--force-conflict`, while replacing differing files
+still requires `--replace-conflict`. Review the resulting plan before applying the same flags:
+
+```bash
+agentwheel plan --fleet example-fleet --agent lab-claude \
+  --recover-legacy-state --force-conflict --replace-conflict
+agentwheel install --fleet example-fleet --agent lab-claude \
+  --recover-legacy-state --force-conflict --replace-conflict
+```
+
+Once the stable manifest exists, normal status and planning use it while retaining the invalid
+historical candidate for explicit later cleanup.
+
+When stale ownership must be retired before the target-state migration can run, bind the retirement
+to the exact already-installed Fleet manifest instead of asking target-state discovery to choose it:
+
+```bash
+agentwheel ownership retire-stale \
+  --from-workspace-root <missing-worktree> \
+  --to-workspace-root <fleet-root> \
+  --source-state-key <stale-state-key> \
+  --destination-state-key <fleet-owned-state-key> \
+  --fleet <fleet-id> --agent <agent> --json
+```
+
+To use a target configured in a nested workspace while retiring ownership into its containing
+registered Fleet, run from that workspace and select the destination owner separately:
+
+```bash
+agentwheel ownership retire-stale --local --agent service-agent \
+  --to-fleet <fleet-id> --to-workspace-root <fleet-root> \
+  --from-workspace-root <stale-owner-root> \
+  --source-state-key <stale-state-key> \
+  --destination-state-key <fleet-owned-state-key> --json
+```
+
+`--to-fleet` qualifies the destination owner; `--local`, `--user`, or `--fleet` selects the target
+workspace and its configured transport. The selected workspace must be within the registered
+Fleet root, including after symlink resolution, and cannot identify a different Fleet.
+The original `--fleet <id>` command remains supported for targets configured directly at that
+Fleet root. Neither form changes agent configuration or relaxes contribution and revision guards.
+
+The dry-run still proves exact destination coverage and runtime bytes. Apply only its emitted command,
+which includes the plan, source, destination, and manifest-inventory revisions.
+For duplicate state owned by the same registered Fleet, set both workspace roots to the Fleet root
+and add `--from-fleet-id <fleet-id>`. The planner selects only legacy paths covered by the stable
+Fleet manifest. For JSON deep merges it also accepts a source contribution that is an exact
+recursive subset of the destination contribution. Across package revisions, merge entries must
+identify the same package and artifact with equal source hashes; other merge contributions must
+match exactly. A source-only path stays in the legacy manifest;
+when every source entry is covered, apply removes the old manifest and source lock without changing
+runtime files or the stable manifest. Preserve copies of those old state files before applying a
+retirement when they are needed as historical evidence.
+
+A nested, non-Fleet workspace (for example a profile checked out beneath a registered Fleet root)
+can inherit paths that older installs claimed under a fingerprint-only state key. Those claims name
+another plain workspace root, or this workspace's own root from before it was Fleet-qualified, so
+install refuses them as foreign. Adopt them into this workspace's stable state without
+`--force-foreign-state`, running from the workspace that owns the target:
+
+```bash
+agentwheel ownership adopt-legacy --agent <agent> \
+  --source-state-key <adapter>.<installation-type>.<legacy-fingerprint> \
+  --from-workspace-root <previous-owner-root> --json
+```
+
+The dry-run proves each moved entry: the previous owner root must hold a graph lock named by the
+legacy fingerprint, and for another workspace root exactly one such lock must match the entry's
+graph-lock digest, node, selector, and source hash. Only entries the current graph still installs at
+the same path with the same artifact identity move; the rest stay in the source manifest and are
+listed. The current graph groups packages as install does, by installation type and adapter
+configuration, and the command refuses when they resolve to more than one install state or when
+`--installation-type`, `--adapter-config`, or `--adapter-module` differs from what install resolves.
+For plain entries, runtime bytes must match the recorded hash unless `--carry-drift` keeps that
+hash, so the next install reports drift instead of overwriting local changes. A path another owner still claims blocks the
+plan. A duplicate claim by the same previous owner is listed only when it sits under another legacy
+key of that root with the same proof and the same recorded artifact and hashes; run the command
+again with that key to retire it. Any other duplicate, including one in that root's current state,
+blocks the plan. Apply only the emitted command. It writes the stable manifest first and the legacy
+manifest second without rewriting runtime artifacts. A pending apply journal blocks the command:
+recover the journal before planning again. Once the stable phase has completed, a new reviewed
+dry-run retires the exact source copy left under the legacy key.
+
+Coherent managed instruction blocks are also supported. There must be one complete selected
+marker pair with matching selector, marker digest and recorded body hash; duplicate, overlapping,
+missing or drifted markers are refused. `--carry-drift` is forbidden when a managed block is selected.
+The reviewed plan records the original body hash separately from the whole-file runtime hash,
+prefix/suffix/block digests and byte/mode snapshot. The native phase journals bind these values and
+the whole install-manifest inventory. Initial apply and interrupted recovery require exact reviewed
+before/after state, preserving concurrent edits rather than overwriting them. Additional overlapping
+claims are refused; only an exact source/destination copy from the two-phase transition may remain.
+The runtime file, its prefix, suffix, block and permissions stay unchanged. Adoption preserves the
+recorded source metadata; it does not establish historical Git availability or evaluate a later source
+update. Run ordinary install planning separately for that decision.
+
 ## Core Ideas
 
 **Three places, one direction:**
@@ -460,6 +680,56 @@ agentwheel add github:NestDevLab/agent-mesh --skill codex-tmux --adapter codex -
 agentwheel plan
 agentwheel install
 ```
+
+Use `add --runtimes codex` to restrict a saved package to matching runtime adapters. The option
+accepts comma-separated names and can be repeated. When replacing an existing package alias,
+pass its runtime restrictions and selection again; `add` replaces the saved entry.
+
+To change only an existing pinned alias's revision, use its exact configured name and a full
+40-hex commit SHA:
+
+```bash
+agentwheel pin shared-pack 0123456789abcdef0123456789abcdef01234567 --fleet delivery --reason "Pin the reviewed source revision"
+```
+
+`pin` preserves the source URL, driver, adapter, runtime restrictions, installation type (including
+its absence), package order and other fields. It accepts the normal workspace selectors
+`--fleet`, `--local`, `--user`, or `--target-root`, and uses the same mutation policy, durable
+receipts and revision provider as other source mutations. Missing or duplicate aliases, tracking
+packages and abbreviated or symbolic revisions are refused. No sources are fetched or rendered;
+use the normal plan/dry-run before installing the new revision.
+
+Omitting `--select` preserves the complete existing selection. Supplying repeatable or
+comma-separated `--select type/name` replaces the complete selection, including any legacy
+`skills` or imported `selection` field. An explicit empty selection is refused.
+
+For one source mutation with several aliases, use `pin --pins-file reviewed-pins.json --fleet
+delivery --reason "Pin the reviewed source set"`. The JSON file is a nonempty array of objects
+containing only `alias`, `commit` and optional `select`:
+
+```json
+[
+  { "alias": "shared-pack", "commit": "0123456789abcdef0123456789abcdef01234567" },
+  { "alias": "companion-pack", "commit": "abcdef0123456789abcdef0123456789abcdef01", "select": ["skills/companion"] }
+]
+```
+
+To replace the complete package declaration list without resolving sources, use
+`pin --packages-file reviewed-packages.json --fleet delivery --dry-run`. The file must be a JSON
+array of workspace package entries with unique names; an empty array explicitly removes all
+package declarations. The preview prints the complete proposed config as JSON and writes nothing.
+Review it, then run the same command without `--dry-run` and with `--reason` to apply through the
+normal mutation policy, durable receipt and revision provider. This changes only desired source
+config; it does not install or remove runtime artifacts. Run normal runtime plans before installing.
+All non-package fields are preserved, as are the supplied package order, omitted defaults, metadata
+and extension fields. Package entries must pass the workspace schema. `--packages-file` cannot be
+combined with positional pins, `--pins-file` or `--select`. Existing pin forms also accept
+`--dry-run` for a non-mutating config preview.
+
+The batch cannot be combined with positional pins or `--select`. Every entry is validated before
+the config write; duplicate aliases and extra fields are refused. An omitted `select` preserves
+that package's selection; an explicit list replaces only that package's complete selection. The
+batch shares one durable receipt and revision-provider transaction.
 
 Package authors can mark artifacts as required. Required artifacts are always installed and cannot
 be deselected:
@@ -533,6 +803,11 @@ project's curated selection for a remote runtime.
   }
 }
 ```
+
+Configured packages can opt into adapter runtimes with `"runtimes": ["claude"]`. Profile and
+named-agent plans match the declared target adapter; plain workspace commands match each package's
+configured adapter. Agents sharing an adapter receive the same package roots. Upgrade every member
+to a version supporting this field before using it in shared configuration.
 
 The import is data-only: Agentwheel resolves the package first, then reads only
 `exports.selections` from that resolved source's `.agentwheel/config.json`. It never imports the

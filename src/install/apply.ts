@@ -1,24 +1,29 @@
 import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { declareMutationPath } from "../mutation/declarations.js";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { InstallManifest, InstallManifestEntry, InstallManifestV2, SourceLock } from "../model/manifest.js";
 import type { GraphLock } from "../model/graph-lock.js";
 import { canonicalGraphLockJson, readGraphLock, writeGraphLock } from "../model/graph-lock.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
+import { createOpenClawCapabilityDetector, openClawPluginInstallCommand } from "../targets/plugins/openclaw.js";
+import { assertRunAsPlanSupported } from "../transport/run-as-policy.js";
 import { mergeJsonFile } from "./json-merge.js";
 import { mergeOpenClawJsonFile } from "./openclaw-json-merge.js";
-import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, readInstallManifest, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
+import { canonicalInstallManifestJson, computeInstallManifestInventoryRevision, computeSourceLockRevision, listInstallManifests, readInstallManifest, readSourceLock, removeStateFiles, withManifestRevision, writeInstallManifest, writeSourceLock } from "./manifest.js";
 import type { InstallOperation, InstallPlan } from "./plan.js";
 import { assertOperationContained } from "./path-safety.js";
+import { installManifestPath, metadataDir } from "./paths.js";
 import {
   acquireApplyLock,
   applyJournalPath,
   assertGovernedRuntimeTransportSupported,
   assertApplyJournalRecoveryAllowed,
+  assertLinkedApplyJournal,
   listApplyJournals,
   localPathExists,
   readApplyJournal,
@@ -26,19 +31,29 @@ import {
   removeApplyJournal,
   rollbackCompletedOperations,
   type ApplyJournal,
+  type MetadataStateGuards,
   type ApplyLockOptions,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
+  assertNoSymlinkPath,
+  metadataAuditPath,
+  metadataRuntimePath,
+  observeOwnershipRuntime,
+  assertOwnershipMetadataTransportSupported,
+  assertOwnershipMetadataJournalLinked,
+  assertOwnershipMetadataAuditPaths,
+  syncMetadataPath,
 } from "./transaction.js";
 import { mergeCodexTomlMcp } from "./toml-merge.js";
 import { mergeYamlFile } from "./yaml-merge.js";
-import { assertExactMcpMergeContribution, assertExactMergeContribution, assertMergedSourceContribution, hasMergeRemovalContent, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
+import { assertExactMcpMergeContribution, assertExactMergeContribution, assertManagedMergeContribution, assertMergedSourceContribution, hasMergeRemovalContent, mergeContributionAbsent, removeMergeContribution } from "./merge-removal.js";
 import { normalizeOwners } from "./desired.js";
 import {
   managedInstructionBlockLanded,
   managedInstructionBlockMode,
   managedInstructionSelector,
   readManagedInstructionBlockState,
+  exactManagedInstructionBlockSnapshot,
   removeManagedInstructionBlock,
   writeManagedInstructionBlock,
 } from "./instructions-block.js";
@@ -88,22 +103,54 @@ export async function applyCombinedInstallPlan(plan: InstallPlan, options: Apply
   return applyPlanTransactionally(plan, options);
 }
 
+export interface ApplyRecoveryLink {
+  path: string;
+  operationId: string;
+  journalDigest: string;
+  transportDescription: string;
+  reason: string;
+  noCommit: boolean;
+  resolveOnly?: boolean;
+}
+
 export async function recoverPendingApply(
   targetRoot: string,
   adapter: string,
   transport: TargetTransport = localTransport,
   scope: { installationType?: string; stateKey?: string } = {},
+  expectedLink?: ApplyRecoveryLink,
 ): Promise<InstallManifest | undefined> {
   assertGovernedRuntimeTransportSupported(transport);
+  if (transport.kind === "local-run-as" && !expectedLink) throw new Error("Run-as recovery requires a caller-owned durable receipt link.");
+  const validateJournal = async (journal: ApplyJournal): Promise<void> => {
+    if (expectedLink) {
+      if (expectedLink.path !== applyJournalPath(targetRoot, adapter, scope)) throw new Error("Recovery receipt journal path mismatch.");
+      assertLinkedApplyJournal(journal, expectedLink.path, expectedLink.operationId, expectedLink.journalDigest, expectedLink.transportDescription, transport);
+      if (journal.mutation?.reason !== expectedLink.reason || journal.mutation.noCommit !== expectedLink.noCommit) {
+        throw new Error("Runtime apply journal mutation metadata does not match its durable receipt.");
+      }
+    }
+    assertApplyJournalRecoveryAllowed(journal);
+    if (journal.metadataAudit || journal.metadataGuards) assertOwnershipMetadataTransportSupported(transport, journal);
+    await assertOwnershipMetadataAuditPaths(journal, transport);
+    assertRunAsPlanSupported({ operations: journal.operations, adapterCode: journal.manifest.adapterCode } as InstallPlan, transport);
+    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
+      throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
+    }
+  };
+  await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
+  const preflightJournal = await readApplyJournal(targetRoot, adapter, transport, scope);
+  if (!preflightJournal) return undefined;
+  await validateJournal(preflightJournal);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, scope);
   try {
     await assertRuntimeJournalGate(targetRoot, adapter, transport, scope, true);
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
-    assertApplyJournalRecoveryAllowed(journal);
-
-    if (journal.operations.some((operation) => operation.action === "plugin" || operation.action === "program" || operation.semanticPlugin)) {
-      throw new Error("Cannot automatically recover a journal containing semantic plugin or programmatic operations");
+    await validateJournal(journal);
+    if (expectedLink?.resolveOnly) {
+      await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
+      return journal.manifest;
     }
 
     const now = new Date().toISOString();
@@ -112,7 +159,7 @@ export async function recoverPendingApply(
     for (const [index, operation] of journal.operations.entries()) {
       assertOperationContained(operation, journal.targetRoot);
       const started = startedByIndex.get(index);
-      if (started?.completed || (started && await operationLanded(operation, transport))) {
+      if (started && await operationLanded(operation, transport)) {
         started.completed = true;
         await writeApplyJournal(journal, transport);
         const entry = await entryForCompletedOperation(operation, transport, now, journal.graphLockDigest);
@@ -122,7 +169,7 @@ export async function recoverPendingApply(
 
       if (operationNeedsSource(operation) && operation.sourcePath && !(await localPathExists(operation.sourcePath))) {
         await rollbackStartedOperations(journal, transport);
-        await removeApplyJournal(targetRoot, adapter, transport, scope);
+        await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
         return undefined;
       }
 
@@ -181,18 +228,25 @@ async function applyPlanTransactionally(
 ): Promise<InstallManifest> {
   const transport = options.transport ?? localTransport;
   const scope = { installationType: plan.installationType, stateKey: plan.stateKey };
+  const openClawAcceptCapabilities = createOpenClawCapabilityDetector(async (args) => {
+    if (transport.kind === "local") return (await execFileAsync("openclaw", args, { timeout: 10_000 })).stdout;
+    return transport.execFile?.("openclaw", args, { cwd: plan.targetRoot });
+  });
   if (plan.hasBlockingChanges) {
     const blockers = plan.operations.filter((operation) => operation.action === "drift" || operation.action === "conflict");
     throw new Error(`Refusing to apply with blocking changes: ${blockers.map((item) => item.relativeDestPath).join(", ")}`);
   }
 
   assertGovernedRuntimeTransportSupported(transport);
+  assertRunAsPlanSupported(plan, transport);
 
   const lock = await acquireApplyLock(plan.targetRoot, plan.adapter, transport, options.lock, scope);
   try {
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
+    await assertTargetStateFilePreconditions(plan, transport, options.graphLock?.path);
+    await assertStateMigrationPreconditions(plan, transport);
     const now = new Date().toISOString();
     const graphLockDigest = options.graphLockDigest ?? plan.graphLockDigest;
     const mutation = mutationMetadataForApplyJournal();
@@ -221,9 +275,16 @@ async function applyPlanTransactionally(
         adapterCode: plan.adapterCode,
         entries: [],
       },
-      sourceLock: options.sourceLock,
+      sourceLock: options.sourceLock ?? plan.stateMigration?.sourceLock ?? undefined,
       graphLockPath: options.graphLock?.path,
       graphLock: options.graphLock?.lock,
+      graphLockRemovePath: plan.stateMigration
+        && plan.stateMigration.fromGraphLockPath !== options.graphLock?.path
+        ? plan.stateMigration.fromGraphLockPath
+        : undefined,
+      stateRemoveKey: plan.stateMigration?.fromStateKey !== plan.stateKey
+        ? plan.stateMigration?.fromStateKey
+        : undefined,
     };
     await writeApplyJournal(journal, transport);
 
@@ -241,6 +302,7 @@ async function applyPlanTransactionally(
         transport,
         now,
         executePlugins: options.executePlugins,
+        openClawAcceptCapabilities,
         graphLockDigest,
         plan,
       });
@@ -279,6 +341,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   if (resolvedOptions.dryRun) return { removed: resolvedOptions.keepFiles ? 0 : removable.length, kept: kept.length, removedDrifted };
 
   assertGovernedRuntimeTransportSupported(transport);
+  assertRunAsPlanSupported(plan, transport);
 
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
@@ -314,6 +377,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
     await assertBaseRevision(plan, transport);
+    await assertTargetStateFilePreconditions(plan, transport, resolvedOptions.graphLock?.path);
+    await assertStateMigrationPreconditions(plan, transport);
     await assertExactMergeRemovalPreconditions(removable, transport);
     const revalidatedSkips = new Map<string, InstallManifestEntry>();
     for (const operation of skipped) {
@@ -346,9 +411,16 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       operations: resolvedOptions.keepFiles ? [] : removable,
       completed: [],
       manifest: finalManifest,
+      sourceLock: plan.stateMigration?.sourceLock ?? undefined,
       graphLockPath: resolvedOptions.graphLock?.path,
       graphLock: resolvedOptions.graphLock?.lock,
-      graphLockRemovePath: resolvedOptions.removeGraphLockPath,
+      graphLockRemovePath: resolvedOptions.removeGraphLockPath
+        ?? (plan.stateMigration?.fromGraphLockPath !== resolvedOptions.graphLock?.path
+          ? plan.stateMigration?.fromGraphLockPath
+          : undefined),
+      stateRemoveKey: plan.stateMigration?.fromStateKey !== plan.stateKey
+        ? plan.stateMigration?.fromStateKey
+        : undefined,
       workspaceConfigPath: resolvedOptions.workspaceConfig?.path,
       workspaceConfig: resolvedOptions.workspaceConfig?.data,
     };
@@ -385,6 +457,7 @@ export async function commitManifestMetadataJournal(
   if (journal.mode !== "uninstall" || journal.operations.length !== 0) {
     throw new Error("Manifest metadata journal must contain no runtime operations.");
   }
+  assertOwnershipMetadataTransportSupported(transport, journal);
   return commitJournalState(journal, transport, undefined, journal.createdAt);
 }
 
@@ -394,25 +467,49 @@ async function commitJournalState(
   entries: InstallManifestEntry[] | undefined,
   now: string,
 ): Promise<InstallManifest> {
+  if (journal.metadataAudit || journal.metadataGuards) await assertOwnershipMetadataJournalLinked(journal, transport);
+  await assertOwnershipMetadataAuditPaths(journal, transport);
   const manifest = withManifestRevision({
     ...journal.manifest,
-    generatedAt: now,
+    generatedAt: journal.metadataAudit || journal.metadataGuards ? journal.createdAt : now,
     entries: entries ? entries.sort((a, b) => a.path.localeCompare(b.path)) : journal.manifest.entries,
   });
 
-  if (journal.mode === "uninstall" && manifest.entries.length === 0) {
+  if (journal.metadataGuards) await assertMetadataStateGuards(journal, manifest, journal.metadataGuards, transport);
+  if (journal.metadataAudit) {
+    await assertMetadataAuditGuards(journal, manifest, transport);
+    // Intent lands first. A crash leaves an explicit pending journal, never an unaudited release.
+    for (const file of journal.metadataAudit.auditFiles) {
+      const path = metadataAuditPath(journal.metadataAudit, file.path);
+      await assertOwnershipMetadataAuditPaths(journal, transport);
+      declareMutationPath(path);
+      await writeAuditFileExclusive(path, file.content, () => assertOwnershipMetadataAuditPaths(journal, transport));
+    }
+    await assertMetadataAuditGuards(journal, manifest, transport);
+  }
+  if (journal.mode === "uninstall" && manifest.entries.length === 0 && !journal.metadataAudit) {
     await removeStateFiles(journal.targetRoot, journal.adapter, transport, {
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
+    if (journal.metadataGuards && transport.kind === "local") await syncMetadataPath(metadataDir(journal.targetRoot), true);
   } else {
     if (journal.sourceLock) await writeSourceLock(journal.targetRoot, journal.adapter, journal.sourceLock, transport, {
       installationType: journal.installationType,
       stateKey: journal.stateKey,
     });
     await writeInstallManifest(manifest, transport);
+    if ((journal.metadataAudit || journal.metadataGuards) && transport.kind === "local") await syncMetadataPath(installManifestPath(journal.targetRoot, journal.adapter, {
+      installationType: journal.installationType, stateKey: journal.stateKey,
+    }));
   }
   if (journal.graphLockPath && journal.graphLock) await writeGraphLock(journal.graphLockPath, journal.graphLock);
+  if (journal.stateRemoveKey && journal.stateRemoveKey !== journal.stateKey) {
+    await removeStateFiles(journal.targetRoot, journal.adapter, transport, {
+      installationType: journal.installationType,
+      stateKey: journal.stateRemoveKey,
+    });
+  }
   if (journal.graphLockRemovePath) {
     declareMutationPath(journal.graphLockRemovePath);
     await rm(journal.graphLockRemovePath, { force: true });
@@ -422,10 +519,12 @@ async function commitJournalState(
     await writeJsonAtomic(journal.workspaceConfigPath, journal.workspaceConfig);
   }
   const verifiedManifest = await assertCommittedJournalState(journal, manifest, transport);
+  if (journal.metadataAudit) await assertMetadataAuditGuards(journal, manifest, transport, true);
+  if (journal.metadataGuards) await assertMetadataStateGuards(journal, manifest, journal.metadataGuards, transport, true);
   await removeApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
-  });
+  }, journal);
   if (await readApplyJournal(journal.targetRoot, journal.adapter, transport, {
     installationType: journal.installationType,
     stateKey: journal.stateKey,
@@ -442,7 +541,7 @@ async function assertCommittedJournalState(
 ): Promise<InstallManifest | undefined> {
   const scope = { installationType: journal.installationType, stateKey: journal.stateKey };
   const actualManifest = await readInstallManifest(journal.targetRoot, journal.adapter, transport, scope);
-  if (journal.mode === "uninstall" && expectedManifest.entries.length === 0) {
+  if (journal.mode === "uninstall" && expectedManifest.entries.length === 0 && !journal.metadataAudit) {
     if (actualManifest) throw new Error("Uninstall postcheck found an install manifest that should have been removed.");
   } else if (!actualManifest) {
     throw new Error(
@@ -465,6 +564,15 @@ async function assertCommittedJournalState(
   if (journal.graphLockRemovePath && await pathExists(journal.graphLockRemovePath)) {
     throw new Error(`Graph-lock removal postcheck failed for ${journal.graphLockRemovePath}.`);
   }
+  if (journal.stateRemoveKey && journal.stateRemoveKey !== journal.stateKey) {
+    const removedScope = { installationType: journal.installationType, stateKey: journal.stateRemoveKey };
+    if (await readInstallManifest(journal.targetRoot, journal.adapter, transport, removedScope)) {
+      throw new Error(`Legacy manifest removal postcheck failed for state ${journal.stateRemoveKey}.`);
+    }
+    if (await readSourceLock(journal.targetRoot, journal.adapter, transport, removedScope)) {
+      throw new Error(`Legacy source-lock removal postcheck failed for state ${journal.stateRemoveKey}.`);
+    }
+  }
   if (journal.workspaceConfigPath && journal.workspaceConfig) {
     const actual = JSON.parse(await readFile(journal.workspaceConfigPath, "utf8"));
     if (canonicalJson(actual) !== canonicalJson(journal.workspaceConfig)) {
@@ -472,6 +580,149 @@ async function assertCommittedJournalState(
     }
   }
   return actualManifest;
+}
+
+/** Both initial commit and recovery accept only the exact reviewed before/after manifest states. */
+async function assertMetadataAuditGuards(
+  journal: ApplyJournal,
+  after: InstallManifestV2,
+  transport: TargetTransport,
+  requireAfter = false,
+): Promise<void> {
+  const audit = journal.metadataAudit!;
+  await assertOwnershipMetadataAuditPaths(journal, transport);
+  const sha = /^[a-f0-9]{64}$/;
+  if (transport.kind === "ssh" || (audit.kind !== "ownership-release" && audit.kind !== "ownership-handoff")
+    || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
+    || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
+    || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
+    || journal.sourceLock || journal.graphLock || journal.graphLockPath || journal.graphLockRemovePath
+    || journal.stateRemoveKey || journal.workspaceConfigPath || journal.workspaceConfig
+    || !sha.test(audit.planDigest) || !sha.test(journal.baseRevision ?? "")
+    || audit.auditFiles.length !== 1 || audit.runtime.length !== 1 || !audit.inventory.length) {
+    throw new Error("Invalid metadata-audit transaction; no state was committed.");
+  }
+  await assertMetadataStateGuards(journal, after, audit, transport, requireAfter);
+  for (const file of audit.auditFiles) {
+    const path = metadataAuditPath(audit, file.path);
+    await assertNoSymlinkPath(path);
+    if (!sha.test(file.sha256) || createHash("sha256").update(file.content).digest("hex") !== file.sha256) {
+      throw new Error("Metadata-audit content digest is invalid.");
+    }
+    try {
+      if (await readFile(path, "utf8") !== file.content) throw new Error(`Metadata-audit file changed: ${path}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || requireAfter) throw error;
+    }
+  }
+}
+
+async function assertMetadataStateGuards(
+  journal: ApplyJournal,
+  after: InstallManifestV2,
+  guards: MetadataStateGuards,
+  transport: TargetTransport,
+  requireAfter = false,
+): Promise<void> {
+  const sha = /^[a-f0-9]{64}$/;
+  if (transport.kind === "ssh" || (journal.metadataAudit && journal.metadataGuards)
+    || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
+    || after.installationType !== journal.installationType || after.stateKey !== journal.stateKey
+    || journal.mode !== "uninstall" || journal.operations.length || journal.completed.length
+    || journal.sourceLock || journal.graphLock || journal.graphLockPath || journal.graphLockRemovePath
+    || journal.stateRemoveKey || journal.workspaceConfigPath || journal.workspaceConfig
+    || (journal.baseRevision !== null && !sha.test(journal.baseRevision))
+    || !guards.inventory.length || !guards.runtime.length) {
+    throw new Error("Invalid guarded metadata transaction; no state was committed.");
+  }
+  assertOwnershipMetadataTransportSupported(transport, journal);
+  if (transport.kind === "local") {
+    await assertNoSymlinkPath(journal.targetRoot);
+    await assertNoSymlinkPath(metadataDir(journal.targetRoot));
+  }
+  const inventory = await listInstallManifests(journal.targetRoot, undefined, transport);
+  if (transport.kind === "local") for (const item of inventory) await assertNoSymlinkPath(item.path);
+  const before = new Map(guards.inventory.map((item) => [item.stateKey, item.revision]));
+  if (before.size !== guards.inventory.length || [...before.values()].some((revision) => !sha.test(revision))
+    || (before.get(journal.stateKey!) ?? null) !== journal.baseRevision) {
+    throw new Error("Invalid guarded metadata inventory baseline.");
+  }
+  const next = new Map(before);
+  if (after.entries.length === 0 && !journal.metadataAudit) next.delete(journal.stateKey!);
+  else next.set(journal.stateKey!, after.revision);
+  const actual = new Map(inventory.map((item) => [item.stateKey, item.manifest.revision]));
+  const equals = (expected: Map<string, string>) => actual.size === expected.size
+    && [...expected].every(([key, revision]) => actual.get(key) === revision);
+  if (!equals(next) && (requireAfter || !equals(before))) {
+    throw new Error("Metadata inventory/manifest CAS failed; concurrent state was preserved.");
+  }
+  for (const guard of guards.runtime) {
+    const path = metadataRuntimePath(journal.targetRoot, guard.path);
+    if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
+      || (await observeOwnershipRuntime(path, transport)).snapshotDigest !== guard.snapshotDigest
+      || await transport.hashPath(path) !== guard.hash) {
+      throw new Error(`Metadata runtime CAS failed at ${guard.path}; runtime was preserved.`);
+    }
+    if (guard.managedBlock) {
+      const current = exactManagedInstructionBlockSnapshot(await transport.readFile(path), guard.managedBlock.selector);
+      if (canonicalJson(current) !== canonicalJson(guard.managedBlock)) {
+        throw new Error(`Managed instruction snapshot CAS failed at ${guard.path}.`);
+      }
+    }
+  }
+}
+
+async function createPrivateAuditDirectory(path: string): Promise<void> {
+  try {
+    const existing = await lstat(path);
+    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error(`Invalid audit directory: ${path}`);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await createPrivateAuditDirectory(dirname(path));
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const existing = await lstat(path);
+    if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error(`Invalid audit directory: ${path}`);
+    return;
+  }
+  // Clear inherited SGID/ACL group access only on a directory created by this call.
+  await chmod(path, 0o700);
+  await syncMetadataPath(path, true);
+  await syncMetadataPath(dirname(path), true);
+}
+
+async function writeAuditFileExclusive(path: string, content: string, validateCallerPath: () => Promise<void>): Promise<void> {
+  await assertNoSymlinkPath(path);
+  await createPrivateAuditDirectory(dirname(path));
+  await assertNoSymlinkPath(path);
+  // Directory creation can inherit group/ACL state; validate the complete chain before opening bytes.
+  await validateCallerPath();
+  await syncMetadataPath(dirname(dirname(path)), true);
+  const temporary = `${path}.pending-${randomUUID()}`;
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.chmod(0o600);
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      // Unlike rename, link never replaces an independently created destination.
+      await link(temporary, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || await readFile(path, "utf8") !== content) throw error;
+    }
+    const directory = await open(dirname(path), "r");
+    try { await directory.sync(); } finally { await directory.close(); }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 function canonicalJson(value: unknown): string {
@@ -491,6 +742,7 @@ async function applyOperation(
     transport: TargetTransport;
     now: string;
     executePlugins?: boolean;
+    openClawAcceptCapabilities?: () => Promise<boolean>;
     graphLockDigest?: string;
     plan?: InstallPlan;
   },
@@ -501,7 +753,7 @@ async function applyOperation(
       throw new Error(`Invalid plugin operation missing hash: ${operation.relativeDestPath}`);
     }
     if (context.executePlugins) {
-      await executePluginInstall(operation, transport);
+      await executePluginInstall(operation, transport, context.openClawAcceptCapabilities);
     }
     return manifestEntryForOperation(operation, {
       now,
@@ -561,7 +813,7 @@ async function applyOperation(
     } else if (operation.mergeStrategy) {
       throw new Error(`Merge strategy '${operation.mergeStrategy}' is not implemented by apply.`);
     } else {
-      await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind);
+      await transport.atomicCopy(operation.sourcePath, operation.destPath, operation.kind, operation.desiredHash);
     }
     const hash = await transport.hashPath(operation.destPath);
     if (!operation.mergeStrategy && hash !== operation.desiredHash) {
@@ -590,7 +842,12 @@ async function applyOperation(
       if (!(await transport.pathExists(operation.destPath))) {
         throw new Error(`Merge skip destination disappeared after planning: ${operation.relativeDestPath}`);
       }
-      assertExactMergeContribution(operation.mergeRemoval!, operation.mergeStrategy, await transport.readFile(operation.destPath));
+      // Older pending journals encode exact adoption through these stable reason labels.
+      const exactAdoption = operation.exactMergeAdoption === true
+        || operation.reason === "force adopting exact unmanaged merge contribution"
+        || operation.reason === "repairing exact incomplete merge ownership";
+      const verify = exactAdoption ? assertExactMergeContribution : assertManagedMergeContribution;
+      verify(operation.mergeRemoval!, operation.mergeStrategy, await transport.readFile(operation.destPath));
       verifiedCurrentHash = await transport.hashPath(operation.destPath);
     } else if (!operation.semanticPlugin && !operation.programmaticOperation) {
       if (!(await transport.pathExists(operation.destPath))) {
@@ -614,6 +871,16 @@ async function applyOperation(
   if (operation.action === "keep") {
     if (!operation.manifestHash || !operation.desiredHash) {
       throw new Error(`Invalid keep operation missing manifest/source hash: ${operation.relativeDestPath}`);
+    }
+    if (operation.preserveInManifest === false) {
+      if (!(await transport.pathExists(operation.destPath))) {
+        throw new Error(`Foreign keep destination disappeared after planning: ${operation.relativeDestPath}`);
+      }
+      const currentHash = await transport.hashPath(operation.destPath);
+      if (currentHash !== operation.currentHash || currentHash !== operation.manifestHash || currentHash !== operation.desiredHash) {
+        throw new Error(`Foreign keep destination changed after planning: ${operation.relativeDestPath}`);
+      }
+      return undefined;
     }
     return manifestEntryForOperation(operation, {
       now,
@@ -656,8 +923,19 @@ async function applyOperation(
   return undefined;
 }
 
-async function executePluginInstall(operation: InstallOperation, transport: TargetTransport): Promise<void> {
-  const commands = semanticInstallCommands(operation);
+async function executePluginInstall(
+  operation: InstallOperation,
+  transport: TargetTransport,
+  openClawAcceptCapabilities?: () => Promise<boolean>,
+): Promise<void> {
+  const commands = await Promise.all(semanticInstallCommands(operation).map(async (command) => {
+    if (command.length !== 5 || command.slice(0, 4).join(" ") !== "openclaw plugins install --force") return command;
+    return openClawPluginInstallCommand({
+      path: command[4]!,
+      dryRun: false,
+      acceptCapabilities: await openClawAcceptCapabilities?.() ?? false,
+    });
+  }));
   if (commands.length === 0) throw new Error(`Invalid plugin operation missing command: ${operation.relativeDestPath}`);
   if (!operation.sourcePath) {
     throw new Error(`Invalid plugin operation missing source path: ${operation.relativeDestPath}`);
@@ -967,11 +1245,89 @@ function manifestEntryForOperation(
 async function assertBaseRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
   const current = await readInstallManifest(plan.targetRoot, plan.adapter, transport, {
     installationType: plan.installationType,
-    stateKey: plan.stateKey,
+    stateKey: plan.stateMigration?.fromStateKey ?? plan.stateKey,
   });
   const currentRevision = current?.revision ?? null;
   if (currentRevision !== plan.baseRevision) {
     throw new Error(`Install manifest changed since planning for ${plan.adapter}; replan needed`);
+  }
+}
+
+async function assertTargetStateFilePreconditions(
+  plan: InstallPlan,
+  transport: TargetTransport,
+  graphLockWritePath?: string,
+): Promise<void> {
+  const expected = plan.targetStateFilePreconditions;
+  if (!expected) return;
+  if (graphLockWritePath && resolve(graphLockWritePath) !== resolve(expected.graphLockPath)) {
+    throw new Error(
+      `Graph-lock destination changed after planning: expected ${expected.graphLockPath}, found ${graphLockWritePath}; replan needed.`,
+    );
+  }
+  let graphLockRevision: string | null = null;
+  if (await pathExists(expected.graphLockPath)) {
+    try {
+      const graphLock = await readGraphLock(expected.graphLockPath);
+      graphLockRevision = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+    } catch (error) {
+      throw new Error(
+        `Destination graph lock changed after planning at ${expected.graphLockPath}; replan needed: `
+        + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+  if (graphLockRevision !== expected.graphLockRevision) {
+    throw new Error(
+      `Destination graph lock changed after planning: expected ${expected.graphLockRevision ?? "missing"}, `
+      + `found ${graphLockRevision ?? "missing"}; replan needed.`,
+    );
+  }
+  let sourceLockRevision: string | null;
+  try {
+    sourceLockRevision = computeSourceLockRevision(await readSourceLock(plan.targetRoot, plan.adapter, transport, {
+      installationType: plan.installationType,
+      stateKey: plan.stateKey,
+    }));
+  } catch (error) {
+    throw new Error(
+      `Destination source lock changed after planning for ${plan.adapter}; replan needed: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+  if (sourceLockRevision !== expected.sourceLockRevision) {
+    throw new Error(
+      `Destination source lock changed after planning: expected ${expected.sourceLockRevision ?? "missing"}, `
+      + `found ${sourceLockRevision ?? "missing"}; replan needed.`,
+    );
+  }
+}
+
+async function assertStateMigrationPreconditions(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  const migration = plan.stateMigration;
+  if (!migration) return;
+  let graphLock: GraphLock;
+  try {
+    graphLock = await readGraphLock(migration.fromGraphLockPath);
+  } catch (error) {
+    throw new Error(
+      `Legacy graph lock changed since planning at ${migration.fromGraphLockPath}; replan needed: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+  const graphDigest = createHash("sha256").update(canonicalGraphLockJson(graphLock)).digest("hex");
+  if (graphDigest !== migration.fromGraphLockDigest) {
+    throw new Error(
+      `Legacy graph lock changed since planning: expected ${migration.fromGraphLockDigest}, found ${graphDigest}; replan needed.`,
+    );
+  }
+  if (!migration.fromStateKey) return;
+  const currentSourceLock = await readSourceLock(plan.targetRoot, plan.adapter, transport, {
+    installationType: plan.installationType,
+    stateKey: migration.fromStateKey,
+  });
+  if (canonicalJson(currentSourceLock ?? null) !== canonicalJson(migration.sourceLock ?? null)) {
+    throw new Error(`Legacy source lock changed since planning for ${plan.adapter}; replan needed.`);
   }
 }
 
@@ -1124,6 +1480,11 @@ async function validateOpenClawConfig(
   destPath: string,
   transport: TargetTransport,
 ): Promise<void> {
+  if (transport.kind === "local-run-as") {
+    if (!transport.validateOpenClawConfig) throw new Error("Run-as transport lacks the allowlisted OpenClaw validator.");
+    await transport.validateOpenClawConfig(configPath);
+    return;
+  }
   if (!transport.execFile) {
     throw new Error(`Cannot validate OpenClaw config over ${transport.description}: transport does not support command execution.`);
   }

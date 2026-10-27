@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { RegistryEntry } from "../model/registry.js";
 import { RegistryClient } from "../registry/client.js";
+import { formatGitSource, parseGitSource, resolveGitRelativeSubpath } from "../source/git-source.js";
 import { inferSourceDriverName, type SourceDriverName } from "../source/identify.js";
 
 export interface NormalizedDependencySource {
@@ -12,8 +13,17 @@ export interface NormalizedDependencySource {
   registryEntry?: RegistryEntry;
 }
 
+export interface DeclaringGitSource {
+  url: string;
+  commit: string;
+  subpath?: string;
+}
+
 export interface NormalizeDependencySourceOptions {
   declaringPackageRoot: string;
+  // Set when the declaring package came from git: its "./" and "../" dependencies then name the
+  // same repository at the same commit, not a path inside this machine's source cache.
+  declaringGitSource?: DeclaringGitSource;
   workspaceRoot: string;
   ref?: string;
   registryClient?: Pick<RegistryClient, "resolve">;
@@ -36,6 +46,18 @@ export async function normalizeDependencySource(
     return normalizeRegistrySource(trimmed, options);
   }
 
+  if (options.declaringGitSource && (trimmed === "." || trimmed === ".." || trimmed.startsWith("./") || trimmed.startsWith("../"))) {
+    const declaring = options.declaringGitSource;
+    const subpath = resolveGitRelativeSubpath(declaring.subpath, trimmed, source);
+    const normalizedSource = formatGitSource(declaring.url, declaring.commit, subpath);
+    return {
+      source: normalizedSource,
+      normalizedSource,
+      driver: "git",
+      requestedRef: declaring.commit,
+    };
+  }
+
   if (isLocalSource(trimmed)) {
     const path = localSourcePath(trimmed);
     const resolvedPath = resolveLocalPath(path, options.declaringPackageRoot);
@@ -50,7 +72,7 @@ export async function normalizeDependencySource(
     const parsed = parseGitSource(trimmed);
     const requestedRef = options.ref ?? parsed.ref ?? "HEAD";
     const url = normalizeGitRemoteUrl(parsed.url, options.declaringPackageRoot);
-    const normalizedSource = `git:${url}#${requestedRef}`;
+    const normalizedSource = formatGitSource(url, requestedRef, parsed.subpath);
     return {
       source: normalizedSource,
       normalizedSource,
@@ -150,23 +172,7 @@ async function normalizeRegistrySource(
   };
 }
 
-function parseGitSource(source: string): { url: string; ref?: string } {
-  if (source.startsWith("github:")) {
-    const rest = source.slice("github:".length);
-    const [repo, ref] = rest.split("#", 2);
-    if (!repo.includes("/")) throw new Error(`Invalid GitHub dependency source: ${source}`);
-    return { url: `https://github.com/${repo.replace(/\.git$/i, "")}.git`, ref };
-  }
-
-  const rest = source.slice("git:".length);
-  const hashIndex = rest.lastIndexOf("#");
-  if (hashIndex >= 0) {
-    return { url: rest.slice(0, hashIndex), ref: rest.slice(hashIndex + 1) };
-  }
-  return { url: rest };
-}
-
-function normalizeGitRemoteUrl(url: string, declaringPackageRoot: string): string {
+export function normalizeGitRemoteUrl(url: string, declaringPackageRoot: string): string {
   if (url.startsWith("./") || url.startsWith("../") || url.startsWith("/") || url === "~" || url.startsWith("~/")) {
     return resolveLocalPath(url, declaringPackageRoot);
   }

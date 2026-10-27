@@ -58,6 +58,84 @@ path, not from the inverse Codex/Copilot path.
 
 ## Built-In Matrix
 
+Agentwheel accepts `transport: "local-run-as"` on a named Linux agent with a
+required `runAs` account. Home-rooted mappings use that account's passwd home;
+the absolute install root must equal it and have the pinned account's UID/GID.
+Plans, status, install, uninstall and durable journal recovery use a service-user
+worker. Reviewed ownership adoption, stale-claim retirement, claim release and
+audited handoff use the same confined transport. Every run-as migration binds
+the complete account identity, manifest inventory, runtime bytes and full mode
+snapshot to its reviewed digest, then checks those guards under the apply lock.
+A caller-owned durable mutation receipt is required before metadata writes;
+audits remain private caller-side files. Fleet normalization supports same-fleet
+ownership handoff within one configured service endpoint; cross-fleet and
+cross-account normalization remain unsupported. Caller normalization journals
+are private, durable and checked against service write access through ancestor
+permissions, supplementary groups and POSIX ACLs before recovery.
+
+Requirements are Linux 5.6+ with `openat2`, a supported 64-bit architecture
+(x86-64, AArch64 or RISC-V), Python 3 and noninteractive sudo. The immutable Node
+worker delegates filesystem operations to its packaged Python helper using
+`RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS` and directory
+file descriptors. Unsupported kernels, identities, paths or helpers fail closed
+before the apply lock. SSH and ordinary local transports keep their layouts.
+This confines worker path resolution, including concurrent symlink replacement;
+it does not prevent an already running process of the same UID from relocating
+an opened directory inode or changing installed content after a write.
+
+Caller-owned source staging supplies bounded bytes and planned hashes, never
+source paths or credentials. Sources must have trusted, stable ancestors.
+Files default to `0600` and directories to `0700`; backup/rollback preserves
+existing safe modes. Ownership snapshots include all permission bits; backup
+and restore reject privileged permission bits rather than silently stripping
+them. Symlinks, hardlinks, special files, malformed entry trees and
+snapshots over 8 MiB, 4096 entries or 64 path components are rejected. Target
+manifests, locks, backups and journals belong to the service user; source graph
+locks and governed receipts remain in the caller workspace. Recovery revalidates
+the receipt's pinned user, UID, GID, home and root before target access.
+
+Programmatic adapters, semantic plugin operations, arbitrary commands and runtime
+reloads are rejected before install writes. The sole subprocess capability is
+OpenClaw `config validate --json`, through a dedicated operation with fixed argv
+and a scrubbed environment. It invokes Node with `openclaw.mjs` from a trusted
+package root (default `/usr/local/lib/node_modules/openclaw`, caller override
+`AGENTWHEEL_RUN_AS_OPENCLAW_ROOT`). The full package tree, contained symlink
+dependencies, executable and ancestors must be immutable to the service UID and
+supplementary groups. Group/world-writable ancestor masks are rejected even
+when the owning group differs, covering named POSIX ACL grants. Service-owned installations are rejected. Validation reads a confined candidate
+and uses a temporary caller-owned immutable config snapshot, with Linux POSIX
+ACLs granting read access only to the caller and intended service UID (other
+users cannot traverse its directory or read the file), preventing a target
+symlink swap during the native validator read. Any `$include` key is rejected recursively; use self-contained rendered config
+for this transport. Python runs in
+isolated mode (`-I`), excluding service user startup files. Operator-managed runtime
+code is a prerequisite, and validation does not grant general command execution.
+See [OpenClaw's validation contract](https://docs.openclaw.ai/cli/config).
+
+The worker uses a checked absolute Node executable (`/usr/bin/node` by default;
+`AGENTWHEEL_RUN_AS_NODE` may choose another absolute path) and `/usr/bin/python3`.
+Linux POSIX ACL support on the caller temporary filesystem is required for
+OpenClaw validation; unsupported ACLs fail closed. Node, Python, worker and
+helper must be regular files the service UID cannot own
+or write. Worker/helper copies are staged per caller process and removed on exit,
+SIGINT or SIGTERM. Sudo children have a 120-second timeout. An operator grants
+sudo explicitly; Agentwheel never edits sudoers. Replace the synthetic account,
+home, UID/GID and canonical Node path before validating an operator's grant with
+`visudo -cf`. The caller-owned staging wildcard is suitable only for a trusted
+operator:
+
+```sudoers
+Cmnd_Alias AGENTWHEEL_RUN_AS_ID = /usr/bin/id -u
+Cmnd_Alias AGENTWHEEL_RUN_AS_WORKER = /usr/bin/env -i HOME=/home/example PATH=/usr/local/bin\:/usr/bin\:/bin /usr/bin/node /tmp/agentwheel-run-as-*/run-as-worker.mjs --root /home/example --uid 998 --gid 998
+operator ALL=(service) NOPASSWD: AGENTWHEEL_RUN_AS_ID, AGENTWHEEL_RUN_AS_WORKER
+```
+
+`ownership recovery-plan` requires `--fleet` for registered Fleet targets;
+it may omit it for a nested workspace outside any Fleet. Legacy previews read
+runtime manifests and full ownership snapshots in the worker, with the endpoint
+identity in their digest. They do not advertise an executable adoption command
+until migration apply support is enabled.
+
 | Harness | Artifact | `local` | `user` | Notes |
 |---|---|---|---|---|
 | Codex | `instructions` | `supported-native`: `AGENTS.md` managed block | `supported-native`: `~/.codex/AGENTS.md` managed block | Project/user custom instructions. |
@@ -114,6 +192,7 @@ path, not from the inverse Codex/Copilot path.
 - Copilot rule-like artifacts are custom instructions. They do not provide command execution policy like Codex rules.
 - Copilot rules, commands, and subagents are normalized to native suffixes: `.instructions.md`, `.prompt.md`, and `.agent.md`.
 - OpenClaw subagents require both a workspace directory and config registration. Agentwheel renders Markdown OpenPack subagents to `workspace-subagents/<name>/AGENTS.md`; fleet settings provide the `agents.list[]` entries and parent allowlist.
+- OpenClaw JSON merge sources expand `${NAME}` from the install process environment and fail if it is unset. Use `${secret:NAME}` in a string field to install a literal `${NAME}` for OpenClaw to resolve at runtime; Agentwheel does not read `NAME` while rendering that marker. `NAME` must match `[A-Za-z_][A-Za-z0-9_]*`. Rendering is one pass, so placeholders produced by either form are not expanded again.
 - OpenClaw, Claude, Codex, Copilot, and Hermes plugins are semantic operations. Agentwheel stages runtime-specific marketplaces, plugin directories, git shims, or generated ClawHub wrappers and runs the runtime CLI; it does not copy plugin sources into `.openclaw/plugins`, `.claude/plugins`, `plugins`, `.github/plugins`, `.copilot/plugins`, or `.hermes/plugins`.
 - Runtime reloads/restarts are not implied by plugin execution. Configure target `reloadCommands`
   and pass `--reload-runtimes` or `--restart-runtimes` to run them after executed semantic plugin

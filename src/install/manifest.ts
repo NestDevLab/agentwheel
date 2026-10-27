@@ -35,7 +35,7 @@ export interface DiscoveredInstallManifest {
 // whole root -- not just their own slice of it -- must enumerate rather than read a single state key.
 export async function listInstallManifests(
   targetRoot: string,
-  adapter: string,
+  adapter: string | undefined,
   transport: TargetTransport = localTransport,
 ): Promise<DiscoveredInstallManifest[]> {
   const dir = metadataDir(targetRoot);
@@ -48,7 +48,7 @@ export async function listInstallManifests(
     try {
       const raw = JSON.parse(await transport.readFile(path));
       const parsed = installManifestSchema.parse(raw);
-      if (parsed.adapter !== adapter) continue;
+      if (adapter !== undefined && parsed.adapter !== adapter) continue;
       found.push({ path, fileName, stateKey, manifest: { ...parsed, revision: computeManifestRevision(raw) } });
     } catch (error) {
       throw new Error(`Unreadable install manifest at ${path}: ${error instanceof Error ? error.message : String(error)}`);
@@ -59,12 +59,18 @@ export async function listInstallManifests(
 
 export async function computeInstallManifestInventoryRevision(
   targetRoot: string,
-  adapter: string,
+  adapter: string | undefined,
   transport: TargetTransport = localTransport,
 ): Promise<string> {
   const inventory = (await listInstallManifests(targetRoot, adapter, transport))
     .map((item) => [item.fileName, item.manifest.revision]);
   return createHash("sha256").update(JSON.stringify(inventory)).digest("hex");
+}
+
+export function computeSourceLockRevision(lock: SourceLock | undefined): string | null {
+  return lock
+    ? createHash("sha256").update(canonicalJson(lock)).digest("hex")
+    : null;
 }
 
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {

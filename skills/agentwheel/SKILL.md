@@ -5,7 +5,7 @@ allowed-tools: [Bash]
 license: MIT
 metadata:
   author: NestDevLab
-  version: "0.20.3"
+  version: "0.22.4"
 ---
 
 # agentwheel
@@ -296,6 +296,19 @@ agentwheel status --all
 agentwheel status --profile daily
 ```
 
+### Blocked by another session
+
+Governed installs that require a clean repository still refuse every dirty checkout before runtime
+writes. When the local Agent Mesh graph has an exact opaque resource claim, the refusal identifies
+the one live session and its start time. `owner unknown` is intentional when claims are missing,
+inactive, malformed, or ambiguous; candidate sessions may be listed, but Agentwheel never chooses
+between them. Inspect the session graph or ask the rollout coordinator to identify or clear the
+owner before retrying. Do not delete a lock or bypass the clean-tree block from this diagnostic.
+
+Repository-lock contention also reports the stored operation, PID, runtime UUID, and creation time
+when available, and names a graph session only for one exact live UUID match. The graph reports
+identity and ownership; it is not a lock manager and never authorizes proceeding.
+
 For a named fleet, prefer `agentwheel status --fleet <fleet-id> --profile <name>` over
 direct agent status; profile status uses the same runtime resolution, adapter
 config, installation type, and graph lock fingerprinting as
@@ -343,6 +356,12 @@ Current config shape:
 ```
 
 Use named targets:
+
+Configured packages may declare `"runtimes": ["claude"]` to select adapter runtimes. All
+configured-package plans honor it, including `--agent`, `--profile`, status, and update. Named
+targets match their declared adapter; plain workspace commands match each package's adapter.
+Agents sharing an adapter cannot be selected separately. Upgrade all members to a version
+supporting this field before adding it to shared configuration.
 
 ```bash
 agentwheel fleet register example-fleet --root /srv/agentwheel/fleets/example-fleet --required-package core-agent-pack
@@ -461,6 +480,9 @@ Drift means a managed runtime output changed outside agentwheel. Fix drift by ch
 - Override source precedence with package `overrides` when a forked source should replace a
   colliding upstream artifact.
 - Eject an item into `.agentwheel/ejected` when the user wants local ownership.
+
+When the plan instead keeps a file as foreign or refuses because another workspace owns it, that is
+an ownership problem, not drift: see "Choosing an ownership command" under Troubleshooting.
 
 Append durable local instruction text:
 
@@ -605,3 +627,51 @@ nothing else is stale. If it differs, regenerate only the affected graph locks (
 leave them uncommitted: lock commits belong to the approved install. `update --dependency` cannot
 recompute an edge whose root node id changed (e.g. after renaming the root package's artifacts);
 regenerate the locks instead.
+
+If target-state discovery rejects an invalid historical graph-lock/manifest pair, first write and
+review `agentwheel ownership recovery-plan`. For a complete local report, preview a stable-state
+recovery with the exact Fleet target:
+
+```bash
+agentwheel plan --fleet <fleet-id> --agent <agent> \
+  --recover-legacy-state --force-conflict --replace-conflict
+```
+
+`--recover-legacy-state` preserves the invalid historical files and only bypasses their use as the
+planning base. `--force-conflict` adopts exact existing content; `--replace-conflict` permits the
+reviewed plan to update differing unmanaged content. Apply only the same reviewed target and flags.
+After the first stable install, rerun the ordinary plan without recovery flags and require a no-op.
+
+An advanced tracked graph lock with an otherwise valid owned v2 manifest is an ordinary migration:
+Agentwheel keeps the manifest as prior runtime state, resolves the graph fresh, and does not trust the
+advanced lock as installed history. If stale foreign ownership blocks that migration, use
+`agentwheel ownership retire-stale --destination-state-key <exact-fleet-state-key>` to produce a
+metadata-only, revision-gated retirement plan against the already-installed Fleet manifest. Do not
+guess the state key or apply without the exact command emitted by the dry-run.
+
+When a nested non-Fleet workspace is refused because another plain workspace root, or its own root
+before Fleet qualification, owns paths under a fingerprint-only legacy key, run
+`agentwheel ownership adopt-legacy --agent <agent> --source-state-key <legacy-key>
+--from-workspace-root <previous-owner-root> --json` from that workspace. It moves only proven,
+still-desired entries into the stable state; add `--carry-drift` only after reviewing the drifted
+paths. Apply the emitted command, then require a normal install plan without force flags.
+
+### Choosing an ownership command
+
+`agentwheel ownership --help` lists the commands; each subcommand's `--help` is the authoritative flag
+reference. All of them dry-run by default and change only manifest metadata.
+
+| Situation | Command |
+|---|---|
+| Unclear who owns what | `ownership recovery-plan` (read-only evidence report) |
+| Refused: paths owned under a fingerprint-only legacy key | `ownership adopt-legacy` |
+| `adopt-legacy` says entries are "already owned by the destination owner" (mixed legacy manifest) | Run a normal `install --agent <agent>` first; it migrates the state and keeps the foreign entry. Then hand off that entry. |
+| Plan keeps one file as a `foreign artifact owned by …` in a stable manifest | `ownership handoff <type/name>` with `--from-workspace-root <root>`, or `--from-unknown-owner` for `workspace:unknown`; add `--to-fleet <id>` for a Fleet owner |
+| Stale foreign entry already covered by the Fleet manifest | `ownership retire-stale` |
+
+`handoff` refuses a file whose runtime hash differs from the manifest. If the drift is reviewed and
+harmless, add `--carry-drift`; applying then also needs `--expected-runtime-hash` from the dry-run.
+The recorded hash is kept, so the next install reports `DRIFT` for that file. Replacing it needs
+`install --agent <agent> --force-drift`, which also force-refreshes every merge contribution of that
+target (for example hooks): check that each merge destination is byte-identical afterwards. Never
+narrow that install with `--select`: it removes unselected merge contributions.

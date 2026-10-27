@@ -15,6 +15,7 @@ import { renderCopilotArtifacts } from "../staging/copilot-artifacts.js";
 import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
+import { removeOnFailure } from "../utils/fs.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
 
@@ -23,14 +24,24 @@ export interface GraphRenderTargetContext {
   adapter?: AdapterConfig;
   installationType?: string;
   targetFingerprint?: string;
+  noDeps?: boolean;
   warn?: (message: string) => void;
 }
 
+// stage every node under root, callers only ever remove bundle.root
 export async function renderGraphForTarget(
   graph: ResolvedGraph,
   targetContext: GraphRenderTargetContext = {},
 ): Promise<ResolvedGraphBundle> {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-render-"));
+  return removeOnFailure(root, () => renderGraphIntoRoot(root, graph, targetContext));
+}
+
+async function renderGraphIntoRoot(
+  root: string,
+  graph: ResolvedGraph,
+  targetContext: GraphRenderTargetContext,
+): Promise<ResolvedGraphBundle> {
   const artifacts: ResolvedArtifact[] = [];
   const stagedNodes = new Map<string, StagedGraphNode>();
   const includeEdges = new Map<string, GraphLockIncludeEdge>();
@@ -41,7 +52,7 @@ export async function renderGraphForTarget(
       && rawNode.manifest?.schemaVersion === 3
       && Boolean(rawNode.manifest.compositionRules?.length);
     if (rawNode.node.selected.length === 0 && !ownsCompositionRules) continue;
-    const rawBundle = await stageResolvedArtifactsRaw(rawNode.resolved, rawNode.artifacts);
+    const rawBundle = await stageResolvedArtifactsRaw(rawNode.resolved, rawNode.artifacts, root);
     const fragmentCustomized = targetContext.workspaceRoot && targetContext.adapter
       ? await applyFragmentCustomizations(rawBundle.artifacts, {
         workspaceRoot: targetContext.workspaceRoot,
@@ -67,8 +78,16 @@ export async function renderGraphForTarget(
 
   for (const staged of [...stagedNodes.values()].sort((a, b) => a.rawNode.node.id.localeCompare(b.rawNode.node.id))) {
     const rawNode = staged.rawNode;
-    const expandedArtifacts = await expandMarkdownIncludes(staged.artifacts, staged.root, {
+    const runtimeSelectedSet = new Set(normalizeArtifactSelectors(rawNode.node.selected) ?? []);
+    const selectionValidatedArtifacts = filterArtifactsBySelection(staged.artifacts, rawNode.node.selected);
+    const preRuntimeArtifacts = targetContext.noDeps ? selectionValidatedArtifacts : staged.artifacts;
+    const runtimeArtifacts = targetContext.adapter
+      ? filterArtifactsByRuntime(preRuntimeArtifacts, targetContext.adapter.name, runtimeSelectedSet)
+      : preRuntimeArtifacts;
+    const compositionArtifacts = runtimeArtifacts;
+    const expandedArtifacts = await expandMarkdownIncludes(compositionArtifacts, staged.root, {
       nodeId: rawNode.node.id,
+      packageName: rawNode.node.name,
       originNodeId: rawNode.node.id,
       additionalComposeEntries: (artifact) => matchingCompositionEntries(
         artifact,
@@ -108,6 +127,7 @@ export async function renderGraphForTarget(
         includeEdges.set(`${includeEdge.fromNodeId}\0${includeEdge.alias}\0${includeEdge.toNodeId}\0${includeEdge.selector}\0${includeEdge.sourceHash}`, includeEdge);
         return {
           toNodeId: edge.to,
+          packageName: target.rawNode.node.name,
           packageRoot: target.root,
           artifactPaths: target.artifactPaths,
           sourcePath,
@@ -117,12 +137,13 @@ export async function renderGraphForTarget(
       },
     });
 
-    const selectedArtifacts = filterArtifactsBySelection(expandedArtifacts, rawNode.node.selected);
-    const runtimeSelectedSet = new Set(normalizeArtifactSelectors(rawNode.node.selected) ?? []);
-    const runtimeArtifacts = targetContext.adapter
-      ? filterArtifactsByRuntime(selectedArtifacts, targetContext.adapter.name, runtimeSelectedSet)
-      : selectedArtifacts;
-    const claudeRenderedArtifacts = await renderClaudeSubagents(runtimeArtifacts, staged.root, targetContext.adapter);
+    const selectedArtifacts = filterArtifactsBySelection(
+      expandedArtifacts,
+      rawNode.node.selected,
+      undefined,
+      { validationArtifacts: staged.artifacts },
+    );
+    const claudeRenderedArtifacts = await renderClaudeSubagents(selectedArtifacts, staged.root, targetContext.adapter);
     const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, staged.root, targetContext.adapter);
     const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);
     const runtimeRenderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, staged.root, targetContext.adapter);
@@ -226,6 +247,7 @@ function matchingCompositionEntries(
       packageRoot: candidate.packageRoot,
       artifactPaths: candidate.artifactPaths,
       nodeId: candidate.ownerNodeId,
+      packageName: candidate.ownerPackageName,
       deduplicate: true,
     });
   }
@@ -288,8 +310,9 @@ interface WorkspaceOverride {
 }
 
 function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[]): { artifacts: ResolvedArtifact[]; namespacing: GraphLockNamespacing[]; overrides: GraphLockOverride[] } {
-  const superseded = supersededLogicalSelectors(artifacts);
-  const effectiveArtifacts = artifacts.filter((artifact) => !superseded.has(artifact.logicalSelector));
+  const equivalentArtifacts = coalesceEquivalentDirectArtifacts(artifacts);
+  const superseded = supersededLogicalSelectors(equivalentArtifacts);
+  const effectiveArtifacts = equivalentArtifacts.filter((artifact) => !superseded.has(artifact.logicalSelector));
   const aliases = workspaceAliases(graph);
   validateAliasScopes(graph, effectiveArtifacts, aliases);
   const decisions = new Map<string, GraphLockNamespacing>();
@@ -336,6 +359,42 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     installName: finalInstallNames.get(`${override.graphNodeId}\0${override.type}\0${override.name}`) ?? override.installName,
   }));
   return { artifacts: out, namespacing: [...decisions.values()], overrides: finalOverrides };
+}
+
+function coalesceEquivalentDirectArtifacts(artifacts: ResolvedArtifact[]): ResolvedArtifact[] {
+  const equivalent = new Map<string, ResolvedArtifact[]>();
+  const passthrough: ResolvedArtifact[] = [];
+  for (const artifact of artifacts) {
+    if (artifact.dependencyRole !== "direct") {
+      passthrough.push(artifact);
+      continue;
+    }
+    const key = `${artifact.type}\0${artifact.name}\0${artifact.hash}`;
+    const group = equivalent.get(key) ?? [];
+    group.push(artifact);
+    equivalent.set(key, group);
+  }
+
+  for (const group of equivalent.values()) {
+    const sorted = [...group].sort((left, right) => left.logicalSelector.localeCompare(right.logicalSelector));
+    const canonical = sorted[0]!;
+    passthrough.push({
+      ...canonical,
+      owners: [...new Set(sorted.flatMap((artifact) => artifact.owners))].sort((left, right) => left.localeCompare(right)),
+      composedFrom: mergeComposedFrom(sorted),
+    });
+  }
+  return passthrough;
+}
+
+function mergeComposedFrom(artifacts: ResolvedArtifact[]): ResolvedArtifact["composedFrom"] {
+  const entries = new Map<string, NonNullable<ResolvedArtifact["composedFrom"]>[number]>();
+  for (const entry of artifacts.flatMap((artifact) => artifact.composedFrom ?? [])) {
+    entries.set(`${entry.selector}\0${entry.hash}`, entry);
+  }
+  return entries.size > 0
+    ? [...entries.values()].sort((left, right) => `${left.selector}\0${left.hash}`.localeCompare(`${right.selector}\0${right.hash}`))
+    : undefined;
 }
 
 function supersededLogicalSelectors(artifacts: ResolvedArtifact[]): Set<string> {
@@ -531,7 +590,11 @@ function reachableNodeIds(graph: ResolvedGraph, rootNodeId: string): Set<string>
 }
 
 function installNameCollisionError(group: ResolvedArtifact[]): Error {
-  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}: ${group.map((artifact) => artifact.logicalSelector).sort().join(" vs ")}`);
+  const details = group
+    .map((artifact) => `${artifact.logicalSelector}=sha256:${artifact.hash}`)
+    .sort()
+    .join("; ");
+  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}. Artifact content hashes: ${details}`);
 }
 
 function namespaceDecision(artifact: ResolvedArtifact, reason: GraphLockNamespacing["reason"]): GraphLockNamespacing {

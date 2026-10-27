@@ -1,6 +1,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { findWorkspaceRoot, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, resolveConfigPath, type WorkspaceConfig, type WorkspaceProfileRuntime } from "../model/workspace.js";
 import type { SshTransportConfig, TransportKind } from "../transport/index.js";
+import { resolveRunAsIdentity, type RunAsIdentity } from "../transport/run-as-identity.js";
 import { pathExists } from "../utils/fs.js";
 
 export interface RuntimeTarget {
@@ -19,6 +20,7 @@ export interface RuntimeTarget {
   reloadCommands?: string[][];
   transport: TransportKind;
   ssh?: SshTransportConfig;
+  runAs?: RunAsIdentity;
   source: "target-root" | "agent" | "profile" | "auto-detect" | "cwd";
 }
 
@@ -204,6 +206,9 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
   if (!agent) {
     throw new Error(`Unknown agent: ${name}`);
   }
+  const runAs = agent.transport === "local-run-as"
+    ? resolveRunAsIdentity(agent.runAs ?? "", agent.root)
+    : undefined;
   return {
     agentName: name,
     targetKey: name,
@@ -212,11 +217,12 @@ function targetFromAgent(name: string, config: WorkspaceConfig, workspaceRoot: s
     adapterModule: agent.adapterModule,
     installationType: installationType ?? agent.installationType,
     stateKey: agent.stateKey,
-    targetRoot: agent.transport === "ssh" ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
+    targetRoot: agent.transport === "ssh" || runAs ? agent.root : resolveConfigPath(agent.root, workspaceRoot),
     workspaceRoot,
     ...(fleetId ? { fleetId } : {}),
     reloadCommands: agent.reloadCommands,
     transport: agent.transport,
+    runAs,
     ssh: agent.transport === "ssh"
       ? {
           host: agent.host ?? "",

@@ -24,6 +24,7 @@ export interface CrossPackageIncludeRequest {
 
 export interface CrossPackageIncludeResolution {
   toNodeId: string;
+  packageName?: string;
   packageRoot: string;
   artifactPaths: Map<string, string>;
   sourcePath: string;
@@ -33,6 +34,7 @@ export interface CrossPackageIncludeResolution {
 
 export interface MarkdownIncludeOptions {
   nodeId?: string;
+  packageName?: string;
   originNodeId?: string;
   allowCrossPackage?: boolean;
   resolveCrossPackageInclude?: (request: CrossPackageIncludeRequest) => Promise<CrossPackageIncludeResolution | undefined>;
@@ -44,6 +46,7 @@ export interface ExternalComposeEntry {
   packageRoot: string;
   artifactPaths: Map<string, string>;
   nodeId?: string;
+  packageName?: string;
   deduplicate?: boolean;
 }
 
@@ -67,6 +70,7 @@ export async function expandMarkdownIncludes(artifacts: Artifact[], packageRoot:
         packageRoot,
         artifactPaths,
         nodeId: options.nodeId,
+        packageName: options.packageName,
       }));
       const externalEntries = isPrimaryMarkdownFile(artifact, file)
         ? options.additionalComposeEntries?.(artifact) ?? []
@@ -110,13 +114,14 @@ async function expandFile(
   const expanded = await expandContent(raw, packageRoot, [owner], artifactPaths, options);
   let content = expanded.content;
   const composedFrom = [...expanded.composedFrom];
-  const appliedComposeIdentities = new Set<string>();
+  const appliedComposeIdentities = new Map<string, { hash: string; selector: string }>();
 
   for (const external of appendEntries) {
     const { entry } = external;
     const included = await expandInclude(entry.include, external.packageRoot, external.artifactPaths, {
       ...options,
       nodeId: external.nodeId,
+      packageName: external.packageName,
       optional: entry.optional === true,
       markers: entry.markers !== false,
       chain: [owner],
@@ -124,13 +129,18 @@ async function expandFile(
     if (!included) continue;
     const markerMode = entry.markers === false ? "plain" : "markers";
     const identity = `${markerMode}\0${included.identity}`;
-    if (external.deduplicate) {
-      if (appliedComposeIdentities.has(identity)) continue;
+    const previous = appliedComposeIdentities.get(identity);
+    if (external.deduplicate && previous) {
+      if (previous.hash !== included.hash) {
+        throw new Error(`Conflicting OpenPack composition revisions for ${included.selector}: ${previous.selector} (${previous.hash}) and ${included.selector} (${included.hash}). Select one revision explicitly.`);
+      }
+      // Rendering is shared, but each resolved revision remains in provenance.
+      composedFrom.push(...included.composedFrom);
+      continue;
     }
-    // Explicit item-level repetitions remain meaningful and are always rendered.
-    // Their resolved identities still suppress a later injected composition rule
-    // for the same lineage and marker mode.
-    appliedComposeIdentities.add(identity);
+    // Explicit item-level repetitions remain meaningful. A subsequent injected
+    // rule may share their rendering only when logical source and bytes agree.
+    appliedComposeIdentities.set(identity, { hash: included.hash, selector: included.selector });
     content = `${content.trimEnd()}\n\n${included.rendered}\n`;
     composedFrom.push(...included.composedFrom);
   }
@@ -148,7 +158,7 @@ async function expandContent(
   chain: string[],
   artifactPaths: Map<string, string>,
   options: MarkdownIncludeOptions,
-): Promise<{ content: string; composedFrom: ComposedFromEntry[] }> {
+): Promise<{ content: string; semanticContent: string; composedFrom: ComposedFromEntry[] }> {
   const owner = chain[chain.length - 1] ?? "<unknown>";
   if (generatedPattern.test(content)) {
     throw new Error(`Generated OpenPack include block found in raw source ${owner}; escape literal examples as openpack\\:include.`);
@@ -156,6 +166,7 @@ async function expandContent(
 
   const composedFrom: ComposedFromEntry[] = [];
   const replacements: Array<{ start: number; end: number; value: string }> = [];
+  const semanticReplacements: Array<{ start: number; end: number; value: string }> = [];
   for (const match of content.matchAll(includePattern)) {
     const selector = cleanSelector(match[2] ?? "");
     const included = await expandInclude(selector, packageRoot, artifactPaths, {
@@ -169,6 +180,7 @@ async function expandContent(
       end: (match.index ?? 0) + match[0].length,
       value: included?.rendered ?? "",
     });
+    semanticReplacements.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length, value: included?.semanticContent ?? "" });
     if (included) composedFrom.push(...included.composedFrom);
   }
 
@@ -177,7 +189,7 @@ async function expandContent(
     return `<!-- openpack:include${optional ?? ""} ${cleanSelector(selector)} -->`;
   });
 
-  return { content: expanded, composedFrom: uniqueComposedFrom(composedFrom) };
+  return { content: expanded, semanticContent: applyReplacements(content, semanticReplacements), composedFrom: uniqueComposedFrom(composedFrom) };
 }
 
 async function expandInclude(
@@ -185,13 +197,14 @@ async function expandInclude(
   packageRoot: string,
   artifactPaths: Map<string, string>,
   options: MarkdownIncludeOptions & { optional: boolean; markers: boolean; chain: string[] },
-): Promise<{ rendered: string; composedFrom: ComposedFromEntry[]; identity: string } | undefined> {
+): Promise<{ rendered: string; composedFrom: ComposedFromEntry[]; identity: string; hash: string; selector: string; semanticContent: string } | undefined> {
   const parsed = parseOpenPackIncludeSelector(selector);
   let sourcePath: string;
   let sourceContent: string | undefined;
   let includePackageRoot = packageRoot;
   let includeArtifactPaths = artifactPaths;
   let includeNodeId = options.nodeId;
+  let includePackageName = options.packageName;
   let displaySelector = displaySelectorForInclude(parsed.selector, options.nodeId, options.originNodeId);
   if (parsed.alias) {
     if (!options.nodeId || !options.resolveCrossPackageInclude) {
@@ -210,6 +223,7 @@ async function expandInclude(
     includePackageRoot = resolved.packageRoot;
     includeArtifactPaths = resolved.artifactPaths;
     includeNodeId = resolved.toNodeId;
+    includePackageName = resolved.packageName;
     displaySelector = `${resolved.toNodeId}:${parsed.selector}`;
   } else {
     sourcePath = artifactPaths.get(parsed.selector) ?? resolvePackageSelector(packageRoot, parsed.selector);
@@ -233,12 +247,13 @@ async function expandInclude(
   const expanded = await expandContent(raw, includePackageRoot, [...options.chain, displaySelector], includeArtifactPaths, {
     ...childOptions,
     nodeId: includeNodeId,
+    packageName: includePackageName,
   });
   const contentHash = sha256(expanded.content);
-  const identity = `${includeNodeId ?? resolve(includePackageRoot)}\0${parsed.selector}\0${contentHash}`;
+  const identity = `${includePackageName ?? includeNodeId ?? resolve(includePackageRoot)}\0${parsed.selector}`;
   const ownEntry = { selector: displaySelector, hash: contentHash };
   const composedFrom = uniqueComposedFrom([ownEntry, ...expanded.composedFrom]);
-  if (!options.markers) return { rendered: expanded.content, composedFrom, identity };
+  if (!options.markers) return { rendered: expanded.content, composedFrom, identity, hash: sha256(expanded.semanticContent), selector: displaySelector, semanticContent: expanded.semanticContent };
 
   return {
     rendered: [
@@ -248,6 +263,9 @@ async function expandInclude(
     ].join("\n"),
     composedFrom,
     identity,
+    hash: sha256(expanded.semanticContent),
+    selector: displaySelector,
+    semanticContent: expanded.semanticContent,
   };
 }
 

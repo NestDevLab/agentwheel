@@ -2,25 +2,30 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   computeInstallManifestInventoryRevision,
+  listInstallManifests,
   readInstallManifest,
 } from "../install/manifest.js";
 import { commitManifestMetadataJournal } from "../install/apply.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
 import {
   acquireApplyLock,
+  assertOwnershipMetadataTransportSupported,
+  observeOwnershipRuntime,
+  type MetadataStateGuards,
   listAllApplyJournals,
   mutationMetadataForApplyJournal,
   writeApplyJournal,
   type ApplyJournal,
 } from "../install/transaction.js";
 import type { InstallManifestEntry, InstallManifestV2 } from "../model/manifest.js";
+import { artifactSelectorKey } from "../model/selection.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { containedArtifactPath, verifyManifestEntryRuntime } from "./ownership.js";
 import { managedInstructionSelector } from "../install/instructions-block.js";
-import { hasMergeRemovalContent, mergeContributionAbsent } from "../install/merge-removal.js";
+import { combineMergeRemovals, hasMergeRemovalContent, mergeContributionAbsent } from "../install/merge-removal.js";
 
 export interface RetireStaleOwnershipRequest {
   targetRoot: string;
@@ -29,6 +34,7 @@ export interface RetireStaleOwnershipRequest {
   sourceStateKey: string;
   destinationStateKey: string;
   fromWorkspaceRoot: string;
+  fromFleetId?: string;
   toWorkspaceRoot: string;
   toFleetId: string;
   planDigest?: string;
@@ -45,6 +51,7 @@ export interface RetireStaleOwnershipEntry {
   destinationEntryDigest: string;
   runtimeHash: string;
   coverage: "exact" | "abandoned-incomplete-merge";
+  runtimeSnapshotDigest?: string;
 }
 
 export interface RetireStaleOwnershipPlan {
@@ -56,6 +63,8 @@ export interface RetireStaleOwnershipPlan {
   manifestInventoryRevision: string;
   selected: RetireStaleOwnershipEntry[];
   planDigest: string;
+  transport?: ReturnType<typeof ownershipRunAsEndpoint>;
+  metadataGuards?: MetadataStateGuards;
 }
 
 export interface RetireStaleOwnershipResult extends RetireStaleOwnershipPlan {
@@ -75,6 +84,7 @@ export async function applyRetireStaleOwnership(
 ): Promise<RetireStaleOwnershipResult> {
   assertApplyPreconditions(request);
   const transport = request.transport ?? localTransport;
+  assertOwnershipMetadataTransportSupported(transport);
   const lock = await acquireApplyLock(request.targetRoot, request.adapter, transport, {}, {
     installationType: request.installationType,
     stateKey: request.destinationStateKey,
@@ -113,6 +123,7 @@ export async function applyRetireStaleOwnership(
       operations: [],
       completed: [],
       manifest: { ...source, entries: retained },
+      ...(current.metadataGuards ? { metadataGuards: current.metadataGuards } : {}),
     };
     await writeApplyJournal(journal, transport);
     await commitManifestMetadataJournal(journal, transport);
@@ -132,9 +143,10 @@ async function observe(
   transport: TargetTransport,
 ): Promise<RetireStaleOwnershipPlan> {
   const normalized = normalizeRequest(request);
+  const endpoint = ownershipRunAsEndpoint(transport, normalized.targetRoot);
   const source = await requireManifest(normalized, normalized.sourceStateKey, transport, "source");
   const destination = await requireManifest(normalized, normalized.destinationStateKey, transport, "destination");
-  const sourceOwner = workspaceOwnerForRoot(normalized.fromWorkspaceRoot);
+  const sourceOwner = workspaceOwnerForRoot(normalized.fromWorkspaceRoot, normalized.fromFleetId);
   const destinationOwner = workspaceOwnerForRoot(normalized.toWorkspaceRoot, normalized.toFleetId);
   const destinationByPath = new Map<string, InstallManifestEntry[]>();
   for (const entry of destination.entries) {
@@ -164,11 +176,14 @@ async function observe(
     const runtimeHash = coverage === "abandoned-incomplete-merge"
       ? await transport.hashPath(containedArtifactPath(normalized.targetRoot, destinationEntry.path))
       : await verifyManifestEntryRuntime(normalized.targetRoot, destinationEntry, transport);
+    const observation = endpoint ? await observeOwnershipRuntime(containedArtifactPath(normalized.targetRoot, destinationEntry.path), transport) : undefined;
+    if (observation && observation.kind !== destinationEntry.kind) throw new Error(`Runtime kind differs from destination ownership at ${destinationEntry.path}.`);
     selected.push({
       path: sourceEntry.path,
       sourceEntryDigest: entryDigest(sourceEntry),
       destinationEntryDigest: entryDigest(destinationEntry),
       runtimeHash,
+      ...(observation ? { runtimeSnapshotDigest: observation.snapshotDigest } : {}),
       coverage,
     });
   }
@@ -179,7 +194,13 @@ async function observe(
     throw new Error("No stale source ownership entries match an exact path in the destination Fleet manifest.");
   }
 
+  const inventory = endpoint ? await listInstallManifests(normalized.targetRoot, undefined, transport) : undefined;
   const withoutDigest = {
+    ...(endpoint ? { transport: endpoint } : {}),
+    ...(inventory ? { metadataGuards: {
+      inventory: inventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
+      runtime: selected.map((entry) => ({ path: entry.path, hash: entry.runtimeHash, snapshotDigest: entry.runtimeSnapshotDigest! })),
+    } } : {}),
     adapter: normalized.adapter,
     installationType: normalized.installationType,
     targetRoot: normalized.targetRoot,
@@ -204,7 +225,7 @@ async function observe(
     },
     manifestInventoryRevision: await computeInstallManifestInventoryRevision(
       normalized.targetRoot,
-      normalized.adapter,
+      endpoint ? undefined : normalized.adapter,
       transport,
     ),
     selected,
@@ -218,6 +239,12 @@ function normalizeRequest(request: RetireStaleOwnershipRequest): RetireStaleOwne
   const destinationStateKey = exactStateKey(request.adapter, request.destinationStateKey, request.installationType, "destination");
   if (sourceStateKey === destinationStateKey) throw new Error("Source and destination state keys must differ.");
   if (!request.toFleetId.trim()) throw new Error("Destination Fleet id is required.");
+  const fromFleetId = request.fromFleetId?.trim();
+  if (request.fromFleetId !== undefined && !fromFleetId) throw new Error("Source Fleet id cannot be empty.");
+  if (fromFleetId && (fromFleetId !== request.toFleetId.trim()
+    || resolve(request.fromWorkspaceRoot) !== resolve(request.toWorkspaceRoot))) {
+    throw new Error("Fleet-qualified stale ownership retirement requires the same source and destination Fleet and workspace root.");
+  }
   return {
     ...request,
     targetRoot,
@@ -225,20 +252,21 @@ function normalizeRequest(request: RetireStaleOwnershipRequest): RetireStaleOwne
     sourceStateKey,
     destinationStateKey,
     fromWorkspaceRoot: resolve(request.fromWorkspaceRoot),
+    ...(fromFleetId ? { fromFleetId } : {}),
     toWorkspaceRoot: resolve(request.toWorkspaceRoot),
     toFleetId: request.toFleetId.trim(),
   };
 }
 
-function exactStateKey(adapter: string, value: string, installationType: string, label: string): string {
+export function exactStateKey(adapter: string, value: string, installationType: string, label: string): string {
   if (!value || stateKeyFor(adapter, { installationType, stateKey: value }) !== value) {
     throw new Error(`The ${label} state key must be an exact canonical state key.`);
   }
   return value;
 }
 
-async function requireManifest(
-  request: RetireStaleOwnershipRequest,
+export async function requireManifest(
+  request: Pick<RetireStaleOwnershipRequest, "targetRoot" | "adapter" | "installationType">,
   stateKey: string,
   transport: TargetTransport,
   label: string,
@@ -248,7 +276,7 @@ async function requireManifest(
     stateKey,
   });
   if (!manifest) throw new Error(`No ${label} install manifest for state key ${stateKey}.`);
-  if (manifest.version !== 2) throw new Error(`${label} ownership retirement requires an Agentwheel v2 install manifest.`);
+  if (manifest.version !== 2) throw new Error(`The ${label} install manifest must be an Agentwheel v2 manifest.`);
   const actualStateKey = stateKeyFor(manifest.adapter, {
     installationType: manifest.installationType,
     stateKey: manifest.stateKey,
@@ -282,6 +310,7 @@ async function assertContributionCoverage(
   transport: TargetTransport,
   abandonIncompleteMergeOwner: boolean,
 ): Promise<RetireStaleOwnershipEntry["coverage"]> {
+  containedArtifactPath(targetRoot, source.path);
   const sourceManagedBlock = source.mode === "managed-block";
   const destinationManagedBlock = destination.mode === "managed-block";
   const sourceMerge = source.mergeStrategy !== undefined;
@@ -309,11 +338,26 @@ async function assertContributionCoverage(
       if (abandonIncompleteMergeOwner) return "abandoned-incomplete-merge";
       throw new Error(`Cannot retire incomplete merge ownership at ${source.path}.`);
     }
+    const selectorsDiffer = contributionSelector(source) !== contributionSelector(destination);
+    if (selectorsDiffer && !sameContributionSelector(source, destination)) {
+      throw new Error(`Destination Fleet does not identify the same source merge artifact at ${source.path}.`);
+    }
+    if (source.mergeStrategy === "json-deep"
+      && destination.mergeStrategy === "json-deep"
+      && hasMergeRemovalContent(destination.mergeRemoval)
+      && sameContributionSelector(source, destination)) {
+      if (canonicalJson(combineMergeRemovals(destination.mergeRemoval!, source.mergeRemoval!))
+        === canonicalJson(destination.mergeRemoval)) return "exact";
+      throw new Error(`Destination Fleet does not exactly cover stale source merge contribution at ${source.path}.`);
+    }
     const exactlyCovered = destination.mergeStrategy === source.mergeStrategy
       && hasMergeRemovalContent(destination.mergeRemoval)
-      && contributionSelector(source) === contributionSelector(destination)
+      && sameContributionSelector(source, destination)
       && canonicalJson(source.mergeRemoval) === canonicalJson(destination.mergeRemoval);
     if (exactlyCovered) return "exact";
+    if (selectorsDiffer) {
+      throw new Error(`Destination Fleet does not exactly cover stale source merge contribution at ${source.path}.`);
+    }
     const current = await transport.readFile(containedArtifactPath(targetRoot, source.path));
     if (!mergeContributionAbsent(source.mergeRemoval!, source.mergeStrategy, current)) {
       throw new Error(`Destination Fleet does not exactly cover or replace stale source merge contribution at ${source.path}.`);
@@ -325,6 +369,26 @@ async function assertContributionCoverage(
 
 function contributionSelector(entry: InstallManifestEntry): string {
   return entry.logicalSelector ?? `${entry.artifactType}/${entry.artifactName}`;
+}
+
+function sameContributionSelector(source: InstallManifestEntry, destination: InstallManifestEntry): boolean {
+  if (contributionSelector(source) === contributionSelector(destination)) return true;
+  if (!source.packageName || source.packageName !== destination.packageName
+    || source.artifactType !== destination.artifactType
+    || source.artifactName !== destination.artifactName
+    || source.installName !== destination.installName
+    || source.sourceHash !== destination.sourceHash
+    || !source.graphNodeId || !destination.graphNodeId) return false;
+  const selector = artifactSelectorKey({ type: source.artifactType, name: source.artifactName });
+  if (source.logicalSelector !== `${source.graphNodeId}:${selector}`
+    || destination.logicalSelector !== `${destination.graphNodeId}:${selector}`) return false;
+  const sourceAt = source.graphNodeId.lastIndexOf("@");
+  const destinationAt = destination.graphNodeId.lastIndexOf("@");
+  return sourceAt > 0 && destinationAt > 0
+    && source.graphNodeId.slice(0, sourceAt) === source.packageName
+    && destination.graphNodeId.slice(0, destinationAt) === destination.packageName
+    && source.graphNodeId.indexOf("+", sourceAt) > sourceAt
+    && destination.graphNodeId.indexOf("+", destinationAt) > destinationAt;
 }
 
 function assertApplyPreconditions(request: RetireStaleOwnershipRequest): void {
@@ -340,11 +404,11 @@ function assertApplyPreconditions(request: RetireStaleOwnershipRequest): void {
   }
 }
 
-function assertExpected(expected: string, current: string, label: string): void {
+export function assertExpected(expected: string, current: string, label: string): void {
   if (expected !== current) throw new Error(`Stale ${label}: expected ${expected}, found ${current}; replan required.`);
 }
 
-function entryDigest(entry: InstallManifestEntry): string {
+export function entryDigest(entry: InstallManifestEntry): string {
   return digest(entry);
 }
 
@@ -352,10 +416,26 @@ function digest(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).filter((key) => record[key] !== undefined).sort()
     .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+/** A reviewed run-as plan binds all account fields and one exact runtime root. */
+export function ownershipRunAsEndpoint(transport: TargetTransport, targetRoot: string) {
+  if (transport.kind !== "local-run-as") return undefined;
+  const identity = transport.runAsIdentity;
+  if (!identity || !identity.user || identity.user === "root"
+    || !Number.isSafeInteger(identity.uid) || identity.uid <= 0
+    || !Number.isSafeInteger(identity.gid) || identity.gid < 0
+    || !identity.home.startsWith("/") || resolve(identity.home) !== identity.home
+    || !identity.root.startsWith("/") || identity.root === "/" || resolve(identity.root) !== identity.root
+    || identity.root !== resolve(targetRoot) || !transport.ownershipObservation) {
+    throw new Error("Run-as ownership requires a pinned same-endpoint identity and full runtime observation.");
+  }
+  return { kind: "local-run-as" as const, description: transport.description,
+    identity: { user: identity.user, uid: identity.uid, gid: identity.gid, home: identity.home, root: identity.root } };
 }

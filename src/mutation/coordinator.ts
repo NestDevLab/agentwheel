@@ -1,8 +1,12 @@
+import { localTransport, createRunAsTransport } from "../transport/index.js";
+import { resolveRunAsIdentity } from "../transport/run-as-identity.js";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { mutationPolicySchema, type MutationPolicy } from "../model/mutation.js";
 import { readWorkspaceConfig } from "../model/workspace.js";
+import { resolveWorkspaceOwnershipScope } from "../model/fleet.js";
+import { pathExists } from "../utils/fs.js";
 import {
   beginMutationPathDeclarations,
   declareMutationPath,
@@ -12,7 +16,7 @@ import {
   resumeMutationPathDeclarations,
 } from "./declarations.js";
 import { invokeRevisionProvider, revisionProviderRejection } from "./providers.js";
-import { mutationOperationIdSchema, mutationReasonSchema, revisionProviderRequestSchema, type RevisionPath, type RevisionProviderRequest } from "./protocol.js";
+import { mutationOperationIdSchema, mutationReasonSchema, revisionProviderRequestSchema, type RevisionPath, type RevisionProviderResponse, type RevisionProviderRequest } from "./protocol.js";
 import {
   acquireMutationLock,
   createMutationReceipt,
@@ -23,6 +27,10 @@ import {
   type RuntimeJournalReceipt,
 } from "./receipts.js";
 import {
+  assertHeadLease,
+  committedRecoveryPaths,
+  verifyCompletedRecoveryPaths,
+  isAgentwheelWritablePath,
   collectIntroducedPaths,
   currentHead,
   discoverGitRepository,
@@ -30,6 +38,7 @@ import {
   snapshotRepository,
   type RepositorySnapshot,
 } from "./repository.js";
+import { describeDirtyPathOwnershipByPath } from "./session-ownership.js";
 
 export interface BeginMutationOptions {
   workspaceRoot: string;
@@ -53,6 +62,8 @@ export class GovernedMutation {
     private receipt: MutationReceipt,
     private readonly baseline: RepositorySnapshot | undefined,
     private readonly lock: MutationLock,
+    private readonly runtimeRecovery = false,
+    private readonly beforeProviderCompletion?: () => void | Promise<void>,
   ) {
     this.operationId = receipt.operationId;
   }
@@ -112,18 +123,29 @@ export class GovernedMutation {
         runtimeJournals: [],
         status: "prepared",
       });
-      if (policy.revisioning.mode === "commit-after-verify"
-        && options.requireCleanWorkingTree
-        && baseline
-        && baseline.changed.size > 0) {
+      const blockedPathDescriptions = baseline && repository && baseline.changed.size > 0
+        ? await describeDirtyPathOwnershipByPath(repository.root, [...baseline.changed.keys()])
+        : new Map<string, string>();
+      const dirtyDeclaredPaths = baseline && repository
+        ? dirtyRepositoryPaths(repository.root, baseline, options.anticipatedPaths ?? [])
+        : [];
+      if (dirtyDeclaredPaths.length > 0) {
         throw new Error(
-          `This governed command computes declarative paths during planning and requires a clean working tree before runtime mutation; found: ${[...baseline.changed.keys()].sort().join(", ")}.`,
+          `Mutation declared paths are already dirty and cannot be claimed: ${dirtyDeclaredPaths.join(", ")}. ${dirtyDeclaredPaths.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
         );
       }
+      if (options.requireCleanWorkingTree && baseline) {
+        const dirty = [...baseline.changed.keys()].filter(isAgentwheelWritablePath);
+        if (dirty.length > 0) throw new Error(
+          `Mutation requires clean Agentwheel paths: ${dirty.join(", ")}. ${dirty.map((path) => blockedPathDescriptions.get(path)).join(" ")}`,
+        );
+      }
+      if (policy.revisioning.mode === "commit-after-verify" && repository) await assertGitPreflight(repository);
       beginMutationPathDeclarations(
         repository?.root ?? options.workspaceRoot,
         operationId,
         baseline?.changed.keys(),
+        blockedPathDescriptions,
       );
       for (const path of options.anticipatedPaths ?? []) declareMutationPath(path);
       if (policy.revisioning.mode === "commit-after-verify" && repository) {
@@ -155,7 +177,7 @@ export class GovernedMutation {
         );
       }
       this.receipt = await updateMutationReceipt(this.receipt, { status: "handler-succeeded" });
-      paths = await this.collectPaths();
+      paths = await this.collectPaths(action === "recover" && this.runtimeRecovery);
       this.receipt = await updateMutationReceipt(this.receipt, { paths, status: "mutation-applied" });
     } catch (error) {
       this.receipt = await updateMutationReceipt(this.receipt, {
@@ -175,12 +197,18 @@ export class GovernedMutation {
       }
 
       const provider = this.policy.revisioning.provider;
-      await invokeRevisionProvider(provider, providerRequest(this.receipt, "preflight", paths), {
+      const request = this.runtimeRecovery && action === "recover"
+        ? await recoveryProviderRequest(this.receipt, paths)
+        : providerRequest(this.receipt, action, paths);
+      await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...request, action: "preflight" }), {
         workspaceRoot: this.receipt.workspaceRoot,
       });
-      const response = await invokeRevisionProvider(provider, providerRequest(this.receipt, action, paths), {
+      if (this.runtimeRecovery) await verifyRecoveryProjection(this.receipt, request);
+      await this.beforeProviderCompletion?.();
+      const response = await invokeRevisionProvider(provider, request, {
         workspaceRoot: this.receipt.workspaceRoot,
       });
+      await verifyCompletedRecoveryProjection(this.receipt, request, response);
       this.receipt = await updateMutationReceipt(this.receipt, {
         status: receiptStatusForProvider(response.status),
         providerResponse: response,
@@ -224,12 +252,13 @@ export class GovernedMutation {
     }
   }
 
-  metadata(): { operationId: string; reason: string; noCommit: boolean; revisionMode: MutationReceipt["revisionMode"] } {
+  metadata(): { operationId: string; reason: string; noCommit: boolean; revisionMode: MutationReceipt["revisionMode"]; workspaceRoot: string } {
     return {
       operationId: this.receipt.operationId,
       reason: this.receipt.reason,
       noCommit: this.receipt.noCommit,
       revisionMode: this.receipt.revisionMode,
+      workspaceRoot: this.receipt.workspaceRoot,
     };
   }
 
@@ -252,6 +281,7 @@ export class GovernedMutation {
     receipt: MutationReceipt,
     baseline: RepositorySnapshot | undefined,
     lock: MutationLock,
+    beforeProviderCompletion?: () => void | Promise<void>,
   ): GovernedMutation {
     if (receipt.revisionMode === "commit-after-verify" && !receipt.provider) {
       throw new Error(`Mutation '${receipt.operationId}' is missing its revision provider recovery policy.`);
@@ -272,18 +302,28 @@ export class GovernedMutation {
           journal: "required",
           revisioning: { mode: "off" },
         });
-    const mutation = new GovernedMutation(policy, receipt, baseline, lock);
+    const mutation = new GovernedMutation(policy, receipt, baseline, lock, true, beforeProviderCompletion);
     activeMutation = mutation;
     return mutation;
   }
 
-  private async collectPaths(): Promise<RevisionPath[]> {
+  private async collectPaths(recover = false): Promise<RevisionPath[]> {
     if (!this.receipt.repositoryRoot || !this.receipt.expectedHead || !this.baseline) return [];
     const declarations = [...new Set([
       ...declaredMutationPaths(),
       ...readMutationPathDeclarations(this.receipt.operationId),
     ])].sort((a, b) => a.localeCompare(b));
-    return collectIntroducedPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, this.baseline, declarations);
+    const head = await currentHead(this.receipt.repositoryRoot);
+    const committed = recover && !this.receipt.noCommit
+      ? await committedRecoveryPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, head,
+        declarations, this.receipt.paths, this.receipt.provider)
+      : [];
+    if (this.receipt.provider && !recover) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
+      head, this.receipt.noCommit ? [] : declarations, this.receipt.provider);
+    if (recover && this.receipt.noCommit) await assertHeadLease(this.receipt.repositoryRoot, this.receipt.expectedHead,
+      head, [], this.receipt.provider);
+    const introduced = await collectIntroducedPaths(this.receipt.repositoryRoot, this.receipt.expectedHead, this.baseline, declarations);
+    return [...committed, ...introduced].sort((a, b) => a.path.localeCompare(b.path));
   }
 
   private async close(): Promise<void> {
@@ -295,6 +335,22 @@ export class GovernedMutation {
   }
 }
 
+function dirtyRepositoryPaths(
+  repositoryRoot: string,
+  baseline: RepositorySnapshot,
+  paths: string[],
+): string[] {
+  const conflicts = new Set<string>();
+  for (const path of paths) {
+    const absolute = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
+    const relativePath = relative(repositoryRoot, absolute);
+    if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) continue;
+    const normalized = relativePath.split(sep).join("/");
+    if (baseline.changed.has(normalized)) conflicts.add(normalized);
+  }
+  return [...conflicts].sort((left, right) => left.localeCompare(right));
+}
+
 let activeMutation: GovernedMutation | undefined;
 
 export function activeMutationMetadata(): {
@@ -302,6 +358,7 @@ export function activeMutationMetadata(): {
   reason: string;
   noCommit: boolean;
   revisionMode: MutationReceipt["revisionMode"];
+  workspaceRoot: string;
 } | undefined {
   return activeMutation?.metadata();
 }
@@ -364,7 +421,9 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
   try {
     let paths = receipt.paths;
     const head = await currentHead(repositoryRoot);
-    if (paths.length === 0 && head === expectedHead) {
+    if (paths.length === 0) {
+      const declarations = readMutationPathDeclarations(receipt.operationId);
+      await assertHeadLease(repositoryRoot, expectedHead, head, receipt.noCommit ? [] : declarations, provider);
       paths = await collectIntroducedPaths(
         repositoryRoot,
         expectedHead,
@@ -373,12 +432,16 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
       );
       receipt = await updateMutationReceipt(receipt, { paths, status: "mutation-applied" });
     }
-    await invokeRevisionProvider(provider, providerRequest(receipt, "preflight", paths), {
+    const request = action === "recover" && receipt.runtimeJournals.length > 0
+      ? await recoveryProviderRequest(receipt, paths) : providerRequest(receipt, action, paths);
+    await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...request, action: "preflight" }), {
       workspaceRoot: receipt.workspaceRoot,
     });
-    const response = await invokeRevisionProvider(provider, providerRequest(receipt, action, paths), {
+    if (action === "recover") await verifyRecoveryProjection(receipt, request);
+    const response = await invokeRevisionProvider(provider, request, {
       workspaceRoot: receipt.workspaceRoot,
     });
+    await verifyCompletedRecoveryProjection(receipt, request, response);
     return updateMutationReceipt(receipt, {
       status: receiptStatusForProvider(response.status),
       providerResponse: response,
@@ -399,6 +462,8 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
 export interface RecoverMutationRuntimeOptions {
   /** Test-only scheduling seam; durable state is reread after this barrier while the mutation lock is held. */
   afterLockAcquired?: () => void | Promise<void>;
+  /** Test-only barrier after projection validation and before provider completion. */
+  beforeProviderCompletion?: () => void | Promise<void>;
 }
 
 export async function recoverMutationRuntime(
@@ -426,26 +491,41 @@ export async function recoverMutationRuntime(
     if (receipt.repositoryRoot && receipt.expectedHead && baseline) {
       const declarations = readMutationPathDeclarations(receipt.operationId);
       const repository = await discoverGitRepository(receipt.repositoryRoot);
-      if (!repository || repository.root !== receipt.repositoryRoot || repository.head !== receipt.expectedHead) {
+      if (!repository || repository.root !== receipt.repositoryRoot) {
         throw new Error(
           `Mutation '${receipt.operationId}' repository HEAD lease changed before runtime recovery.`,
         );
       }
+      if (receipt.noCommit) await assertHeadLease(receipt.repositoryRoot, receipt.expectedHead, repository.head, [], receipt.provider);
+      else await committedRecoveryPaths(receipt.repositoryRoot, receipt.expectedHead, repository.head,
+        declarations, receipt.paths, receipt.provider);
       await assertGitPreflight(repository);
       await collectIntroducedPaths(receipt.repositoryRoot, receipt.expectedHead, baseline, declarations);
     }
 
-    mutation = GovernedMutation.activateExisting(receipt, baseline, lock);
-    const [{ recoverPendingApply }, { readLinkedLocalApplyJournal, removeApplyJournal, localPathExists }] = await Promise.all([
+    mutation = GovernedMutation.activateExisting(receipt, baseline, lock, options.beforeProviderCompletion);
+    const [{ recoverPendingApply }, { readLinkedLocalApplyJournal }] = await Promise.all([
       import("../install/apply.js"),
       import("../install/transaction.js"),
     ]);
     let missingReservation = false;
     for (const entry of pending) {
-      if (entry.transport !== "local") {
+      if (entry.transport === "ssh") {
         throw new Error(`Runtime recovery for ${entry.transportDescription} is unsupported until a durable remote recovery protocol exists.`);
       }
-      const exists = await localPathExists(entry.path);
+      let transport = localTransport;
+      if (entry.transport === "local-run-as") {
+        const pinned = entry.runAsIdentity!;
+        const current = resolveRunAsIdentity(pinned.user, pinned.root);
+        if (!sameRunAsIdentity(pinned, current)) {
+          throw new Error(`Runtime recovery run-as identity changed for ${pinned.user}.`);
+        }
+        transport = createRunAsTransport(current);
+      }
+      if (transport.description !== entry.transportDescription) {
+        throw new Error(`Runtime recovery transport does not match its durable receipt for ${entry.path}.`);
+      }
+      const exists = await transport.pathExists(entry.path);
       if (!exists) {
         if (entry.status === "reserved") {
           await resolveMutationRuntimeJournal(receipt.operationId, entry.path);
@@ -463,20 +543,18 @@ export async function recoverMutationRuntime(
         receipt.operationId,
         entry.journalDigest,
         entry.transportDescription,
+        transport,
       );
       if (journal.mutation?.reason !== receipt.reason || journal.mutation.noCommit !== receipt.noCommit) {
         throw new Error(`Runtime apply journal ${entry.path} mutation metadata does not match its durable receipt.`);
       }
-      if (entry.status === "resolving") {
-        await removeApplyJournal(journal.targetRoot, journal.adapter, undefined, {
-          installationType: journal.installationType,
-          stateKey: journal.stateKey,
-        });
-        continue;
-      }
-      const recovered = await recoverPendingApply(journal.targetRoot, journal.adapter, undefined, {
+      const recovered = await recoverPendingApply(journal.targetRoot, journal.adapter, transport, {
         installationType: journal.installationType,
         stateKey: journal.stateKey,
+      }, {
+        path: entry.path, operationId: receipt.operationId, journalDigest: entry.journalDigest,
+        transportDescription: entry.transportDescription, reason: receipt.reason, noCommit: receipt.noCommit,
+        resolveOnly: entry.status === "resolving",
       });
       if (!recovered) throw new Error(`Runtime apply journal ${entry.path} could not be recovered deterministically.`);
     }
@@ -542,7 +620,14 @@ export async function mutationPolicyForWorkspace(
   if (resolve(workspaceRoot) === resolve(globalRoot)) return scoped;
   const globalConfig = await readWorkspaceConfig(globalRoot);
   const global = globalConfig.schemaVersion === 4 ? globalConfig.mutationPolicy : undefined;
-  return mergeMutationPolicies(global, scoped);
+  // Resolve the existing registration and its contract, never infer a Fleet from ancestry alone.
+  // init may select a not-yet-created directory; its closest existing ancestor establishes containment.
+  let existingRoot = resolve(workspaceRoot);
+  while (!(await pathExists(existingRoot)) && dirname(existingRoot) !== existingRoot) existingRoot = dirname(existingRoot);
+  const owner = await resolveWorkspaceOwnershipScope(existingRoot, { globalRoot });
+  const fleetConfig = owner.fleetId ? await readWorkspaceConfig(owner.root) : undefined;
+  const fleet = fleetConfig?.schemaVersion === 4 ? fleetConfig.mutationPolicy : undefined;
+  return mergeMutationPolicies(mergeMutationPolicies(global, fleet), scoped);
 }
 
 export function mergeMutationPolicies(
@@ -567,6 +652,37 @@ export function mergeMutationPolicies(
     journal: global.journal === "required" || scoped.journal === "required" || chosen ? "required" : "off",
     revisioning,
   });
+}
+
+async function recoveryProviderRequest(receipt: MutationReceipt, paths: RevisionPath[]): Promise<RevisionProviderRequest> {
+  const request = providerRequest(receipt, "recover", paths);
+  if (receipt.noCommit) return request;
+  const head = await currentHead(request.repositoryRoot);
+  const committed = await committedRecoveryPaths(request.repositoryRoot, request.expectedHead, head,
+    readMutationPathDeclarations(receipt.operationId), paths, receipt.provider);
+  if (committed.length === 0) return request;
+  const saved = new Set(committed.map((entry) => entry.path));
+  return revisionProviderRequestSchema.parse({ ...request, expectedHead: head,
+    paths: paths.filter((entry) => !saved.has(entry.path)) });
+}
+
+async function verifyCompletedRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest, response: RevisionProviderResponse): Promise<void> {
+  if (request.expectedHead === receipt.expectedHead) return;
+  if (response.action !== "recover" && response.action !== "finalize") throw new Error("Recovery requires a terminal provider response.");
+  const remaining = new Set(request.paths.map((entry) => entry.path));
+  await verifyCompletedRecoveryPaths(request.repositoryRoot, receipt.expectedHead!,
+    readMutationPathDeclarations(receipt.operationId), receipt.paths.filter((entry) => !remaining.has(entry.path)),
+    receipt.provider, response.productCommitSha, request.paths.map((entry) => entry.path), response.controlCommitSha);
+}
+
+async function verifyRecoveryProjection(receipt: MutationReceipt, request: RevisionProviderRequest): Promise<void> {
+  if (request.expectedHead === receipt.expectedHead) return;
+  if (await currentHead(request.repositoryRoot) !== request.expectedHead) throw new Error("Recovery projection HEAD changed.");
+  const verified = await recoveryProviderRequest(receipt, receipt.paths);
+  if (JSON.stringify(verified) !== JSON.stringify(request)) throw new Error("Recovery projection changed before provider completion.");
+  const repository = await discoverGitRepository(request.repositoryRoot);
+  if (!repository) throw new Error("Recovery repository disappeared.");
+  await assertGitPreflight(repository);
 }
 
 function providerRequest(receipt: MutationReceipt, action: RevisionProviderRequest["action"], paths: RevisionPath[]): RevisionProviderRequest {
@@ -627,6 +743,7 @@ function upsertRuntimeJournal(
     existing.transport !== link.transport
     || existing.transportDescription !== link.transportDescription
     || existing.journalDigest !== link.journalDigest
+    || !sameRunAsIdentity(existing.runAsIdentity, link.runAsIdentity)
   )) {
     throw new Error(`Runtime journal link collision for ${link.path}.`);
   }
@@ -634,4 +751,13 @@ function upsertRuntimeJournal(
     ...entries.filter((entry) => entry.path !== link.path),
     { ...link, status },
   ].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function sameRunAsIdentity(
+  left: RuntimeJournalReceipt["runAsIdentity"],
+  right: RuntimeJournalReceipt["runAsIdentity"],
+): boolean {
+  if (!left || !right) return left === right;
+  return left.user === right.user && left.uid === right.uid && left.gid === right.gid
+    && left.home === right.home && left.root === right.root;
 }

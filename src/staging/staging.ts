@@ -6,7 +6,7 @@ import type { SourceLock } from "../model/manifest.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import type { ResolvedSource, SourceDriver, SourceResolveOptions } from "../source/types.js";
 import { releaseGitSnapshotLease } from "../source/cache.js";
-import { hashPath, isIgnoredGeneratedEntry } from "../utils/fs.js";
+import { hashPath, isIgnoredGeneratedEntry, removeOnFailure } from "../utils/fs.js";
 import { expandMarkdownIncludes } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "./customize.js";
 import { renderClaudeSubagents } from "./claude-subagents.js";
@@ -36,7 +36,8 @@ export interface StageOptions extends SourceResolveOptions {
 }
 
 export async function stageSource(driver: SourceDriver, source: string, options: StageOptions = {}): Promise<StagedBundle> {
-  return renderStagedBundle(await stageSourceRaw(driver, source, options), options);
+  const raw = await stageSourceRaw(driver, source, options);
+  return removeOnFailure(raw.root, () => renderStagedBundle(raw, options));
 }
 
 export async function stageSourceRaw(driver: SourceDriver, source: string, options: SourceResolveOptions = {}): Promise<RawStagedBundle> {
@@ -54,26 +55,32 @@ export async function stageResolvedSourceRaw(driver: SourceDriver, resolved: Res
   return stageResolvedArtifactsRaw(resolved, artifacts);
 }
 
-export async function stageResolvedArtifactsRaw(resolved: ResolvedSource, artifacts: Artifact[]): Promise<RawStagedBundle> {
-  const root = await mkdtemp(join(tmpdir(), "agentwheel-stage-"));
+export async function stageResolvedArtifactsRaw(
+  resolved: ResolvedSource,
+  artifacts: Artifact[],
+  parentDir = tmpdir(),
+): Promise<RawStagedBundle> {
+  const root = await mkdtemp(join(parentDir, "agentwheel-stage-"));
   const stagedArtifacts: Artifact[] = [];
 
-  for (const artifact of artifacts) {
-    const stagedPath = join(root, artifact.relativePath);
-    await mkdir(dirname(stagedPath), { recursive: true });
-    await cp(artifact.sourcePath, stagedPath, {
-      recursive: artifact.kind === "dir",
-      dereference: true,
-      filter: (path) => !isIgnoredGeneratedEntry(basename(path)),
-    });
-    await composeAssets(artifact, resolved.resolvedPath, stagedPath);
-    stagedArtifacts.push({
-      ...artifact,
-      stagedPath,
-      hash: await hashPath(stagedPath),
-      channel: artifact.channel ?? "managed",
-    });
-  }
+  await removeOnFailure(root, async () => {
+    for (const artifact of artifacts) {
+      const stagedPath = join(root, artifact.relativePath);
+      await mkdir(dirname(stagedPath), { recursive: true });
+      await cp(artifact.sourcePath, stagedPath, {
+        recursive: artifact.kind === "dir",
+        dereference: true,
+        filter: (path) => !isIgnoredGeneratedEntry(basename(path)),
+      });
+      await composeAssets(artifact, resolved.resolvedPath, stagedPath);
+      stagedArtifacts.push({
+        ...artifact,
+        stagedPath,
+        hash: await hashPath(stagedPath),
+        channel: artifact.channel ?? "managed",
+      });
+    }
+  });
 
   return {
     root,

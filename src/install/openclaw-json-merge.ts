@@ -53,8 +53,20 @@ function isAgentwheelSkillRouterRepositoriesPath(path: string[]): boolean {
 
 function expandEnvPlaceholders(value: JsonValue, sourcePath: string): JsonValue {
   if (typeof value === "string") {
-    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
-      const replacement = process.env[name];
+    let cursor = 0;
+    while (true) {
+      const start = value.indexOf("${secret:", cursor);
+      if (start === -1) break;
+      const end = value.indexOf("}", start + "${secret:".length);
+      const name = end === -1 ? "" : value.slice(start + "${secret:".length, end);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`Invalid secret environment placeholder in OpenClaw JSON merge artifact ${sourcePath}`);
+      }
+      cursor = end + 1;
+    }
+    return value.replace(/\$\{secret:([A-Za-z_][A-Za-z0-9_]*)\}|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, secretName: string | undefined, name: string | undefined) => {
+      if (secretName) return `\${${secretName}}`;
+      const replacement = process.env[name!];
       if (replacement === undefined) {
         throw new Error(`Missing environment variable ${name} while rendering OpenClaw JSON merge artifact ${sourcePath}`);
       }

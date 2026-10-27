@@ -32,7 +32,7 @@ Providers are one of:
 
 - `git`: Agentwheel's built-in exact-path Git provider.
 - `command`: an absolute executable and fixed arguments in `command`. `executableSha256` pins the
-  entrypoint, `timeoutMs` bounds it, and `trustBoundary: "entrypoint"` explicitly acknowledges
+  entrypoint, `timeoutMs` bounds it (100–600000 ms; default 30000 ms), and `trustBoundary: "entrypoint"` explicitly acknowledges
   that provider-owned imports or subprocesses are part of the external provider deployment trust
   boundary. On Linux, Agentwheel hashes the configured file, copies those exact verified bytes to
   a private mode-0700 directory, opens the snapshot read-only, unlinks it, and executes it through
@@ -42,10 +42,56 @@ Providers are one of:
   those remain inside the explicitly declared provider deployment trust boundary. The provider runs
   in a dedicated process group, and timeout or output-limit enforcement kills the complete group.
 
-User/global policy is the baseline for standard Agentwheel commands. A selected local or fleet
-workspace may strengthen it and may select its own commit provider, but cannot turn off global
-commit-after-verify, weaken a required reason or journal, or enable `--no-commit` when either
-policy forbids it.
+Both providers accept optional `headLease: "exact" | "path-scoped"`. Omission means `exact`,
+including in existing receipts; it does not change protocol v1 or its wire fixtures.
+
+With `exact`, an operation commit must have `expectedHead` as its only parent. With
+`path-scoped`, its single parent may descend from `expectedHead` only when **every intervening
+commit** is disjoint from the declared paths, `.agentwheel/config.json`, and
+`.syncwheel/manifest.json`. Verification visits all parents of merges and expands renames into
+removed/added paths; change-and-revert history remains an overlap even when the net tree matches.
+Exact product paths and before/after hashes are still verified. Branch and index compare-and-swap,
+hooks, reason/trailers, and apply-journal verification remain mandatory.
+
+A widened lease requires both the original receipt's provider policy and
+`mutationPolicy.revisioning.provider.headLease` in the repository-root
+`.agentwheel/config.json` committed at `expectedHead` to be `path-scoped`. Dirty config cannot
+widen that lease. Global-only or nested-workspace policy without this committed root policy
+retains exact-HEAD behavior. The built-in provider uses this policy for preflight, commit, and
+recovery; command providers must implement the corresponding policy themselves (Syncwheel's
+journal provider supports it), and Agentwheel independently verifies their terminal commits.
+Recovery uses the original receipt and persisted declarations, never the current workspace policy.
+Empty/no-commit operations retain exact HEAD: v1 requires `resultingHead == expectedHead`.
+
+User/global policy is the baseline for standard Agentwheel commands. An existing registered Fleet
+containing the selected workspace contributes its authenticated policy next; the selected workspace
+contributes its explicit policy last. Fleet containment uses the canonical ownership resolver and
+validates the registered Fleet contract. Overlapping registrations fail closed; an unregistered
+ancestor config supplies no policy. New workspace directories use their closest existing ancestor
+only to establish Fleet containment. This never creates a registration or merges package declarations.
+
+Each more-specific explicit commit policy may select its own provider. Required reasons and journals
+are cumulative; commit-after-verify cannot be disabled by a revisioning-off child, and a no-commit
+override remains forbidden if any contributing commit policy forbids it. Without a containing Fleet,
+the existing HOME/selected-workspace behavior remains unchanged.
+
+Ownership handoff now supplies the previously missing declarative product:
+`.agentwheel/ownership-handoffs/<operation-id>.json` in the selected workspace. The CLI always
+uses this audited path; programmatic callers select it with `workspaceRoot` (an active governed
+mutation also selects it). The intent contains only operation/reason, target/state identity,
+selector/path, old/new owners, revisions and hashes, never manifest entries, merge-removal values
+or runtime/configuration payloads. An ignored audit path is refused under commit-after-verify.
+Provider rejection occurs before ownership metadata writes. Existing exact ownership, complete
+merge-contribution, hash, revision, target and transport checks still apply; semantic plugins remain
+unsupported.
+
+The audit and owner-only manifest update share the existing durable metadata journal. Runtime bytes,
+modes, unrelated claims and the complete manifest inventory are guarded throughout commit/recovery;
+no runtime operations are scheduled. The audit is immutable intent, not standalone completion proof.
+After interruption, use `mutation recover-runtime <operation-id>`, then ordinary
+`mutation recover <operation-id>` if finalization remains pending. Repeating the handoff is refused;
+the linked journal reuses the same UUID/content and accepts only exact before/after metadata states.
+Policy inheritance does not make remote recovery supported: governed SSH applies remain refused.
 
 `--reason <text>` supplies the complete reason and `--operation-id <id>` supplies a stable
 1-to-63-character correlation id matching `[A-Za-z0-9][A-Za-z0-9_-]*`. `--no-commit` is accepted
@@ -61,12 +107,17 @@ For a successful governed command:
 2. Snapshot HEAD, index safety, and pre-existing dirty paths; persist the prospective path
    declaration journal; call provider `check` while the operation has made no writes.
 3. Run the command. Writers with statically known paths declare them before associated runtime
-   apply. Commands whose exact declarative paths emerge only during planning require a completely
-   clean working tree first. Initially dirty intended paths therefore fail before side effects.
+   apply. Commands requesting `requireCleanWorkingTree` require clean `.agentwheel/**` and
+   `profiles/*/.agentwheel/**` paths (exact path-segment boundaries). Index and conflict checks
+   remain repository-wide. Initially dirty intended paths always fail before side effects,
+   including declarations made after another writer commits those paths.
 4. Verify command-specific runtime and generated-state postconditions. A failed handler or failed
    postcheck is `partial` or `postcheck-failed` and is never eligible for ordinary finalize.
 5. Compare the repository against the original snapshot. Reject changed pre-existing dirt and any
-   newly dirty path outside the declaration journal. Record each exact before/after SHA-256.
+   newly dirty path outside the declaration journal. The complete dirty baseline is preserved,
+   including unrelated paths. A pre-existing path disappearing from Git's dirty set is preserved
+   only when HEAD descended from the baseline and both its committed and working bytes match the
+   original snapshot; those bytes never become operation output. Record exact before/after SHA-256.
 6. Call provider `preflight`, then `finalize`. A provider or hook failure records
    `commit-pending`; `mutation finalize` or `mutation recover` retries without rerunning the
    command handler.
@@ -74,7 +125,7 @@ For a successful governed command:
 Apply journals written during governed installs use journal v2 and carry the operation id, reason,
 and no-commit decision. This recovery contract also applies when journaling is required but Git
 revisioning is off. A crash may leave a receipt-bound journal. `mutation recover-runtime` validates
-the original HEAD and exact declarations when present without repeating clean-only provider
+the original HEAD lease and exact declarations when present without repeating clean-only provider
 `check`, resumes the linked local journal, verifies its postconditions, then calls provider
 `preflight` and `recover` when revisioning is enabled. Legacy v1 or differently owned journals
 cannot be adopted by a governed operation.
@@ -82,6 +133,30 @@ cannot be adopted by a governed operation.
 Receipts use these terminal or actionable states: `succeeded`, `revisioning-skipped`,
 `no-repository-delta`, `commit-pending`, `precheck-failed`, `partial`, and `postcheck-failed`.
 Inspect them with `agentwheel mutation list` and `agentwheel mutation show <operation-id>`.
+
+### Session ownership diagnostics
+
+A clean-tree or repository-lock refusal remains a hard safety block. Agentwheel augments that
+refusal from the read-only Agent Mesh graph projection when available; the graph never grants a
+lease, removes a lock, or decides whether a caller may proceed.
+
+Dirty repository paths are joined to graph nodes through opaque refs only:
+
+```text
+agentwheel-resource:<sha256(git-common-dir + NUL + normalized repository-relative path)>
+```
+
+The ref cannot be resolved back to a private path from graph state. Agentwheel names an owner only
+when exactly one `active`, `waiting`, or `blocked` node has the exact ref. Duplicate live claims
+remain `owner unknown` and list candidates; `quiet` and `closed` claims are inactive. A missing or
+malformed projection, an inactive-only match, or no match also remains `owner unknown` and directs
+the caller to inspect the session graph or ask the rollout coordinator before retrying. None of
+these cases weakens the refusal.
+
+New repository-lock metadata records the current runtime UUID when a supported harness exposes it.
+On contention, the error includes structured operation, PID, runtime UUID, and creation-time facts,
+then correlates the UUID to a session only on one exact live match. Older locks without a runtime
+UUID remain valid and blocking; their diagnostic explains how to identify the owner safely.
 
 ## Wire contract
 
@@ -121,9 +196,9 @@ implementations should consume byte-equivalent fixtures or pin their published S
 
 ## Built-in Git provider
 
-The built-in provider requires an attached branch, unchanged HEAD, clean index, no conflicts or
+The built-in provider requires an attached branch, a valid HEAD lease, clean index, no conflicts or
 in-progress merge/rebase/cherry-pick/revert, configured author and committer identities, and no
-tracked `.syncwheel/manifest.json`. It constructs a temporary index from `expectedHead`, stages
+tracked `.syncwheel/manifest.json`. It constructs a temporary index from the verified current parent, stages
 only declared paths, runs executable `pre-commit`, `prepare-commit-msg`, and `commit-msg` hooks,
 revalidates the exact index and full reason/trailers, creates the commit, and compare-and-swaps the
 branch and real index. It does not reset, push, publish, or create an empty commit.

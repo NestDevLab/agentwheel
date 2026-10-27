@@ -1,5 +1,194 @@
 # Changelog
 
+## 0.22.4
+
+- Preserve user-owned Codex MCP preferences, nested tables, and TOML values when updating managed server fields.
+- Preserve declared Git branch refs in locked graph provenance so repeated resolution retains the same canonical digest.
+
+## 0.22.3
+
+- Recover interrupted runtime installs when another commit saved the exact receipt-owned declarative bytes, while retaining strict hash, history, policy, index, and provider verification.
+
+## 0.22.2
+
+- Verify owned Codex MCP fields during skip and recovery without rewriting user preferences; retain exact adoption and retirement checks.
+- Share identical composed fragments across source revisions.
+
+## 0.22.1
+
+- Add `ownership handoff --from-fleet` to select an exact fleet-qualified source owner, with symmetric registered fleet and workspace-root validation.
+- Support plain-to-fleet-to-plain ownership handoffs while preserving runtime bytes, modes, merged contributions, managed instruction blocks, sibling claims and existing review guards.
+
+## 0.22.0
+
+- Enable confined Linux service-user installs, uninstalls and receipt-linked recovery with hash-checked byte staging, directory durability and private default modes.
+- Limit service commands to trusted OpenClaw config validation, using caller-owned snapshots shared only with the intended UID through POSIX ACLs; reject includes, programmatic adapters and reloads.
+- Add reviewed service-user ownership adoption, retirement, release and audited handoff with full identity, inventory and runtime snapshot guards; keep audits and recovery receipts caller-owned.
+- Support same-fleet ownership normalization within one service endpoint, with private caller journals, guarded recovery and unchanged runtime bytes. Keep cross-account normalization unsupported.
+
+## 0.21.7
+
+- Inherit authenticated containing-Fleet mutation policy without weakening required reasons, journals or no-commit restrictions.
+- Record native ownership-handoff intent as an exact-path repository audit, with guarded metadata recovery and no runtime payload in the audit.
+
+## 0.21.6
+
+- Add explicit source-state selection to ownership handoff without changing configured agents,
+  runtime contents, or the existing exact owner, merge-contribution, hash and revision checks.
+
+## 0.21.5
+
+- Accept exact workspace-prefixed package owners during fleet normalization, while retaining
+  complete package coverage and rejecting unrelated or partially selected owners.
+
+## 0.21.4
+
+- Add governed `pin --packages-file` declaration replacement with schema validation, exact
+  metadata preservation and non-mutating configuration previews via `--dry-run`.
+
+## 0.21.3
+
+- Add governed `pin <alias> <commit>` source mutations that preserve configured package fields
+  and optionally replace the complete selection, without fetching sources or touching runtimes.
+- Add explicit `add --runtimes` restrictions, with repeatable and comma-separated adapter names.
+  Preserve runtime filtering when replacing a package alias by passing its restrictions again.
+
+## 0.21.2
+
+- Adopt coherent managed instruction blocks from legacy fingerprint state without rewriting the
+  runtime file or its prefix, suffix, block, permissions, or recorded hashes. Refuse drift, ambiguous
+  markers and overlapping claims; managed blocks cannot use `--carry-drift`.
+- Bind block adoption phases and recovery to immutable full-file/mode snapshots and exact manifest
+  inventory CAS. Preserve existing plain adoption behavior and ownership-release journal identities.
+
+## 0.21.1
+
+- Add `ownership release-claim` for reviewed, targeted metadata-only ownership retirement.
+  Preserve runtime bytes, package declarations, sibling claims, and source locks; bind the
+  immutable source audit and install state through a recoverable native journal with CAS guards.
+- Add `plan --adopt` and `install --adopt` for ordinary unmanaged adoption, preserving managed
+  drift and foreign ownership protections and text outside managed instruction blocks.
+
+## 0.21.0
+
+- Add opt-in `provider.headLease: "path-scoped"` for disjoint concurrent journal commits.
+  Verify every intervening commit, protect provider configuration and manifests, and preserve
+  exact operation paths, content, hooks, and recovery. Existing policies retain exact HEAD leases.
+- Scope clean-working-tree preflights to Agentwheel state while retaining global index and conflict
+  checks. Preserve unrelated dirty bytes even when another writer commits them during an operation.
+
+## 0.20.20
+
+- Let a configured package opt into selected runtime adapters with `runtimes` across profile, agent,
+  status, update, and ownership plans. Packages without the field retain their existing behavior.
+  A restricted package remains available when another root requires it; narrowing the list plans
+  removals on excluded runtimes. Agentwheel 0.20.19 and earlier silently drop this unknown config
+  key, so upgrade every member before using `runtimes` in a shared configuration.
+
+## 0.20.19
+
+- Install a package that lives in a subdirectory of a git repository with
+  `git:<url>#<ref>//<subpath>` (also `github:<owner>/<repo>#<ref>//<subpath>`). The subpath is the
+  package root; the clone stays shared per repository. `./` and `../` dependencies declared inside a
+  git package now resolve to the same repository at the same commit instead of a path in the local
+  source cache, so a nested package and the root it depends on always install from one commit and
+  the lock stays portable. Existing git packages with relative dependencies lock a git source
+  instead of a cache path: a `--frozen-lock` or `--offline` install of one needs a single unfrozen
+  resolve first.
+- Stop leaving temporary directories behind after graph plans. Every package node is staged under
+  the render root, the unused graph directory is no longer created, partial roots are removed when
+  staging, rendering or planning fails, and install, update and uninstall clean up in `finally`.
+- Let `ownership handoff` carry a drifted plain file or directory with `--carry-drift`, bound to the
+  reviewed bytes through `--expected-runtime-hash`, and select entries recorded as
+  `workspace:unknown` with `--from-unknown-owner`. The manifest keeps the recorded hash, so the next
+  install still reports the drift; merge and managed-block entries stay strict.
+
+## 0.20.18
+
+- Add `ownership adopt-legacy` to move proven ownership claims recorded under a fingerprint-only
+  legacy state key into a nested workspace's stable state. It changes only manifest metadata,
+  requires legacy lock provenance, moves only entries the current graph still installs, keeps
+  drift visible, and is gated by a reviewed plan digest and manifest revisions.
+
+## 0.20.17
+
+- Allow an explicitly identified same-Fleet legacy state to retire only entries exactly covered by the stable manifest, including Codex merge artifacts across package revisions when package and artifact identity and source bytes match.
+- Keep normal planning fail-closed on uncovered legacy contributions and verify retirement through real CLI regression scenarios.
+
+## 0.20.16
+
+- Allow explicit legacy-state recovery during CLI updates, including profile member forwarding.
+- Exercise real dry-run and applied updates after legacy recovery in CLI dogfood CI.
+
+## 0.20.15
+
+- Forward explicit legacy-state recovery through profile install and plan commands.
+- Run timed real CLI install, update, no-op, and stable/legacy recovery scenarios in CI, preserving unrelated legacy state.
+
+## 0.20.14
+
+- Let explicit legacy-state recovery proceed from an existing stable manifest while preserving
+  disagreeing historical states for later verified retirement. Normal planning still fails closed.
+
+## 0.20.13
+
+- Treat an advanced legacy graph lock as desired-state evidence while retaining
+  its correlated install manifest as the prior runtime state. The dependency
+  graph is resolved fresh, foreign-owner candidates remain outside the adopted
+  state, and mixed or corrupt owned digests still fail closed.
+- Allow an explicitly named package removed from fleet configuration to be
+  normalized from an explicitly admitted missing workspace owner, with the
+  existing graph, manifest, and runtime-byte proofs still required.
+- Let `ownership retire-stale` target an exact reviewed destination state key
+  without resolving unrelated legacy target state first, breaking the circular
+  recovery dependency while retaining all plan and revision gates.
+
+## 0.20.12
+
+- Let explicit legacy-state recovery create stable target state while preserving multiple
+  graph-only candidates whose runtime identity and ownership cannot be proven.
+
+## 0.20.11
+
+- Add explicit legacy-state recovery for plan/install so a reviewed Fleet can create stable state
+  while preserving invalid historical candidates and retaining normal conflict controls.
+- Reap cache locks only when their recorded owner PID is no longer alive.
+
+## 0.20.10
+
+- Add a read-only per-path legacy ownership recovery report that preserves unresolved claims
+  for explicit review before any Fleet change.
+
+## 0.20.9
+
+- Preserve managed target state when adapter output, graph representation, or ownership changes,
+  including legacy migration, fleet normalization, and transactional recovery.
+- Reject ambiguous or foreign ownership during target-state migration instead of silently
+  misclassifying managed files.
+
+## 0.20.8
+
+- Compose only selected artifacts under `--no-deps`, without changing normal dependency graph or
+  include-edge provenance behavior.
+
+## 0.20.7
+
+- Filter runtime-ineligible artifacts before expanding OpenPack composition while preserving
+  include-edge provenance for eligible artifacts.
+
+## 0.20.6
+
+- Refresh a soft locked tracking dependency when a root selects artifacts outside the locked selection.
+
+## 0.20.5
+
+- Keep user-level GitHub auth profiles from treating local Git paths as remote URLs.
+
+## 0.20.4
+
+- Preserve an explicitly configured named Fleet selector when a composite profile invokes a member
+  Agentwheel CLI for status, plan, install, or update.
+
 ## 0.20.3
 
 - Allow the digest-gated stale-ownership lifecycle to abandon incomplete legacy merge metadata

@@ -24,6 +24,15 @@ export async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+export async function removeOnFailure<T>(path: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    await rm(path, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function hashPath(path: string): Promise<string> {
   const stats = await stat(path);
   if (stats.isFile()) {
@@ -106,6 +115,7 @@ export async function withFilesystemLock<T>(
       break;
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;
+      if (await removeStaleFilesystemLock(lockPath)) continue;
       if (Date.now() - started > timeoutMs) {
         throw new Error(`Timed out waiting for ${description} lock at ${lockPath}`);
       }
@@ -116,6 +126,31 @@ export async function withFilesystemLock<T>(
     return await fn();
   } finally {
     await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
+async function removeStaleFilesystemLock(lockPath: string): Promise<boolean> {
+  try {
+    const owner = JSON.parse(await readFile(join(lockPath, "owner.json"), "utf8")) as { pid?: unknown };
+    if (typeof owner.pid !== "number" || !Number.isSafeInteger(owner.pid) || owner.pid <= 0
+      || isProcessAlive(owner.pid)) return false;
+    const stalePath = `${lockPath}.stale-${process.pid}-${Date.now()}`;
+    await rename(lockPath, stalePath);
+    await rm(stalePath, { recursive: true, force: true });
+    return true;
+  } catch {
+    // Missing, malformed, or concurrently replaced ownership is retained fail-closed.
+    return false;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error
+      && (error as { code?: string }).code !== "ESRCH";
   }
 }
 

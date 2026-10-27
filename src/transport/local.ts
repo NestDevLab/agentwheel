@@ -35,6 +35,7 @@ export const localTransport: TargetTransport = {
   atomicCopy,
   rm: (path) => rm(path, { recursive: true, force: true }),
   async execFile(command, args, options = {}) {
-    await execFileAsync(command, args, { cwd: options.cwd });
+    const { stdout } = await execFileAsync(command, args, { cwd: options.cwd });
+    return stdout;
   },
 };

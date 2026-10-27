@@ -647,7 +647,7 @@ describe("CLI verb redesign", () => {
     expect(explicitPlan.stdout).not.toContain(cliHome);
     await expect(stat(join(runtimeRoot, "AGENTS.md"))).rejects.toThrow();
     expect((await execFileAsync("git", ["status", "--short"], { cwd: fleetRoot })).stdout).toBe("");
-  });
+  }, 30_000);
 
   it("governs a non-Fleet CLI mutation end to end before write through exact Git commit and receipt", async () => {
     const workspace = await tempRoot("agentwheel-cli-governed-workspace-");
@@ -944,6 +944,80 @@ describe("CLI verb redesign", () => {
     }
   });
 
+  it("reports correlated released state before target identity migration", async () => {
+    const state = await releasedTargetStateFixture();
+
+    const status = JSON.parse((await runCli([
+      "status", "--adapter", "codex", "--installation-type", "local",
+      "--target-root", state.workspace, "--json",
+    ])).stdout);
+
+    expect(status.targets[0]).toMatchObject({
+      manifestEntryCount: 1,
+      graphLockPath: state.legacyGraphPath,
+      artifactCount: 1,
+    });
+    expect(status.targets[0].artifacts).toEqual([
+      expect.objectContaining({
+        name: state.skillName,
+        installName: state.skillName,
+        installed: true,
+      }),
+    ]);
+  });
+
+  it("keeps deps why output shape for current target state", async () => {
+    const state = await targetStateCommandFixture({ legacy: false });
+
+    const why = await runCli([
+      "deps", "why", `skills/${state.skillName}`,
+      "--adapter", "codex", "--installation-type", "local", "--target-root", state.workspace,
+    ]);
+
+    expect(why.stdout).toContain(`WHY ${state.logicalSelector}`);
+    expect(why.stdout).toContain(`PATH    ${state.relativeRuntimePath}`);
+  });
+
+  it("explains an installed artifact from correlated released state", async () => {
+    const state = await releasedTargetStateFixture();
+
+    const why = await runCli([
+      "deps", "why", `skills/${state.skillName}`,
+      "--adapter", "codex", "--installation-type", "local", "--target-root", state.workspace,
+    ]);
+
+    expect(why.stdout).toContain(`WHY ${state.logicalSelector}`);
+    expect(why.stdout).toContain(`PATH    ${state.relativeRuntimePath}`);
+  });
+
+  it("previews full uninstall from correlated released state without changing it", async () => {
+    const state = await releasedTargetStateFixture();
+    const before = await releasedTargetStateSnapshot(state);
+
+    const preview = await runCli([
+      "uninstall", "--adapter", "codex", "--installation-type", "local",
+      "--target-root", state.workspace, "--dry-run",
+    ]);
+
+    expect(preview.stdout).toContain(`REMOVE   MANAGED  skills/${state.skillName}`);
+    expect(await releasedTargetStateSnapshot(state)).toEqual(before);
+  });
+
+  it("previews package uninstall from correlated released state without changing it", async () => {
+    const state = await releasedTargetStateFixture();
+    const before = await releasedTargetStateSnapshot(state);
+
+    const preview = await runCli([
+      "uninstall", state.packageName,
+      "--adapter", "codex", "--installation-type", "local",
+      "--target-root", state.workspace, "--dry-run",
+    ]);
+
+    expect(preview.stdout).toContain(`Uninstall ${state.packageName}`);
+    expect(preview.stdout).toContain(`REMOVE   MANAGED  skills/${state.skillName}`);
+    expect(await releasedTargetStateSnapshot(state)).toEqual(before);
+  });
+
   it("creates local package config explicitly with --local while implicit missing scope still fails", async () => {
     const localRoot = await tempRoot("agentwheel-explicit-local-config-");
     const source = await packageFixture("explicit-local-config");
@@ -982,14 +1056,31 @@ describe("CLI verb redesign", () => {
   it("honors --no-deps in graph planning", async () => {
     const root = await tempRoot();
     const dep = await packageFixture("dep");
-    const source = await packageFixture("root", {
+    const source = await tempRoot("agentwheel-no-deps-selection-");
+    await mkdir(join(source, "instructions"), { recursive: true });
+    await mkdir(join(source, "skills", "app"), { recursive: true });
+    await writeFile(join(source, "instructions", "AGENTS.md"), "# Root\n", "utf8");
+    await writeFile(join(source, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill.\n---\n\n# App\n", "utf8");
+    await writeFile(join(source, "openpack.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      name: "root",
+      version: "1.0.0",
       requires: { dep: { source: dep, select: ["instructions/AGENTS.md"] } },
-    });
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/AGENTS.md",
+          items: { "AGENTS.md": { compose: [{ include: "dep:instructions/AGENTS.md" }] } },
+        },
+        { type: "skills", path: "skills" },
+      ],
+    }, null, 2)}\n`, "utf8");
 
-    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root, "--only-source", "--no-deps"]);
+    const { stdout } = await runCli(["plan", source, "--adapter", "codex", "--installation-type", "local", "--target-root", root, "--only-source", "--skill", "app", "--no-deps"]);
     expect(stdout).toContain("WARN    --no-deps ignored dependencies");
     expect(stdout).toContain("RESOLVE root@");
     expect(stdout).not.toContain("RESOLVE dep@");
+    expect(stdout).toContain("skills/app");
   });
 
   it("uses the graph lock for install and re-resolves tracking packages on update", async () => {
@@ -1248,6 +1339,96 @@ describe("CLI verb redesign", () => {
     expect(secondAlphaInstall.stdout).toContain("SKIP");
     await expect(readFile(alphaDest, "utf8")).resolves.toContain("alpha-v1");
     await expect(readFile(betaDest, "utf8")).resolves.toContain("beta-v1");
+  });
+
+  it.each(["install", "update"])("preserves artifacts selected by another root from the same dependency during only-source %s", async (verb) => {
+    const workspace = await tempRoot();
+    const shared = await skillPackageFixture("shared-alpha", "alpha");
+    await mkdir(join(shared, "skills", "shared-beta"), { recursive: true });
+    await writeFile(join(shared, "skills", "shared-beta", "SKILL.md"), "---\nname: shared-beta\ndescription: Shared fixture.\n---\n\n# Beta\n");
+    const rootA = await skillPackageFixture("consumer-a", "A", {
+      requires: { shared: { source: shared, select: ["skills/shared-alpha"] } },
+    });
+    const rootB = await skillPackageFixture("consumer-b", "B", {
+      requires: { shared: { source: shared, select: ["skills/shared-beta"] } },
+    });
+    for (const source of [rootA, rootB]) {
+      await runCli(["add", source, "--adapter", "codex", "--target-root", workspace, "--mode", "tracking"]);
+    }
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages.find((pkg: { name: string }) => pkg.name === "consumer-a").aliases = {
+      "shared-alpha:skills/shared-alpha": "renamed-shared-alpha",
+    };
+    await writeFile(configPath, JSON.stringify(config));
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    const result = await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
+    const lock = await readTestGraphLock(workspace);
+    expect(lock.canonical.namespacing.length).toBeGreaterThan(0);
+    expect(lock.canonical.artifacts.some((artifact) => artifact.name === "shared-beta")).toBe(true);
+    const ownerB = lock.canonical.roots.find((root) => root.rootId === "consumer-b")!;
+    expect(lock.canonical.edges.some((edge) => edge.from === ownerB.graphNodeId)).toBe(true);
+    // Applying the same scope twice must not lose the preserved graph contribution.
+    await runCli([verb, "consumer-a", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    await expect(readFile(join(workspace, ".agents", "skills", "shared-beta", "SKILL.md"), "utf8")).resolves.toContain("Beta");
+    expect((await readTestGraphLock(workspace)).canonical).toEqual(lock.canonical);
+  });
+
+  it("removes obsolete artifacts exclusively owned by the selected package and its former dependency", async () => {
+    const workspace = await tempRoot();
+    const dependency = await skillPackageFixture("obsolete-dependency", "old dependency");
+    const source = await skillPackageFixture("selected-owner", "selected", {
+      requires: { old: { source: dependency, select: ["skills/obsolete-dependency"] } },
+    });
+    await addSkillToPackage(source, "obsolete-root-skill", "old root skill");
+    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace, "--yes"]);
+    await rm(join(source, "skills", "obsolete-root-skill"), { recursive: true });
+    await writeSkillManifest(source, "selected-owner");
+    const result = await runCli(["install", "selected-owner", "--adapter", "codex", "--target-root", workspace, "--only-source", "--yes"]);
+    expect(result.stdout).toContain("REMOVE");
+    for (const name of ["obsolete-root-skill", "obsolete-dependency"]) {
+      await expect(stat(join(workspace, ".agents", "skills", name))).rejects.toThrow();
+      expect((await readCodexManifest(workspace)).entries.some((entry) => entry.artifactName === name)).toBe(false);
+    }
+  });
+
+  it("preserves stale content when its provenance includes an unidentified owner", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("selected-known", "selected");
+    await addSkillToPackage(source, "unidentified-skill", "preserved");
+    await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const state = join(workspace, ".agentwheel");
+    const file = (await readdir(state)).find((name) => name.startsWith("codex.local.") && name.endsWith(".install-manifest.json"))!;
+    const manifest = JSON.parse(await readFile(join(state, file), "utf8"));
+    const entry = manifest.entries.find((candidate: TestManifestEntry) => candidate.artifactName === "unidentified-skill");
+    entry.owners.push("unidentified-owner");
+    entry.refCount = entry.owners.length;
+    await writeFile(join(state, file), JSON.stringify(manifest));
+    await rm(join(source, "skills", "unidentified-skill"), { recursive: true });
+    const result = await runCli(["install", "selected-known", "--adapter", "codex", "--target-root", workspace, "--only-source"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "unidentified-skill", "SKILL.md"), "utf8")).resolves.toContain("preserved");
+    expect(manifestEntry(await readCodexManifest(workspace), ".agents/skills/unidentified-skill").owners).toContain("unidentified-owner");
+  });
+
+  it("preserves other packages when installing an explicit source with --only-source", async () => {
+    const workspace = await tempRoot();
+    const alpha = await skillPackageFixture("selected-pack", "selected-v1");
+    const beta = await skillPackageFixture("unrelated-pack", "unrelated-v1");
+    for (const source of [alpha, beta]) {
+      await runCli(["add", source, "--adapter", "codex", "--target-root", workspace]);
+    }
+    await runCli(["install", "--adapter", "codex", "--target-root", workspace]);
+    const result = await runCli(["install", alpha, "--adapter", "codex", "--target-root", workspace, "--only-source"]);
+    expect(result.stdout).not.toContain("REMOVE");
+    await expect(readFile(join(workspace, ".agents", "skills", "unrelated-pack", "SKILL.md"), "utf8")).resolves.toContain("unrelated-v1");
+    expect((await readTestGraphLock(workspace)).canonical.roots.map((root) => root.rootId).sort()).toEqual([
+      "selected-pack", "unrelated-pack",
+    ]);
   });
 
   it("isolates a configured package with --only-source before resolving unrelated packages", async () => {
@@ -2134,6 +2315,308 @@ describe("CLI verb redesign", () => {
     expect(status.stdout).toContain("Pending install work:");
   });
 
+  it("pins a configured fleet alias through policy, exact-path commit and durable receipt without normalizing fields", async () => {
+    const workspace = await tempRoot();
+    const stateRoot = join(await tempRoot(), "mutations");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const commit = "a".repeat(40);
+    const config = {
+      schemaVersion: 4,
+      fleetId: "pin-test",
+      mutationPolicy: {
+        reason: "required", journal: "required",
+        revisioning: {
+          mode: "commit-after-verify", allowNoCommitOverride: false, reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+      packages: [{
+        name: "configured", source: "git:https://example.invalid/pack.git#main//pack", driver: "local",
+        adapter: "claude", runtimes: ["codex", "claude"], installationType: "user", mode: "pinned",
+        requestedRef: "1".repeat(40), select: ["skills/retained"], skills: ["legacy"],
+        adapterConfig: "adapter.json", adapterModule: "adapter.mjs", adapterCodeHash: "a".repeat(64),
+        version: "^1.0.0", withSuggestions: true, suggestions: ["companion"],
+        aliases: { "skills/retained": "renamed" }, overrides: ["other::skills/retained"],
+        extension: { untouched: true },
+      }, { name: "implicit", source: "missing-source", requestedRef: "2".repeat(40) },
+      { name: "different", source: "another-missing-source", requestedRef: "3".repeat(40) }],
+    };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify(config)}\n`);
+    await git(workspace, ["init", "-b", "main"]);
+    await git(workspace, ["config", "user.name", "Test"]);
+    await git(workspace, ["config", "user.email", "test@example.test"]);
+    await git(workspace, ["add", ".agentwheel/config.json"]);
+    await git(workspace, ["commit", "-m", "Initialize pin fixture"]);
+    await runCli(["fleet", "register", "pin-test", "--root", workspace, "--required-package", "configured"]);
+    const env = { AGENTWHEEL_MUTATION_STATE_ROOT: stateRoot };
+    const pinsPath = join(await tempRoot(), "pins.json");
+    await writeFile(pinsPath, JSON.stringify([
+      { alias: "configured", commit },
+      { alias: "implicit", commit, select: ["skills/implicit"] },
+      { alias: "different", commit: "b".repeat(40), select: ["skills/different", "rules/different.md"] },
+    ]));
+    const args = ["pin", "--pins-file", pinsPath, "--fleet", "pin-test"];
+    const before = await readFile(configPath, "utf8");
+    await expect(runCli(args, { env })).rejects.toThrow(/mutation reason required/i);
+    await expect(runCli(["--reason", "Forbidden override", "--no-commit", ...args], { env })).rejects.toThrow(/does not allow/i);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    const applied = await runCli(["--reason", "Pin reviewed source", "--operation-id", "cli-pin-fixture", ...args], { env });
+    expect(applied.stderr).toContain("Agentwheel mutation cli-pin-fixture: succeeded");
+    config.packages[0].requestedRef = commit;
+    config.packages[1].requestedRef = commit;
+    config.packages[1].select = ["skills/implicit"];
+    config.packages[2].requestedRef = "b".repeat(40);
+    config.packages[2].select = ["skills/different", "rules/different.md"];
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual(config);
+    const receipt = JSON.parse(await readFile(join(stateRoot, "receipts", "cli-pin-fixture.json"), "utf8"));
+    expect(receipt).toMatchObject({ status: "succeeded", commandName: "agentwheel pin", paths: [{ path: ".agentwheel/config.json" }] });
+    expect((await execFileAsync("git", ["show", "--format=", "--name-only", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(".agentwheel/config.json");
+    expect((await execFileAsync("git", ["status", "--short"], { cwd: workspace })).stdout).toBe("");
+    expect(await readdir(join(workspace, ".agentwheel"))).toEqual(["config.json"]);
+    await expect(stat(join(cliHome, ".claude"))).rejects.toThrow();
+    await expect(stat(join(cliHome, ".agents"))).rejects.toThrow();
+  });
+
+  it("previews and replaces exact package declarations through the governed config-only path", async () => {
+    const workspace = await tempRoot();
+    const stateRoot = join(await tempRoot(), "mutations");
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = {
+      schemaVersion: 4, fleetId: "package-test", bootstrapSkills: false,
+      mutationPolicy: {
+        reason: "required", journal: "required",
+        revisioning: {
+          mode: "commit-after-verify", allowNoCommitOverride: false, reasonInCommit: "full",
+          provider: { kind: "git", id: "git", protocolVersion: 1 },
+        },
+      },
+      packages: [{ name: "old", source: "missing-old" }],
+    };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify(config));
+    await git(workspace, ["init", "-b", "main"]);
+    await git(workspace, ["config", "user.name", "Test"]);
+    await git(workspace, ["config", "user.email", "test@example.test"]);
+    await git(workspace, ["add", ".agentwheel/config.json"]);
+    await git(workspace, ["commit", "-m", "Initialize declaration fixture"]);
+    await runCli(["fleet", "register", "package-test", "--root", workspace, "--required-package", "old"]);
+    const declarations = [
+      { name: "old", source: "git:https://example.invalid/pack.git#main", driver: "local",
+        adapter: "claude", runtimes: ["codex", "claude"], mode: "pinned", requestedRef: "a".repeat(40),
+        select: ["skills/reviewed"], aliases: { "skills/reviewed": "renamed" },
+        overrides: ["other:skills/reviewed"], extension: { retained: true } },
+      { name: "a-second", source: "missing-source", selection: { export: "reviewed" } },
+    ];
+    const input = join(await tempRoot(), "packages.json");
+    await writeFile(input, JSON.stringify(declarations));
+    const args = ["pin", "--packages-file", input, "--fleet", "package-test"];
+    const env = { AGENTWHEEL_MUTATION_STATE_ROOT: stateRoot };
+    const before = await readFile(configPath, "utf8");
+    const head = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    const preview = await runCli([...args, "--dry-run"], { env });
+    expect(JSON.parse(preview.stdout)).toEqual({ ...config, packages: declarations });
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    expect((await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(head);
+    await expect(stat(stateRoot)).rejects.toThrow();
+    await expect(runCli(args, { env })).rejects.toThrow(/mutation reason required/i);
+    await expect(runCli(["--reason", "Forbidden override", "--no-commit", ...args], { env })).rejects.toThrow(/does not allow/i);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    await runCli(["--reason", "Apply reviewed declarations", "--operation-id", "package-fixture", ...args], { env });
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ ...config, packages: declarations });
+    const receipt = JSON.parse(await readFile(join(stateRoot, "receipts", "package-fixture.json"), "utf8"));
+    expect(receipt).toMatchObject({ status: "succeeded", commandName: "agentwheel pin", paths: [{ path: ".agentwheel/config.json" }] });
+    expect((await execFileAsync("git", ["show", "--format=", "--name-only", "HEAD"], { cwd: workspace })).stdout.trim()).toBe(".agentwheel/config.json");
+    expect(await readdir(join(workspace, ".agentwheel"))).toEqual(["config.json"]);
+    await expect(stat(join(cliHome, ".claude"))).rejects.toThrow();
+    await expect(stat(join(cliHome, ".agents"))).rejects.toThrow();
+  }, 30_000);
+
+  it("rejects invalid or mixed package declaration inputs before writes and allows explicit empty declarations", async () => {
+    const workspace = await tempRoot();
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const config = { schemaVersion: 2, bootstrapSkills: false, packages: [{ name: "old", source: "missing-old" }] };
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify(config));
+    const before = await readFile(configPath, "utf8");
+    const input = join(await tempRoot(), "packages.json");
+    const valid = { name: "declared", source: "missing-source" };
+    for (const invalid of [{ packages: [valid] }, [valid, valid], [{ ...valid, runtimes: ["claude", "claude"] }],
+      [{ ...valid, mode: "unknown" }], [{ ...valid, selection: { export: "x" }, select: ["skills/x"] }]]) {
+      await writeFile(input, JSON.stringify(invalid));
+      await expect(runCli(["pin", "--packages-file", input, "--target-root", workspace, "--dry-run"])).rejects.toThrow();
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(input, JSON.stringify([valid]));
+    for (const mixed of [["declared", "a".repeat(40)], ["--pins-file", input], ["--select", "skills/x"]]) {
+      await expect(runCli(["pin", "--packages-file", input, ...mixed, "--target-root", workspace, "--dry-run"])).rejects.toThrow(/exclusively/i);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(input, "[]");
+    const preview = await runCli(["pin", "--packages-file", input, "--target-root", workspace, "--dry-run"]);
+    expect(JSON.parse(preview.stdout)).toEqual({ ...config, packages: [] });
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    await runCli(["pin", "--packages-file", input, "--target-root", workspace]);
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ ...config, packages: [] });
+  }, 30_000);
+
+  it.each([{ skills: ["legacy"] }, { selection: { export: "reviewed", exclude: ["skills/old"] } }])(
+    "preserves omitted pin selection and replaces the complete explicit selection (%j)", async (selection) => {
+      const workspace = await tempRoot();
+      const configPath = join(workspace, ".agentwheel", "config.json");
+      const entry = { name: "configured", source: "unavailable", driver: "local", mode: "pinned", ...selection };
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, JSON.stringify({ schemaVersion: 3, packages: [entry] }));
+      const commit = "a".repeat(40);
+      const args = ["pin", "configured", commit, "--target-root", workspace];
+      await runCli(args);
+      expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ schemaVersion: 3, packages: [{ ...entry, requestedRef: commit }] });
+      await runCli([...args, "--select", "skills/new,rules/new.md", "--select", "skills/second"]);
+      expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({ schemaVersion: 3, packages: [{
+        name: "configured", source: "unavailable", driver: "local", mode: "pinned", requestedRef: commit,
+        select: ["skills/new", "rules/new.md", "skills/second"],
+      }] });
+    },
+  );
+
+  it("refuses invalid pin scope, aliases, revisions and selections before config writes", async () => {
+    const workspace = await tempRoot();
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    const packages = [
+      { name: "configured", source: "unavailable", mode: "pinned" },
+      { name: "tracking", source: "unavailable", mode: "tracking" },
+      { name: "duplicate", source: "one" }, { name: "duplicate", source: "two" },
+    ];
+    const before = JSON.stringify({ schemaVersion: 3, packages });
+    await writeFile(configPath, before);
+    const commit = "a".repeat(40);
+    for (const [args, error] of [
+      [["missing", commit], /alias not found/i],
+      [["duplicate", commit], /ambiguous.*alias/i],
+      [["tracking", commit], /requires pinned mode/i],
+      [["configured", "main"], /40-hex/],
+      [["configured", "a".repeat(39)], /40-hex/],
+      [["configured", "g".repeat(40)], /40-hex/],
+      [["configured", commit, "--select", ""], /too small/i],
+      [["configured", commit, "--select", "invalid"], /invalid artifact selector/i],
+      [[], /choose pin/i],
+      [["configured", commit, "--user", "--fleet", "unknown"], /exactly one workspace selector/i],
+    ] as const) {
+      await expect(runCli(["pin", ...args, "--target-root", workspace])).rejects.toThrow(error);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    const pinsPath = join(await tempRoot(), "pins.json");
+    const valid = { alias: "configured", commit };
+    for (const pins of [
+      [], [valid, valid], [valid, { alias: "missing", commit }],
+      [valid, { alias: "tracking", commit }], [valid, { alias: "configured", commit: "main" }],
+      [valid, { alias: "tracking", commit, source: "injected" }],
+      [valid, { alias: "tracking", commit, runtimes: ["claude"] }],
+      [valid, { alias: "tracking", commit, select: [] }],
+      [valid, { alias: "tracking", commit, select: ["invalid"] }],
+    ]) {
+      await writeFile(pinsPath, JSON.stringify(pins));
+      await expect(runCli(["pin", "--pins-file", pinsPath, "--target-root", workspace])).rejects.toThrow();
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    await writeFile(pinsPath, JSON.stringify([valid]));
+    for (const args of [["configured", commit], ["--select", "skills/new"]]) {
+      await expect(runCli(["pin", ...args, "--pins-file", pinsPath, "--target-root", workspace])).rejects.toThrow(/exclusively/i);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+  }, 30_000);
+
+  it("validates repeatable runtime restrictions while leaving omitted restrictions unset", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("runtime-option-skill", "runtime-option");
+    const add = ["add", source, "--name", "runtime-option", "--adapter", "codex", "--target-root", workspace];
+    await runCli([...add, "--runtimes", "codex,claude", "--runtimes", "openclaw"]);
+    const configPath = join(workspace, ".agentwheel", "config.json");
+    const saved = await readFile(configPath, "utf8");
+    expect(JSON.parse(saved).packages[0].runtimes).toEqual(["claude", "codex", "openclaw"]);
+    await expect(runCli([...add, "--runtimes", "unknown-adapter"])).rejects.toThrow("Unknown package runtime adapter");
+    expect(await readFile(configPath, "utf8")).toBe(saved);
+    await runCli(add);
+    expect(JSON.parse(await readFile(configPath, "utf8")).packages[0]).not.toHaveProperty("runtimes");
+  });
+
+  it("keeps restricted package roots out of agent status, update, and install plans", async () => {
+    const workspace = await tempRoot();
+    const claudeRoot = await tempRoot("agentwheel-restricted-claude-");
+    const codexRoot = await tempRoot("agentwheel-restricted-codex-");
+    const source = await skillPackageFixture("restricted-skill", "restricted");
+    const config = {
+      schemaVersion: 3,
+      packages: [],
+      agents: {
+        claude: { adapter: "claude", root: claudeRoot, installationType: "local" },
+        codex: { adapter: "codex", root: codexRoot, installationType: "local" },
+      },
+      profiles: { all: { runtimes: [{ agent: "claude" }, { agent: "codex" }] } },
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    await runCli([
+      "add", source, "--name", "restricted", "--adapter", "claude", "--mode", "tracking",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    // Replacing the alias must retain the explicitly supplied restriction and selection.
+    const replacement = await skillPackageFixture("restricted-skill", "updated");
+    await runCli([
+      "add", replacement, "--name", "restricted", "--adapter", "claude", "--mode", "pinned",
+      "--runtimes", "claude", "--select", "skills/restricted-skill", "--target-root", workspace,
+    ]);
+    const saved = JSON.parse(await readFile(join(workspace, ".agentwheel", "config.json"), "utf8"));
+    expect(saved.packages).toHaveLength(1);
+    expect(saved.packages[0]).toMatchObject({
+      source: replacement, mode: "pinned", runtimes: ["claude"], select: ["skills/restricted-skill"],
+    });
+
+    const profile = await runCli(["install", "--profile", "all", "--target-root", workspace, "--dry-run"]);
+    expect(profile.stdout).toContain("(no packages)");
+    const status = await runCli(["status", "--agent", "codex"], { cwd: workspace });
+    expect(status.stdout).toContain("Pending install work: none");
+    const update = await runCli(["update", "--agent", "codex", "--dry-run"], { cwd: workspace });
+    expect(update.stdout).not.toContain("CREATE");
+    const install = await runCli(["install", "--agent", "codex", "--dry-run"], { cwd: workspace });
+    expect(install.stdout).not.toContain("CREATE");
+  });
+
+  it("matches a configured package adapter in plain cwd mode", async () => {
+    const workspace = await tempRoot();
+    const source = await skillPackageFixture("cwd-claude-skill", "cwd-claude");
+    const config = {
+      schemaVersion: 3,
+      packages: [{ name: "cwd-claude", source, driver: "local", adapter: "claude", mode: "pinned", runtimes: ["claude"] }],
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    const preview = await runCli(["install", "--dry-run"], { cwd: workspace });
+    expect(preview.stdout).toContain("claude/local");
+    expect(preview.stdout).toContain("CREATE");
+    expect(preview.stdout).toContain("cwd-claude-skill");
+    expect(preview.stdout).not.toContain("REMOVE");
+  });
+
+  it("includes unmatched package warnings in JSON profile plans", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-unmatched-codex-");
+    const source = await skillPackageFixture("unmatched-skill", "unmatched");
+    const config = {
+      schemaVersion: 3,
+      packages: [{ name: "unmatched", source, driver: "local", adapter: "claude", mode: "pinned", runtimes: ["claude"] }],
+      profiles: { all: { runtimes: [{ adapter: "codex", targetRoot: target, installationType: "local" }] } },
+    };
+    await mkdir(join(workspace, ".agentwheel"), { recursive: true });
+    await writeFile(join(workspace, ".agentwheel", "config.json"), `${JSON.stringify(config)}\n`);
+
+    const plan = JSON.parse((await runCli(["plan", "--profile", "all", "--target-root", workspace, "--format", "json"])).stdout);
+    expect(plan.warnings).toContain("Package 'unmatched' matches no runtime in profile 'all'.");
+  });
+
   it("does not report foreign kept artifacts as pending status work", async () => {
     const ownerWorkspace = await tempRoot("agentwheel-status-owner-");
     const observerWorkspace = await tempRoot("agentwheel-status-observer-");
@@ -2284,6 +2767,14 @@ describe("CLI verb redesign", () => {
     expect(stdout).toContain("Reloaded runtime via agentwheel-test-reload lab.");
     const events = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     expect(events).toEqual([
+      {
+        name: "openclaw",
+        args: ["plugins", "install", "--help"],
+      },
+      {
+        name: "openclaw",
+        args: ["--version"],
+      },
       {
         name: "openclaw",
         args: ["plugins", "install", "--force", expect.stringContaining("profile-reload-plugin")],
@@ -2586,6 +3077,89 @@ async function runCli(args: string[], options: { env?: Record<string, string>; c
   } catch (error) {
     throw error as { stdout: string; stderr: string; code: number };
   }
+}
+
+interface TargetStateCommandFixture {
+  workspace: string;
+  packageName: string;
+  skillName: string;
+  logicalSelector: string;
+  relativeRuntimePath: string;
+  runtimePath: string;
+  legacyGraphPath: string;
+  legacyManifestPath: string;
+  configPath: string;
+}
+
+async function releasedTargetStateFixture(): Promise<TargetStateCommandFixture> {
+  return targetStateCommandFixture({ legacy: true });
+}
+
+async function targetStateCommandFixture(options: { legacy: boolean }): Promise<TargetStateCommandFixture> {
+  const workspace = await tempRoot("agentwheel-released-target-state-");
+  const packageName = "released-target-state-pack";
+  const skillName = "released-target-state-skill";
+  const source = await namedSkillPackageFixture(packageName, skillName, "released state");
+  await runCli([
+    "add", source, "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+  ]);
+  await runCli([
+    "install", "--adapter", "codex", "--installation-type", "local", "--target-root", workspace,
+  ]);
+
+  const graphRoot = join(workspace, ".agentwheel", "locks", "codex", "codex");
+  const [currentGraphPath] = (await filesBelow(graphRoot)).filter((path) => path.endsWith(".graph-lock.json"));
+  if (!currentGraphPath) throw new Error("fixture install did not create a graph lock");
+  const graphLock = JSON.parse(await readFile(currentGraphPath, "utf8"));
+  const logicalSelector = graphLock.canonical.artifacts[0]?.logicalSelector;
+  if (!logicalSelector) throw new Error("fixture graph lock does not contain one artifact selector");
+  const legacyFingerprint = computeTargetFingerprint({
+    adapter: "codex",
+    installationType: "local",
+    targetRoot: workspace,
+    transport: "local",
+  });
+  expect(graphLock.canonical.targetFingerprint).toBe(legacyFingerprint);
+  const legacyGraphPath = join(graphRoot, `${legacyFingerprint}.graph-lock.json`);
+  if (options.legacy && currentGraphPath !== legacyGraphPath) {
+    await writeFile(legacyGraphPath, `${JSON.stringify(graphLock, null, 2)}\n`, "utf8");
+    await rm(currentGraphPath);
+  }
+
+  const metadataRoot = join(workspace, ".agentwheel");
+  const [currentManifestName] = (await readdir(metadataRoot)).filter((name) => name.endsWith(".install-manifest.json"));
+  if (!currentManifestName) throw new Error("fixture install did not create an install manifest");
+  const currentManifestPath = join(metadataRoot, currentManifestName);
+  const legacyStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: legacyFingerprint });
+  const legacyManifestPath = join(metadataRoot, `${legacyStateKey}.install-manifest.json`);
+  const manifest = JSON.parse(await readFile(currentManifestPath, "utf8"));
+  const relativeRuntimePath = manifest.entries[0]?.path;
+  if (!relativeRuntimePath) throw new Error("fixture install manifest does not contain one artifact path");
+  if (options.legacy && currentManifestPath !== legacyManifestPath) {
+    await writeFile(legacyManifestPath, `${JSON.stringify({ ...manifest, stateKey: legacyStateKey }, null, 2)}\n`, "utf8");
+    await rm(currentManifestPath);
+  }
+
+  return {
+    workspace,
+    packageName,
+    skillName,
+    logicalSelector,
+    relativeRuntimePath,
+    runtimePath: join(workspace, ".agents", "skills", skillName, "SKILL.md"),
+    legacyGraphPath: options.legacy ? legacyGraphPath : currentGraphPath,
+    legacyManifestPath: options.legacy ? legacyManifestPath : currentManifestPath,
+    configPath: join(workspace, ".agentwheel", "config.json"),
+  };
+}
+
+async function releasedTargetStateSnapshot(state: TargetStateCommandFixture): Promise<Record<string, string>> {
+  return Object.fromEntries(await Promise.all([
+    state.runtimePath,
+    state.legacyGraphPath,
+    state.legacyManifestPath,
+    state.configPath,
+  ].map(async (path) => [path, await readFile(path, "utf8")] as const)));
 }
 
 async function registeredCliLeafPaths(): Promise<Set<string>> {

@@ -193,6 +193,17 @@ Leaf profiles group runtimes:
 }
 ```
 
+Packages run on every configured target by default, regardless of their `adapter` value.
+Set a package's optional `runtimes` to a nonempty list of adapter names to make that package a
+graph root only on matching targets. Every configured-package plan, including profile, agent,
+status, update, and ownership planning, honors this field. Ad hoc `install <source>` is unaffected.
+Matching uses the declared agent/profile `adapter` name. In plain workspace commands with no
+detected runtime, each package uses its own `adapter` name. `adapterConfig` and `adapterModule`
+do not change that name. The field cannot select one agent among several agents sharing an
+adapter. A package may still be installed as a dependency of an unrestricted root. Narrowing the
+list plans removals on excluded targets; review the dry-run before applying. Fleet normalization
+requires complete package declarations, including `runtimes`, to match.
+
 Composite profiles group autonomous Agentwheel workspaces instead. A member keeps its own config,
 locks, manifests, profiles, and standalone update path; the parent invokes the member's native
 Agentwheel CLI locally or over SSH:
@@ -207,7 +218,8 @@ Agentwheel CLI locally or over SSH:
           "id": "control",
           "transport": "local",
           "workspace": ".",
-          "profile": "all"
+          "profile": "all",
+          "fleet": "example-fleet"
         },
         {
           "id": "selfhost",
@@ -226,6 +238,8 @@ Agentwheel CLI locally or over SSH:
 A profile contains either `runtimes` or `members`, never both. Composite profiles may contain
 other composite profiles; cycles and duplicate member IDs fail validation. `status`, `plan`,
 `install`, and `update` use the same `--profile` interface for both profile kinds.
+Set a member's `fleet` when that autonomous workspace declares a `fleetId`; Agentwheel then passes
+the corresponding `--fleet` selector to status, plan, install, and update member invocations.
 
 Member status is a versioned JSON protocol. A compatible CLI version mismatch is a warning;
 an incompatible schema blocks plan and apply. Member snapshots use a 24-hour TTL by default.
@@ -346,6 +360,16 @@ normal apply lock, then atomically changes only that entry's `workspaceOwner`. L
 targets share this transport-neutral behavior. It never copies, removes, or rewrites the runtime
 artifact.
 
+For Fleet-qualified ownership, use `--from-fleet <id>` with the exact
+`--from-workspace-root` and/or `--to-fleet <id>` with `--to-workspace-root`.
+Both Fleet/root pairs are validated against registration before target access. These qualifiers
+do not select another target or change `--source-state-key`. The source qualifier is incompatible
+with `--from-unknown-owner`. A reverse transfer uses the qualified destination as its source and
+a fresh reviewed plan, manifest revision and (for run-as) plan digest and inventory revision.
+Only the selected entry's workspace owner changes: merge contributions, managed blocks, package
+owners, sibling claims and runtime contents are preserved. Audit history is retained; revisions
+are content hashes recomputed from the resulting manifest, not mutable counters to restore.
+
 ## Exact MCP retirement
 
 Use a separate, temporary Fleet workspace when a renamed MCP server must be removed after its
@@ -380,6 +404,15 @@ root configuration remains a blocking error.
 Semantic plugin installs and programmatic adapter operations are local-only. If a package needs
 those on an SSH target, run the command on the remote host after reviewing the dry-run output.
 
+## Source-scoped cleanup
+
+A named package install or update with `--only-source` reconciles that package without resolving
+unrelated configured roots. Sharing a workspace owner or dependency node does not authorize removing
+another package's artifacts. Stale cleanup requires exclusive provenance for the selected root or
+its former dependency closure; co-owned artifacts and unidentified owners are preserved. Obsolete
+artifacts owned only by the selected package are still removed. The graph lock retains unrelated
+roots, shared dependency artifacts and their edges so later scoped runs retain the same protection.
+
 ## Ownership normalization
 
 Selecting a fleet never takes ownership from user state, local state, or another fleet. An intended
@@ -400,6 +433,10 @@ Use `--from fleet:<source-fleet>` for fleet-to-fleet normalization. A stale dige
 changed manifest, or changed graph lock fails closed. The transaction transfers covered manifest
 ownership and invalidates covered graph locks before removing the source declaration; it does not
 rewrite runtime bytes.
+
+Package owners may use the exact selected declaration name or `workspace:<name>`. Every owner
+must match a validated selected package; a matching name prefix or an additional unselected owner
+does not grant coverage. This does not change the destination workspace or runtime target.
 
 If an interrupted apply leaves a pending normalization journal, recover the same source and
 destination explicitly:

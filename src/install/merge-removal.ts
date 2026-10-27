@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
-import { mismatchedCodexTomlMcpServers, type JsonRecord } from "./toml-merge.js";
+import { mismatchedCodexTomlMcpServers, mismatchedManagedCodexTomlMcpServers, type JsonRecord } from "./toml-merge.js";
 import { renderOpenClawJsonMergeSource } from "./openclaw-json-merge.js";
 
 export type MergeValue = null | boolean | number | string | MergeValue[] | { [key: string]: MergeValue };
@@ -29,12 +29,27 @@ export function assertExactMergeContribution(
   }
 }
 
+export function assertManagedMergeContribution(
+  contribution: MergeRemoval,
+  strategy: MergeStrategy,
+  currentContent: string,
+): void {
+  if (strategy !== "codex-toml-mcp") {
+    assertExactMergeContribution(contribution, strategy, currentContent);
+    return;
+  }
+  const mismatched = mismatchedManagedCodexTomlMcpServers(contribution as JsonRecord, currentContent);
+  if (mismatched.length > 0) {
+    throw new MergeAdoptionMismatchError(`managed MCP fields differ or are missing for ${mismatched.join(", ")}`);
+  }
+}
+
 export async function assertMergedSourceContribution(
   sourcePath: string,
   strategy: MergeStrategy,
   currentContent: string,
 ): Promise<void> {
-  assertExactMergeContribution(await readMergeSource(sourcePath, strategy), strategy, currentContent);
+  assertManagedMergeContribution(await readMergeSource(sourcePath, strategy), strategy, currentContent);
 }
 
 export function assertExactMcpMergeContribution(

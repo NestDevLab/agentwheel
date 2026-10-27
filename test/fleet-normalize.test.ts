@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyFleetNormalization,
@@ -42,6 +42,16 @@ describe("fleet normalization", () => {
 
     await writeFile(configPath, `${JSON.stringify({ ...config, packages: [] }, null, 2)}\n`, "utf8");
     await expect(planFleetNormalization({ destinationFleet: "delivery", from: "user", packages: ["core"], globalRoot: home })).rejects.toThrow(/required package|duplicate|destination/i);
+  });
+
+  it("requires matching package runtime restrictions before fleet normalization", async () => {
+    const { home, destination } = await fixture();
+    const configPath = join(destination, ".agentwheel", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.packages[0].runtimes = ["claude"];
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await expect(planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: home }))
+      .rejects.toThrow(/divergent declarations.*runtime restrictions/);
   });
 
   it("requires apply plus the exact digest and rejects a stale source", async () => {
@@ -86,10 +96,10 @@ describe("fleet normalization", () => {
 
     await applyFleetNormalization({ ...plan.request, apply: true, planDigest: plan.planDigest });
 
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries).toHaveLength(1);
     expect(destinationManifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
-    await expect(stat(state.destinationGraphLock!)).resolves.toBeTruthy();
+    await expect(stat(state.expectedDestinationGraphLock)).resolves.toBeTruthy();
     expect(await readFile(state.runtimeFile)).toEqual(sourceBefore);
     expect(await readFile(state.destinationRuntimeFile)).toEqual(destinationBefore);
   });
@@ -121,18 +131,69 @@ describe("fleet normalization", () => {
     const runtimeBefore = await readFile(state.runtimeFile);
     const plan = await planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: state.home });
     expect(plan.installedState).toMatchObject({ sourceManifestCount: 1, destinationManifestCount: 0, renderedPathCount: 1 });
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
-    await expect(stat(state.destinationGraphLock!)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
 
     await applyFleetNormalization({ ...plan.request, apply: true, planDigest: plan.planDigest });
 
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
-    const destinationLock = JSON.parse(await readFile(state.destinationGraphLock!, "utf8"));
+    const destinationLock = JSON.parse(await readFile(state.expectedDestinationGraphLock, "utf8"));
     expect(destinationLock.canonical.targetFingerprint).toBe(destinationFingerprint(state.destinationRuntime));
     expect((JSON.parse(await readFile(state.sourceManifest, "utf8"))).entries).toEqual([]);
     await expect(stat(state.sourceGraphLock!)).rejects.toThrow();
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+  });
+
+  it.each([
+    { owners: ["workspace:core"] },
+    { owners: ["core", "workspace:core"] },
+  ])("transfers only validated package owners in either workspace notation: $owners", async ({ owners }) => {
+    const state = await installedFixture({ destinationState: "absent" });
+    await setSourceOwners(state, owners);
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const destinationBefore = await readFile(state.destinationRuntimeFile);
+    const request = { destinationFleet: "delivery", from: "user" as const, packages: ["core"], globalRoot: state.home };
+    const plan = await planFleetNormalization(request);
+    expect(plan.packages.map((entry) => entry.name)).toEqual(["core"]);
+    expect(plan.destination.root).toBe(state.destination);
+    expect(plan.installedState.transfers).toHaveLength(1);
+
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
+    expect(manifest.targetRoot).toBe(state.destinationRuntime);
+    expect(manifest.entries[0].owners).toEqual(owners);
+    expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
+    expect((await readConfig(state.home)).packages).toEqual([]);
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    expect(await readFile(state.destinationRuntimeFile)).toEqual(destinationBefore);
+  });
+
+  it.each([
+    { owners: ["workspace:core", "workspace:other"] },
+    { owners: ["workspace:core", "other"] },
+    { owners: ["workspace:core-extra"] },
+  ])("refuses owners outside the exact validated package selection: $owners", async ({ owners }) => {
+    const state = await installedFixture({ destinationState: "absent" });
+    await setSourceOwners(state, owners);
+    for (const root of [state.home, state.destination]) {
+      const config = await readConfig(root);
+      config.packages.push(pkg("other"));
+      await writeConfig(root, config);
+    }
+    const sourceBefore = await readFile(state.sourceManifest);
+    const configBefore = await readFile(join(state.home, ".agentwheel", "config.json"));
+    const runtimeBefore = await readFile(state.runtimeFile);
+
+    await expect(planFleetNormalization({
+      destinationFleet: "delivery", from: "user", packages: ["core"], globalRoot: state.home,
+    })).rejects.toThrow(/partial ownership|not covered/i);
+
+    expect(await readFile(state.sourceManifest)).toEqual(sourceBefore);
+    expect(await readFile(join(state.home, ".agentwheel", "config.json"))).toEqual(configBefore);
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
   });
 
   it("rejects a derived handoff when destination runtime bytes are missing", async () => {
@@ -160,9 +221,9 @@ describe("fleet normalization", () => {
   it("binds destination manifest revisions into the digest", async () => {
     const state = await installedFixture();
     const plan = await planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: state.home });
-    const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const manifest = JSON.parse(await readFile(state.legacyDestinationManifest, "utf8"));
     manifest.entries[0].updatedAt = "2026-08-20T00:00:02.000Z";
-    await writeFile(state.destinationManifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(state.legacyDestinationManifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(applyFleetNormalization({ ...plan.request, apply: true, planDigest: plan.planDigest }))
       .rejects.toThrow(/stale|changed|digest/i);
     expect((await readConfig(state.home)).packages.map((entry: { name: string }) => entry.name)).toContain("core");
@@ -196,9 +257,9 @@ describe("fleet normalization", () => {
       { ...plan.request, apply: true, planDigest: plan.planDigest },
       {
         afterDestinationTransfer: async () => {
-          const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+          const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
           expect(destinationManifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
-          await expect(stat(state.destinationGraphLock!)).resolves.toBeTruthy();
+          await expect(stat(state.expectedDestinationGraphLock)).resolves.toBeTruthy();
           expect((JSON.parse(await readFile(state.sourceManifest, "utf8"))).entries).toHaveLength(1);
           await expect(stat(state.sourceGraphLock!)).resolves.toBeTruthy();
           throw new Error("fixture interruption");
@@ -208,8 +269,8 @@ describe("fleet normalization", () => {
     expect((await readConfig(state.home)).packages.map((entry: { name: string }) => entry.name)).toContain("core");
     expect((JSON.parse(await readFile(state.sourceManifest, "utf8"))).entries).toHaveLength(1);
     await expect(stat(state.sourceGraphLock!)).resolves.toBeTruthy();
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
-    await expect(stat(state.destinationGraphLock!)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
     await expect(recoverFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: state.home }))
       .resolves.toMatchObject({ recovered: true, sourceRestored: true });
@@ -231,7 +292,7 @@ describe("fleet normalization", () => {
     expect((await readConfig(state.home)).packages.map((entry: { name: string }) => entry.name)).toEqual(["core", "concurrent"]);
     expect((JSON.parse(await readFile(state.sourceManifest, "utf8"))).entries).toHaveLength(1);
     await expect(stat(state.sourceGraphLock!)).resolves.toBeTruthy();
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
   });
 
   it("normalizes an ordinary direct local adapter target without a named agent", async () => {
@@ -264,14 +325,15 @@ describe("fleet normalization", () => {
 
   it("hands ownership to fleet-scoped state when source and destination share runtime and configured state key", async () => {
     const state = await installedFixture({ sameStateKey: true, destinationState: "absent" });
-    expect(state.sourceManifest).not.toBe(state.destinationManifest);
+    expect(state.legacyDestinationManifest).not.toBe(state.expectedDestinationManifest);
+    expect(state.sourceManifest).not.toBe(state.expectedDestinationManifest);
     const plan = await planFleetNormalization({ destinationFleet: "delivery", from: "user", globalRoot: state.home });
     expect(plan.installedState.transfers[0]).toMatchObject({
       sourceManifestPath: state.sourceManifest,
-      destinationManifestPath: state.destinationManifest,
+      destinationManifestPath: state.expectedDestinationManifest,
     });
     await applyFleetNormalization({ ...plan.request, apply: true, planDigest: plan.planDigest });
-    const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(manifest.entries).toHaveLength(1);
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.destination, "delivery"));
     expect((JSON.parse(await readFile(state.sourceManifest, "utf8"))).entries).toEqual([]);
@@ -366,14 +428,16 @@ describe("fleet normalization", () => {
     expect(plan.destination.root).toBe(state.fleet);
     expect(plan.installedState.transfers).toMatchObject([{
       sourceManifestPath: state.manifest,
-      destinationManifestPath: state.destinationManifest,
+      destinationManifestPath: state.expectedDestinationManifest,
     }]);
     expect(plan.installedState.graphTransfers).toMatchObject([{
       sourceGraphLockPath: state.graphLock,
-      destinationGraphLockPath: state.destinationGraphLock,
+      destinationGraphLockPath: state.expectedDestinationGraphLock,
     }]);
-    expect(state.destinationManifest).not.toBe(state.manifest);
-    expect(state.destinationGraphLock).not.toBe(state.graphLock);
+    expect(state.legacyDestinationManifest).not.toBe(state.expectedDestinationManifest);
+    expect(state.legacyDestinationGraphLock).not.toBe(state.expectedDestinationGraphLock);
+    expect(state.expectedDestinationManifest).not.toBe(state.manifest);
+    expect(state.expectedDestinationGraphLock).not.toBe(state.graphLock);
 
     await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
 
@@ -381,13 +445,13 @@ describe("fleet normalization", () => {
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
     await expect(stat(state.graphLock)).rejects.toThrow();
     await expect(stat(state.manifest)).rejects.toThrow();
-    const destinationGraph = JSON.parse(await readFile(state.destinationGraphLock, "utf8"));
+    const destinationGraph = JSON.parse(await readFile(state.expectedDestinationGraphLock, "utf8"));
     expect(destinationGraph.canonical.targetFingerprint).toBe(state.destinationFingerprint);
-    expect(await readFile(state.destinationGraphLock)).not.toEqual(graphBefore);
-    const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    expect(await readFile(state.expectedDestinationGraphLock)).not.toEqual(graphBefore);
+    const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(manifest.entries).toHaveLength(1);
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
-    expect(manifest.stateKey).toBe(state.destinationStateKey);
+    expect(manifest.stateKey).toBe(state.expectedDestinationStateKey);
     await expect(planFleetNormalization(request)).rejects.toThrow(/already.*normalized|fleet-qualified/i);
   });
 
@@ -432,7 +496,7 @@ describe("fleet normalization", () => {
     await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
 
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries[0]).toMatchObject({
       ...metadata,
       workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
@@ -476,7 +540,7 @@ describe("fleet normalization", () => {
     expect(plan.installedState.transfers).toHaveLength(1);
     await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
 
-    const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
   });
 
@@ -514,7 +578,7 @@ describe("fleet normalization", () => {
 
     expect(await readFile(state.runtimeFile, "utf8")).toBe(runtimeBefore);
     expect(await readFile(staleGraphLock, "utf8")).toBe(staleBefore);
-    await expect(stat(state.destinationManifest)).resolves.toBeDefined();
+    await expect(stat(state.expectedDestinationManifest)).resolves.toBeDefined();
   });
 
   it("ignores a stale same-target lock with an absent root before target derivation", async () => {
@@ -628,8 +692,8 @@ describe("fleet normalization", () => {
     expect(await readFile(join(state.fleet, ".agentwheel", "config.json"))).toEqual(configBefore);
     expect(await readFile(state.manifest)).toEqual(manifestBefore);
     expect(await readFile(state.graphLock)).toEqual(graphBefore);
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
-    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
   });
 
   it("transfers one selected artifact from a legacy multi-root graph without moving sibling graph state", async () => {
@@ -652,13 +716,13 @@ describe("fleet normalization", () => {
     const sourceManifest = JSON.parse(await readFile(state.manifest, "utf8"));
     expect(sourceManifest.entries.map((entry: { logicalSelector: string }) => entry.logicalSelector))
       .toEqual(["instructions/EXTRA.md"]);
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries).toMatchObject([{
       logicalSelector: "instructions/AGENTS.md",
       workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
     }]);
     expect(await readFile(state.graphLock)).toEqual(graphBefore);
-    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
     expect(await readFile(state.extraRuntimeFile)).toEqual(extraBefore);
   });
 
@@ -712,8 +776,8 @@ describe("fleet normalization", () => {
       readFile(join(state.fleet, ".agentwheel", "config.json")),
       readFile(state.runtimeFile),
     ])).resolves.toEqual(before);
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
-    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
   });
 
   it("recovers an explicitly admitted missing owner without rewriting verified runtime bytes", async () => {
@@ -742,13 +806,49 @@ describe("fleet normalization", () => {
     await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
 
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries[0]).toMatchObject({
       workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
       hash: manifest.entries[0].hash,
     });
-    const destinationGraph = JSON.parse(await readFile(state.destinationGraphLock!, "utf8"));
+    const destinationGraph = JSON.parse(await readFile(state.expectedDestinationGraphLock, "utf8"));
     expect(destinationGraph.canonical.artifacts[0].hash).toBe("f".repeat(64));
+    await expect(stat(state.manifest)).rejects.toThrow();
+  });
+
+  it("recovers an explicitly named orphan package after its declaration was removed", async () => {
+    const state = await legacySelfFixture();
+    const orphanRoot = join(state.fleet, "var", "syncwheel", "removed-owner");
+    const manifest = JSON.parse(await readFile(state.manifest, "utf8"));
+    manifest.entries[0].workspaceOwner = workspaceOwnerForRoot(orphanRoot);
+    await writeFile(state.manifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const config = await readConfig(state.fleet);
+    config.packages = [pkg("other")];
+    config.agents.runtime.installationType = "local";
+    await writeConfig(state.fleet, config);
+    const homeConfig = await readConfig(state.home);
+    homeConfig.fleets.delivery.requiredPackages = ["other"];
+    await writeConfig(state.home, homeConfig);
+    const runtimeBefore = await readFile(state.runtimeFile);
+    const request = {
+      destinationFleet: "delivery",
+      from: "fleet:delivery" as const,
+      packages: ["core"],
+      agent: "runtime",
+      orphanedOwnerRoots: [orphanRoot],
+      globalRoot: state.home,
+    };
+
+    const plan = await planFleetNormalization(request);
+    expect(plan.packages).toEqual([
+      expect.objectContaining({ name: "core", declarationDigest: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ]);
+    expect(plan.installedState.transfers).toHaveLength(1);
+    await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
+
+    expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
+    expect(destinationManifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
     await expect(stat(state.manifest)).rejects.toThrow();
   });
 
@@ -777,7 +877,7 @@ describe("fleet normalization", () => {
     expect(plan.installedState.transfers[0]?.renderedPaths).toEqual([state.runtimeFile]);
     await applyFleetNormalization({ ...request, apply: true, planDigest: plan.planDigest });
 
-    const destinationManifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+    const destinationManifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
     expect(destinationManifest.entries[0]).toMatchObject({
       workspaceOwner: workspaceOwnerForRoot(state.fleet, "delivery"),
       owners: ["node-core"],
@@ -847,7 +947,7 @@ describe("fleet normalization", () => {
 
     expect(await readFile(state.runtimeFile)).toEqual(runtimeBefore);
     await expect(stat(state.manifest)).rejects.toThrow();
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
   });
 
   it("refuses orphan recovery when the named source still exists or runtime bytes drift", async () => {
@@ -891,7 +991,7 @@ describe("fleet normalization", () => {
       { ...request, apply: true, planDigest: plan.planDigest },
       {
         afterDestinationTransfer: async () => {
-          const manifest = JSON.parse(await readFile(state.destinationManifest, "utf8"));
+          const manifest = JSON.parse(await readFile(state.expectedDestinationManifest, "utf8"));
           expect(manifest.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet, "delivery"));
           await expect(stat(state.manifest)).resolves.toBeTruthy();
           await expect(stat(state.graphLock)).resolves.toBeTruthy();
@@ -902,8 +1002,8 @@ describe("fleet normalization", () => {
 
     expect(await readFile(join(state.fleet, ".agentwheel", "config.json"))).toEqual(configBefore);
     expect(await readFile(state.graphLock)).toEqual(graphBefore);
-    await expect(stat(state.destinationGraphLock)).rejects.toThrow();
-    await expect(stat(state.destinationManifest)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationGraphLock)).rejects.toThrow();
+    await expect(stat(state.expectedDestinationManifest)).rejects.toThrow();
     const restored = JSON.parse(await readFile(state.manifest, "utf8"));
     expect(restored.entries[0].workspaceOwner).toBe(workspaceOwnerForRoot(state.fleet));
     await expect(recoverFleetNormalization(request)).resolves.toMatchObject({ recovered: true, sourceRestored: true });
@@ -945,10 +1045,17 @@ async function legacySelfFixture() {
   });
   const legacyFingerprint = targetFingerprint(runtime);
   const legacyStateKey = stateKeyFor("codex", { installationType: "local", targetFingerprint: legacyFingerprint });
-  const destinationFingerprint = targetFingerprint(runtime, undefined, "runtime", "delivery");
-  const destinationStateKey = stateKeyFor("codex", {
+  const destinationParts = targetFingerprintParts(runtime, undefined, "runtime", "delivery");
+  const destinationFingerprint = computeTargetFingerprint(destinationParts);
+  const legacyDestinationStateKey = stateKeyFor("codex", {
     installationType: "local",
     targetFingerprint: destinationFingerprint,
+    fleetId: "delivery",
+  });
+  const expectedDestinationFingerprint = stableTargetFingerprint(fleet, "runtime", runtime, destinationParts);
+  const expectedDestinationStateKey = stateKeyFor("codex", {
+    installationType: "local",
+    targetFingerprint: expectedDestinationFingerprint,
     fleetId: "delivery",
   });
   const graphLock = await writeGraphLock(fleet, legacyFingerprint);
@@ -961,9 +1068,11 @@ async function legacySelfFixture() {
     graphLock,
     manifest,
     destinationFingerprint,
-    destinationStateKey,
-    destinationGraphLock: graphLockPath(fleet, destinationFingerprint),
-    destinationManifest: join(runtime, ".agentwheel", `${destinationStateKey}.install-manifest.json`),
+    legacyDestinationGraphLock: graphLockPath(fleet, destinationFingerprint),
+    legacyDestinationManifest: join(runtime, ".agentwheel", `${legacyDestinationStateKey}.install-manifest.json`),
+    expectedDestinationStateKey,
+    expectedDestinationGraphLock: graphLockPath(fleet, expectedDestinationFingerprint),
+    expectedDestinationManifest: join(runtime, ".agentwheel", `${expectedDestinationStateKey}.install-manifest.json`),
   };
 }
 
@@ -1051,11 +1160,24 @@ async function installedFixture(options: {
 
   const sourceStateKey = options.sameStateKey ? "codex.local.shared" : "codex.local.source";
   const destinationConfiguredStateKey = options.sameStateKey ? sourceStateKey : "codex.local.destination";
-  const destinationFingerprintValue = targetFingerprint(destinationRuntime, destinationConfiguredStateKey, "runtime", "delivery");
-  const destinationStateKey = stateKeyFor("codex", {
+  const destinationParts = targetFingerprintParts(destinationRuntime, destinationConfiguredStateKey, "runtime", "delivery");
+  const destinationFingerprintValue = computeTargetFingerprint(destinationParts);
+  const legacyDestinationStateKey = stateKeyFor("codex", {
     installationType: "local",
     stateKey: destinationConfiguredStateKey,
     targetFingerprint: destinationFingerprintValue,
+    fleetId: "delivery",
+  });
+  const expectedDestinationFingerprint = stableTargetFingerprint(
+    base.destination,
+    "runtime",
+    destinationRuntime,
+    destinationParts,
+  );
+  const stableDestinationStateKey = stateKeyFor("codex", {
+    installationType: "local",
+    stateKey: destinationConfiguredStateKey,
+    targetFingerprint: expectedDestinationFingerprint,
     fleetId: "delivery",
   });
   await writeConfig(base.home, {
@@ -1070,11 +1192,15 @@ async function installedFixture(options: {
   const sourceGraphLock = options.graphLocks === false
     ? undefined
     : await writeGraphLock(base.home, sourceFingerprint(sourceRuntime, sourceStateKey));
-  const destinationGraphLockPath = graphLockPath(base.destination, destinationFingerprintValue);
+  const legacyDestinationGraphLock = graphLockPath(base.destination, destinationFingerprintValue);
+  const stableDestinationGraphLock = graphLockPath(base.destination, expectedDestinationFingerprint);
+  const expectedDestinationGraphLock = options.destinationState === "absent"
+    ? stableDestinationGraphLock
+    : legacyDestinationGraphLock;
   const destinationGraphLock = options.graphLocks === false
     ? undefined
     : options.destinationState === "absent"
-      ? destinationGraphLockPath
+      ? stableDestinationGraphLock
       : await writeGraphLock(base.destination, destinationFingerprintValue);
   const sourceManifest = await writeManifest(
     sourceRuntime,
@@ -1082,11 +1208,15 @@ async function installedFixture(options: {
     workspaceOwnerForRoot(base.home),
     runtimeHash,
   );
-  const destinationManifest = join(destinationRuntime, ".agentwheel", `${destinationStateKey}.install-manifest.json`);
-  if (options.destinationState !== "absent" && destinationManifest !== sourceManifest) {
+  const legacyDestinationManifest = join(destinationRuntime, ".agentwheel", `${legacyDestinationStateKey}.install-manifest.json`);
+  const stableDestinationManifest = join(destinationRuntime, ".agentwheel", `${stableDestinationStateKey}.install-manifest.json`);
+  const expectedDestinationManifest = options.destinationState === "absent"
+    ? stableDestinationManifest
+    : legacyDestinationManifest;
+  if (options.destinationState !== "absent" && legacyDestinationManifest !== sourceManifest) {
     await writeManifest(
       destinationRuntime,
-      destinationStateKey,
+      legacyDestinationStateKey,
       workspaceOwnerForRoot(base.destination, "delivery"),
       runtimeHash,
     );
@@ -1119,7 +1249,33 @@ async function installedFixture(options: {
     await writeManifest(sourceRuntime2, sourceStateKey2, workspaceOwnerForRoot(base.home), runtimeHash);
     await writeManifest(destinationRuntime2, destinationStateKey2, workspaceOwnerForRoot(base.destination, "delivery"), runtimeHash);
   }
-  return { ...base, sourceRuntime, destinationRuntime, runtimeFile, destinationRuntimeFile, sourceManifest, destinationManifest, sourceGraphLock, destinationGraphLock };
+  return {
+    ...base,
+    sourceRuntime,
+    destinationRuntime,
+    runtimeFile,
+    destinationRuntimeFile,
+    sourceManifest,
+    destinationManifest: expectedDestinationManifest,
+    expectedDestinationManifest,
+    legacyDestinationManifest,
+    stableDestinationManifest,
+    sourceGraphLock,
+    destinationGraphLock,
+    expectedDestinationGraphLock,
+    legacyDestinationGraphLock,
+    stableDestinationGraphLock,
+  };
+}
+
+async function setSourceOwners(state: Awaited<ReturnType<typeof installedFixture>>, owners: string[]): Promise<void> {
+  const manifest = JSON.parse(await readFile(state.sourceManifest, "utf8"));
+  manifest.entries[0].owners = owners;
+  manifest.entries[0].refCount = owners.length;
+  await writeFile(state.sourceManifest, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const graph = JSON.parse(await readFile(state.sourceGraphLock!, "utf8"));
+  graph.canonical.artifacts[0].owners = owners;
+  await writeFile(state.sourceGraphLock!, `${JSON.stringify(graph, null, 2)}\n`, "utf8");
 }
 
 async function directInstalledFixture(installationType = "local", installRoot?: string) {
@@ -1213,7 +1369,11 @@ function sourceFingerprint(runtimeRoot: string, stateKey: string, agentName = "r
 }
 
 function targetFingerprint(runtimeRoot: string, stateKey?: string, agentName = "runtime", fleetId?: string): string {
-  return computeTargetFingerprint({
+  return computeTargetFingerprint(targetFingerprintParts(runtimeRoot, stateKey, agentName, fleetId));
+}
+
+function targetFingerprintParts(runtimeRoot: string, stateKey?: string, agentName = "runtime", fleetId?: string) {
+  return {
     adapter: "codex",
     fleetId,
     installationType: "local",
@@ -1221,6 +1381,27 @@ function targetFingerprint(runtimeRoot: string, stateKey?: string, agentName = "
     targetRoot: runtimeRoot,
     transport: "local",
     stateKey,
+  };
+}
+
+function stableTargetFingerprint(
+  workspaceRoot: string,
+  targetKey: string,
+  installRoot: string,
+  fingerprintParts: Record<string, unknown>,
+): string {
+  const evolutionFields = new Set(["adapterCodeHash", "adapterConfig", "adapterModule", "targetRoot", "transportDescription", "ssh"]);
+  const persistentParts = Object.fromEntries(
+    Object.entries(fingerprintParts).filter(([key, value]) => !evolutionFields.has(key) && value !== undefined),
+  );
+  return computeTargetFingerprint({
+    identityVersion: 1,
+    contributionScope: { workspaceRoot: resolve(workspaceRoot), targetKey },
+    target: {
+      ...persistentParts,
+      installRoot: resolve(installRoot),
+      endpoint: { kind: "local" },
+    },
   });
 }
 

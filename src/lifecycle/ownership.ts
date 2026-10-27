@@ -1,26 +1,45 @@
+import { createHash } from "node:crypto";
+import { canonicalJson, ownershipRunAsEndpoint } from "./ownership-retire-stale.js";
+import { applyAuditedOwnershipHandoff } from "./ownership-handoff-audit.js";
+import { activeMutationMetadata } from "../mutation/coordinator.js";
 import { resolve } from "node:path";
-import { readInstallManifest, writeInstallManifest } from "../install/manifest.js";
+import { computeInstallManifestInventoryRevision, readInstallManifest, writeInstallManifest } from "../install/manifest.js";
 import { stateKeyFor, type InstallStateScope } from "../install/paths.js";
 import { assertExactMergeContribution, hasMergeRemovalContent } from "../install/merge-removal.js";
 import { managedInstructionSelector, readManagedInstructionBlockState } from "../install/instructions-block.js";
 import { defaultInstallationType } from "../model/adapter.js";
 import type { InstallManifestEntry } from "../model/manifest.js";
-import { acquireApplyLock, assertGovernedRuntimeTransportSupported, listApplyJournals } from "../install/transaction.js";
+import { acquireApplyLock, assertGovernedRuntimeTransportSupported, listApplyJournals, observeOwnershipRuntime } from "../install/transaction.js";
 import { localTransport } from "../transport/index.js";
 import type { TargetTransport } from "../transport/index.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
+import { fleetIdSchema } from "../model/workspace.js";
 export { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 
 export interface OwnershipHandoffRequest extends InstallStateScope {
+  /** Explicit selected configuration scope; the CLI always supplies this for native audit/governance. */
+  workspaceRoot?: string;
+  reason?: string;
+  operationId?: string;
+  noCommit?: boolean;
+  globalRoot?: string;
   targetRoot: string;
   adapter: string;
   artifactType: string;
   artifactName: string;
-  fromWorkspaceRoot: string;
+  // Select a workspace root (optionally Fleet-qualified) or the unknown owner.
+  fromWorkspaceRoot?: string;
+  fromFleetId?: string;
+  fromUnknownOwner?: boolean;
   toWorkspaceRoot: string;
   toFleetId?: string;
   expectedHash?: string;
   expectedRevision?: string;
+  planDigest?: string;
+  expectedInventoryRevision?: string;
+  // plain files/dirs only, the manifest keeps the recorded hash
+  carryDrift?: boolean;
+  expectedRuntimeHash?: string;
   transport?: TargetTransport;
 }
 
@@ -32,10 +51,18 @@ export interface OwnershipHandoffPlan {
   selector: string;
   path: string;
   artifactHash: string;
+  runtimeHash: string;
+  drifted: boolean;
   manifestRevision: string;
   fromOwner: string;
   toOwner: string;
+  planDigest?: string;
+  manifestInventoryRevision?: string;
+  runtimeSnapshotDigest?: string;
+  transport?: ReturnType<typeof ownershipRunAsEndpoint>;
 }
+
+export const unknownWorkspaceOwner = "workspace:unknown";
 
 export async function planArtifactOwnershipHandoff(request: OwnershipHandoffRequest): Promise<OwnershipHandoffPlan> {
   return validateOwnershipHandoff(request, request.transport ?? localTransport);
@@ -44,6 +71,17 @@ export async function planArtifactOwnershipHandoff(request: OwnershipHandoffRequ
 export async function applyArtifactOwnershipHandoff(request: OwnershipHandoffRequest): Promise<OwnershipHandoffPlan> {
   if (!request.expectedHash || !request.expectedRevision) {
     throw new Error("Applying an ownership handoff requires expectedHash and expectedRevision from a reviewed dry-run.");
+  }
+  if (request.transport?.kind === "local-run-as") {
+    if (!request.workspaceRoot && !activeMutationMetadata()) throw new Error("Run-as ownership handoff requires a caller-owned governed workspace.");
+    if (!request.planDigest || !request.expectedInventoryRevision) {
+      throw new Error("Run-as ownership handoff requires reviewed planDigest and expectedInventoryRevision.");
+    }
+    assertSha256(request.planDigest, "reviewed plan digest");
+    assertSha256(request.expectedInventoryRevision, "expected inventory revision");
+  }
+  if (request.workspaceRoot || activeMutationMetadata() || request.transport?.kind === "local-run-as") {
+    return applyAuditedOwnershipHandoff(request, validateOwnershipHandoff);
   }
   const transport = request.transport ?? localTransport;
   assertGovernedRuntimeTransportSupported(transport);
@@ -56,6 +94,9 @@ export async function applyArtifactOwnershipHandoff(request: OwnershipHandoffReq
       throw new Error("Cannot hand off ownership while an apply journal is pending. Recover or abort it first.");
     }
     const plan = await validateOwnershipHandoff(request, transport);
+    if (plan.drifted && !request.expectedRuntimeHash) {
+      throw new Error("Applying a drifted ownership handoff requires expectedRuntimeHash from a reviewed dry-run.");
+    }
     const manifest = await readInstallManifest(request.targetRoot, request.adapter, transport, scope);
     if (!manifest || manifest.version !== 2) {
       throw new Error("Ownership handoff requires an Agentwheel v2 install manifest.");
@@ -91,8 +132,21 @@ async function validateOwnershipHandoff(
   request: OwnershipHandoffRequest,
   transport: TargetTransport,
 ): Promise<OwnershipHandoffPlan> {
+  if (request.fromFleetId !== undefined && (request.fromWorkspaceRoot === undefined || request.fromUnknownOwner === true)) {
+    throw new Error("A source fleet requires fromWorkspaceRoot and cannot be combined with fromUnknownOwner.");
+  }
+  if (request.fromFleetId !== undefined) fleetIdSchema.parse(request.fromFleetId);
+  if (request.toFleetId !== undefined) fleetIdSchema.parse(request.toFleetId);
+  const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
   if (request.expectedHash) assertSha256(request.expectedHash, "expected artifact hash");
   if (request.expectedRevision) assertSha256(request.expectedRevision, "expected manifest revision");
+  if (request.expectedRuntimeHash) {
+    assertSha256(request.expectedRuntimeHash, "expected runtime hash");
+    if (request.carryDrift !== true) throw new Error("An expected runtime hash is only valid with carryDrift.");
+  }
+  if ((request.fromWorkspaceRoot === undefined) === (request.fromUnknownOwner !== true)) {
+    throw new Error("Ownership handoff requires exactly one of fromWorkspaceRoot or fromUnknownOwner.");
+  }
   const scope = { installationType: request.installationType, stateKey: request.stateKey };
   const manifest = await readInstallManifest(request.targetRoot, request.adapter, transport, scope);
   if (!manifest) throw new Error(`No install manifest for ${request.adapter} at ${request.targetRoot}`);
@@ -111,7 +165,9 @@ async function validateOwnershipHandoff(
     );
   }
   const entry = matches[0];
-  const fromOwner = workspaceOwnerForRoot(request.fromWorkspaceRoot);
+  const fromOwner = request.fromUnknownOwner === true
+    ? unknownWorkspaceOwner
+    : workspaceOwnerForRoot(request.fromWorkspaceRoot!, request.fromFleetId);
   const toOwner = workspaceOwnerForRoot(request.toWorkspaceRoot, request.toFleetId);
   if (fromOwner === toOwner) throw new Error("Ownership handoff requires different workspace roots.");
   if (entry.workspaceOwner !== fromOwner) {
@@ -123,29 +179,50 @@ async function validateOwnershipHandoff(
 
   const destPath = containedArtifactPath(request.targetRoot, entry.path);
   if (!(await transport.pathExists(destPath))) throw new Error(`Managed artifact is missing: ${entry.path}`);
-  const currentHash = await verifiedEntryHash(entry, destPath, transport);
-  if (request.expectedHash && currentHash !== request.expectedHash) {
-    throw new Error(`Current hash precondition failed for ${entry.path}: expected ${request.expectedHash}, found ${currentHash}`);
+  const runtimeHash = await verifiedEntryHash(entry, destPath, transport, request.carryDrift === true);
+  const drifted = runtimeHash !== entry.hash;
+  if (drifted) {
+    if (request.expectedRuntimeHash && runtimeHash !== request.expectedRuntimeHash) {
+      throw new Error(`Runtime hash precondition failed for ${entry.path}: expected ${request.expectedRuntimeHash}, found ${runtimeHash}`);
+    }
+  } else if (request.expectedRuntimeHash) {
+    throw new Error(`Runtime hash precondition failed for ${entry.path}: the artifact is no longer drifted`);
   }
 
-  return {
+  const observation = endpoint ? await observeOwnershipRuntime(destPath, transport) : undefined;
+  if (observation && observation.kind !== entry.kind) throw new Error(`Runtime kind differs from the reviewed ownership claim at ${entry.path}.`);
+  const manifestInventoryRevision = endpoint ? await computeInstallManifestInventoryRevision(request.targetRoot, undefined, transport) : undefined;
+  const plan = {
+    ...(endpoint ? { transport: endpoint, runtimeSnapshotDigest: observation!.snapshotDigest, manifestInventoryRevision } : {}),
     adapter: request.adapter,
     installationType: request.installationType,
     stateKey: request.stateKey,
     targetRoot: request.targetRoot,
     selector: `${request.artifactType}/${request.artifactName}`,
     path: entry.path,
-    artifactHash: currentHash,
+    artifactHash: entry.hash,
+    runtimeHash,
+    drifted,
     manifestRevision: manifest.revision,
     fromOwner,
     toOwner,
   };
+  if (!endpoint) return plan;
+  const planDigest = createHash("sha256").update(canonicalJson(plan)).digest("hex");
+  if (request.expectedInventoryRevision && request.expectedInventoryRevision !== manifestInventoryRevision) {
+    throw new Error("Stale ownership handoff manifest inventory; replan required.");
+  }
+  if (request.planDigest && request.planDigest !== planDigest) {
+    throw new Error("Stale ownership handoff plan digest, runtime snapshot or service identity; replan required.");
+  }
+  return { ...plan, planDigest };
 }
 
 async function verifiedEntryHash(
   entry: InstallManifestEntry,
   destPath: string,
   transport: TargetTransport,
+  carryFileDrift = false,
 ): Promise<string> {
   if (entry.semanticPlugin) throw new Error(`Ownership handoff cannot verify semantic plugin state at ${destPath}`);
   if (entry.mode === "managed-block") {
@@ -164,7 +241,7 @@ async function verifiedEntryHash(
     return entry.hash;
   }
   const currentHash = await transport.hashPath(destPath);
-  if (currentHash !== entry.hash) {
+  if (currentHash !== entry.hash && !carryFileDrift) {
     throw new Error(`Managed artifact is drifted at ${destPath}: manifest ${entry.hash}, current ${currentHash}`);
   }
   return currentHash;

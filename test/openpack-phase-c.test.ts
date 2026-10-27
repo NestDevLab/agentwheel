@@ -152,6 +152,120 @@ describe("OpenPack phase C", () => {
     })).rejects.toThrow(/Dependency alias not found .*core/);
   });
 
+  it("does not resolve compose aliases for runtime-ineligible artifacts", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-runtime-filter-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "instructions", "AGENTS.md"), "# OpenClaw instructions\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill for tests.\n---\n\n# App\n");
+    await writeOpenPack(root, {
+      name: "phase-c/runtime-filter",
+      requires: {
+        core: { source: "../unavailable-core", select: ["fragments/base.md"] },
+      },
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/AGENTS.md",
+          runtimes: ["openclaw"],
+          items: {
+            "AGENTS.md": { compose: [{ include: "core:fragments/base.md" }] },
+          },
+        },
+        { type: "skills", path: "skills", runtimes: ["codex", "claude"] },
+      ],
+    });
+
+    const codex = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-runtime-filter-codex",
+      noDeps: true,
+      yes: true,
+    });
+    expect(codex.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["instructions/AGENTS.md"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: openClawAdapter,
+      targetKey: "phase-c-runtime-filter-openclaw",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Dependency alias not found .*core/);
+  });
+
+  it("does not resolve compose aliases for unselected artifacts under --no-deps", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-no-deps-selection-target-");
+    const root = join(workspace, "private-core");
+    const publicCore = join(workspace, "public-core");
+
+    await writeText(join(root, "instructions", "codex-standalone.md"), "# Codex standalone\n");
+    await writeText(join(root, "skills", "app", "SKILL.md"), "---\nname: app\ndescription: Fixture skill for tests.\n---\n\n# App\n");
+    await writeText(join(publicCore, "fragments", "base.md"), "Public base\n");
+    await writeOpenPack(publicCore, {
+      name: "phase-c/public-core",
+      provides: [{ type: "fragments", path: "fragments" }],
+    });
+    await writeOpenPack(root, {
+      name: "phase-c/private-core",
+      requires: {
+        pub: { source: "../public-core", select: ["fragments/base.md"] },
+      },
+      provides: [
+        {
+          type: "instructions",
+          path: "instructions/codex-standalone.md",
+          runtimes: ["codex"],
+          items: {
+            "codex-standalone.md": { compose: [{ include: "pub:fragments/base.md" }] },
+          },
+        },
+        { type: "skills", path: "skills", runtimes: ["codex"] },
+      ],
+    });
+
+    const noDeps = await createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-no-deps-selection",
+      noDeps: true,
+      yes: true,
+    });
+    expect(noDeps.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+    expect(noDeps.bundle.graphLock.canonical.includeEdges).toEqual([]);
+
+    const normal = await createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["skills/app"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-normal-selection",
+      yes: true,
+    });
+    expect(normal.bundle.artifacts.map((artifact) => `${artifact.type}/${artifact.name}`)).toEqual(["skills/app"]);
+    expect(normal.bundle.graphLock.canonical.includeEdges).toMatchObject([
+      { alias: "pub", selector: "fragments/base.md" },
+    ]);
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "private-core", source: root, select: ["instructions/codex-standalone.md"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-no-deps-selected-compose",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Dependency alias not found .*pub/);
+  });
+
   it("reports cross-package include cycles with the full chain", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-c-cycle-target-");
@@ -388,6 +502,119 @@ describe("OpenPack phase C", () => {
       yes: true,
     });
     expect(codex.graph.roots[0]?.selected).toEqual(["rules/codex.rules", "skills/app"]);
+  });
+
+  it("keeps Codex-selected artifacts valid when a profile target uses Claude", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-codex-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "codex-only", "SKILL.md"), "# Codex only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/codex-selection",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "codex-only": { runtimes: ["codex"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/codex-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-c-codex-selection-claude",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.bundle.artifacts).toEqual([]);
+    expect(result.warnings).toContainEqual(expect.stringMatching(
+      /skip artifact .*:skills\/codex-only \(selected but not targeted: runtimes=\[codex\]\)/,
+    ));
+  });
+
+  it("keeps Claude-selected artifacts valid when a profile target uses Codex", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-claude-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "claude-only", "SKILL.md"), "# Claude only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/claude-selection",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "claude-only": { runtimes: ["claude"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/claude-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-claude-selection-codex",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.bundle.artifacts).toEqual([]);
+    expect(result.warnings).toContainEqual(expect.stringMatching(
+      /skip artifact .*:skills\/claude-only \(selected but not targeted: runtimes=\[claude\]\)/,
+    ));
+  });
+
+  it("still rejects an explicit selector absent from the package", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-missing-selection-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "present", "SKILL.md"), "# Present\n");
+    await writeOpenPack(root, {
+      name: "phase-c/missing-selection",
+      provides: [{ type: "skills", path: "skills" }],
+    });
+
+    await expect(createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/absent"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: codexAdapter,
+      targetKey: "phase-c-missing-selection-codex",
+      noDeps: true,
+      yes: true,
+    })).rejects.toThrow(/Selected artifact not found in package: skills\/absent/);
+  });
+
+  it("reports runtime gating as a skip instead of a missing selection", async () => {
+    const workspace = await tempRoot();
+    const target = await tempRoot("agentwheel-phase-c-selection-message-target-");
+    const root = join(workspace, "root");
+
+    await writeText(join(root, "skills", "codex-only", "SKILL.md"), "# Codex only\n");
+    await writeOpenPack(root, {
+      name: "phase-c/selection-message",
+      provides: [{
+        type: "skills",
+        path: "skills",
+        items: { "codex-only": { runtimes: ["codex"] } },
+      }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [{ rootId: "root", source: root, select: ["skills/codex-only"] }],
+      targetRoot: target,
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-c-selection-message-claude",
+      noDeps: true,
+      yes: true,
+    });
+
+    expect(result.warnings.join("\n")).toMatch(/selected but not targeted/);
+    expect(result.warnings.join("\n")).not.toMatch(/Selected artifact not found in package/);
   });
 
   it("does not fetch unused aliases", async () => {

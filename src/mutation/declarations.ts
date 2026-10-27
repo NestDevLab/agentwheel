@@ -9,6 +9,7 @@ interface DeclarationState {
   journalPath: string;
   paths: Set<string>;
   blockedPaths: Set<string>;
+  blockedPathDescriptions: Map<string, string>;
 }
 
 let active: DeclarationState | undefined;
@@ -17,6 +18,7 @@ export function beginMutationPathDeclarations(
   repositoryRoot: string,
   operationIdInput: string,
   blockedPaths: Iterable<string> = [],
+  blockedPathDescriptions: Map<string, string> = new Map(),
 ): void {
   if (active) throw new Error("A mutation path declaration scope is already active.");
   const operationId = mutationOperationIdSchema.parse(operationIdInput);
@@ -42,6 +44,7 @@ export function beginMutationPathDeclarations(
     journalPath,
     paths: new Set(),
     blockedPaths: new Set(blockedPaths),
+    blockedPathDescriptions,
   };
 }
 
@@ -64,6 +67,7 @@ export function resumeMutationPathDeclarations(
     journalPath,
     paths: new Set(paths),
     blockedPaths: new Set(blockedPaths),
+    blockedPathDescriptions: new Map(),
   };
 }
 
@@ -74,7 +78,8 @@ export function declareMutationPath(path: string): void {
   if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) return;
   const normalized = relativePath.split(sep).join("/");
   if (active.blockedPaths.has(normalized)) {
-    throw new Error(`Mutation intended path is already dirty and cannot be claimed: ${normalized}.`);
+    const description = active.blockedPathDescriptions.get(normalized);
+    throw new Error(`Mutation intended path is already dirty and cannot be claimed: ${normalized}.${description ? ` ${description}` : ""}`);
   }
   if (active.paths.has(normalized)) return;
   active.paths.add(normalized);

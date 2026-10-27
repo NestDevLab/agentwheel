@@ -1,15 +1,24 @@
 {
+  "authority": {
+    "allow": [
+      "source_change"
+    ],
+    "deny": [
+      "destructive_rewrite"
+    ],
+    "mode": "ai-managed"
+  },
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -85,32 +94,23 @@
       "target_remote": "origin"
     },
     {
-      "id": "preserve-mcp-preferences",
-      "branch": "pr/preserve-mcp-preferences",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/preserve-mcp-preferences",
       "commits": [
         "91d586d0b4fec0d41a23200441d64b74eeb85db9"
       ],
-      "state": "published",
+      "id": "preserve-mcp-preferences",
+      "integration_branch": "main-integration",
+      "meta": {},
       "publication": {
         "enabled": true
       },
-      "meta": {}
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
-  "version": 2,
-  "authority": {
-    "mode": "ai-managed",
-    "allow": [
-      "source_change"
-    ],
-    "deny": [
-      "destructive_rewrite"
-    ]
-  }
+  "version": 2
 }

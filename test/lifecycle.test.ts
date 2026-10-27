@@ -119,6 +119,32 @@ describe("lifecycle core", () => {
     await expect(driver.fetch(resolved)).rejects.toThrow(/Timed out waiting for git cache lock/);
   });
 
+  it("reaps a filesystem cache lock whose owner process is gone", async () => {
+    const repo = await tempRoot("agentwheel-git-stale-lock-src-");
+    await writePackage(repo, { coreRule: "# stale lock\n" });
+    await git(repo, ["init", "-b", "main"]);
+    await git(repo, ["config", "user.name", "Test"]);
+    await git(repo, ["config", "user.email", "agentwheel-test@users.noreply.github.com"]);
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-m", "stale lock"]);
+
+    const workspace = await tempRoot("agentwheel-git-stale-lock-ws-");
+    const driver = new GitSourceDriver();
+    const resolved = await driver.resolve(`git:${repo}#main`, {
+      cacheRoot: join(workspace, ".agentwheel", "cache"),
+      mode: "tracking",
+      cacheLockTimeoutMs: 100,
+    });
+    const lock = `${resolved.resolvedPath}.lock`;
+    await mkdir(lock, { recursive: true });
+    await writeFile(join(lock, "owner.json"), JSON.stringify({
+      pid: 2_000_000_000,
+      createdAt: "2026-09-16T07:18:08.748Z",
+    }));
+
+    await expect(driver.fetch(resolved)).resolves.toMatchObject({ resolvedPath: expect.any(String) });
+  });
+
   it("materializes snapshots without mutating a contaminated cache checkout", async () => {
     const repo = await tempRoot("agentwheel-git-dirty-src-");
     await writePackage(repo, { coreRule: "# v1\n" });

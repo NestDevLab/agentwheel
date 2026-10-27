@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readlink, readdir } from "node:fs/promises";
-import { posix, relative, resolve, sep } from "node:path";
+import { dirname, posix, relative, resolve, sep } from "node:path";
+import type { RevisionProviderConfigInput } from "../model/mutation.js";
 import type { RevisionPath } from "./protocol.js";
 import { runProcess } from "./process.js";
 
@@ -41,6 +42,149 @@ export async function assertGitPreflight(repository: GitRepositoryState): Promis
   }
 }
 
+/** Missing policy retains the v1 exact-HEAD contract, including old durable receipts. */
+export async function assertHeadLease(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  paths: string[],
+  provider?: RevisionProviderConfigInput | null,
+): Promise<void> {
+  return assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, paths, provider, []);
+}
+
+async function assertHeadLeaseWithRecovery(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  paths: string[],
+  provider: RevisionProviderConfigInput | null | undefined,
+  recoveryPaths: RevisionPath[],
+  terminalChanges: Map<string, Set<string>> = new Map(),
+): Promise<void> {
+  if (head === expectedHead) return;
+  if (provider?.headLease !== "path-scoped" || paths.length === 0) {
+    throw new Error(`Git HEAD lease mismatch: expected ${expectedHead}, found ${head}.`);
+  }
+  // Trust the original committed policy, never an uncommitted configuration expansion.
+  const config = await runProcess("git", ["-C", repositoryRoot, "show", `${expectedHead}:.agentwheel/config.json`], {
+    allowExitCodes: [0, 128],
+  });
+  let committedLease: unknown;
+  try {
+    committedLease = JSON.parse(config.stdout.toString("utf8")).mutationPolicy?.revisioning?.provider?.headLease;
+  } catch { /* A missing or invalid committed configuration cannot widen the lease. */ }
+  if (committedLease !== "path-scoped") {
+    throw new Error("Path-scoped HEAD lease requires committed provider policy at expectedHead.");
+  }
+  const ancestor = await runProcess("git", ["-C", repositoryRoot, "merge-base", "--is-ancestor", expectedHead, head], {
+    allowExitCodes: [0, 1],
+  });
+  if (ancestor.exitCode !== 0) throw new Error("Git HEAD lease does not descend from expectedHead.");
+  const protectedPaths = [...paths, ".agentwheel/config.json", ".syncwheel/manifest.json"];
+  const commits = (await runProcess("git", ["-C", repositoryRoot, "rev-list", `${expectedHead}..${head}`]))
+    .stdout.toString("utf8").trim().split("\n").filter(Boolean);
+  for (const commit of commits) {
+    // Inspect each commit against every parent, with renames expanded into delete/add.
+    // A net diff would miss change/revert and hidden changes on merged branches.
+    const touched = splitNull((await runProcess("git", ["-C", repositoryRoot, "diff-tree", "--root", "-m",
+      "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", commit])).stdout);
+    for (const path of touched) {
+      if (!protectedPaths.some((protectedPath) => overlaps(path, protectedPath))) continue;
+      if (terminalChanges.get(commit)?.has(path)) continue;
+      const proof = recoveryPaths.find((entry) => entry.path === path && paths.includes(path));
+      if (!proof || overlaps(path, ".agentwheel/config.json") || overlaps(path, ".syncwheel/manifest.json")
+        || await gitPathMode(repositoryRoot, commit, path) !== "100644"
+        || await hashHeadPath(repositoryRoot, expectedHead, path) !== proof.beforeSha256
+        || await hashHeadPath(repositoryRoot, commit, path) !== proof.afterSha256
+        || await hashHeadPath(repositoryRoot, head, path) !== proof.afterSha256
+        || await hashWorkingPath(repositoryRoot, path) !== proof.afterSha256) {
+        throw new Error(`Git HEAD lease overlaps protected paths in intervening commit ${commit}.`);
+      }
+    }
+  }
+}
+
+function overlaps(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+}
+
+/** Only receipt-owned, declared, unchanged bytes can be projected out during recovery. */
+export async function committedRecoveryPaths(
+  repositoryRoot: string,
+  expectedHead: string,
+  head: string,
+  declarations: string[],
+  receiptPaths: RevisionPath[],
+  provider: RevisionProviderConfigInput | null,
+): Promise<RevisionPath[]> {
+  await verifyRevisionPaths(repositoryRoot, expectedHead, receiptPaths);
+  const committed: RevisionPath[] = [];
+  for (const entry of receiptPaths) {
+    if (!declarations.includes(entry.path)) throw new Error(`Recovery path was not declared: ${entry.path}.`);
+    if (await hashHeadPath(repositoryRoot, head, entry.path) === entry.afterSha256
+      && entry.beforeSha256 !== entry.afterSha256) {
+      await assertRecoveryFileIdentity(repositoryRoot, expectedHead, head, entry.path);
+      committed.push(entry);
+    }
+  }
+  await assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, declarations, provider, committed);
+  return committed;
+}
+
+export async function verifyCompletedRecoveryPaths(
+  repositoryRoot: string,
+  expectedHead: string,
+  declarations: string[],
+  savedPaths: RevisionPath[],
+  provider: RevisionProviderConfigInput | null,
+  productCommitSha: string | null,
+  productPaths: string[],
+  controlCommitSha: string | null,
+): Promise<void> {
+  const head = await currentHead(repositoryRoot);
+  await verifyRevisionPaths(repositoryRoot, expectedHead, savedPaths);
+  for (const entry of savedPaths) {
+    await assertRecoveryFileIdentity(repositoryRoot, expectedHead, head, entry.path);
+    if (await hashHeadPath(repositoryRoot, head, entry.path) !== entry.afterSha256) {
+      throw new Error(`Committed recovery path changed during provider completion: ${entry.path}.`);
+    }
+  }
+  // Provider semantics already verified the exact product delta and its control parent.
+  // Only those specific commits may change the remaining delta or provider manifest.
+  const terminalChanges = new Map<string, Set<string>>();
+  if (productCommitSha) terminalChanges.set(productCommitSha, new Set(productPaths));
+  if (controlCommitSha) terminalChanges.set(controlCommitSha, new Set([".syncwheel/manifest.json"]));
+  await assertHeadLeaseWithRecovery(repositoryRoot, expectedHead, head, declarations, provider, savedPaths, terminalChanges);
+}
+
+async function gitPathMode(repositoryRoot: string, head: string, path: string): Promise<string | undefined> {
+  const tree = (await runProcess("git", ["-C", repositoryRoot, "ls-tree", "-z", head, "--", path])).stdout.toString("utf8");
+  const entry = tree.split("\0").find((value) => value.slice(value.indexOf("\t") + 1) === path);
+  return entry?.split(" ")[0];
+}
+
+async function assertRecoveryFileIdentity(repositoryRoot: string, expectedHead: string, head: string, path: string): Promise<void> {
+  if (await gitPathMode(repositoryRoot, expectedHead, path) !== "100644"
+    || await gitPathMode(repositoryRoot, head, path) !== "100644") {
+    throw new Error(`Recovery requires an existing regular non-executable Git file: ${path}.`);
+  }
+  const absolute = resolve(repositoryRoot, ...path.split("/"));
+  const stats = await lstat(absolute);
+  if (!stats.isFile() || (stats.mode & 0o111) !== 0) throw new Error(`Recovery file identity changed: ${path}.`);
+  let ancestor = dirname(absolute);
+  while (true) {
+    if ((await lstat(ancestor)).isSymbolicLink()) throw new Error(`Recovery symlink ancestor is unsupported: ${path}.`);
+    const parent = dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+}
+
+export function isAgentwheelWritablePath(path: string): boolean {
+  return /^\.agentwheel(?:\/|$)/u.test(path) || /^profiles\/[^/]+\/\.agentwheel(?:\/|$)/u.test(path);
+}
+
 export async function snapshotRepository(repositoryRoot: string): Promise<RepositorySnapshot> {
   const paths = await changedRepositoryPaths(repositoryRoot);
   const changed = new Map<string, string | null>();
@@ -57,7 +201,18 @@ export async function collectIntroducedPaths(
   const after = await snapshotRepository(repositoryRoot);
   const touchedPreexisting = new Set<string>();
   for (const [path, hash] of before.changed) {
-    if (!after.changed.has(path) || after.changed.get(path) !== hash) touchedPreexisting.add(path);
+    if (declaredPaths.includes(path)) touchedPreexisting.add(path);
+    else if (!after.changed.has(path)) {
+      const head = await currentHead(repositoryRoot);
+      const ancestor = await runProcess("git", ["-C", repositoryRoot, "merge-base", "--is-ancestor", expectedHead, head], {
+        allowExitCodes: [0, 1],
+      });
+      // Another writer may commit the very bytes already present at begin. This is
+      // preservation only when both the current tree and working bytes prove it.
+      if (head === expectedHead || ancestor.exitCode !== 0
+        || await hashWorkingPath(repositoryRoot, path) !== hash
+        || await hashHeadPath(repositoryRoot, head, path) !== hash) touchedPreexisting.add(path);
+    } else if (after.changed.get(path) !== hash) touchedPreexisting.add(path);
   }
   if (touchedPreexisting.size > 0) {
     throw new Error(`Mutation touched pre-existing dirty paths: ${[...touchedPreexisting].sort().join(", ")}.`);

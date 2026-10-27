@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { commandGovernance, commandGovernanceMode, isGovernedCommand, requiresCleanMutationPreflight } from "../src/mutation/commands.js";
 import { GovernedMutation, mergeMutationPolicies, recoverMutationRuntime, resumeMutation } from "../src/mutation/coordinator.js";
 import { declareMutationPath } from "../src/mutation/declarations.js";
+import { assertHeadLease, committedRecoveryPaths } from "../src/mutation/repository.js";
 import { invokeRevisionProvider } from "../src/mutation/providers.js";
 import {
   revisionPathSchema,
@@ -57,6 +58,239 @@ afterEach(async () => {
 });
 
 describe.sequential("mutation policy and revision provider v1", () => {
+  it("defaults legacy provider configurations to an exact HEAD lease", async () => {
+    expect(revisionProviderConfigSchema.parse({ kind: "git", protocolVersion: 1 }).headLease).toBeUndefined();
+    const { repo, globalRoot } = await governedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Exact lease" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/HEAD lease/);
+  });
+
+  it.each([false, true])("accepts disjoint advancement and preserves external dirt committed by another writer (resume=%s)", async (resume) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    await writeFile(join(repo, "notes.txt"), "external dirty bytes\n");
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Disjoint lease", requireCleanWorkingTree: true });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await git(repo, ["add", "notes.txt"]);
+    await git(repo, ["commit", "-m", "Record external bytes"]);
+    const parent = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    let result;
+    if (resume) {
+      await mutation!.fail(new Error("Interrupted before collection"));
+      await updateMutationReceipt(await readMutationReceipt(mutation!.operationId), { status: "handler-succeeded", paths: [] });
+      result = await resumeMutation(mutation!.operationId, "recover");
+    } else result = await mutation!.complete();
+    expect(result.status).toBe("succeeded");
+    expect(result.paths.map((entry) => entry.path)).toEqual(["feature.txt"]);
+    expect((await git(repo, ["rev-parse", "HEAD^"])).trim()).toBe(parent);
+    expect(await readFile(join(repo, "notes.txt"), "utf8")).toBe("external dirty bytes\n");
+    expect(await git(repo, ["status", "--porcelain"])).toBe("");
+  });
+
+  it.each(["overlap", "revert", "merge", "rename", "delete", "config", "manifest"])("rejects path-scoped %s history", async (kind) => {
+    const { repo } = await pathScopedRepo();
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (kind === "merge") await git(repo, ["switch", "-c", "side"]);
+    const path = kind === "config" ? ".agentwheel/config.json" : kind === "manifest" ? ".syncwheel/manifest.json" : "notes.txt";
+    if (kind === "rename") {
+      await git(repo, ["mv", "notes.txt", "renamed.txt"]);
+      await git(repo, ["commit", "-m", "Rename protected path"]);
+    } else if (kind === "delete") {
+      await git(repo, ["rm", "notes.txt"]);
+      await git(repo, ["commit", "-m", "Delete protected path"]);
+    } else await commitExternal(repo, path, "changed\n");
+    if (kind === "revert") await git(repo, ["revert", "--no-edit", "HEAD"]);
+    if (kind === "merge") {
+      await git(repo, ["switch", "main"]);
+      await commitExternal(repo, "outside.txt", "outside\n");
+      await git(repo, ["merge", "--no-ff", "side", "-m", "Merge protected side"]);
+    }
+    await expect(assertHeadLease(repo, expected, (await git(repo, ["rev-parse", "HEAD"])).trim(), ["notes.txt"], scopedProvider))
+      .rejects.toThrow(/overlaps protected/);
+  });
+
+  it.each(["wrong-hash", "local-drift", "config", "manifest", "revert", "merge", "missing-proof", "undeclared", "before-hash", "legacy", "empty-declarations"])("refuses recovery projection with %s", async (kind) => {
+    const { repo } = await (kind === "legacy" ? governedRepo() : pathScopedRepo());
+    const path = ".agentwheel/locks/saved.graph-lock.json";
+    const before = "original committed bytes\n";
+    await commitExternal(repo, path, before);
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    const after = "original operation bytes\n";
+    const proof: { path: string; beforeSha256: string | null; afterSha256: string } = { path, beforeSha256: sha256(Buffer.from(before)), afterSha256: sha256(Buffer.from(after)) };
+    if (kind === "merge") await git(repo, ["switch", "-c", "side"]);
+    if (kind === "revert" || kind === "merge") await commitExternal(repo, path, "intermediate foreign bytes\n");
+    await commitExternal(repo, path, kind === "wrong-hash" ? "foreign bytes\n" : after);
+    if (kind === "merge") {
+      await git(repo, ["switch", "main"]);
+      await commitExternal(repo, "outside.txt", "unrelated\n");
+      await git(repo, ["merge", "--no-ff", "side", "-m", "Merge hidden mismatch"]);
+    }
+    if (kind === "local-drift") await writeFile(join(repo, path), "local foreign bytes\n");
+    if (kind === "config") await commitExternal(repo, ".agentwheel/config.json", (await readFile(workspaceConfigPath(repo), "utf8")) + "\n");
+    if (kind === "manifest") await commitExternal(repo, ".syncwheel/manifest.json", "{}\n");
+    const head = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (kind === "before-hash") proof.beforeSha256 = "0".repeat(64);
+    await expect(committedRecoveryPaths(repo, expected, head,
+      kind === "undeclared" || kind === "empty-declarations" ? [] : [path],
+      kind === "missing-proof" ? [] : [proof],
+      kind === "legacy" ? { kind: "git", protocolVersion: 1 } : scopedProvider)).rejects.toThrow();
+  });
+
+  it.each(["symlink", "executable", "symlink-parent"])("refuses recovery identity substitution: %s", async (kind) => {
+    const { repo } = await pathScopedRepo();
+    const path = "saved/file.txt";
+    const before = "original bytes\n";
+    const after = "receipt bytes";
+    await commitExternal(repo, path, before);
+    const expected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await writeFile(join(repo, path), after);
+    const proof = { path, beforeSha256: sha256(Buffer.from(before)), afterSha256: sha256(Buffer.from(after)) };
+    if (kind === "symlink") {
+      await rm(join(repo, path));
+      await symlink(after, join(repo, path));
+    } else if (kind === "executable") await chmod(join(repo, path), 0o755);
+    await git(repo, ["add", path]);
+    await git(repo, ["commit", "-m", "Save substituted identity"]);
+    if (kind === "symlink-parent") {
+      const outside = await tempRoot("agentwheel-path-identity-");
+      await writeFile(join(outside, "file.txt"), after);
+      await rm(join(repo, "saved"), { recursive: true });
+      await symlink(outside, join(repo, "saved"));
+    }
+    await expect(committedRecoveryPaths(repo, expected, (await git(repo, ["rev-parse", "HEAD"])).trim(), [path], [proof], scopedProvider)).rejects.toThrow();
+  });
+
+  it("refuses a dirty config that widens an originally exact lease", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const raw = JSON.parse(await readFile(workspaceConfigPath(repo), "utf8"));
+    raw.mutationPolicy.revisioning.provider.headLease = "path-scoped";
+    await writeFile(workspaceConfigPath(repo), JSON.stringify(raw));
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Untrusted widening" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/committed provider policy/);
+  });
+
+  it.each([".agentwheel/locks/test.json", "profiles/test/.agentwheel/locks/test.json"])("rejects Agentwheel dirt at %s", async (path) => {
+    const { repo, globalRoot } = await governedRepo();
+    await mkdir(join(repo, path, ".."), { recursive: true });
+    await writeFile(join(repo, path), "dirty\n");
+    await expect(GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Scoped clean tree", requireCleanWorkingTree: true }))
+      .rejects.toThrow(/clean Agentwheel paths/);
+  });
+
+  it("preserves unrelated dirt with exact segment boundaries", async () => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const dirty = ["notes.txt", ".agentwheel-extra/file", "profiles/test/.agentwheel-extra/file", "profiles/test/nested/.agentwheel/file"];
+    for (const path of dirty) {
+      await mkdir(join(repo, path, ".."), { recursive: true });
+      await writeFile(join(repo, path), "external dirty bytes\n");
+    }
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Preserve unrelated work", requireCleanWorkingTree: true });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    expect((await mutation!.complete()).status).toBe("succeeded");
+    for (const path of dirty) expect(await readFile(join(repo, path), "utf8")).toBe("external dirty bytes\n");
+  });
+
+  it("cannot claim preexisting dirty paths even after another writer commits them", async () => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    await writeFile(join(repo, "notes.txt"), "external dirt\n");
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Preserve original ownership" });
+    await git(repo, ["add", "notes.txt"]);
+    await git(repo, ["commit", "-m", "External commit"]);
+    expect(() => declareMutationPath(join(repo, "notes.txt"))).toThrow(/dirty/);
+    await mutation!.fail(new Error("Expected declaration refusal"));
+  });
+
+  it.each([false, true])("retains exact HEAD for empty and noCommit operations (noCommit=%s)", async (noCommit) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Exact terminal no-op", noCommit });
+    if (noCommit) {
+      declareMutationPath(join(repo, "feature.txt"));
+      await writeFile(join(repo, "feature.txt"), "feature\n");
+    }
+    await commitExternal(repo, "outside.txt", "outside\n");
+    await expect(mutation!.complete()).rejects.toThrow(/HEAD lease/);
+  });
+
+  it.each([false, true])("recovers after collection on a disjoint parent (providerCommitted=%s)", async (providerCommitted) => {
+    const { repo, globalRoot } = await pathScopedRepo();
+    const mutation = await GovernedMutation.begin({ workspaceRoot: repo, globalRoot, commandName: "agentwheel lock", reason: "Recover committed lease" });
+    declareMutationPath(join(repo, "feature.txt"));
+    await writeFile(join(repo, "feature.txt"), "feature\n");
+    await commitExternal(repo, "outside.txt", "outside\n");
+    const expectedHead = (await readMutationReceipt(mutation!.operationId)).expectedHead!;
+    await mutation!.fail(new Error("Interrupted handler"));
+    let receipt = await readMutationReceipt(mutation!.operationId);
+    const paths = [{ path: "feature.txt", beforeSha256: null, afterSha256: sha256(Buffer.from("feature\n")) }];
+    receipt = await updateMutationReceipt(receipt, { paths, status: "mutation-applied" });
+    const request = revisionProviderRequestSchema.parse({ protocolVersion: 1, action: "finalize", operationId: receipt.operationId,
+      repositoryRoot: repo, expectedHead, commandName: receipt.commandName, reason: receipt.reason, noCommit: false, paths });
+    if (providerCommitted) await invokeRevisionProvider(scopedProvider, request, { workspaceRoot: repo });
+    const committed = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    expect((await resumeMutation(receipt.operationId, "recover")).status).toBe("succeeded");
+    if (providerCommitted) expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(committed);
+  });
+
+  it.skipIf(localSyncwheelSource === undefined)("uses a real journal provider across disjoint advancement and durable recovery", async () => {
+    const source = await snapshotSyncwheelSource(localSyncwheelSource!);
+    for (const phase of ["prepared", "product_committed", "verified"]) {
+      const fixture = await tempRoot("agentwheel-journal-provider-");
+      const repo = await syncwheelProviderRepo(source, fixture, true);
+      const bridgeSource = await readFile(join(process.cwd(), "test/fixtures/revision-provider-v1/syncwheel-fault-bridge.py"));
+      const bridge = join(fixture, "bridge.py");
+      await writeFile(bridge, bridgeSource, { mode: 0o700 });
+      const provider = { kind: "command" as const, id: "syncwheel", protocolVersion: 1 as const, headLease: "path-scoped" as const,
+        command: [bridge, source, phase, join(fixture, "faulted")], executableSha256: sha256(bridgeSource), trustBoundary: "entrypoint" as const };
+      await mkdir(join(repo, ".agentwheel"), { recursive: true });
+      await writeFile(workspaceConfigPath(repo), JSON.stringify({ schemaVersion: 4, mutationPolicy: {
+        ...mutationPolicy(), revisioning: { ...mutationPolicy().revisioning, provider },
+      } }));
+      await git(repo, ["add", ".agentwheel/config.json"]);
+      await git(repo, ["commit", "-m", "Configure journal provider"]);
+      const expectedHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+      const base = { protocolVersion: 1, operationId: `journal-${phase.replaceAll("_", "-")}`, repositoryRoot: repo,
+        expectedHead, commandName: "agentwheel lock", reason: "Verify journal recovery", noCommit: false,
+        paths: [{ path: "feature.txt", beforeSha256: null, afterSha256: sha256(Buffer.from("feature\n")) }] };
+      await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "check", paths: [] }), { workspaceRoot: repo });
+      await commitExternal(repo, "outside.txt", "outside\n");
+      await writeFile(join(repo, "feature.txt"), "feature\n");
+      const preflight = revisionProviderRequestSchema.parse({ ...base, action: "preflight" });
+      if (phase === "prepared") await expect(invokeRevisionProvider(provider, preflight, { workspaceRoot: repo })).rejects.toThrow(/injected/);
+      else {
+        await invokeRevisionProvider(provider, preflight, { workspaceRoot: repo });
+        await expect(invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "finalize" }), { workspaceRoot: repo })).rejects.toThrow(/injected/);
+      }
+      const response = await invokeRevisionProvider(provider, revisionProviderRequestSchema.parse({ ...base, action: "recover" }), { workspaceRoot: repo });
+      expect(response).toMatchObject({ status: "verified", draftStackId: null, controlCommitSha: null, published: false });
+      expect(await git(repo, ["status", "--porcelain"])).toBe("");
+      expect((await git(repo, ["show", "--format=", "--name-only", "HEAD"])).trim()).toBe("feature.txt");
+    }
+  }, 120_000);
+
+  it("bounds command provider timeouts at ten minutes without changing the default", () => {
+    const provider = {
+      kind: "command",
+      id: "bounded-command",
+      command: [process.execPath],
+      executableSha256: nodeExecutableSha256,
+      trustBoundary: "entrypoint",
+      protocolVersion: 1,
+    };
+    expect(revisionProviderConfigSchema.parse(provider)).toMatchObject({ timeoutMs: 30_000 });
+    for (const timeoutMs of [100, 300_000, 600_000]) {
+      expect(revisionProviderConfigSchema.parse({ ...provider, timeoutMs })).toMatchObject({ timeoutMs });
+    }
+    for (const timeoutMs of [99, 600_001, 600_000.5]) {
+      expect(() => revisionProviderConfigSchema.parse({ ...provider, timeoutMs })).toThrow();
+    }
+  });
+
   it("keeps v1-v3 compatible while making mutationPolicy a strict v4-only field", () => {
     for (const schemaVersion of [1, 2, 3] as const) {
       expect(workspaceConfigSchema.parse({ schemaVersion }).schemaVersion).toBe(schemaVersion);
@@ -513,7 +747,24 @@ describe.sequential("mutation policy and revision provider v1", () => {
     expect(await git(repo, ["status", "--short"])).toContain("notes.txt");
   });
 
-  it("refuses an install with a dirty dynamically planned graph lock before runtime side effects", async () => {
+  it("allows an install plan whose declared path does not overlap unrelated dirt", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
+    await writeFile(join(repo, "notes.txt"), "unrelated dirty\n", "utf8");
+
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel install",
+      reason: "Allow unrelated dirt outside the declared install plan",
+      requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
+    });
+    expect(mutation).toBeTruthy();
+    expect(() => declareMutationPath(graphLockPath)).not.toThrow();
+    await mutation!.fail(new Error("test cleanup"));
+  });
+
+  it("refuses an install when a declared plan path overlaps existing dirt", async () => {
     const { repo, globalRoot } = await governedRepo();
     const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
     await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
@@ -522,20 +773,90 @@ describe.sequential("mutation policy and revision provider v1", () => {
     await git(repo, ["commit", "-m", "add graph lock"]);
     await writeFile(graphLockPath, "{\"version\":1,\"dirty\":true}\n", "utf8");
 
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel install",
+      reason: "Refuse a dirty dynamically planned install path",
+      requireCleanWorkingTree: false,
+    });
     let runtimeSideEffects = 0;
-    await expect((async () => {
-      const mutation = await GovernedMutation.begin({
+    let declarationError: unknown;
+    try {
+      declareMutationPath(graphLockPath);
+      runtimeSideEffects += 1;
+    } catch (error) {
+      declarationError = error;
+    }
+    expect(declarationError).toBeInstanceOf(Error);
+    expect((declarationError as Error).message).toMatch(/already dirty.*install\.graph-lock\.json/i);
+    expect(runtimeSideEffects).toBe(0);
+    await mutation!.fail(declarationError);
+    expect(requiresCleanMutationPreflight("add")).toBe(false);
+  });
+
+  it("reports only declared dirty path conflicts, not unrelated dirty files", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
+    const configPath = workspaceConfigPath(repo);
+    await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
+    await writeFile(graphLockPath, "{\"version\":1}\n", "utf8");
+    await git(repo, ["add", "-f", ".agentwheel/locks/install.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "add graph lock"]);
+    await writeFile(graphLockPath, "{\"version\":1,\"dirty\":true}\n", "utf8");
+    await writeFile(configPath, `${(await readFile(configPath, "utf8")).trim()}\n `, "utf8");
+    await writeFile(join(repo, "notes.txt"), "unrelated dirty\n", "utf8");
+
+    let precheckError: unknown;
+    try {
+      await GovernedMutation.begin({
         workspaceRoot: repo,
         globalRoot,
         commandName: "agentwheel install",
-        reason: "Refuse a dirty dynamically planned install path",
+        reason: "Report only dirty paths declared by the install plan",
+        anticipatedPaths: [graphLockPath, configPath],
         requireCleanWorkingTree: requiresCleanMutationPreflight("install"),
       });
-      runtimeSideEffects += 1;
-      await mutation?.complete();
-    })()).rejects.toThrow(/requires a clean working tree.*install\.graph-lock\.json/i);
-    expect(runtimeSideEffects).toBe(0);
-    expect(requiresCleanMutationPreflight("add")).toBe(false);
+    } catch (error) {
+      precheckError = error;
+    }
+    expect(precheckError).toBeInstanceOf(Error);
+    const message = (precheckError as Error).message;
+    expect(message).toContain(".agentwheel/config.json");
+    expect(message).toContain(".agentwheel/locks/install.graph-lock.json");
+    expect(message).not.toContain("notes.txt");
+    expect(message).toMatch(/Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
+  });
+
+  it("reports a dynamically declared dirty path without unrelated dirt", async () => {
+    const { repo, globalRoot } = await governedRepo();
+    const graphLockPath = join(repo, ".agentwheel", "locks", "install.graph-lock.json");
+    await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
+    await writeFile(graphLockPath, "{\"version\":1}\n", "utf8");
+    await git(repo, ["add", "-f", ".agentwheel/locks/install.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "add graph lock"]);
+    await writeFile(graphLockPath, "{\"version\":1,\"dirty\":true}\n", "utf8");
+    await writeFile(join(repo, "notes.txt"), "unrelated dirty\n", "utf8");
+
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel install",
+      reason: "Report a dynamically declared dirty install path",
+      requireCleanWorkingTree: false,
+    });
+    let declarationError: unknown;
+    try {
+      declareMutationPath(graphLockPath);
+    } catch (error) {
+      declarationError = error;
+    }
+    expect(declarationError).toBeInstanceOf(Error);
+    const message = (declarationError as Error).message;
+    expect(message).toContain(".agentwheel/locks/install.graph-lock.json");
+    expect(message).not.toContain("notes.txt");
+    expect(message).toMatch(/Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
+    await mutation!.fail(declarationError);
   });
 
   it("turns a rejecting Git hook into commit-pending and finalizes idempotently without rerunning the handler", async () => {
@@ -651,8 +972,8 @@ else {
     expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(before);
   });
 
-  it("recovers a receipt-bound journal after an injected post-copy crash and commits only verified declarative state", async () => {
-    const { repo, globalRoot } = await governedRepo();
+  it.each([false, true])("recovers a receipt-bound journal after a post-copy crash (pathScoped=%s)", async (pathScoped) => {
+    const { repo, globalRoot } = await (pathScoped ? pathScopedRepo() : governedRepo());
     const sourceRoot = await tempRoot("agentwheel-crash-source-");
     const runtimeRoot = await tempRoot("agentwheel-crash-runtime-");
     const sourcePath = join(sourceRoot, "rule.md");
@@ -717,6 +1038,7 @@ else {
     }]);
     expect(await readFile(join(runtimeRoot, ".runtime", "rules", "rule.md"), "utf8")).toBe("recovered runtime rule\n");
 
+    if (pathScoped) await commitExternal(repo, "outside.txt", "outside\n");
     const recovered = await recoverMutationRuntime("runtime-crash-1");
     expect(recovered.status).toBe("succeeded");
     expect(recovered.runtimeJournals[0]?.status).toBe("resolved");
@@ -1194,6 +1516,121 @@ if (request.action === "check") {
     expect((await git(repo, ["status", "--short"])).trim()).toBe("");
   });
 
+  it.each([false, true, "noCommit", "index", "legacy", "race", "merged-race"] as const)("recovers receipt-proven declarative bytes already committed by another writer (remaining=%s)", async (remaining) => {
+    const { repo, globalRoot } = await (remaining === "legacy" ? governedRepo() : pathScopedRepo());
+    const sourceRoot = await tempRoot("agentwheel-late-crash-source-");
+    const runtimeRoot = await tempRoot("agentwheel-late-crash-runtime-");
+    const sourcePath = join(sourceRoot, "late.md");
+    await writeFile(sourcePath, "late crash rule\n", "utf8");
+    const adapter: AdapterConfig = {
+      name: "late-crash",
+      targets: { rules: { local: { enabled: true, dest: ".runtime/rules" } } },
+    };
+    const artifact: DesiredArtifact = {
+      type: "rules",
+      name: "late.md",
+      sourcePath,
+      stagedPath: sourcePath,
+      relativePath: "rules/late.md",
+      kind: "file",
+      hash: await hashPath(sourcePath),
+      channel: "managed",
+      meta: { logicalSelector: "rules/late.md", dependencyRole: "root", owners: ["late-crash"] },
+    };
+    const plan = await createCombinedInstallPlan([artifact], adapter, runtimeRoot);
+    const graphLockPath = join(repo, ".agentwheel", "locks", "late-crash.graph-lock.json");
+    await mkdir(join(repo, ".agentwheel", "locks"), { recursive: true });
+    await writeFile(graphLockPath, JSON.stringify(emptyGraphLock("original-target")) + "\n");
+    await git(repo, ["add", ".agentwheel/locks/late-crash.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "Record original graph file identity"]);
+    let injected = false;
+    const crashingTransport: TargetTransport = {
+      ...localTransport,
+      async readFile(path) {
+        if (!injected && path.endsWith(".install-manifest.json") && await pathExists(graphLockPath)) {
+          injected = true;
+          throw new Error("injected crash after declarative write");
+        }
+        return localTransport.readFile(path);
+      },
+    };
+    const mutation = await GovernedMutation.begin({
+      workspaceRoot: repo,
+      globalRoot,
+      commandName: "agentwheel install",
+      operationId: "late-runtime-crash-1",
+      noCommit: remaining === "noCommit",
+      reason: "Recover after verified declarative state was written",
+      anticipatedPaths: [graphLockPath],
+    });
+    try {
+      await applyCombinedInstallPlan(plan, {
+        transport: crashingTransport,
+        graphLockDigest: "late-crash-lock-digest",
+        graphLock: { path: graphLockPath, lock: emptyGraphLock("late-crash") },
+      });
+      throw new Error("expected injected crash");
+    } catch (error) {
+      await mutation!.fail(error);
+    }
+    expect(await pathExists(graphLockPath)).toBe(true);
+    expect((await readMutationReceipt("late-runtime-crash-1")).runtimeJournals[0]?.status).toBe("pending");
+
+    const original = await readMutationReceipt("late-runtime-crash-1");
+    expect(original.paths).toHaveLength(1);
+    await git(repo, ["add", ".agentwheel/locks/late-crash.graph-lock.json"]);
+    await git(repo, ["commit", "-m", "Save interrupted declarative bytes"]);
+    await commitExternal(repo, "outside.txt", "unrelated later commit\n");
+    if (remaining === true || remaining === "race" || remaining === "merged-race") {
+      // The interrupted operation can own a second declared delta still awaiting revisioning.
+      const { resumeMutationPathDeclarations, endMutationPathDeclarations } = await import("../src/mutation/declarations.js");
+      resumeMutationPathDeclarations(repo, original.operationId);
+      declareMutationPath(join(repo, "remaining.txt"));
+      endMutationPathDeclarations();
+      await writeFile(join(repo, "remaining.txt"), "remaining operation bytes\n");
+    }
+    const savedHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (remaining === "index") {
+      await writeFile(join(repo, "staged.txt"), "foreign staged bytes\n");
+      await git(repo, ["add", "staged.txt"]);
+    }
+    if (remaining === "race" || remaining === "merged-race") {
+      await expect(recoverMutationRuntime("late-runtime-crash-1", {
+        async beforeProviderCompletion() {
+          const originalBytes = await readFile(graphLockPath, "utf8");
+          if (remaining === "merged-race") await git(repo, ["switch", "-c", "race-side"]);
+          await commitExternal(repo, ".agentwheel/locks/late-crash.graph-lock.json", "foreign intermediate bytes\n");
+          await commitExternal(repo, ".agentwheel/locks/late-crash.graph-lock.json", originalBytes);
+          if (remaining === "merged-race") {
+            await git(repo, ["switch", "main"]);
+            await commitExternal(repo, "race-outside.txt", "unrelated branch\n");
+            await git(repo, ["merge", "--no-ff", "race-side", "-m", "Merge hidden recovery race"]);
+          }
+        },
+      })).rejects.toThrow(/overlaps protected/);
+      return;
+    }
+    if (typeof remaining === "string") {
+      await expect(recoverMutationRuntime("late-runtime-crash-1")).rejects.toThrow(remaining === "index" ? /clean Git index/ : /HEAD lease/);
+      expect((await readMutationReceipt(original.operationId)).runtimeJournals[0]?.status).toBe("pending");
+      expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(savedHead);
+      return;
+    }
+    const recovered = await recoverMutationRuntime("late-runtime-crash-1");
+    expect(recovered.status).toBe(remaining === true ? "succeeded" : "no-repository-delta");
+    expect(recovered.expectedHead).toBe(original.expectedHead);
+    expect(recovered.paths).toEqual(expect.arrayContaining(original.paths));
+    expect(recovered.paths).toHaveLength(remaining === true ? 2 : 1);
+    expect(recovered.runtimeJournals[0]?.status).toBe("resolved");
+    const terminalHead = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    if (remaining === true) expect((await git(repo, ["show", "--name-only", "--format=", "HEAD"])).trim()).toBe("remaining.txt");
+    else expect(terminalHead).toBe(savedHead);
+    expect(recovered.providerResponse).toMatchObject({ action: "recover", expectedHead: savedHead, status: remaining === true ? "verified" : "no-repository-delta" });
+    expect(await resumeMutation(original.operationId, "recover")).toEqual(recovered);
+    expect((await git(repo, ["rev-parse", "HEAD"])).trim()).toBe(terminalHead);
+    expect((await git(repo, ["status", "--short"])).trim()).toBe("");
+  });
+
   it("refuses tracked Syncwheel control state and multi-repository revisioning before handlers", async () => {
     const first = await governedRepo({ trackedSyncwheel: true });
     await expect(GovernedMutation.begin({
@@ -1231,7 +1668,7 @@ if (request.action === "check") {
     await mkdir(lockPath, { recursive: true });
 
     await expect(acquireMutationLock(repo, "lock-race-contender"))
-      .rejects.toThrow(/another Agentwheel mutation owns/i);
+      .rejects.toThrow(/another Agentwheel mutation owns.*Owner unknown.*Inspect the Agent Mesh session graph.*do not remove the safety block/i);
     await expect(stat(lockPath)).resolves.toBeTruthy();
     await expect(stat(join(lockPath, "owner.json"))).rejects.toThrow();
     expect(mutationStateRoot()).toBe(stateRoot);
@@ -1429,7 +1866,7 @@ async function snapshotSyncwheelSource(sourceRoot: string): Promise<string> {
   return snapshot;
 }
 
-async function syncwheelProviderRepo(syncwheelSource: string, root: string): Promise<string> {
+async function syncwheelProviderRepo(syncwheelSource: string, root: string, journal = false): Promise<string> {
   const origin = join(root, "origin.git");
   const repo = join(root, "repo");
   await execFileAsync("git", ["init", "--bare", "-q", origin]);
@@ -1472,6 +1909,10 @@ async function syncwheelProviderRepo(syncwheelSource: string, root: string): Pro
     },
     channels: [],
   }, null, 2)}\n`, "utf8");
+  if (journal) await writeFile(join(repo, ".syncwheel", "manifest.json"), JSON.stringify({
+    version: 2, repository_mode: "journal", syncwheel_tracking: "git-tracked",
+    journal: { branch: "main", remote: "origin", include: ["**"], exclude: [], max_file_bytes: 10485760, interval: "30m" },
+  }));
   await execFileAsync("python3", [
     join(syncwheelSource, "scripts", "syncwheel.py"),
     "hooks",
@@ -1488,7 +1929,7 @@ async function syncwheelProviderRepo(syncwheelSource: string, root: string): Pro
   await git(repo, ["add", ".gitignore", "base.txt", ".syncwheel/manifest.json"]);
   await git(repo, ["commit", "-q", "-m", "test: initialize Syncwheel provider fixture"]);
   await git(repo, ["push", "-q", "-u", "origin", "main"]);
-  await git(repo, ["switch", "-q", "-c", "main-integration", "main"]);
+  if (!journal) await git(repo, ["switch", "-q", "-c", "main-integration", "main"]);
   return repo;
 }
 
@@ -1545,4 +1986,23 @@ function emptyGraphLock(targetFingerprint: string): GraphLock {
       plainNameIncumbents: [],
     },
   };
+}
+
+const scopedProvider = { kind: "git" as const, id: "git", protocolVersion: 1 as const, headLease: "path-scoped" as const };
+
+async function pathScopedRepo() {
+  const fixture = await governedRepo();
+  const raw = JSON.parse(await readFile(workspaceConfigPath(fixture.repo), "utf8"));
+  raw.mutationPolicy.revisioning.provider = scopedProvider;
+  await writeFile(workspaceConfigPath(fixture.repo), JSON.stringify(raw));
+  await git(fixture.repo, ["add", ".agentwheel/config.json"]);
+  await git(fixture.repo, ["commit", "-m", "Enable path-scoped lease"]);
+  return fixture;
+}
+
+async function commitExternal(repo: string, path: string, content: string) {
+  await mkdir(join(repo, path, ".."), { recursive: true });
+  await writeFile(join(repo, path), content);
+  await git(repo, ["add", "--", path]);
+  await git(repo, ["commit", "-m", "Record external change"]);
 }

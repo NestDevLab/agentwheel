@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
@@ -13,7 +13,7 @@ import {
   targetMappingForArtifact,
   type AdapterConfig,
 } from "../model/adapter.js";
-import { abortApplyJournal, applyCombinedInstallPlan, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, uninstall } from "../install/index.js";
+import { abortApplyJournal, applyCombinedInstallPlan, computeSourceLockRevision, createOwnershipUninstallPlan, createUninstallPlan, normalizeTargetRoot, readApplyJournal, readInstallManifest, readSourceLock, recoverPendingApply, uninstall } from "../install/index.js";
 import { stateKeyFor } from "../install/paths.js";
 import { formatDependencyTree, formatDepsWhy, formatGraphPlan, formatLockDependencyTree, formatPlan, graphPlanReport, installPlanReportTarget, planReport, type PlanReport, type PlanReportTarget } from "./format.js";
 import { renderReport, type ReportFormat } from "./render.js";
@@ -21,12 +21,12 @@ import { parseServeIntervalSeconds, parseServePort, servePlanDashboard } from ".
 import { getSourceDriver } from "../source/index.js";
 import { inferSourceDriverName } from "../source/identify.js";
 import { stageSource, stageSourceRaw } from "../staging/staging.js";
-import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
+import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWorkspaceConfigPath, isCompositeWorkspaceProfile, packagesForTarget, pinConfiguredPackages, readMergedWorkspaceConfig, readWorkspaceConfig, supportsFleetConfig, upsertPackage, workspaceConfigPath, workspaceConfigSchema, writeWorkspaceConfig } from "../model/workspace.js";
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
-import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, graphLockPathForTarget, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
+import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, discoverTargetApplyJournal, graphLockPathForTarget, resolvePriorTargetState, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
@@ -42,10 +42,14 @@ import { validatePackage } from "../model/package-validate.js";
 import { migratePackageManifest } from "../model/package-migrate.js";
 import { CURRENT_OPENPACK_SCHEMA_VERSION, findPackageManifestPath } from "../model/package.js";
 import { canonicalGraphLockJson, canonicalizeGraphLock, computeTargetFingerprint, readGraphLock, type GraphLock } from "../model/graph-lock.js";
+import { resolveTargetStateIdentity } from "../model/target-state.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
+import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
+import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
+import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
 import { compareSemverStrings, satisfiesVersionRange } from "../resolve/semver.js";
 import { assertNoCompositeCycle, collectCompositeMembers, compositeKey, parseCompositeChain, runMemberAgentwheel } from "../profile/members.js";
@@ -224,6 +228,7 @@ program
   .argument("<source>", "package source")
   .option("--driver <driver>", "source driver (local, git, skillkit, vercel-skills, mcp-registry, or clawhub)")
   .option("--adapter <adapter>", "built-in adapter", "openclaw")
+  .option("--runtimes <adapters>", "restrict package runtimes (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "use the user workspace", false)
   .option("--local", "use the nearest local workspace", false)
@@ -246,6 +251,36 @@ program
     const entry = await packageEntryFromSource(source, targetRoot, normalizedOptions);
     await writeWorkspaceConfig(targetRoot, upsertPackage(await readWorkspaceConfig(targetRoot), entry));
     console.log(`Added ${entry.name}. Preview: agentwheel plan - Apply: agentwheel install`);
+  });
+
+program
+  .command("pin")
+  .description("pin configured revisions or replace package declarations without touching runtimes")
+  .argument("[alias]", "exact configured package alias")
+  .argument("[commit]", "exact 40-hex commit SHA")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("-t, --target-root <path>", "explicit workspace root")
+  .option("--pins-file <path>", "JSON array of {alias, commit, select?} pins in one mutation")
+  .option("--packages-file <path>", "JSON array replacing the complete configured packages list")
+  .option("--dry-run", "print the complete proposed config as JSON without writing", false)
+  .option("--select <type/name>", "replace the complete selection (repeatable or comma-separated)", collectSelectOption)
+  .action(async (alias, commit, options) => {
+    const workspaceRoot = await workspaceRootFromOptions(normalizeRuntimeScopeOptions(options));
+    const positional = alias !== undefined || commit !== undefined || options.select !== undefined;
+    if (options.packagesFile ? positional || options.pinsFile : options.pinsFile ? positional : !alias || !commit) {
+      throw new Error("Choose pin <alias> <commit> [--select ...], --pins-file <path>, or --packages-file <path>, exclusively.");
+    }
+    const inputFile = options.packagesFile ?? options.pinsFile;
+    const input: unknown = inputFile
+      ? JSON.parse(await readFile(resolve(inputFile), "utf8"))
+      : [{ alias, commit, ...(options.select === undefined ? {} : { select: options.select }) }];
+    const config = await pinConfiguredPackages(workspaceRoot, input, {
+      dryRun: options.dryRun, replacePackages: options.packagesFile !== undefined,
+    });
+    if (options.dryRun) console.log(JSON.stringify(config, null, 2));
+    else console.log("Pinned configured packages. Preview: agentwheel plan - Apply: agentwheel install");
   });
 
 program
@@ -446,12 +481,14 @@ program
   .option("--suggestion <alias>", "include one suggested companion alias (repeatable or comma-separated)", collectSuggestionOption, [] as string[])
   .option("--override <source-or-package::type/name>", "for source previews, allow the source to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--dry-run", "accepted for symmetry; plan never writes", false)
+  .option("--adopt", "adopt unmanaged destinations; managed drift and foreign ownership remain protected", false)
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts during install planning", false)
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--no-deps", "resolve only root sources and ignore requires with a warning")
   .option("--only-source", "exclude unrelated configured workspace packages", false)
   .option("--frozen-lock", "resolve strictly from the existing graph lock and cached sources", false)
@@ -488,12 +525,14 @@ program
   .option("--override <source-or-package::type/name>", "when adding a source, allow it to replace a colliding artifact (repeatable)", collectOverrideOption, [] as string[])
   .option("--profile <name>", "workspace runtime profile")
   .option("--dry-run", "show plan without writing", false)
+  .option("--adopt", "adopt unmanaged destinations; managed drift and foreign ownership remain protected", false)
   .option("--format <fmt>", "output format: human|json|mermaid|html", "human")
   .option("--json", "print the resolved plan as JSON", false)
   .option("--force-drift", "replace drifted managed artifacts", false)
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
@@ -619,6 +658,7 @@ program
   .option("--force-foreign-state", "plan even when another workspace owns install state at the same paths", false)
   .option("--force-conflict", "adopt unmanaged destinations when their content already matches the desired artifact", false)
   .option("--replace-conflict", "replace unmanaged destinations even when their content differs", false)
+  .option("--recover-legacy-state", "build a stable state while preserving invalid legacy candidates", false)
   .option("--execute-plugins", "execute semantic plugin installs", false)
   .option("--reload-runtimes", "run configured runtime reload commands after executed semantic plugin changes", false)
   .option("--restart-runtimes", "alias for --reload-runtimes", false)
@@ -777,11 +817,11 @@ program
         const normalizedOptions = normalizeRuntimeScopeOptions(options);
         const targets = await resolveCliTargets(normalizedOptions);
         for (const target of targets) {
-          const { lock, adapter } = await readTargetGraphLock(target, normalizedOptions);
-          const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-          const state = installStateForTarget(target, adapter, normalizedOptions, installationType);
-          const manifest = await readInstallManifest(state.installRoot, adapter.name, transportForTarget(target), state);
-          console.log(formatDepsWhy(lock, manifest, selector));
+          const state = await resolveCliTargetState(target, normalizedOptions);
+          if (!state.graphLock) {
+            throw new Error(`No graph lock for ${state.adapter.name} at ${target.targetRoot}: ${state.stableGraphLockPath}`);
+          }
+          console.log(formatDepsWhy(state.graphLock, state.manifest, selector));
         }
       }),
   );
@@ -923,14 +963,83 @@ const ownershipCommand = program
   .description("inspect and transfer manifest ownership without rewriting runtime artifacts");
 
 ownershipCommand
+  .command("release-claim")
+  .description("release one exact plain ownership claim while preserving runtime bytes and package declarations")
+  .argument("<selector>", "exact artifact selector in type/name form")
+  .requiredOption("--path <relative-path>", "exact owned runtime path from the install manifest")
+  .requiredOption("--state-key <key>", "exact source install-manifest state key")
+  .requiredOption("--from-workspace-root <path>", "exact current workspace owner root")
+  .option("--from-fleet-id <id>", "qualify the recorded owner with its Fleet id")
+  .option("--fleet <id>", "governing registered Fleet workspace")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("-i, --installation-type <type>", "exact installation type")
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "configured agent resolving to one local target")
+  .option("--profile <name>", "profile resolving to one local target")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed manifest inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata-only release", false)
+  .option("--json", "print the complete plan or result as JSON", false)
+  .action(async (selector, _options, command: Command) => {
+    const options = command.optsWithGlobals();
+    if (!options.reason) throw new Error("Ownership release requires --reason <why> for planning and applying.");
+    const normalized = normalizeRuntimeScopeOptions(options);
+    const targets = await resolveCliTargets(normalized);
+    if (targets.length !== 1) throw new Error("Ownership release requires exactly one target.");
+    const target = targets[0]!;
+    const adapterOptions = adapterOptionsForTarget(target, normalized);
+    const adapter = await resolveAdapterForTarget(target, adapterOptions);
+    const installationType = normalized.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const request = {
+      workspaceRoot: await workspaceRootFromOptions(normalized),
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      fromFleetId: options.fromFleetId,
+      targetRoot: state.installRoot,
+      adapter: adapter.name,
+      installationType,
+      stateKey: options.stateKey,
+      selector,
+      path: options.path,
+      reason: options.reason,
+      planDigest: options.planDigest,
+      expectedSourceRevision: options.expectedSourceRevision,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      operationId: options.operationId,
+      noCommit: options.commit === false,
+      transport: transportForTarget(target),
+    };
+    const result = options.apply ? await applyReleaseOwnership(request) : await planReleaseOwnership(request);
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
+    console.log(`${options.apply ? "Released ownership claim" : "Ownership release plan"}: ${result.selector} at ${result.path}`);
+    console.log(`Owner: ${result.owner}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision}`);
+    console.log(`Recorded hash: ${result.recordedHash}; actual runtime hash: ${result.runtimeHash}`);
+    console.log(`Inventory revision: ${result.manifestInventoryRevision}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log("Apply with this same scope and reason plus --apply --plan-digest, --expected-source-revision and --expected-inventory-revision from this plan.");
+  });
+
+ownershipCommand
   .command("handoff")
   .description("transfer one managed artifact between Agentwheel workspace roots")
   .argument("<selector>", "exact artifact selector in type/name form")
-  .requiredOption("--from-workspace-root <path>", "current owning workspace root")
+  .option("--from-workspace-root <path>", "current owning workspace root")
+  .option("--from-fleet <id>", "qualify the current owner with a registered fleet id")
+  .option("--from-unknown-owner", "hand off an artifact recorded as workspace:unknown", false)
   .requiredOption("--to-workspace-root <path>", "new owning workspace root")
+  .option("--source-state-key <key>", "explicit source install-manifest state key for this handoff only")
   .option("--to-fleet <id>", "qualify the new owner with a registered fleet id")
-  .option("--expected-hash <sha256>", "expected current artifact hash; required when applying")
+  .option("--expected-hash <sha256>", "expected recorded artifact hash; required when applying")
   .option("--expected-revision <sha256>", "expected install manifest revision; required when applying")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required for run-as handoff")
+  .option("--expected-inventory-revision <sha256>", "reviewed full inventory revision; required for run-as handoff")
+  .option("--carry-drift", "accept a file or directory whose runtime differs from the recorded hash; the recorded hash is kept", false)
+  .option("--expected-runtime-hash <sha256>", "expected drifted runtime hash; required when applying with --carry-drift")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--user", "use the user workspace", false)
@@ -943,9 +1052,29 @@ ownershipCommand
   .option("--agent <name>", "named agent from merged config")
   .option("--profile <name>", "workspace runtime profile (must resolve to one target)")
   .option("--dry-run", "validate all preconditions without writing the manifest", false)
+  .option("--json", "print the complete deterministic ownership handoff plan", false)
   .action(async (selector, options) => {
     if (!options.dryRun && (!options.expectedHash || !options.expectedRevision)) {
       throw new Error("Applying an ownership handoff requires --expected-hash and --expected-revision from a reviewed --dry-run.");
+    }
+    if (Boolean(options.fromWorkspaceRoot) === (options.fromUnknownOwner === true)) {
+      throw new Error("Ownership handoff requires exactly one of --from-workspace-root or --from-unknown-owner.");
+    }
+    if (options.fromFleet !== undefined && (!options.fromWorkspaceRoot || options.fromUnknownOwner)) {
+      throw new Error("--from-fleet requires --from-workspace-root and cannot be combined with --from-unknown-owner.");
+    }
+    const fromWorkspaceRoot = options.fromWorkspaceRoot === undefined ? undefined : normalizeCliPath(options.fromWorkspaceRoot);
+    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
+    // Owner qualification is independent of the workspace/target selected by --fleet.
+    for (const [id, root, label] of [
+      [options.fromFleet, fromWorkspaceRoot, "Source"],
+      [options.toFleet, toWorkspaceRoot, "Destination"],
+    ] as const) {
+      if (id === undefined) continue;
+      const fleet = await showRegisteredFleet(id);
+      if (resolve(fleet.root) !== resolve(root!)) {
+        throw new Error(`${label} fleet '${id}' is registered at ${fleet.root}, not ${root}.`);
+      }
     }
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const targets = await resolveCliTargets(normalizedOptions);
@@ -956,49 +1085,118 @@ ownershipCommand
     if (!artifactType || !artifactName || extra.length > 0) {
       throw new Error(`Ownership handoff selector must be exactly type/name: ${selector}`);
     }
-    const target = targets[0];
-    const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
-    const adapter = await resolveAdapterForTarget(target, adapterOptions);
-    const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-    const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
-    if (options.toFleet) {
-      const fleet = await showRegisteredFleet(options.toFleet);
-      if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
-        throw new Error(`Destination fleet '${options.toFleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
-      }
+    const target = options.sourceStateKey === undefined
+      ? targets[0]
+      : { ...targets[0], stateKey: options.sourceStateKey };
+    if (options.sourceStateKey !== undefined
+      && (stateKeyFor(target.adapter, { stateKey: options.sourceStateKey }) !== options.sourceStateKey
+        || !options.sourceStateKey.startsWith(`${target.adapter}.`))) {
+      throw new Error("The source state key must be exact, canonical, and scoped to the selected adapter.");
+    }
+    const state = await resolveCliTargetState(target, normalizedOptions);
+    const { adapter, installationType } = state;
+    if (options.sourceStateKey !== undefined
+      && options.sourceStateKey !== `${adapter.name}.${installationType}`
+      && !options.sourceStateKey.startsWith(`${adapter.name}.${installationType}.`)) {
+      throw new Error("The source state key must match the selected installation type.");
+    }
+    if (state.migration) {
+      throw new Error(
+        "Migrate the target state before ownership handoff by running a full agentwheel install for this target.",
+      );
     }
     const request = {
-      ...state,
+      workspaceRoot: await workspaceRootFromOptions(normalizedOptions),
+      reason: options.reason,
+      operationId: options.operationId,
+      noCommit: options.commit === false,
+      installationType,
+      stateKey: state.stableStateKey,
       targetRoot: state.installRoot,
       adapter: adapter.name,
       artifactType,
       artifactName,
-      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      ...(options.fromUnknownOwner === true
+        ? { fromUnknownOwner: true }
+        : { fromWorkspaceRoot, fromFleetId: options.fromFleet }),
       toWorkspaceRoot,
       toFleetId: options.toFleet,
       expectedHash: options.expectedHash,
       expectedRevision: options.expectedRevision,
+      planDigest: options.planDigest,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      carryDrift: options.carryDrift === true,
+      expectedRuntimeHash: options.expectedRuntimeHash,
       transport: transportForTarget(target),
     };
     const result = options.dryRun
       ? await planArtifactOwnershipHandoff(request)
       : await applyArtifactOwnershipHandoff(request);
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
     console.log(`${options.dryRun ? "Ownership handoff plan" : "Ownership handed off"}: ${result.selector}`);
     console.log(`Target: ${result.adapter}/${result.installationType ?? "default"} at ${result.targetRoot}`);
     console.log(`Path: ${result.path}`);
     console.log(`Hash: ${result.artifactHash}`);
+    if (result.drifted) console.log(`Runtime hash: ${result.runtimeHash} (drift carried; the recorded hash is kept)`);
     console.log(`Manifest revision: ${result.manifestRevision}`);
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
+    if (result.planDigest) console.log(`Plan digest: ${result.planDigest}`);
+    if (result.manifestInventoryRevision) console.log(`Inventory revision: ${result.manifestInventoryRevision}`);
+  });
+
+ownershipCommand
+  .command("recovery-plan")
+  .description("write a read-only per-path legacy ownership evidence report")
+  .option("--fleet <id>", "required for a registered Fleet target; omit for a non-Fleet workspace")
+  .requiredOption("--report <path>", "new private JSON report path")
+  .option("--agent <name>", "one named target")
+  .option("--profile <name>", "profile resolving to one target")
+  .action(async (options) => {
+    const targets = await resolveCliTargets({ fleet: options.fleet, agent: options.agent, profile: options.profile });
+    if (targets.length !== 1) throw new Error(`Recovery planning requires one target, found ${targets.length}.`);
+    const target = targets[0]!;
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    if (!options.fleet && (target.fleetId || (supportsFleetConfig(config) && config.fleetId))) {
+      throw new Error("Recovery planning for a Fleet target requires --fleet <id>.");
+    }
+    if (options.fleet && target.fleetId !== options.fleet) throw new Error("Resolved target does not belong to the selected Fleet.");
+    const adapter = await resolveAdapterForTarget(target, {});
+    const transport = transportForTarget(target);
+    const requestedReport = normalizeCliPath(options.report);
+    const reportPath = join(await realpath(dirname(requestedReport)), basename(requestedReport));
+    const reportInsideTarget = relative(resolve(target.targetRoot), reportPath);
+    if (reportInsideTarget === "" || (!reportInsideTarget.startsWith("..") && !isAbsolute(reportInsideTarget))) {
+      throw new Error("Recovery report must be outside the runtime target root.");
+    }
+    const installationType = target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
+    const targetPackages = packagesForCliTarget(config.packages, target, {});
+    if (targetPackages.length === 0) throw new Error("Recovery target has no configured source packages.");
+    await withFreshReadOnlyGraphPlan(target, adapter, adapterOptionsForTarget(target, {}), installationType, targetPackages, async (graphPlan) => {
+      const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, transport);
+      const report = await planLegacyRecovery({
+        graphPlan, installRoot, workspaceRoot: target.workspaceRoot,
+        fleetId: target.fleetId, explicitStateKey: target.stateKey,
+        targetKey: targetKeyForTarget(target, adapter.name), adapter: adapter.name, installationType,
+        historicalLocks: await inventoryHistoricalLocks(target.workspaceRoot), transport,
+      });
+      await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+      console.log(`Recovery report: ${reportPath}`);
+      console.log(JSON.stringify(report.counts));
+    });
   });
 
 ownershipCommand
   .command("retire-stale")
   .description("retire stale source-manifest ownership already covered by one Fleet manifest")
   .requiredOption("--from-workspace-root <path>", "exact stale workspace owner root")
+  .option("--from-fleet-id <id>", "exact stale Fleet owner id for same-Fleet duplicate state")
   .requiredOption("--to-workspace-root <path>", "registered destination Fleet root")
   .requiredOption("--source-state-key <key>", "exact source install-manifest state key")
-  .requiredOption("--fleet <id>", "registered destination Fleet")
+  .option("--destination-state-key <key>", "exact Fleet-owned destination install-manifest state key (defaults to the stable target state)")
+  .option("--to-fleet <id>", "registered destination Fleet owner, independent of target workspace scope")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet (also the destination owner unless --to-fleet is set)")
   .option("--adapter <adapter>", "built-in adapter")
   .option("-i, --installation-type <type>", "installation type (for example local or user)")
   .option("--adapter-config <path>", "adapter JSON/JSONC file")
@@ -1016,30 +1214,63 @@ ownershipCommand
   .option("--json", "print the complete deterministic plan as JSON", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
-    const fleet = await showRegisteredFleet(options.fleet);
+    const destinationFleet = options.toFleet ?? options.fleet;
+    if (!destinationFleet) throw new Error("Stale ownership retirement requires --to-fleet <id> or the legacy --fleet <id> scope.");
+    const fleet = await showRegisteredFleet(destinationFleet);
     const toWorkspaceRoot = normalizeCliPath(options.toWorkspaceRoot);
     if (resolve(fleet.root) !== resolve(toWorkspaceRoot)) {
-      throw new Error(`Destination Fleet '${options.fleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+      throw new Error(`Destination Fleet '${destinationFleet}' is registered at ${fleet.root}, not ${toWorkspaceRoot}.`);
+    }
+    const assertDestinationWorkspace = async (workspaceRoot: string, fleetId?: string): Promise<void> => {
+      const fleetRoot = resolve(fleet.root);
+      const canonicalFleetRoot = await realpath(fleetRoot);
+      const within = (root: string, path: string): boolean => {
+        const suffix = relative(root, path);
+        return suffix === "" || (suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix));
+      };
+      if (canonicalFleetRoot !== fleetRoot
+        || (fleetId !== undefined && fleetId !== fleet.id)
+        || !within(fleetRoot, resolve(workspaceRoot))
+        || !within(canonicalFleetRoot, await realpath(workspaceRoot))) {
+        throw new Error(`Resolved target workspace does not belong to destination Fleet '${fleet.id}'.`);
+      }
+    };
+    if (options.toFleet) {
+      // Validate the destination's current registration/config contract as well
+      // as the independently selected caller workspace.
+      await resolveWorkspaceScope({ fleet: fleet.id });
+      // Named run-as target resolution inspects its service root. Validate the
+      // caller workspace scope before resolving any configured runtime target.
+      if (normalizedOptions.targetRoot && !normalizedOptions.workspaceTargetDerived) {
+        await assertDestinationWorkspace(normalizedOptions.targetRoot);
+      }
+      const scope = await resolveCliWorkspaceScope(normalizedOptions);
+      await assertDestinationWorkspace(scope.root, scope.fleetId);
     }
     const targets = await resolveCliTargets(normalizedOptions);
     if (targets.length !== 1) {
       throw new Error(`Stale ownership retirement requires exactly one destination Fleet target, found ${targets.length}.`);
     }
     const target = targets[0]!;
-    if (target.fleetId !== options.fleet || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
-      throw new Error(`Resolved target does not belong to destination Fleet '${options.fleet}'.`);
+    if (options.toFleet) {
+      await assertDestinationWorkspace(target.workspaceRoot, target.fleetId);
+    } else if (target.fleetId !== fleet.id || resolve(target.workspaceRoot) !== resolve(fleet.root)) {
+      throw new Error(`Resolved target does not belong to destination Fleet '${fleet.id}'.`);
     }
     const adapterOptions = adapterOptionsForTarget(target, normalizedOptions);
     const adapter = await resolveAdapterForTarget(target, adapterOptions);
-    const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-    const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+    const installationType = normalizedOptions.installationType
+      ?? target.installationType
+      ?? resolveInstallationTypeForAdapter(adapter, undefined);
+    const stableState = installStateForTarget(target, adapter, adapterOptions, installationType);
     const request = {
-      targetRoot: state.installRoot,
+      targetRoot: stableState.installRoot,
       adapter: adapter.name,
       installationType,
       sourceStateKey: options.sourceStateKey,
-      destinationStateKey: state.stateKey,
+      destinationStateKey: options.destinationStateKey ?? stableState.stateKey,
       fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      fromFleetId: options.fromFleetId,
       toWorkspaceRoot,
       toFleetId: fleet.id,
       planDigest: options.planDigest,
@@ -1052,17 +1283,26 @@ ownershipCommand
     const result = options.apply
       ? await applyRetireStaleOwnership(request)
       : await planRetireStaleOwnership(request);
+    const workspaceArgs = options.toFleet
+      ? options.fleet ? ["--fleet", options.fleet]
+        : options.user ? ["--user"]
+          : options.targetRoot ? [] : ["--local"]
+      : ["--fleet", fleet.id];
     const targetArgs = options.profile
       ? ["--profile", options.profile]
       : target.agentName
         ? ["--agent", target.agentName]
-        : ["--adapter", adapter.name, "--target-root", target.targetRoot];
+        : ["--adapter", adapter.name, ...(workspaceArgs.length ? [] : ["--target-root", target.targetRoot])];
     const applyArgs = [
       "agentwheel", "ownership", "retire-stale",
       "--from-workspace-root", request.fromWorkspaceRoot,
+      ...(request.fromFleetId ? ["--from-fleet-id", request.fromFleetId] : []),
       "--to-workspace-root", request.toWorkspaceRoot,
       "--source-state-key", request.sourceStateKey,
-      "--fleet", request.toFleetId,
+      "--destination-state-key", request.destinationStateKey,
+      ...(options.toFleet ? ["--to-fleet", request.toFleetId] : []),
+      ...workspaceArgs,
+      ...((options.profile || target.agentName) && options.targetRoot ? ["--target-root", normalizedOptions.targetRoot!] : []),
       ...targetArgs,
       "--installation-type", installationType,
       ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),
@@ -1088,6 +1328,156 @@ ownershipCommand
     for (const entry of result.selected) console.log(`- ${entry.path}: ${entry.sourceEntryDigest} -> ${entry.destinationEntryDigest}`);
     console.log(`Plan digest: ${result.planDigest}`);
     if (!options.apply) console.log(`Apply: ${applyCommand}`);
+  });
+
+ownershipCommand
+  .command("adopt-legacy")
+  .description("move proven legacy-keyed ownership into this workspace's stable target state without rewriting runtime artifacts")
+  .requiredOption("--source-state-key <key>", "exact legacy install-manifest state key")
+  .requiredOption("--from-workspace-root <path>", "exact plain workspace owner root of the entries to move")
+  .option("--agent <name>", "named agent of this workspace")
+  .option("--profile <name>", "workspace profile resolving to one target")
+  .option("-i, --installation-type <type>", "installation type (for example local or user)")
+  .option("--adapter-config <path>", "adapter JSON/JSONC file")
+  .option("--adapter-module <path>", "local programmatic adapter module")
+  .option("--allow-adapter-code", "allow loading local adapter code", false)
+  .option("--carry-drift", "also move drifted plain entries while keeping the recorded hash; forbidden for managed blocks", false)
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256>", "reviewed source manifest revision; required with --apply")
+  .option("--expected-destination-revision <sha256|absent>", "reviewed destination manifest revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed runtime manifest inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata-only adoption", false)
+  .option("--json", "print the complete deterministic plan as JSON", false)
+  .action(async (options) => {
+    if (Boolean(options.agent) === Boolean(options.profile)) {
+      throw new Error("Legacy ownership adoption requires exactly one of --agent or --profile.");
+    }
+    const normalizedOptions = normalizeRuntimeScopeOptions(options);
+    const requestedInstallationType = normalizedOptions.installationType;
+    // group like a plain install, without -i or adapter flags: each forces one setting on every
+    // package, so we'd adopt paths the next plain install removes
+    const plainInstallOptions = {
+      ...normalizedOptions,
+      installationType: undefined,
+      adapterConfig: undefined,
+      adapterModule: undefined,
+    };
+    const targets = await resolveCliTargets(plainInstallOptions);
+    if (targets.length !== 1) {
+      throw new Error(`Legacy ownership adoption requires exactly one runtime target, found ${targets.length}.`);
+    }
+    const target = targets[0]!;
+    if (target.fleetId) {
+      throw new Error("Legacy ownership adoption targets a nested workspace; a Fleet target uses fleet normalize or ownership retire-stale.");
+    }
+    if (target.transport === "ssh") throw new Error("Legacy ownership adoption does not support SSH targets.");
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const groups = new Map<string, PackageGraphGroup>();
+    for (const pkg of packagesForCliTarget(config.packages, target, plainInstallOptions)) graphGroupForPackage(groups, target, pkg, plainInstallOptions).packages.push(pkg);
+    if (groups.size === 0) throw new Error(`No configured source packages in ${target.workspaceRoot}.`);
+    const installationTypes = [...new Set([...groups.values()].map((candidate) => candidate.installationType))];
+    if (installationTypes.length > 1) {
+      throw new Error(
+        `Configured packages use installation types ${installationTypes.join(", ")}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    if (requestedInstallationType !== undefined && requestedInstallationType !== installationTypes[0]) {
+      throw new Error(
+        `--installation-type ${requestedInstallationType} does not match installation type ${installationTypes[0]}, `
+        + "which install uses for the configured packages.",
+      );
+    }
+    if (groups.size > 1) {
+      throw new Error(
+        `Configured packages resolve to ${groups.size} adapter configurations for ${installationTypes[0]}, each with its own install state; `
+        + "legacy ownership adoption needs exactly one.",
+      );
+    }
+    const group = [...groups.values()][0]!;
+    const { installationType, adapterOptions } = group;
+    const requestedAdapterSettings = [
+      { flag: "--adapter-config", requested: normalizedOptions.adapterConfig, resolved: adapterOptions.adapterConfig, none: "no adapter config" },
+      { flag: "--adapter-module", requested: normalizedOptions.adapterModule, resolved: adapterOptions.adapterModule, none: "no adapter module" },
+    ];
+    for (const { flag, requested, resolved, none } of requestedAdapterSettings) {
+      if (requested === undefined) continue;
+      // adapter files load relative to the workspace root, not cwd
+      if (resolved !== undefined && resolve(target.workspaceRoot, requested) === resolve(target.workspaceRoot, resolved)) continue;
+      throw new Error(`${flag} ${requested} does not match what install resolves for the configured packages: ${resolved ?? none}.`);
+    }
+    const adapter = await resolveAdapterForTarget(group.target, adapterOptions);
+    const stable = installStateForTarget(group.target, adapter, adapterOptions, installationType);
+    const stableGraphLockPath = graphLockPathForTarget(
+      group.target.workspaceRoot,
+      targetKeyForTarget(group.target, adapter.name),
+      adapter.name,
+      targetFingerprintParts(group.target, adapter, adapterOptions, installationType),
+      targetIdentityContext(group.target, adapter, installationType),
+    );
+    const desiredCoverage = await withFreshReadOnlyGraphPlan(group.target, adapter, adapterOptions, installationType, group.packages, async (graphPlan) => {
+      if (graphPlan.plan.stateKey !== stable.stateKey || graphPlan.graphLockPath !== stableGraphLockPath) {
+        throw new Error("Current source graph resolved a different target state identity; legacy ownership adoption cannot proceed.");
+      }
+      return desiredCoverageFromPlan(graphPlan.plan);
+    });
+    const request = {
+      targetRoot: stable.installRoot,
+      adapter: adapter.name,
+      installationType,
+      sourceStateKey: options.sourceStateKey,
+      destinationStateKey: stable.stateKey,
+      fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot),
+      workspaceRoot: target.workspaceRoot,
+      destinationFleetId: target.fleetId,
+      destinationGraphLockPath: stableGraphLockPath,
+      desiredCoverage,
+      carryDrift: options.carryDrift === true,
+      planDigest: options.planDigest,
+      expectedSourceRevision: options.expectedSourceRevision,
+      expectedDestinationRevision: options.expectedDestinationRevision,
+      expectedInventoryRevision: options.expectedInventoryRevision,
+      transport: transportForTarget(target),
+    };
+    const result = options.apply
+      ? await applyAdoptLegacyOwnership(request)
+      : await planAdoptLegacyOwnership(request);
+    const destinationRevision = result.destination.revision ?? "absent";
+    const applyArgs = [
+      "agentwheel", "ownership", "adopt-legacy",
+      "--source-state-key", result.source.stateKey,
+      "--from-workspace-root", request.fromWorkspaceRoot,
+      ...(options.profile ? ["--profile", options.profile] : ["--agent", options.agent]),
+      "--installation-type", installationType,
+      ...(options.adapterConfig ? ["--adapter-config", options.adapterConfig] : []),
+      ...(options.adapterModule ? ["--adapter-module", options.adapterModule] : []),
+      ...(options.allowAdapterCode ? ["--allow-adapter-code"] : []),
+      ...(request.carryDrift ? ["--carry-drift"] : []),
+      "--plan-digest", result.planDigest,
+      "--expected-source-revision", result.source.revision,
+      "--expected-destination-revision", destinationRevision,
+      "--expected-inventory-revision", result.manifestInventoryRevision,
+      "--apply",
+    ];
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, applyCommand }, null, 2));
+      return;
+    }
+    console.log(`${options.apply ? "Adopted legacy ownership" : "Legacy ownership adoption plan"}: ${result.selected.length} entr${result.selected.length === 1 ? "y" : "ies"}`);
+    console.log(`Target: ${result.adapter}/${result.installationType} at ${result.targetRoot}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision} (${result.source.class}, ${result.source.owner})`);
+    console.log(`Provenance: ${result.source.provenanceLock.path} (${result.source.provenanceLock.digest})`);
+    console.log(`Destination: ${result.destination.stateKey} revision ${destinationRevision} (${result.destination.owner})`);
+    console.log(`Manifest inventory revision: ${result.manifestInventoryRevision}`);
+    for (const entry of result.selected) {
+      const drift = entry.drift ? ` drift: recorded ${entry.recordedHash}, runtime ${entry.runtimeHash ?? "missing"}` : "";
+      console.log(`- ${entry.path}: ${entry.action}${drift}`);
+    }
+    for (const entry of result.retained) console.log(`  retained ${entry.path} (${entry.reason}, ${entry.owner})`);
+    for (const entry of result.remainingDuplicates) console.log(`  duplicate claim remains in ${entry.stateKey}: ${entry.path}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
   });
 
 const mcpCommand = program
@@ -1170,13 +1560,18 @@ program
       const adapter = await resolveAdapterForTarget(target, adapterOptions);
       const transport = transportForTarget(target);
       const installationType = normalizedOptions.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-      const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-      const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
+      const state = await resolveCliTargetState(target, normalizedOptions);
+      const manifest = state.manifest;
       if (!manifest) {
         console.log(`No install manifest for ${adapter.name}/${installationType} at ${state.installRoot}`);
         continue;
       }
-      const plan = filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options));
+      const plan = {
+        ...filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options)),
+        stateKey: state.stableStateKey,
+        stateMigration: state.migration,
+        targetStateFilePreconditions: state.targetStateFilePreconditions,
+      };
       console.log(formatPlan(plan));
       const result = await uninstall(plan, { dryRun: normalizedOptions.dryRun, force: normalizedOptions.force, transport });
       if (!normalizedOptions.dryRun) {
@@ -1208,6 +1603,7 @@ program
   .option("--json", "print the versioned status protocol as JSON", false)
   .option("--offline", "use cached version and member status even when stale", false)
   .option("--refresh", "refresh package and member status regardless of TTL", false)
+  .option("--recover-legacy-state", "inspect stable state while preserving invalid historical state", false)
   .action(async (options) => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
@@ -1409,7 +1805,11 @@ async function runInstallCommand(
   },
   behavior: { apply: boolean; quiet?: boolean },
 ): Promise<void> {
-  const normalizedOptions = normalizeRuntimeScopeOptions(options, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
+  const normalizedOptions = normalizeRuntimeScopeOptions({
+    ...options,
+    forceConflict: options.forceConflict || options.adopt,
+    replaceConflict: options.replaceConflict || options.adopt,
+  }, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
   const outputFormat = effectivePlanOutputFormat(normalizedOptions);
   const composite = await resolveSelectedCompositeProfile(normalizedOptions);
   if (composite) {
@@ -1461,6 +1861,7 @@ async function runInstallCommand(
       forceConflict: normalizedOptions.forceConflict,
       forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
+      recoverLegacyState: normalizedOptions.recoverLegacyState,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
       suggestionAliases: suggestionAliasesFromOptions(normalizedOptions),
@@ -1476,6 +1877,7 @@ async function runInstallCommand(
     for (const result of results) {
       if (!behavior.quiet) {
         console.log(`Profile ${normalizedOptions.profile} / ${result.runtime} / ${result.packageName} at ${result.targetRoot} (${result.transport}):`);
+        if (result.transport === "local-run-as") console.log(`STATE   ${result.plan.stateKey}`);
         console.log(formatPlan(result.plan));
         if (result.reloaded) console.log(`Reloaded runtime via ${result.reloadCommandSummary}.`);
       }
@@ -1488,10 +1890,14 @@ async function runInstallCommand(
   }
 
   const targets = await resolveCliTargets(normalizedOptions);
+
   for (const target of targets) {
+    if (target.transport === "local-run-as" && (target.reloadRuntimes || shouldReloadRuntimes(normalizedOptions))) {
+      throw new Error("local-run-as refuses runtime reload before writes.");
+    }
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForCliTarget(config.packages, target, targetOptions), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -1514,30 +1920,34 @@ async function runInstallCommand(
       }
     }
 
-    for (const result of await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" })) {
-      if (!behavior.quiet) console.log(formatGraphPlan(result));
-      if (behavior.apply) {
-        declareMutationPath(result.graphLockPath);
-        if (extraPackage && !targetOptions.onlySource) declareMutationPath(workspaceConfigPath(target.workspaceRoot));
-        const transport = transportForTarget(target);
-        const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
-        await applyCombinedInstallPlan(result.plan, {
-          executePlugins,
-          transport,
-          graphLockDigest: result.graphLockDigest,
-          graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
-        });
-        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
-          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
-          executePlugins,
-        });
-        if (!behavior.quiet) {
-          console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
-          if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+    const results = await buildGraphPlansForTarget(target, source, { ...targetOptions, scope, extraPackage, reportFormat: outputFormat }, { mode: "install" });
+    try {
+      for (const result of results) {
+        if (!behavior.quiet) console.log(formatGraphPlan(result));
+        if (behavior.apply) {
+          declareMutationPath(result.graphLockPath);
+          if (extraPackage && !targetOptions.onlySource) declareMutationPath(workspaceConfigPath(target.workspaceRoot));
+          const transport = transportForTarget(target);
+          const executePlugins = target.executePlugins ?? targetOptions.executePlugins;
+          await applyCombinedInstallPlan(result.plan, {
+            executePlugins,
+            transport,
+            graphLockDigest: result.graphLockDigest,
+            graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+          });
+          const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+            enabled: target.reloadRuntimes ?? shouldReloadRuntimes(targetOptions),
+            executePlugins,
+          });
+          if (!behavior.quiet) {
+            console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+            if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+          }
         }
+        if (result.plan.hasBlockingChanges) process.exitCode = 1;
       }
-      await rm(result.bundle.root, { recursive: true, force: true });
-      if (result.plan.hasBlockingChanges) process.exitCode = 1;
+    } finally {
+      await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
     }
 
     if (behavior.apply && extraPackage && !targetOptions.onlySource) {
@@ -1585,6 +1995,7 @@ async function buildPlanReport(
       forceConflict: normalizedOptions.forceConflict,
       forceForeignState: normalizedOptions.forceForeignState,
       replaceConflict: normalizedOptions.replaceConflict,
+      recoverLegacyState: normalizedOptions.recoverLegacyState,
       noDeps: noDepsFromOptions(normalizedOptions),
       includeSuggestions: normalizedOptions.withSuggestions,
       suggestionAliases: suggestionAliasesFromOptions(normalizedOptions),
@@ -1595,10 +2006,10 @@ async function buildPlanReport(
       trustPatterns: normalizedOptions.trust ?? [],
       readOnly: true,
       isTTY: false,
+      warn: collectWarning,
     });
     for (const result of results) {
       reportTargets.push(installPlanReportTarget(result.plan, result.graphLockDigest));
-      reportWarnings.push(...result.warnings);
     }
     return planReport(reportTargets, reportWarnings);
   }
@@ -1607,7 +2018,7 @@ async function buildPlanReport(
   for (const target of targets) {
     const targetOptions = optionsForResolvedTarget(normalizedOptions, target);
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const configured = nameOrSource ? findConfiguredPackageForTarget(config.packages, nameOrSource, targetOptions, target) : undefined;
+    const configured = nameOrSource ? findConfiguredPackageForTarget(packagesForCliTarget(config.packages, target, targetOptions), nameOrSource, targetOptions, target) : undefined;
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
@@ -1675,6 +2086,7 @@ async function packageEntryFromSource(
   options: {
     driver?: string;
     adapter?: string;
+    runtimes?: string[];
     adapterConfig?: string;
     adapterModule?: string;
     allowAdapterCode?: boolean;
@@ -1765,6 +2177,7 @@ async function packageEntryFromSource(
       source: resolvedSource,
       driver: driverName,
       adapter: adapter.name,
+      runtimes: options.runtimes?.length ? options.runtimes : undefined,
       installationType,
       adapterConfig: options.adapterConfig,
       adapterModule: options.adapterModule,
@@ -1843,15 +2256,12 @@ async function packageSelectsSkillForTarget(
 
   const groups = new Map<string, PackageGraphGroup>();
   const group = graphGroupForPackage(groups, target, pkg, options);
-  const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
-  const graphLockPath = graphLockPathForTarget(
-    group.target.workspaceRoot,
-    targetKeyForTarget(group.target, adapter.name),
-    adapter.name,
-    targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
-  );
-  if (await pathExists(graphLockPath)) {
-    const lock = await readGraphLock(graphLockPath);
+  const state = await resolveCliTargetState(group.target, {
+    ...options,
+    installationType: group.installationType,
+  });
+  if (state.graphLock) {
+    const lock = state.graphLock;
     const root = lock.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
     if (root?.selected.includes(selector)) return true;
   }
@@ -1996,8 +2406,10 @@ function optionsForResolvedTarget<T extends { adapter?: string; multiAdapterSour
     : options;
 }
 
-async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; warn?: (message: string) => void }) {
+async function resolveAdapterForTarget(target: RuntimeTarget, options: { adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; reloadRuntimes?: boolean; restartRuntimes?: boolean; warn?: (message: string) => void }) {
   const adapterOptions = adapterOptionsForTarget(target, options);
+  if (target.transport === "local-run-as" && (target.reloadRuntimes || shouldReloadRuntimes(options))) throw new Error("local-run-as refuses runtime reload before writes.");
+  if (target.transport === "local-run-as" && adapterOptions.adapterModule) throw new Error("local-run-as refuses programmatic adapters before loading code.");
   return resolveAdapter({
     adapter: target.adapter,
     adapterConfig: adapterOptions.adapterConfig,
@@ -2067,6 +2479,7 @@ interface GraphCliOptions {
   forceConflict?: boolean;
   forceForeignState?: boolean;
   replaceConflict?: boolean;
+  recoverLegacyState?: boolean;
   format?: string;
   reportFormat?: PlanOutputFormat;
   suppressEmptyMessage?: boolean;
@@ -2152,7 +2565,7 @@ async function runSkillUpdateCommand(
   const targets = await resolveCliTargets(normalizedOptions, { preferAllProfile: true });
   for (const target of targets) {
     const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-    const owner = await configuredPackageForSkill(target, config.packages, skillName, normalizedOptions, options.package);
+    const owner = await configuredPackageForSkill(target, packagesForCliTarget(config.packages, target, normalizedOptions), skillName, normalizedOptions, options.package);
     const mode = owner.mode === "tracking" ? "update" : "install";
     console.log(`Skill ${skillName}: ${owner.name} (${mode}).`);
     await runConfiguredGraphPackages(target, {
@@ -2171,28 +2584,31 @@ async function runConfiguredGraphPackages(
   behavior: { mode: "install" | "update" },
 ): Promise<void> {
   const results = await buildGraphPlansForTarget(target, undefined, options, behavior);
-  for (const result of results) {
-    console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
-    console.log(formatGraphPlan(result));
-    if (!options.dryRun) {
-      declareMutationPath(result.graphLockPath);
-      const transport = transportForTarget(target);
-      const executePlugins = target.executePlugins ?? options.executePlugins;
-      await applyCombinedInstallPlan(result.plan, {
-        executePlugins,
-        transport,
-        graphLockDigest: result.graphLockDigest,
-        graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
-      });
-      const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
-        enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
-        executePlugins,
-      });
-      console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
-      if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+  try {
+    for (const result of results) {
+      console.log(`${behavior.mode === "update" ? "Update" : "Install"} ${result.plan.adapter} at ${result.plan.targetRoot}:`);
+      console.log(formatGraphPlan(result));
+      if (!options.dryRun) {
+        declareMutationPath(result.graphLockPath);
+        const transport = transportForTarget(target);
+        const executePlugins = target.executePlugins ?? options.executePlugins;
+        await applyCombinedInstallPlan(result.plan, {
+          executePlugins,
+          transport,
+          graphLockDigest: result.graphLockDigest,
+          graphLock: { path: result.graphLockPath, lock: result.bundle.graphLock },
+        });
+        const reloaded = await reloadRuntimeAfterPluginChanges(result.plan, target, transport, {
+          enabled: target.reloadRuntimes ?? shouldReloadRuntimes(options),
+          executePlugins,
+        });
+        console.log(`Applied ${result.plan.adapter} at ${result.plan.targetRoot}.`);
+        if (reloaded) console.log(`Reloaded runtime via ${formatReloadCommands(target.reloadCommands)}.`);
+      }
+      if (result.plan.hasBlockingChanges) process.exitCode = 1;
     }
-    await rm(result.bundle.root, { recursive: true, force: true });
-    if (result.plan.hasBlockingChanges) process.exitCode = 1;
+  } finally {
+    await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }
 }
 
@@ -2202,13 +2618,30 @@ async function buildGraphPlansForTarget(
   options: GraphCliOptions,
   behavior: { mode: "install" | "update"; readOnly?: boolean },
 ) {
+  const bundleRoots: string[] = [];
+  try {
+    return await collectGraphPlansForTarget(target, source, options, behavior, bundleRoots);
+  } catch (error) {
+    await Promise.all(bundleRoots.map((root) => rm(root, { recursive: true, force: true })));
+    throw error;
+  }
+}
+
+async function collectGraphPlansForTarget(
+  target: RuntimeTarget,
+  source: string | undefined,
+  options: GraphCliOptions,
+  behavior: { mode: "install" | "update"; readOnly?: boolean },
+  bundleRoots: string[],
+) {
   const targetOptions = optionsForResolvedTarget(options, target);
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  const targetPackages = packagesForCliTarget(config.packages, target, targetOptions);
   const groups = new Map<string, PackageGraphGroup>();
   const selectedArtifacts = selectedArtifactsFromOptions(targetOptions);
   const dependencyUpdateSelectors = sortedUniqueValues(targetOptions.dependency ?? []);
   const scopedDependencyUpdate = behavior.mode === "update" && dependencyUpdateSelectors.length > 0;
-  const scopedPackage = targetOptions.scope ? findConfiguredPackage(config.packages, targetOptions.scope) : undefined;
+  const scopedPackage = targetOptions.scope ? findConfiguredPackage(targetPackages, targetOptions.scope) : undefined;
   const scopedRootId = scopedPackage?.name ?? (source ? targetOptions.scope : undefined);
   if (targetOptions.scope && !scopedPackage && !source) throw new Error(`Configured package not found: ${targetOptions.scope}`);
 
@@ -2216,9 +2649,14 @@ async function buildGraphPlansForTarget(
     const group = graphGroupForPackage(groups, target, scopedPackage, targetOptions);
     group.packages.push(scopedPackage);
   } else if (!source || !targetOptions.onlySource) {
-    for (const pkg of config.packages) {
+    for (const pkg of targetPackages) {
       const group = graphGroupForPackage(groups, target, pkg, targetOptions);
       group.packages.push(pkg);
+    }
+  }
+  if (!source && !targetOptions.scope) {
+    for (const pkg of config.packages.filter((candidate) => !targetPackages.includes(candidate))) {
+      graphGroupForPackage(groups, target, pkg, targetOptions);
     }
   }
 
@@ -2263,17 +2701,40 @@ async function buildGraphPlansForTarget(
     const adapter = await resolveAdapterForTarget(group.target, { ...group.adapterOptions, warn: targetOptions.warn });
     const transport = transportForTarget(group.target);
     const allPackages = [...group.packages, ...group.extraPackages];
+    const excludedRootIds = config.packages.filter((pkg) => !targetPackages.includes(pkg)
+      && graphGroupKey(targetForPackage(target, pkg, targetOptions), {
+        installationType: targetOptions.installationType ?? pkg.installationType ?? target.installationType ?? "local",
+        adapterConfig: targetOptions.adapterConfig ?? target.adapterConfig ?? pkg.adapterConfig,
+        adapterModule: targetOptions.adapterModule ?? target.adapterModule ?? pkg.adapterModule,
+      }) === graphGroupKey(group.target, { ...group.adapterOptions, installationType: group.installationType }))
+      .map((pkg) => pkg.name);
     const groupHasScope = !scopedRootId || allPackages.some((pkg) => pkg.name === scopedRootId || pkg.source === targetOptions.scope);
     if (behavior.mode === "install" && scopedRootId && !groupHasScope) continue;
-    const groupGraphLockPath = graphLockPathForTarget(
-      group.target.workspaceRoot,
-      targetKeyForTarget(group.target, adapter.name),
-      adapter.name,
-      targetFingerprintParts(group.target, adapter, group.adapterOptions, group.installationType),
-    );
-    const previousGroupLock = await (await pathExists(groupGraphLockPath)
-      ? readGraphLock(groupGraphLockPath)
-      : undefined);
+    if (behavior.readOnly !== true && targetOptions.dryRun !== true) {
+      const pendingState = await journalStateForTarget(group.target, {
+        ...targetOptions,
+        installationType: group.installationType,
+      });
+      if (await readApplyJournal(
+        pendingState.installRoot,
+        pendingState.adapter.name,
+        pendingState.transport,
+        pendingState.state,
+      )) {
+        await recoverPendingApply(
+          pendingState.installRoot,
+          pendingState.adapter.name,
+          pendingState.transport,
+          pendingState.state,
+        );
+      }
+    }
+    const priorGroupState = await resolveCliTargetState(group.target, {
+      ...targetOptions,
+      installationType: group.installationType,
+      recoverLegacyState: targetOptions.recoverLegacyState,
+    });
+    const previousGroupLock = priorGroupState.graphLock;
     const dependencyUpdateRootNames = new Set<string>();
     if (scopedDependencyUpdate) {
       for (const pkg of group.packages) {
@@ -2357,15 +2818,16 @@ async function buildGraphPlansForTarget(
     ];
     if (behavior.mode === "update") {
       const changed = roots.filter((root) => root.useLock === false);
-      if (changed.length === 0 && !scopedDependencyUpdate) {
+      if (changed.length === 0 && !scopedDependencyUpdate && excludedRootIds.length === 0) {
         const label = targetOptions.scope ? ` ${targetOptions.scope}` : "";
         console.log(`No tracking packages to update${label}.`);
         continue;
       }
     }
-    if (roots.length === 0) continue;
     const result = await createGraphSourcePlan({
       roots,
+      allowEmptyRoots: roots.length === 0,
+      excludedRootIds,
       targetRoot: group.target.targetRoot,
       workspaceRoot: group.target.workspaceRoot,
       fleetId: group.target.fleetId,
@@ -2393,23 +2855,25 @@ async function buildGraphPlansForTarget(
       replaceConflict: targetOptions.replaceConflict,
       retireExactMcp: targetOptions.retireExactMcp,
       expectedFromWorkspaceOwner: targetOptions.expectedFromWorkspaceOwner,
+      recoverLegacyState: targetOptions.recoverLegacyState,
     });
+    bundleRoots.push(result.bundle.root);
     if ((behavior.mode === "install" || behavior.mode === "update") && scopedRootId) {
-      const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
-      const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
+      const manifest = result.previousManifest;
+      const previousLock = result.previousGraphLock;
       const scopedResult = targetOptions.focusedArtifact
-        ? previousGroupLock
-          ? scopeUpdatePlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, previousGroupLock, manifest)
+        ? previousLock
+          ? scopeUpdatePlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, previousLock, manifest)
           : scopeInstallPlanToArtifact(result, scopedRootId, targetOptions.focusedArtifact, manifest)
-        : previousGroupLock
-          ? scopeUpdatePlanToRoot(result, scopedRootId, previousGroupLock, manifest)
+        : previousLock
+          ? scopeUpdatePlanToRoot(result, scopedRootId, previousLock, manifest)
           : scopeInstallPlanToRoot(result, scopedRootId, manifest);
       if (targetOptions.focusedArtifact && targetOptions.forceForeignState !== true) {
         const focusedPaths = scopedResult.plan.operations
           .filter((operation) => operationMatchesFocusedArtifact(
             operation,
             targetOptions.focusedArtifact!,
-            focusedArtifactOwnerKeys(result.bundle.graphLock, previousGroupLock, scopedRootId, targetOptions.focusedArtifact!),
+            focusedArtifactOwnerKeys(result.bundle.graphLock, previousLock, scopedRootId, targetOptions.focusedArtifact!),
           ))
           .map((operation) => operation.relativeDestPath);
         const ownership = await resolveWorkspaceOwnershipScope(group.target.workspaceRoot, {
@@ -2424,9 +2888,11 @@ async function buildGraphPlansForTarget(
       }
       results.push(scopedResult);
     } else if (scopedDependencyUpdate) {
-      const state = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
-      const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-      const previousLock = await readGraphLock(result.graphLockPath);
+      const manifest = result.previousManifest;
+      const previousLock = result.previousGraphLock;
+      if (!previousLock) {
+        throw new Error(`Dependency update requires an existing graph lock for ${adapter.name} at ${group.target.targetRoot}.`);
+      }
       results.push(scopeUpdatePlanToDependencies(result, dependencyUpdateSelectors, previousLock, manifest));
     } else {
       results.push(result);
@@ -2508,16 +2974,32 @@ function preserveUnrelatedGraphPackages(
   for (const root of selectedCurrentRoots) {
     if (!previous.canonical.roots.some((candidate) => candidate.rootId === root.rootId)) roots.push(root);
   }
+  // A dependency can be shared by selected and unselected roots. Its old artifacts
+  // and incoming edges remain evidence for the roots that were not resolved.
+  const preservedNodeIds = new Set<string>();
+  if (selectedRootIds.size > 0) {
+    for (const root of previous.canonical.roots) {
+      if (!selectedRootIds.has(root.rootId)) {
+        for (const id of graphRootClosure(previous, root.rootId)) preservedNodeIds.add(id);
+      }
+    }
+  }
+  const replacedOwners = new Set([...selectedPreviousNodeIds].filter((id) => !preservedNodeIds.has(id)));
+  for (const id of selectedRootIds) replacedOwners.add(`workspace:${id}`);
   const currentNodes = current.canonical.nodes.filter((node) => selectedCurrentNodeIds.has(node.id));
-  const previousNodes = previous.canonical.nodes.filter((node) => !selectedPreviousNodeIds.has(node.id));
+  const previousNodes = previous.canonical.nodes
+    .filter((node) => !selectedPreviousNodeIds.has(node.id) || preservedNodeIds.has(node.id))
+    .map((node) => ({ ...node, requiredBy: node.requiredBy.filter((owner) => !replacedOwners.has(owner)) }));
   const selectedCurrentArtifacts = current.canonical.artifacts.filter((artifact) => selectedCurrentNodeIds.has(artifact.graphNodeId));
-  const previousArtifacts = previous.canonical.artifacts.filter((artifact) => !selectedPreviousNodeIds.has(artifact.graphNodeId));
+  const previousArtifacts = previous.canonical.artifacts
+    .filter((artifact) => !selectedPreviousNodeIds.has(artifact.graphNodeId) || preservedNodeIds.has(artifact.graphNodeId))
+    .map((artifact) => ({ ...artifact, owners: artifact.owners.filter((owner) => !replacedOwners.has(owner)) }));
   const edgeTouchesSelected = (from: string, to: string) => selectedCurrentNodeIds.has(from)
     || selectedCurrentNodeIds.has(to);
-  const previousEdge = (edge: { from: string; to: string }) => !selectedPreviousNodeIds.has(edge.from)
-    && !selectedPreviousNodeIds.has(edge.to);
-  const previousIncludeEdge = (edge: { fromNodeId: string; toNodeId: string }) => !selectedPreviousNodeIds.has(edge.fromNodeId)
-    && !selectedPreviousNodeIds.has(edge.toNodeId);
+  const previousEdge = (edge: { from: string; to: string }) => preservedNodeIds.has(edge.from)
+    || (!selectedPreviousNodeIds.has(edge.from) && !selectedPreviousNodeIds.has(edge.to));
+  const previousIncludeEdge = (edge: { fromNodeId: string; toNodeId: string }) => preservedNodeIds.has(edge.fromNodeId)
+    || (!selectedPreviousNodeIds.has(edge.fromNodeId) && !selectedPreviousNodeIds.has(edge.toNodeId));
   const selectedCurrentRootIds = new Set(selectedCurrentRoots.map((root) => root.graphNodeId));
   const currentRootOrNode = (id: string) => selectedCurrentNodeIds.has(id) || selectedCurrentRootIds.has(id);
   const previousRootOrNode = (id: string) => selectedPreviousNodeIds.has(id)
@@ -2528,28 +3010,36 @@ function preserveUnrelatedGraphPackages(
     canonical: {
       ...current.canonical,
       roots,
-      nodes: [...currentNodes, ...previousNodes],
-      edges: [
+      nodes: uniqueBy([...currentNodes.map((node) => {
+        const old = previousNodes.find((candidate) => candidate.id === node.id);
+        return old ? { ...node, requiredBy: sortedUniqueValues([...node.requiredBy, ...old.requiredBy]),
+          selected: sortedUniqueValues([...node.selected, ...old.selected]) } : node;
+      }), ...previousNodes], (node) => node.id),
+      edges: uniqueBy([
         ...current.canonical.edges.filter((edge) => edgeTouchesSelected(edge.from, edge.to)),
         ...previous.canonical.edges.filter(previousEdge),
-      ],
-      includeEdges: [
+      ], (edge) => `${edge.from}\0${edge.alias}\0${edge.to}`),
+      includeEdges: uniqueBy([
         ...current.canonical.includeEdges.filter((edge) => edgeTouchesSelected(edge.fromNodeId, edge.toNodeId)),
         ...previous.canonical.includeEdges.filter(previousIncludeEdge),
-      ],
-      artifacts: [...selectedCurrentArtifacts, ...previousArtifacts],
-      namespacing: [
+      ], graphIncludeEdgeIdentity),
+      artifacts: uniqueBy([...selectedCurrentArtifacts.map((artifact) => {
+        const old = previousArtifacts.find((candidate) => graphArtifactIdentity(candidate) === graphArtifactIdentity(artifact));
+        return old ? { ...artifact, owners: sortedUniqueValues([...artifact.owners, ...old.owners]) } : artifact;
+      }), ...previousArtifacts], graphArtifactIdentity),
+      namespacing: uniqueBy([
         ...current.canonical.namespacing.filter((entry) => currentRootOrNode(entry.graphNodeId)),
-        ...previous.canonical.namespacing.filter((entry) => !previousRootOrNode(entry.graphNodeId)),
-      ],
-      overrides: [
+        ...previous.canonical.namespacing.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
+      ], (entry) => `${entry.graphNodeId}\0${entry.type}\0${entry.name}`),
+      overrides: uniqueBy([
         ...current.canonical.overrides.filter((entry) => currentRootOrNode(entry.graphNodeId) || currentRootOrNode(entry.overriddenGraphNodeId)),
-        ...previous.canonical.overrides.filter((entry) => !previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)),
-      ],
-      plainNameIncumbents: [
+        ...previous.canonical.overrides.filter((entry) => !selectedRootIds.has(entry.rootId)
+          && ((!previousRootOrNode(entry.graphNodeId) && !previousRootOrNode(entry.overriddenGraphNodeId)) || preservedNodeIds.has(entry.graphNodeId))),
+      ], (entry) => `${entry.rootId}\0${entry.selector}`),
+      plainNameIncumbents: uniqueBy([
         ...current.canonical.plainNameIncumbents.filter((entry) => currentRootOrNode(entry.graphNodeId)),
-        ...previous.canonical.plainNameIncumbents.filter((entry) => !previousRootOrNode(entry.graphNodeId)),
-      ],
+        ...previous.canonical.plainNameIncumbents.filter((entry) => !previousRootOrNode(entry.graphNodeId) || preservedNodeIds.has(entry.graphNodeId)),
+      ], (entry) => `${entry.adapter}\0${entry.targetFingerprint}\0${entry.type}\0${entry.name}`),
     },
   });
 }
@@ -2577,7 +3067,7 @@ function dependencyUpdateNodeIds(lock: Awaited<ReturnType<typeof readGraphLock>>
   for (const selector of selectors) {
     for (const edge of lock.canonical.edges) {
       const node = nodes.get(edge.to);
-      if (!node || node.mode !== "tracking") continue;
+      if (!node || edge.mode !== "tracking") continue;
       if (selector === edge.alias || selector === edge.source || selector === edge.normalizedSource
         || selector === node.id || selector === node.name || selector === node.source || selector === node.normalizedSource) {
         selected.add(edge.to);
@@ -2609,7 +3099,7 @@ function dependencyUpdatePackageNames(lock: Awaited<ReturnType<typeof readGraphL
     }
     for (const edge of lock.canonical.edges) {
       const node = nodes.get(edge.to);
-      if (!node || node.mode !== "tracking") continue;
+      if (!node || edge.mode !== "tracking") continue;
       if (selector === edge.alias || selector === edge.source || selector === edge.normalizedSource
         || selector === node.id || selector === node.name || selector === node.source || selector === node.normalizedSource) {
         names.add(node.name);
@@ -2997,8 +3487,17 @@ function scopeInstallPlanToRoot(
   result: GraphSourcePlanResult,
   rootId: string,
   manifest: InstallManifest | undefined,
+  previousLock?: GraphLock,
 ): GraphSourcePlanResult {
   const scopedOwners = scopedGraphOwnerKeys(result, rootId);
+  const exclusiveOwners = new Set(scopedOwners);
+  if (previousLock) {
+    for (const id of graphRootClosure(previousLock, rootId)) exclusiveOwners.add(id);
+    for (const root of previousLock.canonical.roots) {
+      if (root.rootId === rootId) continue;
+      for (const id of graphRootClosure(previousLock, root.rootId)) exclusiveOwners.delete(id);
+    }
+  }
   const manifestByPath = new Map((manifest?.entries ?? []).map((entry) => [entry.path, entry]));
   const preservedPaths = new Set<string>();
   const plannedPaths = new Set<string>();
@@ -3006,8 +3505,16 @@ function scopeInstallPlanToRoot(
 
   for (const operation of result.plan.operations) {
     plannedPaths.add(operation.relativeDestPath);
-    if (operationBelongsToScopedRoot(operation, scopedOwners)) {
-      operations.push(operation);
+    const stale = operation.action === "remove" || (operation.action === "drift" && !operation.desiredHash);
+    const exclusivelyOwned = operation.owners?.length
+      && operation.owners.every((owner) => exclusiveOwners.has(owner));
+    if (stale ? exclusivelyOwned : operationBelongsToScopedRoot(operation, scopedOwners)) {
+      const entry = manifestByPath.get(operation.relativeDestPath);
+      const foreignOwners = entry && "owners" in entry && Array.isArray(entry.owners)
+        ? entry.owners.filter((owner): owner is string => typeof owner === "string" && !exclusiveOwners.has(owner)) : [];
+      operations.push(stale || !operation.owners ? operation : {
+        ...operation, owners: sortedUniqueValues([...operation.owners, ...foreignOwners]),
+      });
       continue;
     }
 
@@ -3042,7 +3549,7 @@ function scopeUpdatePlanToRoot(
   previousLock: GraphLock,
   manifest: InstallManifest | undefined,
 ): GraphSourcePlanResult {
-  const scoped = scopeInstallPlanToRoot(result, rootId, manifest);
+  const scoped = scopeInstallPlanToRoot(result, rootId, manifest, previousLock);
   const selectedCurrentNodeIds = graphRootClosure(scoped.bundle.graphLock, rootId);
   const selectedPreviousNodeIds = graphRootClosure(previousLock, rootId);
   const graphLock = preserveUnrelatedGraphPackages(
@@ -3173,7 +3680,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
   if (removed.length === 0) {
     throw new Error(`Configured package not found: ${packageName}`);
   }
-  const remaining = config.packages.filter((pkg) => !removed.includes(pkg));
+  const remaining = packagesForCliTarget(config.packages.filter((pkg) => !removed.includes(pkg)), target, options);
   const groups = new Map<string, PackageGraphGroup>();
   for (const pkg of remaining) {
     const group = graphGroupForPackage(groups, target, pkg, options);
@@ -3190,8 +3697,12 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
     const removedInstallationType = options.installationType ?? pkg.installationType ?? removedTarget.installationType ?? "local";
     const adapter = await resolveAdapterForTarget(removedTarget, removedAdapterOptions);
     const transport = transportForTarget(removedTarget);
-    const removedState = installStateForTarget(removedTarget, adapter, removedAdapterOptions, removedInstallationType);
-    const manifest = await readInstallManifest(removedState.installRoot, adapter.name, transport, removedState);
+    const removedState = await resolveCliTargetState(removedTarget, {
+      ...options,
+      ...removedAdapterOptions,
+      installationType: removedInstallationType,
+    });
+    const manifest = removedState.manifest;
     if (!manifest) {
       console.log(`No install manifest for ${adapter.name} at ${removedTarget.targetRoot}`);
       continue;
@@ -3240,48 +3751,50 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
       remainingDesired = desiredArtifactsFromGraphBundle(result.bundle);
       renderedRoot = result.bundle.root;
     }
-
-    const plan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, { graphLockDigest: remainingGraphPlan?.graphLockDigest });
-    console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
-    console.log(formatPlan(plan));
-    const graphLockFinalState = remainingGraphPlan
-      ? { graphLock: { path: remainingGraphPlan.graphLockPath, lock: remainingGraphPlan.bundle.graphLock } }
-      : {
-          removeGraphLockPath: graphLockPathForTarget(
-            removedTarget.workspaceRoot,
-            targetKeyForTarget(removedTarget, adapter.name),
-            adapter.name,
-            targetFingerprintParts(removedTarget, adapter, removedAdapterOptions, removedInstallationType),
-          ),
-        };
-    if (!options.dryRun) {
-      declareMutationPath(workspaceConfigPath(target.workspaceRoot));
-      const declarativeGraphPath = remainingGraphPlan
-        ? remainingGraphPlan.graphLockPath
-        : graphLockPathForTarget(
-            removedTarget.workspaceRoot,
-            targetKeyForTarget(removedTarget, adapter.name),
-            adapter.name,
-            targetFingerprintParts(removedTarget, adapter, removedAdapterOptions, removedInstallationType),
-          );
-      declareMutationPath(declarativeGraphPath);
+    try {
+      const uninstallPlan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, {
+        graphLockDigest: remainingGraphPlan?.graphLockDigest,
+      });
+      const transitionPlan = remainingGraphPlan?.plan;
+      const plan: InstallPlan = {
+        ...uninstallPlan,
+        stateKey: transitionPlan?.stateKey ?? removedState.stableStateKey,
+        stateMigration: transitionPlan?.stateMigration ?? removedState.migration,
+        targetStateFilePreconditions: transitionPlan?.targetStateFilePreconditions
+          ?? removedState.targetStateFilePreconditions,
+      };
+      console.log(`Uninstall ${pkg.name} (${adapter.name} at ${removedTarget.targetRoot}):`);
+      console.log(formatPlan(plan));
+      const graphLockFinalState = remainingGraphPlan
+        ? { graphLock: { path: remainingGraphPlan.graphLockPath, lock: remainingGraphPlan.bundle.graphLock } }
+        : {
+            removeGraphLockPath: removedState.graphLockPath ?? removedState.stableGraphLockPath,
+          };
+      if (!options.dryRun) {
+        declareMutationPath(workspaceConfigPath(target.workspaceRoot));
+        const declarativeGraphPath = remainingGraphPlan
+          ? remainingGraphPlan.graphLockPath
+          : removedState.graphLockPath ?? removedState.stableGraphLockPath;
+        declareMutationPath(declarativeGraphPath);
+      }
+      const result = await uninstall(plan, {
+        dryRun: options.dryRun,
+        force: options.force,
+        keepFiles: options.keepFiles,
+        transport,
+        ...graphLockFinalState,
+        workspaceConfig: {
+          path: workspaceConfigPath(target.workspaceRoot),
+          data: { ...config, packages: remaining },
+        },
+      });
+      if (!options.dryRun) {
+        console.log(formatUninstallResult(result));
+      }
+      if (plan.hasBlockingChanges) process.exitCode = 1;
+    } finally {
+      if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
     }
-    const result = await uninstall(plan, {
-      dryRun: options.dryRun,
-      force: options.force,
-      keepFiles: options.keepFiles,
-      transport,
-      ...graphLockFinalState,
-      workspaceConfig: {
-        path: workspaceConfigPath(target.workspaceRoot),
-        data: { ...config, packages: remaining },
-      },
-    });
-    if (!options.dryRun) {
-      console.log(formatUninstallResult(result));
-    }
-    if (renderedRoot) await rm(renderedRoot, { recursive: true, force: true });
-    if (plan.hasBlockingChanges) process.exitCode = 1;
   }
 }
 
@@ -3320,6 +3833,10 @@ function targetForPackage(target: RuntimeTarget, pkg: WorkspacePackage, options:
     : { ...target, adapter: pkg.adapter, installationType };
 }
 
+function packagesForCliTarget(packages: WorkspacePackage[], target: RuntimeTarget, options: GraphCliOptions): WorkspacePackage[] {
+  return packagesForTarget(packages, target, (pkg) => targetForPackage(target, pkg, options));
+}
+
 function graphGroupKey(target: RuntimeTarget, options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean }): string {
   return JSON.stringify({
     adapter: target.adapter,
@@ -3345,8 +3862,50 @@ function targetFingerprintParts(target: RuntimeTarget, adapter: AdapterConfig, o
     targetRoot: target.targetRoot,
     transport: target.transport,
     ssh: target.ssh,
+    runAs: target.runAs,
     stateKey: target.stateKey,
   };
+}
+
+function installRootContextForTarget(target: RuntimeTarget): { kind: RuntimeTarget["transport"]; homeRoot?: string } {
+  return { kind: target.transport, homeRoot: target.runAs?.home };
+}
+
+// skips prior target state on purpose, so it still works while that state is broken.
+// staged sources are removed after the callback returns
+async function withFreshReadOnlyGraphPlan<T>(
+  target: RuntimeTarget,
+  adapter: AdapterConfig,
+  adapterOptions: { adapterConfig?: string; adapterModule?: string },
+  installationType: string,
+  packages: WorkspacePackage[],
+  use: (graphPlan: GraphSourcePlanResult) => Promise<T>,
+): Promise<T> {
+  const stage = await mkdtemp(join(tmpdir(), "agentwheel-recovery-"));
+  const priorTmpdir = process.env.TMPDIR;
+  try {
+    process.env.TMPDIR = stage;
+    const graphPlan = await createGraphSourcePlan({
+      roots: packages.map((pkg) => ({
+        rootId: pkg.name, source: pkg.source, mode: pkg.mode, version: pkg.version,
+        ref: pkg.requestedRef, select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
+        selection: pkg.selection, aliases: pkg.aliases, overrides: pkg.overrides,
+        includeSuggestions: pkg.withSuggestions, suggestionAliases: pkg.suggestions,
+        useLock: false,
+      })),
+      targetRoot: target.targetRoot, workspaceRoot: target.workspaceRoot, fleetId: target.fleetId,
+      adapter, transport: transportForTarget(target), targetKey: targetKeyForTarget(target, adapter.name),
+      targetFingerprintParts: targetFingerprintParts(target, adapter, adapterOptions, installationType),
+      installationType, stateKey: target.stateKey, readOnly: true, yes: true, freshGraphOnly: true,
+      deferForeignStateCheck: true, cacheRoot: join(stage, "source-cache"),
+      registryCachePath: join(stage, "registry.json"),
+    });
+    return await use(graphPlan);
+  } finally {
+    if (priorTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = priorTmpdir;
+    await rm(stage, { recursive: true, force: true });
+  }
 }
 
 function installStateForTarget(
@@ -3355,41 +3914,125 @@ function installStateForTarget(
   options: { adapterConfig?: string; adapterModule?: string },
   installationType: string,
 ): { installationType: string; stateKey: string; installRoot: string } {
-  const targetFingerprint = targetFingerprintDigest(target, adapter, options, installationType);
+  const installRoot = installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, installRootContextForTarget(target));
+  const targetIdentity = resolveTargetStateIdentity({
+    targetFingerprintParts: targetFingerprintParts(target, adapter, options, installationType),
+    workspaceRoot: target.workspaceRoot,
+    targetKey: targetKeyForTarget(target, adapter.name),
+    resolvedInstallRoot: installRoot,
+    transportKind: target.transport,
+  });
   return {
     installationType,
     stateKey: stateKeyFor(adapter.name, {
       installationType,
       stateKey: target.stateKey,
-      targetFingerprint,
+      targetFingerprint: targetIdentity.stateFingerprint,
       fleetId: target.fleetId,
     }),
-    installRoot: installRootForAdapterInstallationType(adapter, target.targetRoot, installationType, target.transport === "ssh"),
+    installRoot,
   };
 }
 
-function targetFingerprintDigest(target: RuntimeTarget, adapter: AdapterConfig, options: { adapterConfig?: string; adapterModule?: string }, installationType: string): string {
-  const fingerprintInput = targetFingerprintParts(target, adapter, options, installationType);
-  return computeTargetFingerprint(fingerprintInput);
+function targetIdentityContext(
+  target: RuntimeTarget,
+  adapter: AdapterConfig,
+  installationType: string,
+): { resolvedInstallRoot: string; transportKind: RuntimeTarget["transport"] } {
+  return {
+    resolvedInstallRoot: installRootForAdapterInstallationType(
+      adapter,
+      target.targetRoot,
+      installationType,
+      installRootContextForTarget(target),
+    ),
+    transportKind: target.transport,
+  };
+}
+
+interface ResolvedCliTargetState {
+  adapter: AdapterConfig;
+  installationType: string;
+  installRoot: string;
+  stateKey: string;
+  stableStateKey: string;
+  stableGraphLockPath: string;
+  manifest?: InstallManifest;
+  graphLock?: GraphLock;
+  graphLockPath: string | null;
+  migration?: InstallPlan["stateMigration"];
+  targetStateFilePreconditions: NonNullable<InstallPlan["targetStateFilePreconditions"]>;
+}
+
+async function resolveCliTargetState(
+  target: RuntimeTarget,
+  options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean; recoverLegacyState?: boolean; warn?: (message: string) => void },
+): Promise<ResolvedCliTargetState> {
+  const adapterOptions = adapterOptionsForTarget(target, options);
+  const adapter = await resolveAdapterForTarget(target, adapterOptions);
+  const transport = transportForTarget(target);
+  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
+  const stable = installStateForTarget(target, adapter, adapterOptions, installationType);
+  const stableGraphLockPath = graphLockPathForTarget(
+    target.workspaceRoot,
+    targetKeyForTarget(target, adapter.name),
+    adapter.name,
+    targetFingerprintParts(target, adapter, adapterOptions, installationType),
+    targetIdentityContext(target, adapter, installationType),
+  );
+  const [stableManifest, stableLock, stableSourceLock, ownership] = await Promise.all([
+    readInstallManifest(stable.installRoot, adapter.name, transport, stable),
+    pathExists(stableGraphLockPath).then((exists) => exists ? readGraphLock(stableGraphLockPath) : undefined),
+    readSourceLock(stable.installRoot, adapter.name, transport, stable),
+    resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId }),
+  ]);
+  const prior = await resolvePriorTargetState({
+    adapter: adapter.name,
+    installationType,
+    stateKey: stable.stateKey,
+    explicitStateKey: target.stateKey,
+    fleetId: target.fleetId,
+    installRoot: stable.installRoot,
+    workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
+    graphLockPath: stableGraphLockPath,
+    stableManifest,
+    stableLock,
+    transport,
+    recoverLegacyState: options.recoverLegacyState,
+    warn: options.warn,
+  });
+  return {
+    adapter,
+    installationType,
+    installRoot: stable.installRoot,
+    stateKey: prior.migration?.fromStateKey ?? stable.stateKey,
+    stableStateKey: stable.stateKey,
+    stableGraphLockPath,
+    manifest: prior.manifest,
+    graphLock: prior.graphLock,
+    graphLockPath: prior.graphLock
+      ? prior.migration?.fromGraphLockPath ?? stableGraphLockPath
+      : null,
+    migration: prior.migration,
+    targetStateFilePreconditions: {
+      graphLockPath: stableGraphLockPath,
+      graphLockRevision: stableLock
+        ? createHash("sha256").update(canonicalGraphLockJson(stableLock)).digest("hex")
+        : null,
+      sourceLockRevision: computeSourceLockRevision(stableSourceLock),
+    },
+  };
 }
 
 async function readTargetGraphLock(
   target: RuntimeTarget,
   options: { installationType?: string; adapterConfig?: string; adapterModule?: string; allowAdapterCode?: boolean },
 ) {
-  const adapterOptions = adapterOptionsForTarget(target, options);
-  const adapter = await resolveAdapterForTarget(target, adapterOptions);
-  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
-  const path = graphLockPathForTarget(
-    target.workspaceRoot,
-    targetKeyForTarget(target, adapter.name),
-    adapter.name,
-    targetFingerprintParts(target, adapter, adapterOptions, installationType),
-  );
-  if (!(await pathExists(path))) {
-    throw new Error(`No graph lock for ${adapter.name} at ${target.targetRoot}: ${path}`);
+  const state = await resolveCliTargetState(target, options);
+  if (!state.graphLock || !state.graphLockPath) {
+    throw new Error(`No graph lock for ${state.adapter.name} at ${target.targetRoot}: ${state.stableGraphLockPath}`);
   }
-  return { adapter, path, lock: await readGraphLock(path) };
+  return { adapter: state.adapter, path: state.graphLockPath, lock: state.graphLock };
 }
 
 async function printStatus(
@@ -3402,31 +4045,28 @@ async function printStatus(
 
 async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptions): Promise<StatusTarget> {
   const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-  const adapterOptions = adapterOptionsForTarget(target, options);
-  const adapter = await resolveAdapterForTarget(target, { ...adapterOptions, warn: () => undefined });
-  const transport = transportForTarget(target);
-  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-  const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
-  let graphLockPath: string | null = null;
-  let graphLock: GraphLock | undefined;
-  try {
-    const result = await readTargetGraphLock(target, adapterOptions);
-    graphLockPath = result.path;
-    graphLock = result.lock;
-  } catch {
-    graphLock = undefined;
-  }
+  const state = await resolveCliTargetState(target, { ...options, warn: () => undefined });
+  const { adapter, installationType, manifest, graphLock, graphLockPath } = state;
+  const pending = await collectPendingInstallWork(target, options);
+  const foreignObservations = pending.foreignStateObservations;
+  const effectiveGraphLock = graphLock ?? pending.observedGraphLock;
+  const observedManifestRevision = foreignObservations.length > 0
+    ? createHash("sha256").update(JSON.stringify(foreignObservations.map((observation) => [
+        observation.fileName,
+        observation.manifestRevision,
+      ]).sort())).digest("hex")
+    : null;
 
   const packages: StatusPackage[] = [];
-  for (const pkg of config.packages) {
-    const root = graphLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
-    const node = root ? graphLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId) : undefined;
+  for (const pkg of packagesForCliTarget(config.packages, target, options)) {
+    const root = effectiveGraphLock?.canonical.roots.find((candidate) => candidate.rootId === pkg.name);
+    const node = root ? effectiveGraphLock?.canonical.nodes.find((candidate) => candidate.id === root.graphNodeId) : undefined;
     const availability = await discoverPackageVersions(pkg, target.workspaceRoot, {
       forceRefresh: options.refresh,
       offline: options.offline,
     });
-    const installed = node && manifest?.entries.some((entry) => "graphNodeId" in entry && entry.graphNodeId === node.id)
+    const installed = node && (manifest?.entries.some((entry) => "graphNodeId" in entry && entry.graphNodeId === node.id)
+      || foreignObservations.some((observation) => observation.graphNodeId === node.id))
       ? node.version
       : null;
     const locked = node?.version ?? null;
@@ -3456,14 +4096,15 @@ async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptio
     });
   }
 
-  const pending = await collectPendingInstallWork(target, options);
-  const artifacts = (graphLock?.canonical.artifacts ?? []).map((artifact) => {
-    const node = graphLock?.canonical.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
-    const installed = manifest?.entries.some((entry) => {
+  const artifacts = (effectiveGraphLock?.canonical.artifacts ?? []).map((artifact) => {
+    const node = effectiveGraphLock?.canonical.nodes.find((candidate) => candidate.id === artifact.graphNodeId);
+    const installed = (manifest?.entries.some((entry) => {
       if (!("graphNodeId" in entry) || entry.graphNodeId !== artifact.graphNodeId) return false;
       if ("logicalSelector" in entry && entry.logicalSelector) return entry.logicalSelector === artifact.logicalSelector;
       return entry.artifactType === artifact.type && entry.artifactName === artifact.name;
-    }) ?? false;
+    }) ?? false) || foreignObservations.some((observation) =>
+      observation.graphNodeId === artifact.graphNodeId
+      && (!observation.logicalSelector || observation.logicalSelector === artifact.logicalSelector));
     return {
       selector: artifact.logicalSelector,
       type: artifact.type,
@@ -3476,7 +4117,7 @@ async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptio
     };
   });
   const health: StatusHealth[] = [];
-  if (!manifest || !graphLock) health.push("FAIL");
+  if ((!manifest && foreignObservations.length === 0) || !effectiveGraphLock) health.push("FAIL");
   if (pending.error) health.push("DEGRADED");
   if (pending.driftCount > 0 || pending.conflictCount > 0) health.push("FAIL");
   else if (pending.pendingCount > 0) health.push("WARN");
@@ -3488,11 +4129,11 @@ async function collectTargetStatus(target: RuntimeTarget, options: GraphCliOptio
     installationType,
     targetRoot: state.installRoot,
     health: worstStatusHealth(health),
-    manifestRevision: manifest?.revision ?? null,
-    manifestEntryCount: manifest?.entries.length ?? 0,
+    manifestRevision: manifest?.revision ?? observedManifestRevision,
+    manifestEntryCount: (manifest?.entries.length ?? 0) + foreignObservations.length,
     graphLockPath,
     packageCount: packages.length,
-    artifactCount: graphLock?.canonical.artifacts.length ?? 0,
+    artifactCount: effectiveGraphLock?.canonical.artifacts.length ?? 0,
     pendingCount: pending.pendingCount,
     driftCount: pending.driftCount,
     conflictCount: pending.conflictCount,
@@ -3765,6 +4406,7 @@ function compositeUpdateArguments(profile: string, packageName: string | undefin
   args.push("--profile", profile);
   if (options.dryRun) args.push("--dry-run");
   if (options.refresh) args.push("--refresh");
+  if (options.recoverLegacyState) args.push("--recover-legacy-state");
   if (options.forceDrift) args.push("--force-drift");
   if (options.forceForeignState) args.push("--force-foreign-state");
   if (options.forceConflict) args.push("--force-conflict");
@@ -3908,9 +4550,34 @@ async function journalStateForTarget(target: RuntimeTarget, options: GraphCliOpt
   const adapterOptions = adapterOptionsForTarget(target, options);
   const adapter = await resolveAdapterForTarget(target, adapterOptions);
   const transport = transportForTarget(target);
-  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
-  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-  return { adapter, transport, installationType, installRoot: state.installRoot, state };
+  const installationType = options.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter, undefined);
+  const stable = installStateForTarget(target, adapter, adapterOptions, installationType);
+  const graphLockPath = graphLockPathForTarget(
+    target.workspaceRoot,
+    targetKeyForTarget(target, adapter.name),
+    adapter.name,
+    targetFingerprintParts(target, adapter, adapterOptions, installationType),
+    targetIdentityContext(target, adapter, installationType),
+  );
+  const ownership = await resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId });
+  const pending = await discoverTargetApplyJournal({
+    adapter: adapter.name,
+    installationType,
+    stateKey: stable.stateKey,
+    explicitStateKey: target.stateKey,
+    fleetId: target.fleetId,
+    installRoot: stable.installRoot,
+    workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
+    graphLockPath,
+    transport,
+  });
+  return {
+    adapter,
+    transport,
+    installationType,
+    installRoot: stable.installRoot,
+    state: { installationType, stateKey: pending?.stateKey ?? stable.stateKey },
+  };
 }
 
 async function printPendingInstallWork(target: RuntimeTarget, options: GraphCliOptions): Promise<void> {
@@ -3933,6 +4600,8 @@ async function collectPendingInstallWork(target: RuntimeTarget, options: GraphCl
   driftCount: number;
   conflictCount: number;
   counts: Record<string, number>;
+  foreignStateObservations: GraphSourcePlanResult["foreignStateObservations"];
+  observedGraphLock?: GraphLock;
   error?: string;
 }> {
   let results: GraphSourcePlanResult[] = [];
@@ -3954,10 +4623,19 @@ async function collectPendingInstallWork(target: RuntimeTarget, options: GraphCl
       driftCount: counts.drift ?? 0,
       conflictCount: counts.conflict ?? 0,
       counts,
+      foreignStateObservations: results.flatMap((result) => result.foreignStateObservations),
+      observedGraphLock: results.length === 1 ? results[0]!.bundle.graphLock : undefined,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { pendingCount: 0, driftCount: 0, conflictCount: 0, counts: {}, error: message };
+    return {
+      pendingCount: 0,
+      driftCount: 0,
+      conflictCount: 0,
+      counts: {},
+      foreignStateObservations: [],
+      error: message,
+    };
   } finally {
     await Promise.all(results.map((result) => rm(result.bundle.root, { recursive: true, force: true })));
   }
@@ -3974,9 +4652,8 @@ async function printDoctor(
   if (!targetMapping?.enabled) {
     throw new Error(`Adapter ${adapter.name} does not support skills for installation type '${installationType}'.`);
   }
-  const transport = transportForTarget(target);
-  const state = installStateForTarget(target, adapter, adapterOptions, installationType);
-  const manifest = await readInstallManifest(state.installRoot, adapter.name, transport, state);
+  const state = await resolveCliTargetState(target, { ...options, installationType });
+  const manifest = state.manifest;
   const requestedSkills = doctorSkillRequests(target, options);
   const skills = [];
   for (const request of requestedSkills) {
@@ -4124,7 +4801,7 @@ function shellQuoteArg(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function collectSelectOption(value: string, previous: string[]): string[] {
+function collectSelectOption(value: string, previous: string[] = []): string[] {
   return [...previous, ...splitSelectorList(value)];
 }
 
@@ -4671,7 +5348,7 @@ async function governedCommandContext(command: Command, options: GlobalMutationO
     ? await workspaceContextRootFromOptions(normalized)
     : await workspaceRootFromOptions(normalized);
   const anticipatedPaths: string[] = [];
-  if (path === "add") anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
+  if (path === "add" || path === "pin") anticipatedPaths.push(workspaceConfigPath(workspaceRoot));
   if (path === "remember" && options.runtime) {
     anticipatedPaths.push(join(workspaceRoot, ".agentwheel", "overlays", options.runtime, "instructions.local.md"));
   }
@@ -4680,7 +5357,7 @@ async function governedCommandContext(command: Command, options: GlobalMutationO
     workspaceRoot,
     anticipatedPaths,
     requireCleanWorkingTree: requiresCleanMutationPreflight(path),
-    requiresDeclarativeRepositoryDelta: path === "ownership handoff",
+
   };
 }
 

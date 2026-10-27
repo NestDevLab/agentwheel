@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/preserve-mcp-preferences": "91d586d0b4fec0d41a23200441d64b74eeb85db9"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -38,6 +40,7 @@
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
     "refs/heads/pr/pin-package-declarations": "e2a4bd7711c30a97c7f4656e8bae29a413887102",
+    "refs/heads/pr/preserve-mcp-preferences": "12e1da6158ffcd73348c0e609168f1a801964807",
     "refs/heads/pr/provider-timeout-bound": "409a76201d089e942c5d566c0027040177c0ccf7",
     "refs/heads/pr/release-0-22-1": "53642b35ee690358a1162f7ffb1882c6d17861b8",
     "refs/heads/pr/retire-stale-target-scope": "94f67f8d22041df1400898d768525f21414b2ee0",
@@ -61,7 +64,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T16:20:55+00:00",
+  "created_at": "2026-10-27T16:21:52+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -117,6 +120,7 @@
     "refs/heads/pr/ownership-release-claim-0211": "2ab2f9c6bdef7329f564696888a1772f7e3b9d41",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
     "refs/heads/pr/pin-package-declarations": "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a",
+    "refs/heads/pr/preserve-mcp-preferences": "91d586d0b4fec0d41a23200441d64b74eeb85db9",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/provider-timeout-bound": "24cfc045a79f420aef1f932479da4534b82857ab",
     "refs/heads/pr/release-0-22-1": "7d4fc1965cd229c6a74ca9a3ac05487f6e17757b",
@@ -189,7 +193,8 @@
         "normalize-workspace-owner-prefix",
         "handoff-explicit-source-state",
         "fleet-policy-audited-handoff",
-        "mgt0521-mcp-skip"
+        "mgt0521-mcp-skip",
+        "preserve-mcp-preferences"
       ],
       "strategy": "cherry-pick"
     },
@@ -304,16 +309,30 @@
         "id": "mgt0521-mcp-skip",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/preserve-mcp-preferences",
+        "commits": [
+          "91d586d0b4fec0d41a23200441d64b74eeb85db9"
+        ],
+        "id": "preserve-mcp-preferences",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "f834f286-279e-401a-95a5-b6fcb10caf16",
-  "parent_state": "064b3590ca1962ab8c63ce03c8f9c74928c53f04",
+  "operation_token": "f32d9296-5264-4834-8355-520e459425ba",
+  "parent_state": "daf836702e80b9f82204af1f416777660055dd25",
   "projection_status": "partial",
-  "publication_id": "6387ae3d-3517-4ff6-a679-bc29f294bed3",
-  "publication_scope": "close:openclaw-capability-consent",
+  "publication_id": "a74239bb-6383-4643-82fd-53709a694b84",
+  "publication_scope": "partial",
   "schema_version": 2,
   "syncwheel_version": "0.46.10",
   "tombstones": [

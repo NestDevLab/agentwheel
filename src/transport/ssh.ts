@@ -70,7 +70,7 @@ export function createSshTransport(config: SshTransportConfig): TargetTransport 
       const remoteCommand = options.cwd
         ? `cd ${quoteSh(options.cwd)} && ${quoted}`
         : quoted;
-      return run(remoteCommand).then(() => undefined);
+      return run(remoteCommand);
     },
   };
 }

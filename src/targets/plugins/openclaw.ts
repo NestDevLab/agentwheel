@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathExists } from "../../utils/fs.js";
+import { parseSemver, satisfiesVersionRange } from "../../resolve/semver.js";
 import type { SemanticPluginSpec } from "./types.js";
 
 export interface OpenClawPluginInstallRequest {
   path: string;
   dryRun: boolean;
+  acceptCapabilities?: boolean;
 }
 
 export interface OpenClawPluginSpecRequest {
@@ -17,7 +19,32 @@ export interface OpenClawPluginSpecRequest {
 export function openClawPluginInstallCommand(request: OpenClawPluginInstallRequest): string[] {
   // OpenClaw copies local plugin paths by default. Avoid --link for fleet-managed
   // installs so runtime profiles do not depend on source-checkout symlinks.
-  return ["openclaw", "plugins", "install", "--force", request.path];
+  return ["openclaw", "plugins", "install", "--force", ...(request.acceptCapabilities ? ["--accept-capabilities"] : []), request.path];
+}
+
+// Scope the cached promise to one apply run and its target, including failed probes.
+export function createOpenClawCapabilityDetector(
+  run: (args: string[]) => Promise<string | void>,
+): () => Promise<boolean> {
+  let cached: Promise<boolean> | undefined;
+  return () => cached ??= detectOpenClawCapabilitySupport(run);
+}
+
+async function detectOpenClawCapabilitySupport(run: (args: string[]) => Promise<string | void>): Promise<boolean> {
+  try {
+    const help = await run(["plugins", "install", "--help"]);
+    if (help?.trim()) return /(?:^|\s)--accept-capabilities(?=[\s=,]|$)/m.test(help);
+  } catch {
+    // Older or restricted runtimes may not expose command help; try their version.
+  }
+  try {
+    const output = await run(["--version"]);
+    const version = output?.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?=\s|$)/)?.[1];
+    return version !== undefined && parseSemver(version) !== undefined && satisfiesVersionRange(version, ">=2026.8.1");
+  } catch {
+    // Preserve the existing command when support cannot be established.
+    return false;
+  }
 }
 
 export function openClawPluginUninstallCommand(pluginName: string): string[] {

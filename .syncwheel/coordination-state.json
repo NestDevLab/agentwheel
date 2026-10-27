@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/main-integration": "f8f6bb4576da8a5f31d6b1e58ad7ed62b6e78836"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -7,7 +9,7 @@
     "refs/heads/fix/no-deps-selected-composition": "94829e7e5f63362b69d52fe70d5a76922974f963",
     "refs/heads/fix/runtime-filter-composition": "95be9f1901b0b190ed82af2caf9750327c1d80fb",
     "refs/heads/fix/tmpdir-staging-cleanup": "bdbd68c901783d75f318f2dc9d7683f760647cfa",
-    "refs/heads/main-integration": "c8053a5f67f51c4abbbd88d0af6e7180c19de333",
+    "refs/heads/main-integration": "0dcb0d9ec7a38bd21a649357fdd6726d42888e2a",
     "refs/heads/pr/adopt-legacy-managed-block-0212": "d40018b6c14655a8ef9e1aba26cae7483ce1dcb0",
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
@@ -62,7 +64,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T18:26:02+00:00",
+  "created_at": "2026-10-27T18:26:54+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -75,7 +77,7 @@
     "refs/heads/fix/runtime-filter-composition": "1c655d28928f8d227cc629c3d2414884d9ed096d",
     "refs/heads/fix/site-card-alignment": "23760e656efaf492aa46a3310f5b93880ccf60d1",
     "refs/heads/fix/tmpdir-staging-cleanup": "74dfbf08441db4b39faa4c6289131d7c69be29f0",
-    "refs/heads/main-integration": "1a412f8cdcf5fe5ca89cd5afa98b0df97dc25900",
+    "refs/heads/main-integration": "f8f6bb4576da8a5f31d6b1e58ad7ed62b6e78836",
     "refs/heads/mgt-0139-foreign-state-guard": "cdfd3ea8cc255fa6d63aeb0aa4511cc76217c60b",
     "refs/heads/pr/adopt-legacy-managed-block-0212": null,
     "refs/heads/pr/agentwheel-0-18-3-legacy-lock-admission": "f580a9a7483b3716f7311175e9e5f462ea89af9c",
@@ -235,12 +237,12 @@
     ],
     "version": 2
   },
-  "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "f0aaeea0-40ff-4879-b1ad-f30e81a0eaa5",
-  "parent_state": "90118985a8d03f84e460a8fdd472f22c56761fe4",
+  "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
+  "operation_token": "4606f1e6-bdab-4f7c-a5d2-572a6506e5aa",
+  "parent_state": "8db031ad12c4c993fef45d0cae404263cd29157e",
   "projection_status": "partial",
-  "publication_id": "4409059c-dd7f-481d-ae84-bc627162cc3d",
-  "publication_scope": "close:preserve-mcp-preferences",
+  "publication_id": "f3882dc9-ee12-4c8b-bf21-3b09056aebde",
+  "publication_scope": "integration",
   "schema_version": 2,
   "syncwheel_version": "0.46.12",
   "tombstones": [

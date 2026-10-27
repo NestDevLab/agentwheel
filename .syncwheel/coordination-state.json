@@ -12,7 +12,7 @@
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
-    "refs/heads/pr/fleet-policy-audited-handoff": "7f444c77e589ac60d0a66e6c1019f9408ecbe984",
+    "refs/heads/pr/fleet-policy-audited-handoff": "c61ecc8032e0aeb17047cad17e7109942b63c75e",
     "refs/heads/pr/handoff-explicit-source-state": "438804181abd8b9be1ad0243d3da2b6ea9afa96d",
     "refs/heads/pr/handoff-from-fleet": "0c8f05645c0bc508f3fb3af6cccd1067b89528ca",
     "refs/heads/pr/journal-compatibility": "c7ad9c2378ac2e08b2d2cecc2e65a75e81b7eda2",
@@ -62,7 +62,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-10-27T16:53:25+00:00",
+  "created_at": "2026-10-27T16:53:54+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -187,7 +187,6 @@
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
         "mgt0478-add-runtimes",
-        "fleet-policy-audited-handoff",
         "mgt0521-mcp-skip",
         "preserve-mcp-preferences"
       ],
@@ -241,20 +240,6 @@
           "ref": "refs/heads/main",
           "role": "canonical"
         },
-        "branch": "pr/fleet-policy-audited-handoff",
-        "commits": [
-          "2f69bdd762e296dbfdae70ea8f2ac301f1c54587"
-        ],
-        "id": "fleet-policy-audited-handoff",
-        "integration_branch": "main-integration",
-        "target_branch": "main"
-      },
-      {
-        "base": {
-          "kind": "remote-ref",
-          "ref": "refs/heads/main",
-          "role": "canonical"
-        },
         "branch": "pr/mgt0521-mcp-skip",
         "commits": [
           "ec3153258aa085e3d625341b5ab96c6da5352b29"
@@ -281,11 +266,11 @@
     "version": 2
   },
   "manifest_digest": "5f75d1fd2f22011013059d6ae22260cca61afdebc45ce9043b15ed8b9bc2864f",
-  "operation_token": "8941d13a-0e02-4a8f-87a7-ccc2a4358817",
-  "parent_state": "7bf7d9d42ee4c62dbb6b91b1efd8b5cf267a233c",
+  "operation_token": "8043cb19-8862-42c4-9bc5-c47e15cb9e7c",
+  "parent_state": "57007843f4317bcc7f9d1a63be670d18bb5a1590",
   "projection_status": "partial",
-  "publication_id": "83d41f78-95d1-4133-a150-7096676918a8",
-  "publication_scope": "close:handoff-explicit-source-state",
+  "publication_id": "ad9c6618-14a1-4abd-a2ca-f92771da9c3d",
+  "publication_scope": "close:fleet-policy-audited-handoff",
   "schema_version": 2,
   "syncwheel_version": "0.46.10",
   "tombstones": [
@@ -976,6 +961,18 @@
       "ref": "refs/heads/pr/handoff-explicit-source-state",
       "remote_tip": null,
       "stack": "handoff-explicit-source-state"
+    },
+    {
+      "archive": {
+        "planDigest": "d53002a1722eb8bc891cf69aa48533eca2309e21432bcf2998d0d200362ab199",
+        "retentionDays": 30
+      },
+      "branch": "pr/fleet-policy-audited-handoff",
+      "closed_at": "2026-10-27T16:53:44+00:00",
+      "reason": "archived",
+      "ref": "refs/heads/pr/fleet-policy-audited-handoff",
+      "remote_tip": null,
+      "stack": "fleet-policy-audited-handoff"
     }
   ]
 }

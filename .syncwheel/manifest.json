@@ -1,33 +1,54 @@
 {
-  "version": 2,
+  "channels": [],
+  "coordination": {
+    "claims": "advisory",
+    "gc": {
+      "backup_keep": 2,
+      "backup_retention_days": 30,
+      "worktree_grace_days": 7
+    },
+    "id": "leaf-divergence",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/leaf-divergence"
+  },
   "defaults": {
-    "canonical_remote": "origin",
-    "publication_remote": "origin",
     "base_branch": "main",
     "base_ref": "origin/main",
+    "canonical_remote": "origin",
     "integration_membership": "required",
-    "replay_mode": "auto"
+    "publication_remote": "origin"
   },
   "integration": {
     "base": "origin/main",
-    "branch": "main-integration",
-    "stacks": [],
+    "branch": "integration/leaf-divergence/main",
+    "stacks": [
+      "leaf-divergence"
+    ],
     "strategy": "cherry-pick"
   },
-  "stacks": [],
+  "repository_mode": "delivery",
+  "stacks": [
+    {
+      "base": "origin/main",
+      "branch": "pr/leaf-divergence",
+      "commits": [
+        "3b48e05fddf99334758bc2c3cad04a9fc74b1aaf"
+      ],
+      "id": "leaf-divergence",
+      "integration_branch": "integration/leaf-divergence/main",
+      "meta": {
+        "purpose": "Cover divergence confined to a nested composition leaf"
+      },
+      "publication": {
+        "enabled": true
+      },
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
+    }
+  ],
   "syncwheel_tracking": "git-tracked",
   "syncwheel_worktree_root": "var/syncwheel",
-  "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
-    "gc": {
-      "worktree_grace_days": 7,
-      "backup_retention_days": 30,
-      "backup_keep": 2
-    }
-  },
-  "repository_mode": "delivery",
-  "channels": []
+  "version": 2
 }

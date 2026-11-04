@@ -6,20 +6,27 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { readFileSync } from "node:fs";
+import { isIgnoredGeneratedEntry } from "../utils/fs.js";
 import { hashRunAsCopyPayload, validateRunAsCopyPayload } from "./run-as-staging.js";
 
-export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir" | "ownershipSnapshot";
+export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir" | "ownershipSnapshot" | "ownershipBytes";
 export interface ReadRequest { version: 1; operation: ReadOperation; path: string }
 const relativePath = z.string().min(1).max(4096).refine((path) => path === "." || (!isAbsolute(path)
   && !path.includes("\\") && !path.includes("\0") && path.split("/").every((part) => part !== "" && part !== "." && part !== "..")), { message: "Run-as path is not a contained relative path." });
 const requestSchema = z.object({
   version: z.literal(1),
-  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
+  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "ownershipBytes", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
   path: relativePath,
   validatorRoot: z.string().optional(), validationSnapshot: z.string().optional(), content: z.string().optional(), source: relativePath.optional(), payload: z.unknown().optional(),
 }).strict();
 export type RunAsRequest = z.infer<typeof requestSchema>;
 const snapshotEntrySchema = z.object({ path: z.string(), kind: z.enum(["file", "dir"]), mode: z.number().int().min(0).max(0o7777), content: z.string().optional() }).strict();
+export interface OwnershipBytesSnapshot {
+  kind: "file" | "dir";
+  artifactHash: string;
+  snapshotDigest: string;
+  entries: Array<z.infer<typeof snapshotEntrySchema>>;
+}
 const helperPath = fileURLToPath(new URL("./run-as-fs.py", import.meta.url));
 const pythonPath = "/usr/bin/python3";
 const maxBytes = 20 * 1024 * 1024;
@@ -61,15 +68,17 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
   const fs = (operation: string, fields: Record<string, unknown> = {}) => filesystem(root, uid, gid, { operation, path: request.path, ...fields });
   if (["pathExists", "listDir", "mkdirExclusive", "rm", "probe"].includes(request.operation)) return fs(request.operation);
   if (request.operation === "readFile") return Buffer.from(String(await fs("readFile")), "base64").toString("utf8");
-  if (request.operation === "hashPath" || request.operation === "ownershipSnapshot" || request.operation === "ownershipObservation") {
+  if (request.operation === "hashPath" || request.operation === "ownershipSnapshot" || request.operation === "ownershipObservation" || request.operation === "ownershipBytes") {
     const entries = z.array(snapshotEntrySchema).min(1).max(4096).parse(await fs("snapshot", { includeIgnored: request.operation !== "hashPath" }));
-    if (request.operation === "hashPath") {
-      const staged = entries.map((entry) => entry.kind === "dir"
+    let artifactHash: string | undefined;
+    if (request.operation === "hashPath" || request.operation === "ownershipBytes") {
+      const staged = entries.filter(entry => !entry.path.split("/").some(isIgnoredGeneratedEntry)).map((entry) => entry.kind === "dir"
         ? { path: entry.path, kind: "dir" as const, mode: 0o700 as const }
         : { path: entry.path, kind: "file" as const, mode: 0o600 as const, content: entry.content! });
       const payload = { version: 1 as const, kind: entries[0]!.kind, hash: "0".repeat(64), entries: staged };
       payload.hash = hashRunAsCopyPayload(payload);
-      return validateRunAsCopyPayload(payload).hash;
+      artifactHash = validateRunAsCopyPayload(payload).hash;
+      if (request.operation === "hashPath") return artifactHash;
     }
     const hash = createHash("sha256");
     const visit = (entry: z.infer<typeof snapshotEntrySchema>): void => {
@@ -80,6 +89,7 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
     if (entries[0]!.path !== "") throw new Error("Invalid ownership snapshot root.");
     visit(entries[0]!);
     const snapshotDigest = hash.digest("hex");
+    if (request.operation === "ownershipBytes") return { kind: entries[0]!.kind, artifactHash: artifactHash!, snapshotDigest, entries } satisfies OwnershipBytesSnapshot;
     return request.operation === "ownershipObservation" ? { kind: entries[0]!.kind, snapshotDigest } : snapshotDigest;
   }
   if (request.operation === "copy") {

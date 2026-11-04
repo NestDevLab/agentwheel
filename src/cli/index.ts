@@ -48,6 +48,7 @@ import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
 import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
+import { snapshotManagedOwnership } from "../lifecycle/ownership-snapshot.js";
 import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
 import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
@@ -961,6 +962,55 @@ program
 const ownershipCommand = program
   .command("ownership")
   .description("inspect and transfer manifest ownership without rewriting runtime artifacts");
+
+ownershipCommand
+  .command("snapshot")
+  .description("read verified managed bytes (local Linux openat2), without updates or writes; exports only --file selections")
+  .argument("<selector>", "exact type/name selector")
+  .requiredOption("--state-key <key>", "exact source install state key")
+  .requiredOption("--path <path>", "exact manifest artifact path relative to the target root")
+  .requiredOption("--from-workspace-root <path>", "exact current workspace owner root")
+  .option("--from-fleet-id <id>", "qualify the recorded owner with its Fleet id")
+  .requiredOption("--file <relative>", "explicit hash-covered file inside the artifact (repeatable; . for a file claim)", collectValueOption, [] as string[])
+  .option("--fleet <id>", "registered named fleet")
+  .option("--user", "use the user workspace", false)
+  .option("--local", "use the nearest local workspace", false)
+  .option("--adapter <adapter>", "built-in adapter")
+  .option("--adapter-config <path>", "declarative adapter JSON/JSONC file")
+  .option("-i, --installation-type <type>", "exact installation type")
+  .option("-t, --target-root <path>", "runtime/project root")
+  .option("--agent <name>", "configured agent resolving to one local target")
+  .option("--profile <name>", "profile resolving to one local target")
+  .option("--json", "print the verified snapshot with selected base64 file bytes", false)
+  .action(async (selector, _options, command: Command) => {
+    try {
+      const options = command.optsWithGlobals();
+      const normalized = normalizeRuntimeScopeOptions(options);
+      const targets = await resolveCliTargets(normalized);
+      if (targets.length !== 1) throw new Error("Snapshot requires one target.");
+      const target = targets[0]!;
+      const adapterOptions = adapterOptionsForTarget(target, normalized);
+      if (target.transport !== "local" || adapterOptions.adapterModule) {
+        throw new Error("Snapshot only supports local targets and declarative built-in adapters.");
+      }
+      const adapter = await resolveAdapterForTarget(target, { ...adapterOptions, warn: () => undefined });
+      const installationType = normalized.installationType ?? target.installationType ?? resolveInstallationTypeForAdapter(adapter);
+      const state = installStateForTarget(target, adapter, adapterOptions, installationType);
+      const result = await snapshotManagedOwnership({
+        workspaceRoot: await workspaceRootFromOptions(normalized),
+        fromWorkspaceRoot: normalizeCliPath(options.fromWorkspaceRoot), fromFleetId: options.fromFleetId,
+        targetRoot: state.installRoot, adapter: adapter.name, installationType,
+        stateKey: options.stateKey, selector, path: options.path, files: options.file,
+        reason: options.reason ?? "Read-only managed artifact snapshot",
+      });
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`Verified managed snapshot: ${result.files.length} explicitly selected file(s); use --json for bytes.`);
+    } catch {
+      // Native selection/parsing errors may contain input excerpts. Never echo
+      // artifact or metadata contents through this byte-export command's errors.
+      throw new Error("Ownership snapshot verification failed; no file bytes returned.");
+    }
+  });
 
 ownershipCommand
   .command("release-claim")
@@ -5405,7 +5455,10 @@ function mutationHandoffLines(receipt: MutationReceipt): string[] {
 }
 
 async function main(): Promise<void> {
-  await maybeCheckForUpdate({
+  // Use Commander's global-option parser, including option values, rather than
+  // searching argv for words that may occur inside another command's arguments.
+  const operands = program.parseOptions(process.argv.slice(2)).operands;
+  if (!(operands[0] === "ownership" && operands[1] === "snapshot")) await maybeCheckForUpdate({
     currentVersion: CLI_VERSION,
     argv: process.argv,
     env: process.env,

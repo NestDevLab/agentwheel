@@ -47,6 +47,7 @@ export const commandGovernance = {
   "ownership recovery-plan": "incidental-cache",
   "ownership retire-stale": "governed-apply",
   "ownership release-claim": "governed-apply",
+  "ownership snapshot": "read-only",
   "ownership adopt-legacy": "governed-apply",
   "mcp retire": "governed-apply",
   eject: "governed-always",

@@ -161,7 +161,7 @@ async function applyLocked(request: ReleaseOwnershipRequest, operationId: string
   }
 }
 
-async function observe(request: ReleaseOwnershipRequest) {
+export async function selectReleaseOwnershipClaim(request: ReleaseOwnershipRequest) {
   const transport = request.transport ?? localTransport;
   if (transport.kind === "ssh") throw new Error("Ownership release does not support SSH targets.");
   const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
@@ -204,16 +204,8 @@ async function observe(request: ReleaseOwnershipRequest) {
       }
     }
   }
-  const { snapshotDigest, kind: runtimeKind } = await observeOwnershipRuntime(runtimePath, transport);
-  if (runtimeKind !== entry.kind) throw new Error("Selected runtime kind does not match the manifest claim.");
-  const runtimeHash = await transport.hashPath(runtimePath);
-  const inventory = manifests.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision }));
-  const plan = {
-    ...(endpoint ? { transport: endpoint } : {}),
-    adapter: request.adapter,
-    installationType: request.installationType,
-    targetRoot, workspaceRoot, owner,
-    selector: request.selector, path: entry.path,
+  return { transport, endpoint, targetRoot, workspaceRoot, reason, owner, entry, runtimePath,
+    inventory: manifests.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
     source: {
       stateKey: request.stateKey,
       manifestPath: installManifestPath(targetRoot, request.adapter, { installationType: request.installationType, stateKey: request.stateKey }),
@@ -221,6 +213,22 @@ async function observe(request: ReleaseOwnershipRequest) {
       entryDigest: digest(entry),
       entry,
     },
+  };
+}
+
+async function observe(request: ReleaseOwnershipRequest) {
+  const selected = await selectReleaseOwnershipClaim(request);
+  const { transport, endpoint, targetRoot, workspaceRoot, reason, owner, entry, runtimePath, inventory } = selected;
+  const { snapshotDigest, kind: runtimeKind } = await observeOwnershipRuntime(runtimePath, transport);
+  if (runtimeKind !== entry.kind) throw new Error("Selected runtime kind does not match the manifest claim.");
+  const runtimeHash = await transport.hashPath(runtimePath);
+  const plan = {
+    ...(endpoint ? { transport: endpoint } : {}),
+    adapter: request.adapter,
+    installationType: request.installationType,
+    targetRoot, workspaceRoot, owner,
+    selector: request.selector, path: entry.path,
+    source: selected.source,
     recordedHash: entry.hash,
     runtimeHash,
     runtimeSnapshotDigest: snapshotDigest,
@@ -230,6 +238,9 @@ async function observe(request: ReleaseOwnershipRequest) {
   };
   return { ...plan, planDigest: digest(plan) };
 }
+
+/** Canonical receipt hashing shared by read-only ownership observations. */
+export function ownershipProofDigest(value: unknown): string { return digest(value); }
 
 function hash(content: string): string { return createHash("sha256").update(content).digest("hex"); }
 function digest(value: unknown): string { return hash(canonicalJson(value)); }

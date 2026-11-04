@@ -35,7 +35,8 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
-      "retained-install-recovery"
+      "retained-install-recovery",
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -107,6 +108,22 @@
       },
       "meta": {
         "purpose": "Retain verified install snapshots and restore them natively"
+      }
+    },
+    {
+      "id": "journal-receipt-consumer",
+      "branch": "pr/journal-receipt-consumer",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
       }
     }
   ],

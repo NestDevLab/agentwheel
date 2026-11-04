@@ -1,0 +1,75 @@
+{
+  "changed_refs": {
+    "refs/heads/integration/leaf-divergence/main": "7d8f703d33e587c8ee74fac09f26dcd9b6f372c0",
+    "refs/heads/pr/leaf-divergence": "3b48e05fddf99334758bc2c3cad04a9fc74b1aaf"
+  },
+  "claims": {
+    "refs/heads/integration/leaf-divergence/main": "012052897bfdd2a38fd8ee172983d7038dd25b29",
+    "refs/heads/pr/leaf-divergence": "c488e22e0482552cf428361292502e7bac88c2c2"
+  },
+  "coordination_id": "leaf-divergence",
+  "created_at": "2026-11-04T08:10:29+00:00",
+  "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
+  "managed_refs": {
+    "refs/heads/integration/leaf-divergence/main": "7d8f703d33e587c8ee74fac09f26dcd9b6f372c0",
+    "refs/heads/pr/leaf-divergence": "3b48e05fddf99334758bc2c3cad04a9fc74b1aaf"
+  },
+  "manifest": {
+    "coordination": {
+      "gc": {
+        "backup_keep": 2,
+        "backup_retention_days": 30,
+        "worktree_grace_days": 7
+      },
+      "id": "leaf-divergence",
+      "mode": "active-active",
+      "state_branch": "syncwheel/state/leaf-divergence"
+    },
+    "defaults": {
+      "base_branch": "main",
+      "base_ref": {
+        "kind": "remote-ref",
+        "ref": "refs/heads/main",
+        "role": "canonical"
+      }
+    },
+    "integration": {
+      "base": {
+        "kind": "remote-ref",
+        "ref": "refs/heads/main",
+        "role": "canonical"
+      },
+      "branch": "integration/leaf-divergence/main",
+      "stacks": [
+        "leaf-divergence"
+      ],
+      "strategy": "cherry-pick"
+    },
+    "stacks": [
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/leaf-divergence",
+        "commits": [
+          "3b48e05fddf99334758bc2c3cad04a9fc74b1aaf"
+        ],
+        "id": "leaf-divergence",
+        "integration_branch": "integration/leaf-divergence/main",
+        "target_branch": "main"
+      }
+    ],
+    "version": 2
+  },
+  "manifest_digest": "b0b6bf50d816f068f9ac28578e8de0882c339d098e382b0ac49d4cb91adb811e",
+  "operation_token": "8ab2a324-4677-472b-9d14-fffa0562c5c0",
+  "parent_state": null,
+  "projection_status": "partial",
+  "publication_id": "6f5988f1-9e9b-4fd5-8104-405a6ba2be19",
+  "publication_scope": "stack:leaf-divergence",
+  "schema_version": 2,
+  "syncwheel_version": "0.46.18",
+  "tombstones": []
+}

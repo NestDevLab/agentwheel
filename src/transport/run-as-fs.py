@@ -164,6 +164,65 @@ class Filesystem:
         visit(relative(path), '')
         return output
 
+    @staticmethod
+    def identity(info):
+        # Strings avoid truncating nanosecond/inode values in JSON consumers.
+        return [str(value) for value in (info.st_dev, info.st_ino, info.st_mode,
+                info.st_uid, info.st_gid, info.st_nlink, info.st_size,
+                info.st_mtime_ns, info.st_ctime_ns)]
+
+    def manifest_inventory(self, path):
+        """Read only install manifests through one pinned metadata descriptor."""
+        with self.opened(path, os.O_RDONLY | os.O_DIRECTORY) as directory:
+            before = self.identity(os.fstat(directory))
+
+            def names():
+                result, count = [], 0
+                os.lseek(directory, 0, os.SEEK_SET)
+                with os.scandir(directory) as entries:
+                    for entry in entries:
+                        count += 1
+                        if count > MAX_ENTRIES:
+                            reject('Metadata directory entry limit exceeded')
+                        relative(entry.name, False)
+                        if entry.name.endswith('.install-manifest.json'):
+                            result.append(entry.name)
+                return sorted(result)
+
+            selected, files, total = names(), [], 0
+            for name in selected:
+                fd = self.open_at(directory, name, os.O_RDONLY | os.O_NONBLOCK)
+                try:
+                    info = self.safe(os.fstat(fd))
+                    if not stat.S_ISREG(info.st_mode):
+                        reject('Install manifests must be regular files')
+                    identity, chunks = self.identity(info), []
+                    while True:
+                        chunk = os.read(fd, min(65536, MAX_BYTES + 1 - total))
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > MAX_BYTES:
+                            reject('Metadata content limit exceeded')
+                        chunks.append(chunk)
+                    if self.identity(self.safe(os.fstat(fd))) != identity:
+                        reject('Install manifest changed during acquisition')
+                    files.append({'name': name, 'identity': identity,
+                                  'content': base64.b64encode(b''.join(chunks)).decode('ascii')})
+                finally:
+                    os.close(fd)
+            if names() != selected or self.identity(os.fstat(directory)) != before:
+                reject('Metadata inventory changed during acquisition')
+            for entry in files:
+                current = self.safe(os.stat(entry['name'], dir_fd=directory, follow_symlinks=False))
+                if self.identity(current) != entry['identity']:
+                    reject('Install manifest changed during acquisition')
+            # Re-resolve without following links: a renamed/replaced ancestor is
+            # not accepted merely because the old directory descriptor survived.
+            if self.identity(self.info(path)) != before:
+                reject('Metadata directory changed during acquisition')
+            return {'identity': before, 'files': files}
+
     @contextmanager
     def parent(self, path, create=False):
         path = relative(path, False)
@@ -337,6 +396,8 @@ class Filesystem:
                 return []
         if operation == 'readFile':
             return base64.b64encode(self.read(path)).decode('ascii')
+        if operation == 'manifestInventory':
+            return self.manifest_inventory(path)
         if operation == 'snapshot':
             if type(request.get('includeIgnored')) is not bool:
                 reject('includeIgnored must be boolean')

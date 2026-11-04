@@ -2,7 +2,7 @@ import { assertCallerRunAsWritePath } from "../transport/caller-write-trust.js";
 import { createHash, randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { commitManifestMetadataJournal } from "../install/apply.js";
-import { computeInstallManifestInventoryRevision, listInstallManifests, readInstallManifest } from "../install/manifest.js";
+import { computeInstallManifestInventoryRevision, listInstallManifests, readInstallManifest, type DiscoveredInstallManifest } from "../install/manifest.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
 import {
   acquireApplyLock, assertOwnershipMetadataTransportSupported, assertNoSymlinkPath, listAllApplyJournals, metadataRuntimePath,
@@ -161,7 +161,7 @@ async function applyLocked(request: ReleaseOwnershipRequest, operationId: string
   }
 }
 
-export async function selectReleaseOwnershipClaim(request: ReleaseOwnershipRequest) {
+function ownershipClaimContext(request: ReleaseOwnershipRequest) {
   const transport = request.transport ?? localTransport;
   if (transport.kind === "ssh") throw new Error("Ownership release does not support SSH targets.");
   const endpoint = ownershipRunAsEndpoint(transport, request.targetRoot);
@@ -173,11 +173,30 @@ export async function selectReleaseOwnershipClaim(request: ReleaseOwnershipReque
     throw new Error("Ownership release requires an exact state key, installation type and type/name selector.");
   }
   const runtimePath = metadataRuntimePath(targetRoot, request.path);
+  return { transport, endpoint, targetRoot, workspaceRoot, reason, runtimePath };
+}
+
+export async function selectReleaseOwnershipClaim(request: ReleaseOwnershipRequest) {
+  const context = ownershipClaimContext(request);
+  const { transport, targetRoot, workspaceRoot } = context;
   await assertNoSymlinkPath(workspaceRoot);
   if (transport.kind === "local") await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
   else await transport.pathExists(join(targetRoot, ".agentwheel"));
   const manifests = await listInstallManifests(targetRoot, undefined, transport);
   if (transport.kind === "local") for (const item of manifests) await assertNoSymlinkPath(item.path);
+  return selectOwnershipClaim(request, manifests, context);
+}
+
+/** Logical selection only; callers must independently acquire/validate metadata. */
+export function selectOwnershipClaimFromManifests(request: ReleaseOwnershipRequest, manifests: DiscoveredInstallManifest[]) {
+  return selectOwnershipClaim(request, manifests, ownershipClaimContext(request));
+}
+
+function selectOwnershipClaim(
+  request: ReleaseOwnershipRequest, manifests: DiscoveredInstallManifest[],
+  context: ReturnType<typeof ownershipClaimContext>,
+) {
+  const { transport, endpoint, targetRoot, workspaceRoot, reason, runtimePath } = context;
   const source = manifests.find((item) => item.stateKey === request.stateKey);
   const manifest = source?.manifest;
   if (!manifest || manifest.version !== 2 || manifest.adapter !== request.adapter

@@ -1,8 +1,10 @@
-import { resolve } from "node:path";
-import { computeInstallManifestInventoryRevision } from "../install/manifest.js";
+import { join, resolve } from "node:path";
+import { computeInstallManifestInventoryRevision, listInstallManifests } from "../install/manifest.js";
 import { isIgnoredGeneratedEntry } from "../utils/fs.js";
-import { executeRead, type OwnershipBytesSnapshot } from "../transport/run-as-worker.js";
-import { selectReleaseOwnershipClaim, ownershipProofDigest, type ReleaseOwnershipRequest } from "./ownership-release.js";
+import { executeRead, type OwnershipBytesSnapshot, type OwnershipManifestInventory } from "../transport/run-as-worker.js";
+import { selectOwnershipClaimFromManifests, ownershipProofDigest, type ReleaseOwnershipRequest } from "./ownership-release.js";
+
+import { localTransport, type TargetTransport } from "../transport/index.js";
 
 export type OwnershipSnapshotRequest = Pick<ReleaseOwnershipRequest,
   "workspaceRoot" | "fromWorkspaceRoot" | "fromFleetId" | "targetRoot" | "adapter" |
@@ -22,6 +24,40 @@ function selectedFiles(files: string[]): string[] {
   return [...files];
 }
 
+async function confinedMetadata(target: string) {
+  const directory = join(target, ".agentwheel");
+  const snapshot = await executeRead(target, {
+    version: 1, operation: "ownershipManifestInventory", path: ".agentwheel",
+  }) as OwnershipManifestInventory;
+  const files = new Map<string, string>();
+  for (const file of snapshot.files) {
+    const bytes = Buffer.from(file.content, "base64");
+    const path = join(directory, file.name);
+    if (bytes.toString("base64") !== file.content || files.has(path)) throw new Error("Invalid confined metadata snapshot.");
+    files.set(path, bytes.toString("utf8"));
+  }
+  // Reuse native schemas, revision and inventory algorithms over these buffers.
+  // Every other transport operation is unavailable: no filesystem fallback.
+  const transport: TargetTransport = new Proxy(localTransport, {
+    get: (_target, property) => {
+      if (property === "kind") return "local";
+      if (property === "listDir") return async (path: string) => {
+        if (path !== directory) throw new Error("Metadata path outside the snapshot.");
+        return snapshot.files.map(file => file.name);
+      };
+      if (property === "readFile") return async (path: string) => {
+        const value = files.get(path);
+        if (value === undefined) throw new Error("Metadata file outside the snapshot.");
+        return value;
+      };
+      throw new Error("Operation unavailable on the frozen metadata transport.");
+    },
+  });
+  const manifests = await listInstallManifests(target, undefined, transport);
+  const inventoryRevision = await computeInstallManifestInventoryRevision(target, undefined, transport);
+  return { manifests, inventoryRevision, witness: ownershipProofDigest(snapshot) };
+}
+
 /** Read-only: verify the native managed hash over the very buffers being exported. */
 export async function snapshotManagedOwnership(request: OwnershipSnapshotRequest) {
   try { return await captureManagedOwnership(request); }
@@ -34,8 +70,8 @@ async function captureManagedOwnership(request: OwnershipSnapshotRequest) {
     throw new Error("Ownership byte snapshots currently require a local caller-owned target.");
   }
   const target = resolve(request.targetRoot);
-  const selected = await selectReleaseOwnershipClaim(request);
-  const inventoryBefore = await computeInstallManifestInventoryRevision(target, undefined, request.transport);
+  const metadata = await confinedMetadata(target);
+  const selected = selectOwnershipClaimFromManifests(request, metadata.manifests);
   if (selected.entry.channel !== "managed") throw new Error("Snapshot requires an explicitly managed artifact claim.");
   const identity = { adapter: request.adapter, installationType: request.installationType,
     targetRoot: selected.targetRoot, workspaceRoot: selected.workspaceRoot, owner: selected.owner,
@@ -46,9 +82,9 @@ async function captureManagedOwnership(request: OwnershipSnapshotRequest) {
   if (captured.kind !== selected.entry.kind || captured.artifactHash !== selected.entry.hash) {
     throw new Error("Managed artifact snapshot does not match its recorded kind and hash.");
   }
-  const after = await selectReleaseOwnershipClaim(request);
-  const inventoryAfter = await computeInstallManifestInventoryRevision(target, undefined, request.transport);
-  if (inventoryBefore !== inventoryAfter || ownershipProofDigest(selected.source) !== ownershipProofDigest(after.source)
+  const metadataAfter = await confinedMetadata(target);
+  const after = selectOwnershipClaimFromManifests(request, metadataAfter.manifests);
+  if (metadata.witness !== metadataAfter.witness || metadata.inventoryRevision !== metadataAfter.inventoryRevision || ownershipProofDigest(selected.source) !== ownershipProofDigest(after.source)
     || selected.owner !== after.owner || ownershipProofDigest(selected.inventory) !== ownershipProofDigest(after.inventory)) {
     throw new Error("Ownership manifest or inventory changed concurrently during snapshot acquisition.");
   }
@@ -61,6 +97,6 @@ async function captureManagedOwnership(request: OwnershipSnapshotRequest) {
   });
   const result = { schemaVersion: 1 as const, ...identity,
     artifactHash: captured.artifactHash, snapshotDigest: captured.snapshotDigest,
-    manifestInventoryRevision: inventoryAfter, files: exported };
+    manifestInventoryRevision: metadataAfter.inventoryRevision, metadataSnapshotDigest: metadata.witness, files: exported };
   return { ...result, proofDigest: ownershipProofDigest(result) };
 }

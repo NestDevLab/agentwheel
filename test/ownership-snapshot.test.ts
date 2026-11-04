@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, rm, writeFile, symlink, link } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, symlink, link, rename } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { snapshotManagedOwnership, type OwnershipSnapshotRequest } from "../src/lifecycle/ownership-snapshot.js";
 import { installManifestPath } from "../src/install/paths.js";
@@ -64,7 +65,7 @@ describe("managed ownership byte snapshots", () => {
     const f = await fixture(), capture = worker.executeRead;
     vi.spyOn(worker, "executeRead").mockImplementation(async (...args) => {
       const result = await capture(...args);
-      await writeFile(join(f.artifact, "scripts/resolve.py"), "changed after acquisition\n");
+      if (args[1].operation === "ownershipBytes") await writeFile(join(f.artifact, "scripts/resolve.py"), "changed after acquisition\n");
       return result;
     });
     const snapshot = await snapshotManagedOwnership(f.request);
@@ -100,13 +101,86 @@ describe("managed ownership byte snapshots", () => {
 
   it.each(["manifest", "inventory"])("refuses concurrent %s updates during acquisition", async (kind) => {
     const f = await fixture(), capture = worker.executeRead;
+    let mutated = false;
     vi.spyOn(worker, "executeRead").mockImplementation(async (...args) => {
       const result = await capture(...args);
+      if (args[1].operation !== "ownershipBytes") return result;
       if (kind === "manifest") { f.manifest.entries[0]!.owners = ["workspace:changed"]; await writeInstallManifest(f.manifest); }
       else await writeInstallManifest({ ...f.manifest, stateKey: "codex.user.unrelated", entries: [] });
+      mutated = true;
       return result;
     });
     await expect(snapshotManagedOwnership(f.request)).rejects.toThrow(/changed|concurrent|inventory/i);
+    expect(mutated).toBe(true);
+  });
+
+  it("refuses a manifest symlink without an ordinary metadata read", async () => {
+    const f = await fixture(), path = installManifestPath(f.target, "codex", { stateKey: f.request.stateKey });
+    const outside = join(f.root, "outside-manifest.json");
+    await rename(path, outside); await symlink(outside, path);
+    const ordinaryRead = vi.spyOn(localTransport, "readFile");
+    const acquisition = vi.spyOn(worker, "executeRead");
+    await expect(snapshotManagedOwnership(f.request)).rejects.toThrow();
+    expect(acquisition).toHaveBeenCalledWith(f.target, expect.objectContaining({ operation: "ownershipManifestInventory" }));
+    expect(ordinaryRead).not.toHaveBeenCalled();
+  });
+
+  it("refuses a swapped metadata ancestor without reading its external replacement", async () => {
+    const f = await fixture(), metadata = join(f.target, ".agentwheel"), outside = join(f.root, "outside-metadata");
+    await mkdir(outside); await writeFile(join(outside, "codex.user.example.install-manifest.json"), "EXTERNAL_METADATA_MUST_NOT_BE_READ");
+    const capture = worker.executeRead, ordinaryRead = vi.spyOn(localTransport, "readFile");
+    let swapped = false;
+    vi.spyOn(worker, "executeRead").mockImplementation(async (...args) => {
+      const snapshot = await capture(...args);
+      if (!swapped && args[1].operation === "ownershipManifestInventory") {
+        await rename(metadata, join(f.target, "saved-metadata"));
+        await symlink(outside, metadata); swapped = true;
+      }
+      return snapshot;
+    });
+    await expect(snapshotManagedOwnership(f.request)).rejects.toThrow();
+    expect(swapped).toBe(true);
+    expect(ordinaryRead).not.toHaveBeenCalled();
+  });
+
+  it("pins the metadata descriptor during an in-flight ancestor swap without external reads", async () => {
+    const f = await fixture(), outside = join(f.root, "outside-metadata");
+    await mkdir(outside);
+    const name = `${f.request.stateKey}.install-manifest.json`;
+    await writeFile(join(outside, name), "EXTERNAL_BYTES_MUST_NOT_BE_READ");
+    const helper = fileURLToPath(new URL("../src/transport/run-as-fs.py", import.meta.url));
+    const probe = `import json,os,runpy,sys
+FS=runpy.run_path(sys.argv[1])["Filesystem"]
+target,outside,name=sys.argv[2:]
+fs=FS(target,os.getuid(),os.getgid())
+metadata=os.path.join(target,".agentwheel")
+outside_info=os.stat(os.path.join(outside,name))
+original_open,original_read=fs.open_at,os.read
+state={"swapped":False,"outsideReads":0,"rejected":False}
+def swap_open(anchor,path,flags,mode=0):
+    if path == name and not state["swapped"]:
+        os.rename(metadata,os.path.join(target,"saved-metadata"))
+        os.symlink(outside,metadata)
+        state["swapped"]=True
+    return original_open(anchor,path,flags,mode)
+def guarded_read(fd,size):
+    info=os.fstat(fd)
+    if (info.st_dev,info.st_ino)==(outside_info.st_dev,outside_info.st_ino):
+        state["outsideReads"]+=1
+        raise AssertionError("external descriptor read attempted")
+    return original_read(fd,size)
+fs.open_at,os.read=swap_open,guarded_read
+try:
+    fs.manifest_inventory(".agentwheel")
+except OSError:
+    state["rejected"]=True
+finally:
+    os.read=original_read
+    os.close(fs.root)
+print(json.dumps(state))
+`;
+    const { stdout } = await execute("/usr/bin/python3", ["-I", "-c", probe, helper, f.target, outside, name]);
+    expect(JSON.parse(stdout)).toEqual({ swapped: true, outsideReads: 0, rejected: true });
   });
 
   it("refuses special files without opening them as streams", async () => {

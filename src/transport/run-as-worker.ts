@@ -9,18 +9,26 @@ import { readFileSync } from "node:fs";
 import { isIgnoredGeneratedEntry } from "../utils/fs.js";
 import { hashRunAsCopyPayload, validateRunAsCopyPayload } from "./run-as-staging.js";
 
-export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir" | "ownershipSnapshot" | "ownershipBytes";
+export type ReadOperation = "pathExists" | "hashPath" | "readFile" | "listDir" | "ownershipSnapshot" | "ownershipBytes" | "ownershipManifestInventory";
 export interface ReadRequest { version: 1; operation: ReadOperation; path: string }
 const relativePath = z.string().min(1).max(4096).refine((path) => path === "." || (!isAbsolute(path)
   && !path.includes("\\") && !path.includes("\0") && path.split("/").every((part) => part !== "" && part !== "." && part !== "..")), { message: "Run-as path is not a contained relative path." });
 const requestSchema = z.object({
   version: z.literal(1),
-  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "ownershipBytes", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
+  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "ownershipBytes", "ownershipManifestInventory", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
   path: relativePath,
   validatorRoot: z.string().optional(), validationSnapshot: z.string().optional(), content: z.string().optional(), source: relativePath.optional(), payload: z.unknown().optional(),
 }).strict();
 export type RunAsRequest = z.infer<typeof requestSchema>;
 const snapshotEntrySchema = z.object({ path: z.string(), kind: z.enum(["file", "dir"]), mode: z.number().int().min(0).max(0o7777), content: z.string().optional() }).strict();
+const manifestInventorySchema = z.object({
+  identity: z.array(z.string()).length(9),
+  files: z.array(z.object({
+    name: z.string().refine(name => !name.includes("/") && !name.includes("\\") && !name.includes("\0") && name.endsWith(".install-manifest.json")),
+    identity: z.array(z.string()).length(9), content: z.string(),
+  }).strict()).max(4096),
+}).strict();
+export type OwnershipManifestInventory = z.infer<typeof manifestInventorySchema>;
 export interface OwnershipBytesSnapshot {
   kind: "file" | "dir";
   artifactHash: string;
@@ -67,6 +75,7 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
   await containedReadPath(root, request.path);
   const fs = (operation: string, fields: Record<string, unknown> = {}) => filesystem(root, uid, gid, { operation, path: request.path, ...fields });
   if (["pathExists", "listDir", "mkdirExclusive", "rm", "probe"].includes(request.operation)) return fs(request.operation);
+  if (request.operation === "ownershipManifestInventory") return manifestInventorySchema.parse(await fs("manifestInventory"));
   if (request.operation === "readFile") return Buffer.from(String(await fs("readFile")), "base64").toString("utf8");
   if (request.operation === "hashPath" || request.operation === "ownershipSnapshot" || request.operation === "ownershipObservation" || request.operation === "ownershipBytes") {
     const entries = z.array(snapshotEntrySchema).min(1).max(4096).parse(await fs("snapshot", { includeIgnored: request.operation !== "hashPath" }));

@@ -1,0 +1,12 @@
+{
+  "changed_refs": [
+    "refs/heads/integration/leaf-divergence/main",
+    "refs/heads/pr/leaf-divergence"
+  ],
+  "claimed_at": "2026-11-04T08:10:29+00:00",
+  "coordination_id": "leaf-divergence",
+  "operation_token": "8ab2a324-4677-472b-9d14-fffa0562c5c0",
+  "publication_scope": "stack:leaf-divergence",
+  "source_ref": "refs/heads/integration/leaf-divergence/main",
+  "syncwheel_version": "0.46.18"
+}

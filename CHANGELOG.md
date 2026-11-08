@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.5
+
+- Install one copy when pinned roots select byte-identical artifacts under the same install name, while still refusing roots whose content differs.
+
 ## 0.22.4
 
 - Preserve user-owned Codex MCP preferences, nested tables, and TOML values when updating managed server fields.

@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
+      "worktree_grace_days": 7
     }
   },
   "defaults": {
@@ -35,9 +35,9 @@
       "ccp011-ownership-supersession",
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
+      "pin-collision-guard",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "pin-collision-guard"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -49,15 +49,15 @@
       "commits": [],
       "id": "ccp011-ownership-supersession",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
-      },
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin",
       "publication": {
         "enabled": false
       },
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      }
     },
     {
       "base": "origin/main",
@@ -65,15 +65,15 @@
       "commits": [],
       "id": "local-run-as-readonly",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      },
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin",
       "publication": {
         "enabled": false
       },
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      }
     },
     {
       "base": "origin/main",
@@ -84,16 +84,33 @@
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",
-      "integration_commits": [],
-      "meta": {
-        "purpose": "Expose explicit runtime restrictions in add"
-      },
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
+      "meta": {
+        "purpose": "Expose explicit runtime restrictions in add"
+      }
+    },
+    {
+      "id": "pin-collision-guard",
+      "branch": "pr/pin-collision-guard",
+      "base": "origin/main",
       "target_branch": "main",
-      "target_remote": "origin"
+      "integration_branch": "main-integration",
+      "commits": [
+        "4b480db776ba60ccca91faff626010a5af7b7c63"
+      ],
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Refuse pins that would add an artifact collision"
+      }
     },
     {
       "id": "retained-install-recovery",
@@ -127,24 +144,6 @@
       },
       "meta": {
         "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
-      }
-    },
-    {
-      "id": "pin-collision-guard",
-      "branch": "pr/pin-collision-guard",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "4b480db776ba60ccca91faff626010a5af7b7c63"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Refuse pins that would add an artifact collision"
       }
     }
   ],

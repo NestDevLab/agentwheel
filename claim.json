@@ -1,11 +1,11 @@
 {
-  "changed_refs": [
-    "refs/heads/pr/pin-collision-guard"
-  ],
-  "claimed_at": "2026-11-08T11:48:43+00:00",
+  "changed_refs": [],
+  "claimed_at": "2026-11-08T12:23:29+00:00",
+  "closed": true,
   "coordination_id": "default",
-  "operation_token": "403de6af-73db-405b-98f9-44ca30b3a6bf",
-  "publication_scope": "compose-stack:pin-collision-guard",
+  "operation_token": "6f77c21f-4249-45a2-9a06-9eb145d48bb6",
+  "publication_scope": "close:pin-collision-guard",
+  "reason": "absorbed",
   "source_ref": "refs/heads/pr/pin-collision-guard",
   "syncwheel_version": "0.46.24"
 }

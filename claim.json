@@ -1,0 +1,11 @@
+{
+  "changed_refs": [],
+  "claimed_at": "2026-11-08T10:17:21+00:00",
+  "closed": true,
+  "coordination_id": "default",
+  "operation_token": "0a28348d-f76d-4afc-9c0b-e451e08ff835",
+  "publication_scope": "close:root-equal-coalesce",
+  "reason": "absorbed",
+  "source_ref": "refs/heads/pr/root-equal-coalesce",
+  "syncwheel_version": "0.46.23"
+}

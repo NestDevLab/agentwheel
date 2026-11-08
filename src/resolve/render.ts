@@ -16,6 +16,7 @@ import { renderOpenClawSubagents } from "../staging/openclaw-subagents.js";
 import { stageResolvedArtifactsRaw } from "../staging/staging.js";
 import { filterArtifactsByInstallFormat } from "../validation/artifacts.js";
 import { removeOnFailure } from "../utils/fs.js";
+import { ArtifactCollisionError } from "./collision.js";
 import { createGraphLock, type ResolvedGraph, type ResolvedGraphRawNode } from "./graph.js";
 import { semverMajorOrVersion } from "./semver.js";
 
@@ -330,10 +331,10 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
   const collisionGroups = [...groupBy(withOverrides, (artifact) => `${artifact.type}\0${artifact.installName}`).values()]
     .filter((group) => group.length > 1);
   const toRename = new Set<ResolvedArtifact>();
+  const unresolvable = collisionGroups.filter((group) => group.some((artifact) => decisions.has(decisionKey(artifact)))
+    || group.filter((artifact) => artifact.dependencyRole !== "transitive").length > 1);
+  if (unresolvable.length > 0) throw installNameCollisionError(unresolvable);
   for (const group of collisionGroups) {
-    if (group.some((artifact) => decisions.has(decisionKey(artifact)))) throw installNameCollisionError(group);
-    const pinned = group.filter((artifact) => artifact.dependencyRole !== "transitive");
-    if (pinned.length > 1) throw installNameCollisionError(group);
     for (const artifact of group) {
       if (artifact.dependencyRole === "transitive") toRename.add(artifact);
     }
@@ -620,12 +621,15 @@ function reachableNodeIds(graph: ResolvedGraph, rootNodeId: string): Set<string>
   return reachable;
 }
 
-function installNameCollisionError(group: ResolvedArtifact[]): Error {
-  const details = group
-    .map((artifact) => `${artifact.logicalSelector}=sha256:${artifact.hash}`)
-    .sort()
-    .join("; ");
-  return new Error(`Install name collision for ${group[0]?.type}/${group[0]?.installName}. Artifact content hashes: ${details}`);
+function installNameCollisionError(groups: ResolvedArtifact[][]): ArtifactCollisionError {
+  const messages = groups.map((group) => {
+    const details = group
+      .map((artifact) => `${artifact.logicalSelector}=sha256:${artifact.hash}`)
+      .sort()
+      .join("; ");
+    return `Install name collision for ${group[0]?.type}/${group[0]?.installName}. Artifact content hashes: ${details}`;
+  });
+  return new ArtifactCollisionError(messages.join(" "), groups.map((group) => `${group[0]?.type}/${group[0]?.installName}`));
 }
 
 function namespaceDecision(artifact: ResolvedArtifact, reason: GraphLockNamespacing["reason"]): GraphLockNamespacing {

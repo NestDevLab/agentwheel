@@ -25,6 +25,7 @@ import { CURRENT_WORKSPACE_SCHEMA_VERSION, findExistingWorkspaceRoot, globalWork
 import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
+import { refuseNewPinCollisions } from "../lifecycle/pin-preflight.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
 import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, discoverTargetApplyJournal, graphLockPathForTarget, resolvePriorTargetState, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
@@ -277,7 +278,9 @@ program
       ? JSON.parse(await readFile(resolve(inputFile), "utf8"))
       : [{ alias, commit, ...(options.select === undefined ? {} : { select: options.select }) }];
     const config = await pinConfiguredPackages(workspaceRoot, input, {
-      dryRun: options.dryRun, replacePackages: options.packagesFile !== undefined,
+      dryRun: options.dryRun,
+      replacePackages: options.packagesFile !== undefined,
+      beforeWrite: (proposed) => refuseNewPinCollisions(workspaceRoot, proposed, (message) => console.warn(message)),
     });
     if (options.dryRun) console.log(JSON.stringify(config, null, 2));
     else console.log("Pinned configured packages. Preview: agentwheel plan - Apply: agentwheel install");

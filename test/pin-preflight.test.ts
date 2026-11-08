@@ -21,8 +21,8 @@ async function writeText(path: string, value: string): Promise<void> {
   await writeFile(path, value, "utf8");
 }
 
-async function writeSkillPackage(root: string, name: string, skills: Record<string, string>): Promise<void> {
-  await writeText(join(root, "openpack.json"), JSON.stringify({ schemaVersion: 2, version: "1.0.0", name, provides: [{ type: "skills", path: "skills" }] }));
+async function writeSkillPackage(root: string, name: string, skills: Record<string, string>, version = "1.0.0"): Promise<void> {
+  await writeText(join(root, "openpack.json"), JSON.stringify({ schemaVersion: 2, version, name, provides: [{ type: "skills", path: "skills" }] }));
   for (const [skill, body] of Object.entries(skills)) {
     await writeText(join(root, "skills", skill, "SKILL.md"), `---\nname: ${skill}\ndescription: Fixture skill for tests.\n---\n${body}\n`);
   }
@@ -140,6 +140,41 @@ describe("pin collision preflight", () => {
 
     expect(warnings.join("\n")).toMatch(/could not finish/);
     expect(await readFile(configPath, "utf8")).toContain(after);
+  });
+
+  async function overrideFixture(selector: string) {
+    const made = await fixture("left", claudeProfile, { overrides: [selector] });
+    const left = join(made.workspace, "left");
+    const right = join(made.workspace, "right");
+    await writeSkillPackage(left, "fixture/left", { shared: "left", other: "left" });
+    await writeSkillPackage(right, "fixture/right", { other: "other", shared: "left" }, "2.0.0");
+    return { ...made, bumped: await commitAll(right, "bump") };
+  }
+
+  it("refuses a pin that leaves an override matching nothing", async () => {
+    const { workspace, configPath, bumped } = await overrideFixture("fixture/right@1.0.0:skills/other");
+    const before = await readFile(configPath, "utf8");
+
+    await expect(pin(workspace, bumped)).rejects.toThrow(/nothing was written.*fixture\/right@1\.0\.0:skills\/other.*source::type\/name/s);
+    expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
+  it("accepts a pin when the override does not name a version", async () => {
+    const { workspace, configPath, bumped } = await overrideFixture("fixture/right:skills/other");
+
+    await pin(workspace, bumped);
+
+    expect(await readFile(configPath, "utf8")).toContain(bumped);
+  });
+
+  it("still lets a pin through when the override already matched nothing", async () => {
+    const { workspace, configPath, bumped } = await overrideFixture("fixture/right@9.9.9:skills/other");
+    const warnings: string[] = [];
+
+    await pin(workspace, bumped, warnings);
+
+    expect(warnings.join("\n")).toMatch(/existing collision.*fixture\/right@9\.9\.9/s);
+    expect(await readFile(configPath, "utf8")).toContain(bumped);
   });
 
   it("never downloads a registry to run the check", async () => {

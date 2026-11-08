@@ -4,3 +4,10 @@ export class ArtifactCollisionError extends Error {
     this.name = "ArtifactCollisionError";
   }
 }
+
+export class StaleOverrideError extends ArtifactCollisionError {
+  constructor(message: string, selectors: string[]) {
+    super(message, selectors);
+    this.name = "StaleOverrideError";
+  }
+}

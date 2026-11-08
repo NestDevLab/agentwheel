@@ -36,7 +36,8 @@
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
       "retained-install-recovery",
-      "journal-receipt-consumer"
+      "journal-receipt-consumer",
+      "pin-collision-guard"
     ],
     "strategy": "cherry-pick"
   },
@@ -126,6 +127,24 @@
       },
       "meta": {
         "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
+      }
+    },
+    {
+      "id": "pin-collision-guard",
+      "branch": "pr/pin-collision-guard",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "4b480db776ba60ccca91faff626010a5af7b7c63"
+      ],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Refuse pins that would add an artifact collision"
       }
     }
   ],

@@ -323,7 +323,9 @@ function assignInstallNames(graph: ResolvedGraph, artifacts: ResolvedArtifact[])
     decisions.set(decisionKey(updated), namespaceDecision(updated, "alias"));
     return updated;
   });
-  const { artifacts: withOverrides, overrides } = applyWorkspaceOverrides(graph, withAliases);
+  const overrideResult = applyWorkspaceOverrides(graph, withAliases);
+  const overrides = overrideResult.overrides;
+  const withOverrides = coalesceIdenticalPinnedArtifacts(overrideResult.artifacts, decisions, overrides);
 
   const collisionGroups = [...groupBy(withOverrides, (artifact) => `${artifact.type}\0${artifact.installName}`).values()]
     .filter((group) => group.length > 1);
@@ -385,6 +387,35 @@ function coalesceEquivalentDirectArtifacts(artifacts: ResolvedArtifact[]): Resol
     });
   }
   return passthrough;
+}
+
+// after overrides, so a selector naming either copy still matches
+function coalesceIdenticalPinnedArtifacts(
+  artifacts: ResolvedArtifact[],
+  decisions: Map<string, GraphLockNamespacing>,
+  overrides: GraphLockOverride[],
+): ResolvedArtifact[] {
+  const overrideWinners = new Set(overrides.map((override) => override.graphNodeId));
+  const candidate = (artifact: ResolvedArtifact) =>
+    (artifact.dependencyRole === "root" || artifact.dependencyRole === "direct")
+    && !decisions.has(decisionKey(artifact));
+  const groups = groupBy(artifacts.filter(candidate), (artifact) => `${artifact.type}\0${artifact.installName}\0${artifact.hash}`);
+  const dropped = new Set<ResolvedArtifact>();
+  const merged = new Map<ResolvedArtifact, ResolvedArtifact>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((left, right) =>
+      Number(overrideWinners.has(right.graphNodeId)) - Number(overrideWinners.has(left.graphNodeId))
+      || left.logicalSelector.localeCompare(right.logicalSelector));
+    const canonical = sorted[0]!;
+    merged.set(canonical, {
+      ...canonical,
+      owners: [...new Set(sorted.flatMap((artifact) => artifact.owners))].sort((left, right) => left.localeCompare(right)),
+      composedFrom: mergeComposedFrom(sorted),
+    });
+    for (const artifact of sorted.slice(1)) dropped.add(artifact);
+  }
+  return artifacts.filter((artifact) => !dropped.has(artifact)).map((artifact) => merged.get(artifact) ?? artifact);
 }
 
 function mergeComposedFrom(artifacts: ResolvedArtifact[]): ResolvedArtifact["composedFrom"] {

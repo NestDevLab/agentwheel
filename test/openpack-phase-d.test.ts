@@ -136,6 +136,41 @@ describe("OpenPack phase D", () => {
       .rejects.toThrow(/Direct dependency artifact collision/);
   });
 
+  async function twoRootsSelectingOneSkill(leftBody: string, rightBody: string) {
+    const workspace = await tempRoot();
+    const left = join(workspace, "left");
+    const right = join(workspace, "right");
+    const skill = (body: string) => `---\nname: shared\ndescription: Fixture skill for tests.\n---\n\n${body}\n`;
+    await writeText(join(left, "skills", "shared", "SKILL.md"), skill(leftBody));
+    await writeText(join(right, "skills", "shared", "SKILL.md"), skill(rightBody));
+    await writeOpenPack(left, { name: "phase-d/left", provides: [{ type: "skills", path: "skills" }] });
+    await writeOpenPack(right, { name: "phase-d/right", provides: [{ type: "skills", path: "skills" }] });
+    return createGraphSourcePlan({
+      roots: [
+        { rootId: "left", source: left, select: ["skills/shared"] },
+        { rootId: "right", source: right, select: ["skills/shared"] },
+      ],
+      targetRoot: await tempRoot("agentwheel-phase-d-identical-roots-target-"),
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-d-identical-roots",
+      yes: true,
+    });
+  }
+
+  it("installs one copy when two roots select byte-identical artifacts", async () => {
+    const result = await twoRootsSelectingOneSkill("same", "same");
+
+    const skills = result.bundle.artifacts.filter((artifact) => artifact.type === "skills" && artifact.name === "shared");
+    expect(skills).toHaveLength(1);
+    expect(skills[0]!.installName).toBe("shared");
+    expect(skills[0]!.owners).toHaveLength(2);
+  });
+
+  it("still refuses two roots selecting different artifacts under one install name", async () => {
+    await expect(twoRootsSelectingOneSkill("one", "two")).rejects.toThrow(/Install name collision/);
+  });
+
   it("lets a workspace root override a colliding upstream artifact by source", async () => {
     const workspace = await tempRoot();
     const target = await tempRoot("agentwheel-phase-d-source-override-target-");

@@ -36,8 +36,7 @@
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "root-equal-coalesce"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -127,25 +126,6 @@
       },
       "meta": {
         "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
-      }
-    },
-    {
-      "id": "root-equal-coalesce",
-      "branch": "pr/root-equal-coalesce",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "69e14d0425a97b327cf3e2a330fd79140ceab84b",
-        "992fbb3a221bde6d315d34eec87282ff5d465ce4"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Coalesce byte-identical pinned root artifacts"
       }
     }
   ],

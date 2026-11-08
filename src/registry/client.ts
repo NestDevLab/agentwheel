@@ -21,6 +21,7 @@ export interface RegistryClientOptions {
   now?: () => Date;
   offline?: boolean;
   offlineLabel?: string;
+  offlineHint?: string;
   warn?: (message: string) => void;
 }
 
@@ -52,7 +53,8 @@ export class RegistryClient {
     if (this.options.offline) {
       const reason = cached ? "registry sources changed" : "registry cache is missing";
       const label = this.options.offlineLabel ?? "Offline";
-      throw new Error(`${label} cannot refresh registry indexes (${reason}). Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`);
+      const hint = this.options.offlineHint ?? `Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`;
+      throw new Error(`${label} cannot refresh registry indexes (${reason}). ${hint}`);
     }
 
     const entries = mergeIndexes(await Promise.all(sources.map((source) => this.fetchSource(source))));

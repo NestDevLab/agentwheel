@@ -74,12 +74,15 @@ export class GitSourceDriver implements SourceDriver {
         cacheRoot,
         resolved.cacheLockTimeoutMs ?? 30_000,
         async () => {
-          const path = await snapshotCommit(resolved.resolvedPath, resolvedCommit);
+          const { path, created } = await snapshotCommit(resolved.resolvedPath, resolvedCommit);
           const leasePath = await createGitSnapshotLease(path);
-          await pruneGitCache(cacheRoot, {
-            currentSnapshot: path,
-            maintenanceLockHeld: true,
-          });
+          // pruning walks every cached repo, too slow to repeat when the cache didn't grow
+          if (created) {
+            await pruneGitCache(cacheRoot, {
+              currentSnapshot: path,
+              maintenanceLockHeld: true,
+            });
+          }
           return { path, leasePath };
         },
       );
@@ -157,9 +160,9 @@ async function resolveCommit(checkoutPath: string, ref: string): Promise<string>
   throw lastError;
 }
 
-async function snapshotCommit(checkoutPath: string, commit: string): Promise<string> {
+async function snapshotCommit(checkoutPath: string, commit: string): Promise<{ path: string; created: boolean }> {
   const snapshotPath = join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
-  if (await pathExists(snapshotPath)) return snapshotPath;
+  if (await pathExists(snapshotPath)) return { path: snapshotPath, created: false };
   const tempPath = join(dirname(checkoutPath), `${basename(snapshotPath)}.tmp-${process.pid}-${Date.now()}`);
   const tempIndexPath = `${tempPath}.index`;
   await rm(tempPath, { recursive: true, force: true });
@@ -181,9 +184,9 @@ async function snapshotCommit(checkoutPath: string, commit: string): Promise<str
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
     await rm(tempPath, { recursive: true, force: true });
-    return snapshotPath;
+    return { path: snapshotPath, created: false };
   }
-  return snapshotPath;
+  return { path: snapshotPath, created: true };
 }
 
 async function assertOwnedByCurrentUser(path: string): Promise<void> {

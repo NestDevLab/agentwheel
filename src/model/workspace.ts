@@ -313,7 +313,7 @@ export async function writeWorkspaceConfig(workspaceRoot: string, config: Worksp
 export async function pinConfiguredPackages(
   workspaceRoot: string,
   input: unknown,
-  options: { dryRun?: boolean; replacePackages?: boolean } = {},
+  options: { dryRun?: boolean; replacePackages?: boolean; beforeWrite?: (proposed: WorkspaceConfigInput) => Promise<void> } = {},
 ): Promise<WorkspaceConfigInput> {
   if (options.replacePackages) {
     const packages = z.array(workspacePackageSchema).parse(input);
@@ -326,6 +326,7 @@ export async function pinConfiguredPackages(
     // Preserve the authored entries, including absent defaults and extension fields.
     config.packages = input as WorkspaceConfigInput["packages"];
     workspaceConfigSchema.parse(config);
+    await options.beforeWrite?.(config);
     if (!options.dryRun) {
       declareMutationPath(path);
       await writeJsonAtomic(path, config);
@@ -367,6 +368,7 @@ export async function pinConfiguredPackages(
   // Validate without serializing the parsed result: defaults, package extension
   // fields and unrelated entries must survive this field-only source mutation.
   workspaceConfigSchema.parse(config);
+  await options.beforeWrite?.(config);
   if (!options.dryRun) {
     declareMutationPath(path);
     await writeJsonAtomic(path, config);

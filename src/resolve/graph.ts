@@ -17,6 +17,7 @@ import type { WorkspaceSelectionImport } from "../model/workspace.js";
 import { resolveSelectionImport, type ResolvedSelectionImport } from "../model/workspace-composition.js";
 import { normalizeDependencySource, normalizeGitRemoteUrl, type DeclaringGitSource, type NormalizedDependencySource } from "./identity.js";
 import { parseGitSource } from "../source/git-source.js";
+import { ArtifactCollisionError } from "./collision.js";
 import { satisfiesVersionRange } from "./semver.js";
 
 export interface GraphRootRequest {
@@ -1263,6 +1264,7 @@ function upsertRoot(roots: ResolvedGraphRoot[], root: ResolvedGraphRoot): void {
 
 function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
   const bySelector = new Map<string, ResolvedGraphRawNode[]>();
+  const collisions = new Map<string, string>();
   for (const node of nodes) {
     if (node.depth !== 1) continue;
     for (const selector of node.node.selected) {
@@ -1289,13 +1291,15 @@ function detectDirectCollisions(nodes: ResolvedGraphRawNode[]): void {
       });
     });
     if (replacements.length === 1) continue;
-    throw new Error(
+    collisions.set(
+      selector,
       `Direct dependency artifact collision for ${selector}: `
       + `${uniqueOwners.map((owner) => `${owner.node.id} required by ${owner.node.requiredBy.join(", ")}`).join("; ")}. `
       + `Content hashes differ: ${selectedArtifacts.map(({ owner, artifact }) => `${owner.node.id}=sha256:${artifact.hash}`).join("; ")}. `
       + "Resolve by aliasing, deselecting one artifact, or overriding the dependency selection.",
     );
   }
+  if (collisions.size > 0) throw new ArtifactCollisionError([...collisions.values()].join(" "), [...collisions.keys()]);
 }
 
 export function graphNodeId(name: string, version: string, normalizedSource: string, resolvedCommit: string | undefined, sourceHash: string): GraphNodeId {

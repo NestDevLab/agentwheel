@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "backup_keep": 2,
+      "worktree_grace_days": 7,
       "backup_retention_days": 30,
-      "worktree_grace_days": 7
+      "backup_keep": 2
     }
   },
   "defaults": {
@@ -101,7 +101,8 @@
       "target_branch": "main",
       "integration_branch": "main-integration",
       "commits": [
-        "4b480db776ba60ccca91faff626010a5af7b7c63"
+        "4b480db776ba60ccca91faff626010a5af7b7c63",
+        "e94e4e05bb98bd9ac8197f81b3e2c396a094173f"
       ],
       "target_remote": "origin",
       "state": "published",

@@ -1,5 +1,7 @@
 {
-  "changed_refs": {},
+  "changed_refs": {
+    "refs/heads/pr/pin-collision-guard": "4b480db776ba60ccca91faff626010a5af7b7c63"
+  },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
     "refs/heads/fix/catalogue-worker-cpu": "0fbd4f0edaebf2c72e7df537e4debe8e0ccd6b3b",
@@ -37,6 +39,7 @@
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
+    "refs/heads/pr/pin-collision-guard": "c1449d57c7081cb8d4e88952206fa3fe0775829c",
     "refs/heads/pr/pin-package-declarations": "68c9374cb142b2a4167733e29ae84ad0ff0caac4",
     "refs/heads/pr/preserve-mcp-preferences": "995886462c8a215e32bf94e079e94846eed7370c",
     "refs/heads/pr/provider-timeout-bound": "409a76201d089e942c5d566c0027040177c0ccf7",
@@ -63,7 +66,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-08T10:17:21+00:00",
+  "created_at": "2026-11-08T11:36:24+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -118,6 +121,7 @@
     "refs/heads/pr/ownership-release-claim": null,
     "refs/heads/pr/ownership-release-claim-0211": "2ab2f9c6bdef7329f564696888a1772f7e3b9d41",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
+    "refs/heads/pr/pin-collision-guard": "4b480db776ba60ccca91faff626010a5af7b7c63",
     "refs/heads/pr/pin-package-declarations": "7f74e3f3e52f91fcc8cb98d11d46bf5108de7f0a",
     "refs/heads/pr/preserve-mcp-preferences": "91d586d0b4fec0d41a23200441d64b74eeb85db9",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
@@ -188,7 +192,8 @@
       "stacks": [
         "ccp011-ownership-supersession",
         "local-run-as-readonly",
-        "mgt0478-add-runtimes"
+        "mgt0478-add-runtimes",
+        "pin-collision-guard"
       ],
       "strategy": "cherry-pick"
     },
@@ -233,18 +238,32 @@
         "id": "mgt0478-add-runtimes",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/pin-collision-guard",
+        "commits": [
+          "4b480db776ba60ccca91faff626010a5af7b7c63"
+        ],
+        "id": "pin-collision-guard",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "0a28348d-f76d-4afc-9c0b-e451e08ff835",
-  "parent_state": "eafdef607ab1ea69971c5993123fb42af10bbfce",
+  "operation_token": "bed3bad1-7aaa-4166-b59e-40b5e5fa3f44",
+  "parent_state": "3307cdf35d428d69b41e9b0fdabab1a9e832ff3b",
   "projection_status": "partial",
-  "publication_id": "feb42014-01dd-4b91-977e-f94e7664daef",
-  "publication_scope": "close:root-equal-coalesce",
+  "publication_id": "dcb47117-e04b-416a-9245-b353a0d9fd10",
+  "publication_scope": "compose-stack:pin-collision-guard",
   "schema_version": 2,
-  "syncwheel_version": "0.46.23",
+  "syncwheel_version": "0.46.24",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

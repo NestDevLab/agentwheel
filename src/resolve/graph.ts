@@ -73,6 +73,7 @@ export interface ResolvedGraphRawNode {
   artifacts: Artifact[];
   manifest?: PackageManifest;
   depth: number;
+  selectorDepths?: Record<string, number>;
 }
 
 export interface ResolvedGraph {
@@ -148,6 +149,8 @@ interface NodeState {
   requiredBy: Set<string>;
   selected: Set<string>;
   selectionReasons: Map<string, Set<string>>;
+  requestedSelectorDepths: Map<string, number>;
+  localRequires: Map<string, Set<string>>;
   processedNeeds: Set<string>;
   processedPackageAliases: Set<string>;
   processedSuggestions: Set<string>;
@@ -403,6 +406,8 @@ async function processRequirement(
         requiredBy: new Set(),
         selected: new Set(),
         selectionReasons: new Map(),
+        requestedSelectorDepths: new Map(),
+        localRequires: new Map(),
         processedNeeds: new Set(),
         processedPackageAliases: new Set(),
         processedSuggestions: new Set(),
@@ -423,7 +428,11 @@ async function processRequirement(
     state.updateClosure = state.updateClosure || requirement.updateClosure === true;
     for (const alias of requirement.suggestionAliases ?? []) state.suggestionAliases.add(alias);
     state.requiredBy.add(requirement.requiredBy);
-    for (const selector of selected) addSelectedSelector(state, selector, requirement.selectionReason);
+    for (const selector of selected) {
+      addSelectedSelector(state, selector, requirement.selectionReason);
+      const previousDepth = state.requestedSelectorDepths.get(selector);
+      if (previousDepth === undefined || requirement.depth < previousDepth) state.requestedSelectorDepths.set(selector, requirement.depth);
+    }
     refreshNode(state);
 
     if (requirement.depth === 0 && requirement.rootId) {
@@ -555,6 +564,9 @@ async function collectDependencyNeeds(
           throw new Error(`Artifact requirement not found in ${state.node.id}: ${parsed.selector} required by ${parentSelector}`);
         }
         addSelectedSelector(state, parsed.selector, `required by ${parentSelector}`);
+        const children = state.localRequires.get(parentSelector) ?? new Set<string>();
+        children.add(parsed.selector);
+        state.localRequires.set(parentSelector, children);
       }
 
       for (const suggestion of artifact.suggests ?? []) {
@@ -1243,7 +1255,29 @@ function materializeRawNode(state: NodeState): ResolvedGraphRawNode {
     artifacts: state.artifacts,
     manifest: state.manifest,
     depth: state.depth,
+    selectorDepths: selectorDepths(state),
   };
+}
+
+// A node that is both a root and a dependency target must not give its edge-only
+// selections the root role, or they collide with the plain copy from another node.
+function selectorDepths(state: NodeState): Record<string, number> {
+  const depths = new Map(state.requestedSelectorDepths);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [parent, children] of state.localRequires) {
+      const parentDepth = depths.get(parent);
+      if (parentDepth === undefined) continue;
+      for (const child of children) {
+        const childDepth = depths.get(child);
+        if (childDepth !== undefined && childDepth <= parentDepth) continue;
+        depths.set(child, parentDepth);
+        changed = true;
+      }
+    }
+  }
+  return Object.fromEntries([...depths.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function refreshNode(state: NodeState): void {

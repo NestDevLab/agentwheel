@@ -6,7 +6,7 @@ import type { AdapterConfig } from "../model/adapter.js";
 import type { Artifact, PackageCompositionRule } from "../model/artifact.js";
 import type { ResolvedArtifact, ResolvedGraphBundle } from "../model/graph.js";
 import type { GraphLockArtifact, GraphLockIncludeEdge, GraphLockNamespacing, GraphLockOverride } from "../model/graph-lock.js";
-import { artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
+import { artifactSelectorAliases, artifactSelectorKey, filterArtifactsBySelection, normalizeArtifactSelectors } from "../model/selection.js";
 import { expandMarkdownIncludes, type CrossPackageIncludeResolution, type ExternalComposeEntry } from "../compose/markdown.js";
 import { applyCustomizations, applyFragmentCustomizations } from "../staging/customize.js";
 import { renderClaudeSubagents } from "../staging/claude-subagents.js";
@@ -172,7 +172,7 @@ async function renderGraphIntoRoot(
     artifacts.push(...installableArtifacts.map((artifact) => ({
       ...artifact,
       graphNodeId: rawNode.node.id,
-      dependencyRole: dependencyRole(rawNode, artifact.type),
+      dependencyRole: dependencyRole(rawNode, artifact),
       installName: artifact.name,
       logicalSelector: `${rawNode.node.id}:${artifact.type}/${artifact.name}`,
       owners: [...rawNode.node.requiredBy].sort((a, b) => a.localeCompare(b)),
@@ -681,11 +681,19 @@ function versionFromGraphNodeId(nodeId: string): string {
   return nodeId.slice(at + 1, plus);
 }
 
-function dependencyRole(node: ResolvedGraphRawNode, type: string): ResolvedArtifact["dependencyRole"] {
-  if (type === "fragments") return "fragment";
-  if (node.depth === 0) return "root";
-  if (node.depth === 1) return "direct";
+function dependencyRole(node: ResolvedGraphRawNode, artifact: Artifact): ResolvedArtifact["dependencyRole"] {
+  if (artifact.type === "fragments") return "fragment";
+  const depth = artifactDepth(node, artifact);
+  if (depth === 0) return "root";
+  if (depth === 1) return "direct";
   return "transitive";
+}
+
+function artifactDepth(node: ResolvedGraphRawNode, artifact: Artifact): number {
+  const depths = artifactSelectorAliases(artifact)
+    .map((selector) => node.selectorDepths?.[selector])
+    .filter((depth): depth is number => depth !== undefined);
+  return depths.length > 0 ? Math.min(...depths) : node.depth;
 }
 
 function lockArtifactFor(artifact: ResolvedArtifact): GraphLockArtifact {

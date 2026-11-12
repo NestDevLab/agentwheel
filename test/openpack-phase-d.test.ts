@@ -113,6 +113,52 @@ describe("OpenPack phase D", () => {
     ]);
   });
 
+  it("keeps a transitive copy namespaced when its node is also selected as a root", async () => {
+    const workspace = await tempRoot();
+    const coreOld = join(workspace, "core-old");
+    const coreNew = join(workspace, "core-new");
+    const tracker = join(workspace, "tracker");
+    const wrapper = join(workspace, "wrapper");
+    await writeText(join(coreOld, "rules", "safe.md"), "# Safe old\n");
+    await writeText(join(coreNew, "rules", "safe.md"), "# Safe new\n");
+    await writeText(join(coreNew, "rules", "extra.md"), "# Extra\n");
+    await writeText(join(tracker, "rules", "tracker.md"), "# Tracker\n");
+    await writeText(join(wrapper, "rules", "wrapper.md"), "# Wrapper\n");
+    await writeOpenPack(coreOld, { name: "phase-d/core", provides: [{ type: "rules", path: "rules" }] });
+    await writeOpenPack(coreNew, { name: "phase-d/core", provides: [{ type: "rules", path: "rules" }] });
+    await writeOpenPack(tracker, {
+      name: "phase-d/tracker",
+      requires: { core: { source: "../core-new", select: ["rules/safe.md"] } },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+    await writeOpenPack(wrapper, {
+      name: "phase-d/wrapper",
+      requires: { tracker: { source: "../tracker", select: ["rules/tracker.md"] } },
+      provides: [{ type: "rules", path: "rules" }],
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [
+        { rootId: "old", source: coreOld, select: ["rules/safe.md"] },
+        { rootId: "wrapper", source: wrapper, select: ["rules/wrapper.md"] },
+        { rootId: "new", source: coreNew, select: ["rules/extra.md"] },
+      ],
+      targetRoot: await tempRoot("agentwheel-phase-d-shared-node-target-"),
+      workspaceRoot: workspace,
+      adapter: claudeAdapter,
+      targetKey: "phase-d-shared-node",
+      yes: true,
+    });
+
+    const byName = (name: string) => result.bundle.artifacts.filter((artifact) => artifact.name === name);
+    expect(byName("safe.md").map((artifact) => [artifact.dependencyRole, artifact.installName]).sort()).toEqual([
+      ["root", "safe.md"],
+      ["transitive", "phase-d-core--safe.md"],
+    ]);
+    expect(byName("extra.md").map((artifact) => [artifact.dependencyRole, artifact.installName])).toEqual([["root", "extra.md"]]);
+    expect(result.bundle.graphLock.canonical.namespacing.map((item) => item.reason)).toEqual(["transitive-collision"]);
+  });
+
   it("keeps direct collisions blocking", async () => {
     const workspace = await tempRoot();
     const root = join(workspace, "root");

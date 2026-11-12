@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { claudeAdapter } from "../src/adapters/claude.js";
+import { codexAdapter } from "../src/adapters/codex.js";
+import { copilotAdapter } from "../src/adapters/copilot.js";
 import { formatDepsWhy, formatLockDependencyTree } from "../src/cli/format.js";
 import { ejectArtifact } from "../src/lifecycle/customization.js";
 import { createGraphSourcePlan } from "../src/lifecycle/source-plan.js";
@@ -157,6 +159,54 @@ describe("OpenPack phase D", () => {
     ]);
     expect(byName("extra.md").map((artifact) => [artifact.dependencyRole, artifact.installName])).toEqual([["root", "extra.md"]]);
     expect(result.bundle.graphLock.canonical.namespacing.map((item) => item.reason)).toEqual(["transitive-collision"]);
+  });
+
+  it.each([
+    ["codex", codexAdapter, "reviewer"],
+    ["copilot", copilotAdapter, "reviewer.agent.md"],
+  ] as const)("keeps a renamed %s subagent namespaced when its node is also selected as a root", async (runtime, adapter, renderedName) => {
+    const workspace = await tempRoot();
+    const coreOld = join(workspace, "core-old");
+    const coreNew = join(workspace, "core-new");
+    const tracker = join(workspace, "tracker");
+    const wrapper = join(workspace, "wrapper");
+    const subagent = (body: string) => `---\nname: reviewer\ndescription: Fixture reviewer.\n---\n\n${body}\n`;
+    await writeText(join(coreOld, "subagents", "reviewer.md"), subagent("# Old"));
+    await writeText(join(coreNew, "subagents", "reviewer.md"), subagent("# New"));
+    await writeText(join(coreNew, "skills", "extra", "SKILL.md"), "---\nname: extra\ndescription: Fixture skill for tests.\n---\n\n# Extra\n");
+    await writeText(join(tracker, "skills", "tracker", "SKILL.md"), "---\nname: tracker\ndescription: Fixture skill for tests.\n---\n\n# Tracker\n");
+    await writeText(join(wrapper, "skills", "wrapper", "SKILL.md"), "---\nname: wrapper\ndescription: Fixture skill for tests.\n---\n\n# Wrapper\n");
+    const provides = [{ type: "subagents", path: "subagents" }, { type: "skills", path: "skills" }];
+    await writeOpenPack(coreOld, { name: "phase-d/core", provides });
+    await writeOpenPack(coreNew, { name: "phase-d/core", provides });
+    await writeOpenPack(tracker, {
+      name: "phase-d/tracker",
+      requires: { core: { source: "../core-new", select: ["subagents/reviewer.md"] } },
+      provides,
+    });
+    await writeOpenPack(wrapper, {
+      name: "phase-d/wrapper",
+      requires: { tracker: { source: "../tracker", select: ["skills/tracker"] } },
+      provides,
+    });
+
+    const result = await createGraphSourcePlan({
+      roots: [
+        { rootId: "old", source: coreOld, select: ["subagents/reviewer.md"] },
+        { rootId: "wrapper", source: wrapper, select: ["skills/wrapper"] },
+        { rootId: "new", source: coreNew, select: ["skills/extra"] },
+      ],
+      targetRoot: await tempRoot("agentwheel-phase-d-shared-subagent-target-"),
+      workspaceRoot: workspace,
+      adapter,
+      targetKey: `phase-d-shared-subagent-${runtime}`,
+      yes: true,
+    });
+
+    const reviewers = result.bundle.artifacts.filter((artifact) => artifact.type === "subagents" && artifact.name === renderedName);
+    expect(reviewers.map((artifact) => artifact.dependencyRole).sort()).toEqual(["root", "transitive"]);
+    expect(new Set(reviewers.map((artifact) => artifact.installName)).size).toBe(2);
+    expect(result.bundle.artifacts.find((artifact) => artifact.name === "extra")?.dependencyRole).toBe("root");
   });
 
   it("keeps direct collisions blocking", async () => {

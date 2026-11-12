@@ -144,7 +144,9 @@ async function renderGraphIntoRoot(
       undefined,
       { validationArtifacts: staged.artifacts },
     );
-    const claudeRenderedArtifacts = await renderClaudeSubagents(selectedArtifacts, staged.root, targetContext.adapter);
+    // Renderers rename subagents, so the selector depth is resolved on source names first.
+    const depthTaggedArtifacts = selectedArtifacts.map((artifact) => ({ ...artifact, selectorDepth: artifactDepth(rawNode, artifact) }));
+    const claudeRenderedArtifacts = await renderClaudeSubagents(depthTaggedArtifacts, staged.root, targetContext.adapter);
     const codexRenderedArtifacts = await renderCodexSubagents(claudeRenderedArtifacts, staged.root, targetContext.adapter);
     const openClawRenderedArtifacts = await renderOpenClawSubagents(codexRenderedArtifacts, staged.root, targetContext.adapter);
     const runtimeRenderedArtifacts = await renderCopilotArtifacts(openClawRenderedArtifacts, staged.root, targetContext.adapter);
@@ -169,10 +171,10 @@ async function renderGraphIntoRoot(
       : renderedArtifacts;
 
     const installableArtifacts = compatibleArtifacts.filter((artifact) => rawNode.depth === 0 || artifact.type !== "fragments");
-    artifacts.push(...installableArtifacts.map((artifact) => ({
+    artifacts.push(...installableArtifacts.map(({ selectorDepth, ...artifact }: Artifact & { selectorDepth?: number }) => ({
       ...artifact,
       graphNodeId: rawNode.node.id,
-      dependencyRole: dependencyRole(rawNode, artifact),
+      dependencyRole: dependencyRole(artifact.type, selectorDepth ?? rawNode.depth),
       installName: artifact.name,
       logicalSelector: `${rawNode.node.id}:${artifact.type}/${artifact.name}`,
       owners: [...rawNode.node.requiredBy].sort((a, b) => a.localeCompare(b)),
@@ -681,9 +683,8 @@ function versionFromGraphNodeId(nodeId: string): string {
   return nodeId.slice(at + 1, plus);
 }
 
-function dependencyRole(node: ResolvedGraphRawNode, artifact: Artifact): ResolvedArtifact["dependencyRole"] {
-  if (artifact.type === "fragments") return "fragment";
-  const depth = artifactDepth(node, artifact);
+function dependencyRole(type: string, depth: number): ResolvedArtifact["dependencyRole"] {
+  if (type === "fragments") return "fragment";
   if (depth === 0) return "root";
   if (depth === 1) return "direct";
   return "transitive";

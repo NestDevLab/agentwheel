@@ -308,6 +308,7 @@ describe("OpenPack v3", () => {
       ],
       targetRoot: workspace, workspaceRoot: workspace,
       adapter: claudeAdapter, targetKey: "revision-equivalence", yes: true, readOnly: true,
+      trustStorePath: join(workspace, "trust.json"),
     });
     const first = await render();
     const demo = first.bundle.artifacts.find((artifact) => artifact.name === "demo")!;
@@ -323,6 +324,14 @@ describe("OpenPack v3", () => {
     const repeatedDemo = second.bundle.artifacts.find((artifact) => artifact.name === "demo")!;
     expect(await readFile(join(repeatedDemo.stagedPath!, "SKILL.md"), "utf8")).toBe(content);
     expect(repeatedDemo.composedFrom).toEqual(demo.composedFrom);
+    if (nested) {
+      // Only the leaf changes; identical parents must not hide nested conflicts.
+      await writeText(join(policyB, "fragments", "leaf.md"), "Divergent leaf.\n");
+      expect(await readFile(join(policyA, "fragments", "policy.md"), "utf8"))
+        .toBe(await readFile(join(policyB, "fragments", "policy.md"), "utf8"));
+      await expect(render()).rejects.toThrow(/Conflicting OpenPack composition revisions.*:fragments\/policy\.md/);
+      await writeText(join(policyB, "fragments", "leaf.md"), "Leaf.\n");
+    }
     await writeText(join(policyB, "fragments", "policy.md"), "Divergent policy.\n");
     await expect(render()).rejects.toThrow(/Conflicting OpenPack composition revisions.*Select one revision explicitly/);
   });

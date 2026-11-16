@@ -14,10 +14,10 @@ it("migrates a configured target state and makes the next install dry-run manage
   for (const path of [join(workspace, ".agentwheel"), join(pack, "skills/example"), target, home]) await mkdir(path, { recursive: true });
   await writeFile(join(pack, "openpack.json"), JSON.stringify({ schemaVersion: 2, name: "fixture/migration", version: "1.0.0", provides: [{ type: "skills", path: "skills" }] }));
   await writeFile(join(pack, "skills/example/SKILL.md"), "---\nname: example\ndescription: Synthetic fixture\n---\nExample\n");
-  await writeFile(join(workspace, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4,
+  await writeFile(join(workspace, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, mutationPolicy: { reason: "required", journal: "required", revisioning: { mode: "off" } },
     agents: { example: { adapter: "claude", root: target, transport: "local" } },
     packages: [{ name: "example", driver: "local", source: pack, mode: "pinned", select: ["skills/example"] }] }));
-  const run = (args: string[]) => exec(process.execPath, [cli, ...args], { cwd: workspace,
+  const run = (args: string[]) => exec(process.execPath, [cli, ...args, "--reason", "Verify synthetic migration CLI"], { cwd: workspace,
     env: { ...process.env, HOME: home, AGENTWHEEL_MUTATION_STATE_ROOT: join(root, "receipts") }, maxBuffer: 10 * 1024 * 1024 });
   await run(["install", "--agent", "example"]);
   const metadata = join(target, ".agentwheel"), current = (await readdir(metadata)).find(path => path.endsWith(".install-manifest.json"))!;

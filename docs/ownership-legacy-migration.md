@@ -31,6 +31,12 @@ agentwheel ownership migrate-legacy --local --agent example \
 agentwheel install --local --agent example --dry-run --format json
 ```
 
+Apply requires an effective `mutationPolicy` with `journal: "required"` (revisioning may be `off`
+or `commit-after-verify`) and a durable receipt for the governing workspace. Without it, apply
+refuses before touching target metadata. This ensures both destination and source journals have
+a recovery path through `mutation recover-runtime <operation-id>`; keep the operation ID from
+the command's mutation receipt output.
+
 Local-run-as targets use the same command and pinned identity checks. Apply runs through the normal
 GovernedMutation receipt and confined worker; SSH is unsupported. Planning is read-only. Apply takes
 the target lock and checks manifest revisions, the complete inventory, runtime hashes and runtime

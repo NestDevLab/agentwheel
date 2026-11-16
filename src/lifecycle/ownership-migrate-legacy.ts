@@ -7,6 +7,7 @@ import { acquireApplyLock, assertNoSymlinkPath, assertOwnershipMetadataTransport
 import type { InstallManifestEntry, InstallManifestV2 } from "../model/manifest.js";
 import { resolveWorkspaceOwnershipScope } from "../model/fleet.js";
 import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
+import { activeMutationMetadata } from "../mutation/coordinator.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport, type TargetTransport } from "../transport/index.js";
 import { commitOwnershipManifestMetadata } from "./ownership-adopt-legacy.js";
@@ -123,6 +124,10 @@ export async function applyMigrateLegacyOwnership(request: MigrateLegacyOwnershi
     }
   }
   const transport = request.transport ?? localTransport;
+  const mutation = activeMutationMetadata();
+  if (!mutation || resolve(mutation.workspaceRoot) !== resolve(request.workspaceRoot)) {
+    throw new Error("Legacy state migration requires a caller-owned durable mutation receipt for this workspace; configure mutationPolicy.journal as required before applying.");
+  }
   assertOwnershipMetadataTransportSupported(transport);
   const lock = await acquireApplyLock(request.targetRoot, request.adapter, transport, {}, { installationType: request.installationType, stateKey: request.destinationStateKey });
   try {

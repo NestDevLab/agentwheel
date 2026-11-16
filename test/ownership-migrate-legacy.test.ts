@@ -4,20 +4,25 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { installManifestPath } from "../src/install/paths.js";
-import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership, type MigrateLegacyOwnershipRequest } from "../src/lifecycle/ownership-migrate-legacy.js";
+import { applyMigrateLegacyOwnership as applyRaw, planMigrateLegacyOwnership, type MigrateLegacyOwnershipRequest } from "../src/lifecycle/ownership-migrate-legacy.js";
 import { workspaceOwnerForRoot } from "../src/model/workspace-owner.js";
 import type { InstallManifestEntry, InstallManifestV2 } from "../src/model/manifest.js";
 import { localTransport } from "../src/transport/index.js";
-import { recoverPendingApply } from "../src/install/apply.js";
+import { GovernedMutation, recoverMutationRuntime } from "../src/mutation/coordinator.js";
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+const originalState = process.env.AGENTWHEEL_MUTATION_STATE_ROOT;
+afterEach(async () => {
+  if (originalState === undefined) delete process.env.AGENTWHEEL_MUTATION_STATE_ROOT;
+  else process.env.AGENTWHEEL_MUTATION_STATE_ROOT = originalState;
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const sourceKey = "openclaw.user.legacy", destinationKey = "openclaw.user.current";
 async function fixture(merge = false) {
   const root = await mkdtemp(join(tmpdir(), "aw-migration-")); roots.push(root);
+  process.env.AGENTWHEEL_MUTATION_STATE_ROOT = join(root, "receipts");
   const target = join(root, "target"), workspace = join(root, "workspace");
   await mkdir(join(workspace, ".agentwheel"), { recursive: true });
-  await writeFile(join(workspace, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, packages: [] }));
+  await writeFile(join(workspace, ".agentwheel/config.json"), JSON.stringify({ schemaVersion: 4, packages: [], mutationPolicy: { reason: "required", journal: "required", revisioning: { mode: "off" } } }));
   const path = merge ? ".openclaw/openclaw.json" : ".openclaw/skills/example/SKILL.md";
   const live = join(target, path);
   await mkdir(dirname(live), { recursive: true });
@@ -32,6 +37,12 @@ async function fixture(merge = false) {
   const request: MigrateLegacyOwnershipRequest = { targetRoot: target, workspaceRoot: workspace, globalRoot: join(root, "home"), adapter: "openclaw",
     installationType: "user", sourceStateKey: sourceKey, destinationStateKey: destinationKey };
   return { root, target, workspace, path, live, entry, manifest, request };
+}
+async function applyMigrateLegacyOwnership(request: MigrateLegacyOwnershipRequest) {
+  const mutation = await GovernedMutation.begin({ workspaceRoot: request.workspaceRoot, globalRoot: request.globalRoot,
+    commandName: "agentwheel ownership migrate-legacy", reason: "Verify synthetic metadata migration" });
+  try { const result = await applyRaw(request); await mutation?.complete(); return result; }
+  catch (error) { await mutation?.fail(error); throw error; }
 }
 async function reviewed(request: MigrateLegacyOwnershipRequest) {
   const plan = await planMigrateLegacyOwnership(request);
@@ -105,6 +116,12 @@ describe("current-owner legacy state migration", () => {
     expect(await readFile(f.live)).toEqual(before);
   });
 
+  it("refuses even a reviewed local apply without a matching durable receipt", async () => {
+    const f = await fixture();
+    await expect(applyRaw(await reviewed(f.request))).rejects.toThrow(/durable mutation receipt/);
+    expect(await read(f.target, destinationKey)).toBeUndefined();
+  });
+
   it("requires all reviewed values and refuses stale runtime, manifest and inventory", async () => {
     const f = await fixture();
     await expect(applyMigrateLegacyOwnership(f.request)).rejects.toThrow(/reviewed/);
@@ -127,7 +144,9 @@ describe("current-owner legacy state migration", () => {
     const request = await reviewed({ ...f.request, transport });
     await expect(applyMigrateLegacyOwnership(request)).rejects.toThrow(/Injected crash/);
     await expect(planMigrateLegacyOwnership(f.request)).rejects.toThrow(/Pending/);
-    await recoverPendingApply(f.target, "openclaw", localTransport, { installationType: "user", stateKey: destinationKey });
+    const journal = JSON.parse(await readFile(join(f.target, ".agentwheel", `${destinationKey}.apply-journal.json`), "utf8"));
+    const recovered = await recoverMutationRuntime(journal.mutation.operationId);
+    expect(recovered.runtimeJournals.every(item => item.status === "resolved")).toBe(true);
     await applyMigrateLegacyOwnership(await reviewed(f.request));
     expect(await readFile(f.live)).toEqual(before);
     expect(await read(f.target, sourceKey)).toBeUndefined();

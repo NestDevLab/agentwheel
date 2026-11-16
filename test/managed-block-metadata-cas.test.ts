@@ -24,7 +24,7 @@ async function fixture(managedBlock = true, legacyGuard = false) {
     : "Entire managed file.\n";
   await writeFile(path, content);
   await writeInstallManifest({ version: 2, adapter: "fixture", ...scope, targetRoot: root,
-    generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending", legacy: false, entries: legacyGuard ? [{
+    generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending-fixture-revision", legacy: false, entries: legacyGuard ? [{
       path: "instructions.md", artifactType: "instructions", artifactName: "fixture", logicalSelector: "fixture",
       kind: "file", hash: hash(body), sourceHash: hash(body), updatedAt: "2026-01-01T00:00:00.000Z",
       mode: "managed-block", installName: "fixture", owners: ["fixture"], refCount: 1,

@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import * as fs from "node:fs/promises";
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot, type OwnershipHandoffRequest } from "../src/lifecycle/ownership.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
@@ -76,13 +77,17 @@ describe.sequential("native audited ownership handoff", () => {
     const before = await snapshotTree(f.root);
     const spies = ["open", "mkdir", "writeFile", "rename", "rm", "link", "chmod"].map((method) =>
       vi.spyOn(fs, method as "writeFile").mockImplementation(async () => { throw new Error(`Unexpected write: ${method}`); }));
+    syncBuiltinESMExports();
     try {
       const preview = await previewMutationRecovery("fixture-handoff");
       expect(preview).toMatchObject({ dryRun: true, runtimeOperations: 0, status: "partial",
         nextCommand: "agentwheel mutation recover-runtime fixture-handoff" });
       expect(preview.journals).toEqual([expect.objectContaining({ path: f.journal, manifestPath: f.manifest, auditPaths: [f.audit] })]);
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    } finally { for (const spy of spies) spy.mockRestore(); }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      syncBuiltinESMExports();
+    }
     expect(await snapshotTree(f.root)).toEqual(before);
     const cli = resolve("dist/index.js");
     await ensureCliBuild(cli);

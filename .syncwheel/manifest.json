@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
+      "worktree_grace_days": 7
     }
   },
   "defaults": {
@@ -36,9 +36,9 @@
       "local-run-as-readonly",
       "mgt0478-add-runtimes",
       "own-owner-legacy-migration",
+      "invariant-test-baseline",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "invariant-test-baseline"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -96,11 +96,8 @@
       }
     },
     {
-      "id": "own-owner-legacy-migration",
-      "branch": "pr/own-owner-legacy-migration",
       "base": "origin/main",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/own-owner-legacy-migration",
       "commits": [
         "92ff30a0c616a7e984a9796b1309cfc54d698891",
         "ad4519cf0c3c9a389439178a769af92632804c9a",
@@ -108,6 +105,9 @@
         "b893cdab44c376783c86cb2f8777bbe08dfd0677",
         "d4c76f790d0c06f3d72af3c94a606b4204a8ca7a"
       ],
+      "id": "own-owner-legacy-migration",
+      "integration_branch": "main-integration",
+      "target_branch": "main",
       "target_remote": "origin",
       "state": "published",
       "publication": {
@@ -115,6 +115,33 @@
       },
       "meta": {
         "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
+      }
+    },
+    {
+      "id": "invariant-test-baseline",
+      "branch": "pr/invariant-test-baseline",
+      "base": "origin/main",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "bd0da97d5a3c6baac126e09522259577a7794ab5",
+        "156ee7e3a7f685ac6fa906ffc88d45fb0f7d635f",
+        "38ccbc060164d72b1eaf51cd914ac8eee7de6b5f",
+        "cca0024d3f2caacf7169436c2d0ec4a52887ca74",
+        "50f452001c2e3e5f9f6125e25ef4f7388a87888d",
+        "6eb5abc1d95f70a56091ed55bc20699836b2b86b",
+        "f31d029a681ebad165e18a092550ce107e1bf1a1",
+        "e7ddfecc1319cb1151d9d4d510e16244775cec7c",
+        "adb319dfea54504e1281396e57eaeb3e3b239a55",
+        "3429cb12619b775caf10aa61f044f561e79ce5db"
+      ],
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Synthetic invariant regression tests and command matrix"
       }
     },
     {
@@ -150,33 +177,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "invariant-test-baseline",
-      "branch": "pr/invariant-test-baseline",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "bd0da97d5a3c6baac126e09522259577a7794ab5",
-        "156ee7e3a7f685ac6fa906ffc88d45fb0f7d635f",
-        "38ccbc060164d72b1eaf51cd914ac8eee7de6b5f",
-        "cca0024d3f2caacf7169436c2d0ec4a52887ca74",
-        "50f452001c2e3e5f9f6125e25ef4f7388a87888d",
-        "6eb5abc1d95f70a56091ed55bc20699836b2b86b",
-        "f31d029a681ebad165e18a092550ce107e1bf1a1",
-        "e7ddfecc1319cb1151d9d4d510e16244775cec7c",
-        "adb319dfea54504e1281396e57eaeb3e3b239a55",
-        "3429cb12619b775caf10aa61f044f561e79ce5db"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Synthetic invariant regression tests and command matrix"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

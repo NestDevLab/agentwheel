@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/read-effects-policy": "a7edab138632dc4f600cb2732e75a8e2bc07836e"
+    "refs/heads/pr/read-effects-policy": "6389ee810ba114ffe3102c5dbd8ef8a716e2e326"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -45,7 +45,7 @@
     "refs/heads/pr/pin-package-declarations": "68c9374cb142b2a4167733e29ae84ad0ff0caac4",
     "refs/heads/pr/preserve-mcp-preferences": "995886462c8a215e32bf94e079e94846eed7370c",
     "refs/heads/pr/provider-timeout-bound": "409a76201d089e942c5d566c0027040177c0ccf7",
-    "refs/heads/pr/read-effects-policy": "7a47f03ea5a50d2f26239fa950cf02de1d4ccc48",
+    "refs/heads/pr/read-effects-policy": "81651ed4f7493cee31158da60e96a9e619ee7b1a",
     "refs/heads/pr/release-0-22-1": "53642b35ee690358a1162f7ffb1882c6d17861b8",
     "refs/heads/pr/retire-stale-target-scope": "94f67f8d22041df1400898d768525f21414b2ee0",
     "refs/heads/pr/root-equal-coalesce": "7b8067bdb83b43b72f5f2fd516ef85959dcbc3f5",
@@ -69,7 +69,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-16T18:26:39+00:00",
+  "created_at": "2026-11-16T18:40:23+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -131,7 +131,7 @@
     "refs/heads/pr/preserve-mcp-preferences": "91d586d0b4fec0d41a23200441d64b74eeb85db9",
     "refs/heads/pr/proof-scoped-self-fleet-normalization": "1d6e95fb0b2353b8c78e259f4eddcf02a851625b",
     "refs/heads/pr/provider-timeout-bound": "24cfc045a79f420aef1f932479da4534b82857ab",
-    "refs/heads/pr/read-effects-policy": "a7edab138632dc4f600cb2732e75a8e2bc07836e",
+    "refs/heads/pr/read-effects-policy": "6389ee810ba114ffe3102c5dbd8ef8a716e2e326",
     "refs/heads/pr/release-0-22-1": "7d4fc1965cd229c6a74ca9a3ac05487f6e17757b",
     "refs/heads/pr/retire-stale-target-scope": "927737d3b6989949d2af2b00234a88c03f72f5c0",
     "refs/heads/pr/root-equal-coalesce": null,
@@ -302,7 +302,8 @@
           "cc2ec0c810d6672421c415c6f81ca819cb9a605f",
           "92e8cf0829245d890a28bd76a914866811762670",
           "bb1015ebcff3d29f60f0418d2e2cfc87858537f8",
-          "a7edab138632dc4f600cb2732e75a8e2bc07836e"
+          "a7edab138632dc4f600cb2732e75a8e2bc07836e",
+          "6389ee810ba114ffe3102c5dbd8ef8a716e2e326"
         ],
         "id": "read-effects-policy",
         "integration_branch": "main-integration",
@@ -312,13 +313,13 @@
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "ebb9effe-5eca-4c1c-86a3-f6055a19f2f5",
-  "parent_state": "73c03ac27bf21bac9d2b140ed705799fefe2b98d",
+  "operation_token": "267f2bc9-7359-49d0-ab90-f474702221b4",
+  "parent_state": "235ec2aad60d5aaf2422bf81c15cd829c0a39e25",
   "projection_status": "partial",
-  "publication_id": "f27534e0-7063-49d8-989a-1b9deb268bf2",
+  "publication_id": "f119bad1-ca41-4dce-8509-069b4e25bdae",
   "publication_scope": "compose-stack:read-effects-policy",
   "schema_version": 2,
-  "syncwheel_version": "0.47.14",
+  "syncwheel_version": "0.47.15",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

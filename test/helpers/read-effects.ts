@@ -38,7 +38,7 @@ export async function readFixture(warm: boolean) {
     root, workspace, home, temp, cacheRoot, resolved,
     async probe(extra: string[] = [], entry = join(process.cwd(),"dist/index.js")) {
       const before = await snapshot(root,policy);
-      const result = spawnSync(process.execPath, [entry,"status","--local","--adapter","codex","--target-root",workspace,"--json",...extra], {
+      const result = spawnSync(process.execPath, [entry,"status","--installation-type","local","--adapter","codex","--target-root",workspace,"--json",...extra], {
         cwd: workspace, encoding: "utf8", timeout: 30_000,
         env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home,".config"), XDG_CACHE_HOME: join(home,".cache"), TMPDIR: temp,
           AGENTWHEEL_NO_UPDATE_CHECK: "1", GIT_CONFIG_GLOBAL: "/dev/null",

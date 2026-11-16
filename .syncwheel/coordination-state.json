@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/own-owner-legacy-migration": "b893cdab44c376783c86cb2f8777bbe08dfd0677"
+    "refs/heads/pr/own-owner-legacy-migration": "d4c76f790d0c06f3d72af3c94a606b4204a8ca7a"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -36,7 +36,7 @@
     "refs/heads/pr/mgt0521-recovery-head": "ee3c708de301355f210a6f36c84d4c502dc08b9b",
     "refs/heads/pr/normalize-workspace-owner-prefix": "133967a71cd4fc394a1d48781516c09de3515dd3",
     "refs/heads/pr/openclaw-capability-consent": "37fd12084381062bebae65ba98620b48046204eb",
-    "refs/heads/pr/own-owner-legacy-migration": "26b107233c7a8c65d29513ddde403ee328c24622",
+    "refs/heads/pr/own-owner-legacy-migration": "0474431641bed7b34969071edef770321ced8b55",
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "cc5275b2363f79a25c76eacf78276438aa170e43",
@@ -67,7 +67,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-16T10:47:46+00:00",
+  "created_at": "2026-11-16T11:23:51+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -119,7 +119,7 @@
     "refs/heads/pr/openclaw-capability-consent": "d90be1986a5d9495a742b472224ac46e4269b9ce",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
-    "refs/heads/pr/own-owner-legacy-migration": "b893cdab44c376783c86cb2f8777bbe08dfd0677",
+    "refs/heads/pr/own-owner-legacy-migration": "d4c76f790d0c06f3d72af3c94a606b4204a8ca7a",
     "refs/heads/pr/ownership-release-claim": null,
     "refs/heads/pr/ownership-release-claim-0211": "2ab2f9c6bdef7329f564696888a1772f7e3b9d41",
     "refs/heads/pr/package-runtime-opt-in-0.20.20": "da6492610035c74a8ae8211d898d250ccfe6a433",
@@ -252,7 +252,8 @@
           "92ff30a0c616a7e984a9796b1309cfc54d698891",
           "ad4519cf0c3c9a389439178a769af92632804c9a",
           "b417ca07f0d4a19239e80e04b731b42cd3b2d845",
-          "b893cdab44c376783c86cb2f8777bbe08dfd0677"
+          "b893cdab44c376783c86cb2f8777bbe08dfd0677",
+          "d4c76f790d0c06f3d72af3c94a606b4204a8ca7a"
         ],
         "id": "own-owner-legacy-migration",
         "integration_branch": "main-integration",
@@ -262,10 +263,10 @@
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "c13d0c60-56e0-4e58-b9ab-6736f14d8d5b",
-  "parent_state": "456b43d8022937414c33bd901faa4e59d7985d44",
+  "operation_token": "2d5a3551-d156-4d0a-81ae-254e9b1bda00",
+  "parent_state": "bd3c95902b5fb2fcb8d8f3f13c3c8469d5e78e43",
   "projection_status": "partial",
-  "publication_id": "d7133114-fa61-4425-8bf8-2a76e46fcc74",
+  "publication_id": "b6d2e784-2218-4ca2-abff-31cfd8e9cd24",
   "publication_scope": "compose-stack:own-owner-legacy-migration",
   "schema_version": 2,
   "syncwheel_version": "0.47.3",

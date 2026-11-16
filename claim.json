@@ -2,10 +2,10 @@
   "changed_refs": [
     "refs/heads/pr/cas-block-hash"
   ],
-  "claimed_at": "2026-11-16T18:56:01+00:00",
+  "claimed_at": "2026-11-16T20:03:47+00:00",
   "coordination_id": "default",
-  "operation_token": "55fe1c54-4b56-4e74-9434-6f9348b143fa",
+  "operation_token": "ccab80f3-3016-4af5-822c-4e10509c82a7",
   "publication_scope": "compose-stack:cas-block-hash",
   "source_ref": "refs/heads/pr/cas-block-hash",
-  "syncwheel_version": "0.47.15"
+  "syncwheel_version": "0.47.17"
 }

@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "backup_keep": 2,
+      "worktree_grace_days": 7,
       "backup_retention_days": 30,
-      "worktree_grace_days": 7
+      "backup_keep": 2
     }
   },
   "defaults": {
@@ -39,7 +39,8 @@
       "invariant-test-baseline",
       "read-effects-policy",
       "retained-install-recovery",
-      "journal-receipt-consumer"
+      "journal-receipt-consumer",
+      "cas-block-hash"
     ],
     "strategy": "cherry-pick"
   },
@@ -203,6 +204,24 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "cas-block-hash",
+      "branch": "pr/cas-block-hash",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "5d423d0c86e219a906958ff1d1262e47e1bd9d82"
+      ],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Correct managed-block metadata CAS and preview zero-operation recovery"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

@@ -11,7 +11,7 @@ it("pin_provenance_and_feature_floor_enforced", async () => {
     const before = await snapshot(root);
     const warnings: string[] = [];
     const failure = await refuseNewPinCollisions(root, {
-      packages: [{ name: "synthetic-pin", source: join(root, "unresolvable"), mode: "pinned" }],
+      schemaVersion: 1, packages: [{ name: "synthetic-pin", source: join(root, "unresolvable"), mode: "pinned" }],
     }, message => warnings.push(message)).then(() => undefined, error => error);
     expect(diffEffects(before, await snapshot(root))).toEqual([]);
     // Expected: an unresolved approved pin refuses; warning and success are insufficient.

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdtemp, rm, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -35,7 +35,7 @@ export function reconcile(commands, registered, results, links) {
   const selectors = new Set();
   for (const link of links) {
     const key = `${link.file}::${link.name}`;
-    if (selectors.has(key) || !link.evidence?.trim() || !link.commands.length) throw new Error(`Invalid mapping: ${key}`);
+    if (selectors.has(key) || !link.evidence?.trim() || !Array.isArray(link.commands) || !link.commands.length) throw new Error(`Invalid mapping: ${key}`);
     selectors.add(key);
     const matches = registered.filter(t => t.file === link.file && t.name === link.name);
     if (matches.length !== 1) throw new Error(`Mapping must match exactly one registered test: ${key} (${matches.length})`);
@@ -53,7 +53,7 @@ export function reconcile(commands, registered, results, links) {
     unattributed: results.filter(t => !assigned.has(t.id)).sort((a,b) => compare(a.id,b.id)) };
 }
 
-async function parserCommands(scratch) {
+export async function parserCommands(scratch) {
   const source = await read("src/cli/index.ts");
   const marker = "try {\n  await main();";
   if (source.split(marker).length !== 2) throw new Error("CLI entry boundary changed; inspect inventory loader");
@@ -61,7 +61,11 @@ async function parserCommands(scratch) {
   const code = `${source.slice(0, source.indexOf(marker))}\nexport { program };\n`;
   const output = join(scratch, "parser.mjs");
   await build({ stdin: { contents: code, resolveDir: join(root,"src/cli"), sourcefile: "index.ts", loader: "ts" },
-    bundle: true, packages: "external", platform: "node", format: "esm", outfile: output, write: true });
+    bundle: true, plugins: [{ name: "resolve-temporary-parser-imports", setup(context) {
+      context.onResolve({ filter: /^[^./]/ }, args => ({
+        path: args.path.startsWith("node:") ? args.path : import.meta.resolve(args.path), external: true,
+      }));
+    } }], platform: "node", format: "esm", outfile: output, write: true });
   const { program } = await import(pathToFileURL(output));
   const commands = [program.name()];
   function visit(parent, prefix) {
@@ -88,18 +92,25 @@ async function sourceReceipt() {
     node: process.versions.node };
 }
 
+export function runTests(report, json) {
+  return spawnSync("pnpm", ["test", "--maxWorkers=2", "--reporter=default", "--reporter=json",
+    "--reporter=./scripts/test-command-reporter.mjs", `--outputFile=${json}`], {
+    cwd: root, env: { ...process.env, COMMAND_MATRIX_REPORT: report }, stdio: "inherit",
+  });
+}
+
+export async function matrixDestination(path) {
+  return path ? resolve(path) : join(await mkdtemp(join(tmpdir(), "command-matrix-output-")), "matrix.json");
+}
+
 async function main() {
-  // Inside the repository so external imports resolve the installed dependencies.
-  const scratch = await mkdtemp(join(root, "scripts/.command-matrix-"));
+  const scratch = await mkdtemp(join(tmpdir(), "command-matrix-parser-"));
   const reportRoot = await mkdtemp(join(tmpdir(), "command-matrix-"));
   try {
     const commands = await parserCommands(scratch);
     const report = join(reportRoot,"runner.json");
     const json = join(reportRoot,"vitest.json");
-    const runner = spawnSync("pnpm", ["test",
-      "--maxWorkers=2", "--reporter=json", "--reporter=./scripts/test-command-reporter.mjs", `--outputFile=${json}`], {
-      cwd: root, env: { ...process.env, COMMAND_MATRIX_REPORT: report }, encoding: "utf8", maxBuffer: 40 * 1024 * 1024,
-    });
+    const runner = runTests(report, json);
     if (runner.error) throw runner.error;
     const observed = JSON.parse(await readFile(report,"utf8"));
     const official = JSON.parse(await readFile(json,"utf8"));
@@ -109,13 +120,13 @@ async function main() {
     if (mapping.schemaVersion !== 1) throw new Error("Unsupported mapping schema");
     const matrix = reconcile(commands, observed.registered, observed.tests, mapping.links);
     const output = { schemaVersion: 1, receipt: await sourceReceipt(),
-      commandCount: commands.length, zeroTestCommands: matrix.rows.filter(row => !row.registered).map(row => row.command),
+      commandCount: commands.length, unattributedCommands: matrix.rows.filter(row => !row.registered).map(row => row.command),
       totals: counts(observed.tests), uniqueAttributed: matrix.uniqueAttributed,
       runnerExitCode: runner.status, moduleErrors: observed.moduleErrors, unhandledErrors: observed.unhandledErrors,
       commands: matrix.rows, unattributed: matrix.unattributed };
-    const destination = resolve(process.argv[2] ?? "docs/test-command-matrix.json");
+    const destination = await matrixDestination(process.argv[2]);
     await writeFile(destination, `${JSON.stringify(output,null,2)}\n`);
-    console.log(JSON.stringify({ commandCount: output.commandCount, zeroTestCommands: output.zeroTestCommands.length,
+    console.log(JSON.stringify({ commandCount: output.commandCount, unattributedCommands: output.unattributedCommands.length,
       ...output.totals, uniqueAttributed: output.uniqueAttributed, output: relative(root,destination) }));
     if (runner.status !== 0 || observed.moduleErrors.length || observed.unhandledErrors) process.exitCode = 1;
   } finally {

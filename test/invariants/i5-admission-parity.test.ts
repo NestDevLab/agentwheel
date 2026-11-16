@@ -7,7 +7,7 @@ import { targetMappingSchema, type AdapterConfig } from "../../src/model/adapter
 import { hashPath } from "../../src/utils/fs.js";
 import { diffEffects, snapshot } from "../helpers/effects.js";
 
-it.fails("stale_merge_metadata_rejected_in_all_paths", async () => {
+async function observeStaleMergeAdmission() {
   const root = await mkdtemp(join(tmpdir(), "invariant-i5-"));
   try {
     const sourcePath = join(root, "source.json");
@@ -26,12 +26,26 @@ it.fails("stale_merge_metadata_rejected_in_all_paths", async () => {
     const preview = await createCombinedInstallPlan([artifact], adapter, root, manifest);
     expect(diffEffects(before, await snapshot(root))).toEqual([]);
     const failure = await applyCombinedInstallPlan(preview).then(() => undefined, error => error);
-    expect(failure).toBeInstanceOf(Error);
-    // Expected: preview blocks the same stale contribution that apply rejects.
-    expect(preview.hasBlockingChanges).toBe(true);
-    expect(preview.operations).toEqual(expect.arrayContaining([expect.objectContaining({
-      action: "conflict", blockedReason: expect.stringMatching(/contribution|merge/i),
-    })]));
-    expect(diffEffects(before, await snapshot(root))).toEqual([]);
+    return { preview, failure, effects: diffEffects(before, await snapshot(root)) };
   } finally { await rm(root, { recursive: true, force: true }); }
+}
+
+// Expected: preview blocks the same stale contribution that apply rejects.
+it.fails("stale_merge_metadata_rejected_in_all_paths", async () => {
+  const { preview, failure, effects } = await observeStaleMergeAdmission();
+  expect(failure).toBeInstanceOf(Error);
+  expect(preview.hasBlockingChanges).toBe(true);
+  expect(preview.operations).toEqual(expect.arrayContaining([expect.objectContaining({
+    action: "conflict", blockedReason: expect.stringMatching(/contribution|merge/i),
+  })]));
+  expect(effects).toEqual([]);
+});
+
+it("stale_merge_metadata_rejected_in_all_paths_current_defect_skips_preview_but_apply_refuses", async () => {
+  const { preview, failure } = await observeStaleMergeAdmission();
+  expect(preview.hasBlockingChanges).toBe(false);
+  expect(preview.operations).toMatchObject([{ action: "skip" }]);
+  expect(preview.operations).toHaveLength(1);
+  expect(failure).toBeInstanceOf(Error);
+  expect(String(failure)).toMatch(/exact merge contribution/);
 });

@@ -38,9 +38,9 @@
       "own-owner-legacy-migration",
       "invariant-test-baseline",
       "read-effects-policy",
+      "cas-block-hash",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "cas-block-hash"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -148,11 +148,8 @@
       }
     },
     {
-      "id": "read-effects-policy",
-      "branch": "pr/read-effects-policy",
       "base": "origin/pr/invariant-test-baseline",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/read-effects-policy",
       "commits": [
         "3f8bf8e4b0aee8b42ab0881917000fc1001c53d9",
         "c290660627fbcdaa3681362108fa3b6bea80f44a",
@@ -162,6 +159,9 @@
         "a7edab138632dc4f600cb2732e75a8e2bc07836e",
         "6389ee810ba114ffe3102c5dbd8ef8a716e2e326"
       ],
+      "id": "read-effects-policy",
+      "integration_branch": "main-integration",
+      "target_branch": "main",
       "target_remote": "origin",
       "state": "published",
       "publication": {
@@ -169,6 +169,25 @@
       },
       "meta": {
         "purpose": "Pure observation policy for read routes, based on invariant test baseline"
+      }
+    },
+    {
+      "id": "cas-block-hash",
+      "branch": "pr/cas-block-hash",
+      "base": "origin/main",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "5d423d0c86e219a906958ff1d1262e47e1bd9d82",
+        "e9bb7341bfa88bf288263a2cfbac1960b436e9ca"
+      ],
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Correct managed-block metadata CAS and preview zero-operation recovery"
       }
     },
     {
@@ -204,24 +223,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "cas-block-hash",
-      "branch": "pr/cas-block-hash",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "5d423d0c86e219a906958ff1d1262e47e1bd9d82"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Correct managed-block metadata CAS and preview zero-operation recovery"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

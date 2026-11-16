@@ -76,16 +76,10 @@ async function parserCommands(scratch) {
 
 async function sourceReceipt() {
   // Hash exact source/test/script/config bytes; no absolute paths, timestamps or self-referential output.
-  const files = [];
-  async function visit(dir) {
-    for (const entry of (await readdir(join(root,dir), { withFileTypes: true })).sort((a,b) => compare(a.name,b.name))) {
-      const path = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) await visit(path);
-      else if (entry.isFile() && !path.includes("/.command-matrix-")) files.push([path, hash(await readFile(join(root,path)))]);
-    }
-  }
-  for (const dir of ["src", "test", "scripts"]) await visit(dir);
-  for (const path of ["package.json", "pnpm-lock.yaml", "vitest.config.ts", "tsconfig.json"]) files.push([path,hash(await read(path))]);
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+  const paths = tracked.filter(path => /^(src|test|scripts)\//.test(path)
+    || ["package.json", "pnpm-lock.yaml", "vitest.config.ts", "tsconfig.json"].includes(path));
+  const files = await Promise.all(paths.sort(compare).map(async path => [path, hash(await readFile(join(root,path)))]));
   return { inputDigest: hash(JSON.stringify(files.sort((a,b) => compare(a[0],b[0])))),
     parserSha256: hash(await read("src/cli/index.ts")),
     vitest: require("vitest/package.json").version,

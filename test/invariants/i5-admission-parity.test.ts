@@ -16,7 +16,7 @@ it("stale_merge_metadata_rejected_in_all_paths", async () => {
       local: targetMappingSchema.parse({ enabled: true, dest: "config.json", merge: "json-deep" }),
     } } };
     const artifact: DesiredArtifact = { type: "settings", name: "synthetic", sourcePath, stagedPath: sourcePath,
-      relativePath: "source.json", kind: "file", hash: await hashPath(sourcePath), channel: "managed", meta: { dependencyRole: "root" } };
+      relativePath: "source.json", kind: "file", hash: await hashPath(sourcePath), channel: "managed", meta: { dependencyRole: "root", owners: ["synthetic"], logicalSelector: "settings/synthetic" } };
     await applyCombinedInstallPlan(await createCombinedInstallPlan([artifact], adapter, root));
     const manifest = (await readInstallManifest(root, adapter.name))!;
     manifest.entries[0]!.mergeRemoval = { managed: { value: "stale" } };

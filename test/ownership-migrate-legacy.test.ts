@@ -144,6 +144,18 @@ describe("current-owner legacy state migration", () => {
     await expect(planMigrateLegacyOwnership(request)).rejects.toThrow();
   });
 
+  it("still refuses missing and foreign explicit paths once a full apply removed the source", async () => {
+    const f = await fixture();
+    expect((await applyMigrateLegacyOwnership(await reviewed(f.request))).migratedEntries).toBe(1);
+    expect(await read(f.target, sourceKey)).toBeUndefined();
+    const destination = (await read(f.target, destinationKey)) as InstallManifestV2;
+    const foreign = { ...f.entry, path: ".openclaw/skills/other", workspaceOwner: "workspace:other" };
+    await writeInstallManifest({ ...destination, entries: [...destination.entries, foreign] });
+    await expect(planMigrateLegacyOwnership({ ...f.request, paths: [".openclaw/skills/missing"] })).rejects.toThrow(/current workspace/);
+    await expect(planMigrateLegacyOwnership({ ...f.request, paths: [foreign.path] })).rejects.toThrow(/current workspace/);
+    expect((await planMigrateLegacyOwnership({ ...f.request, paths: [f.path] })).alreadyMigrated.map(item => item.path)).toEqual([f.path]);
+  });
+
   it("supports unsuffixed source and explicitly configured destination state keys", async () => {
     const f = await fixture();
     await rm(installManifestPath(f.target, "openclaw", { stateKey: sourceKey }));
@@ -187,6 +199,11 @@ describe("current-owner legacy state migration", () => {
     const f = await fixture(true), before = await readFile(f.live);
     await writeInstallManifest({ ...f.manifest, stateKey: destinationKey });
     expect((await planMigrateLegacyOwnership(f.request)).selected[0]?.action).toBe("retire-covered");
+    const replacement = [{ path: f.path, artifactType: "settings", artifactName: "replacement", kind: "file" as const }];
+    for (const desiredCoverage of [[], replacement]) {
+      expect((await planMigrateLegacyOwnership({ ...f.request, desiredCoverage })).selected)
+        .toMatchObject([{ path: f.path, action: "retire-covered" }]);
+    }
     const destination = await readFile(installManifestPath(f.target, "openclaw", { stateKey: destinationKey }));
     await applyMigrateLegacyOwnership(await reviewed(f.request));
     expect(await readFile(installManifestPath(f.target, "openclaw", { stateKey: destinationKey }))).toEqual(destination);

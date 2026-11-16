@@ -58,6 +58,7 @@ def main():
     if not key or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-' for c in key):
         raise RuntimeError('Source state key must be canonical')
     base = Path(tempfile.mkdtemp(prefix='aw-legacy-copy-'))
+    print(f'Evidence directory (full runtime copy, remove after review): {base}', flush=True)
     target, workspace, pack = base / 'target', base / 'workspace', base / 'pack'
     shutil.copytree(source, target, symlinks=True)
     state = json.loads((target / '.agentwheel' / f'{key}.install-manifest.json').read_text())
@@ -101,7 +102,6 @@ def main():
     before = snapshot(target)
     plan = json.loads(run(['--json']))
     (base / 'plan.json').write_text(json.dumps(plan, indent=2) + '\n')
-    print(f'Evidence directory (full runtime copy, remove after review): {base}', flush=True)
     print(f'Plan digest: {plan["planDigest"]}; selected entries: {len(plan["selected"])}', flush=True)
     if not plan['selected']:
         raise RuntimeError('Expected a nonempty migration plan')

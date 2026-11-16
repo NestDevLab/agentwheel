@@ -90,7 +90,7 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
     if (!source?.entries.some(entry => entry.path === path) && atPath.length === 1 && atPath[0]!.workspaceOwner === owner) {
       await verifyManifestEntryRuntime(targetRoot, atPath[0]!, transport);
       alreadyMigrated.push({ path, destinationEntryDigest: entryDigest(atPath[0]!) });
-    } else if (source) {
+    } else {
       throw new Error("Every selected path must exist in the source and be owned by the current workspace.");
     }
   }
@@ -100,14 +100,6 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
   const runtime: MetadataStateGuards["runtime"] = [];
   for (const entry of entries) {
     if (entry.semanticPlugin || entry.semanticCommand || entry.executed) throw new Error(`Unsupported semantic claim at ${entry.path}.`);
-    const desiredAtPath = desiredByPath.get(entry.path) ?? [];
-    if (desiredAtPath.length && !desiredAtPath.some(item => desiredCovers(item, entry))) {
-      throw new Error(`The current graph plans a different artifact at ${entry.path}; legacy state cannot be migrated there.`);
-    }
-    if (!desiredAtPath.length && !request.allowUndesired) {
-      throw new Error(`The configured packages no longer install ${entry.path}, so the next install would remove it after migration; `
-        + "select only desired paths with --path, or pass --allow-undesired to migrate it anyway.");
-    }
     const path = containedArtifactPath(targetRoot, entry.path);
     if (path === targetRoot || path.startsWith(`${targetRoot}/.agentwheel/`) || path === `${targetRoot}/.agentwheel`) {
       throw new Error(`Runtime claim overlaps metadata at ${entry.path}.`);
@@ -125,6 +117,15 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
       if (item.stateKey === destinationKey && item.manifest.version === 2
         && entryDigest(other as InstallManifestEntry) === entryDigest(entry) && !covered) { covered = true; continue; }
       throw new Error(`Conflicting or overlapping ownership claim at ${entry.path} in ${item.stateKey}.`);
+    }
+    const desiredAtPath = desiredByPath.get(entry.path) ?? [];
+    // Retiring an exact duplicate leaves the destination, and so the next install, unchanged.
+    if (!covered && desiredAtPath.length && !desiredAtPath.some(item => desiredCovers(item, entry))) {
+      throw new Error(`The current graph plans a different artifact at ${entry.path}; legacy state cannot be migrated there.`);
+    }
+    if (!covered && !desiredAtPath.length && !request.allowUndesired) {
+      throw new Error(`The configured packages no longer install ${entry.path}, so the next install would remove it after migration; `
+        + "select only desired paths with --path, or pass --allow-undesired to migrate it anyway.");
     }
     selected.push({ path: entry.path, sourceEntryDigest: entryDigest(entry), action: covered ? "retire-covered" : "migrate", desired: desiredAtPath.length > 0 });
     runtime.push({ path: entry.path, hash: await transport.hashPath(path), snapshotDigest: observation.snapshotDigest });

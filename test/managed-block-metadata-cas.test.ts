@@ -24,6 +24,7 @@ async function fixture(managedBlock = true, legacyGuard = false) {
     ? `${prefix}<!-- BEGIN openpack:include fixture sha256:${hash(body)} -->\n${body}<!-- END openpack:include fixture -->\nLocal suffix.\n`
     : "Entire managed file.\n";
   await writeFile(path, content);
+  const fileHash = await localTransport.hashPath(path);
   await writeInstallManifest({ version: 2, adapter: "fixture", ...scope, targetRoot: root,
     generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending-fixture-revision", legacy: false, entries: legacyGuard ? [{
       path: "instructions.md", artifactType: "instructions", artifactName: "fixture", logicalSelector: "fixture",
@@ -39,10 +40,10 @@ async function fixture(managedBlock = true, legacyGuard = false) {
     createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", operations: [], completed: [],
     manifest: withManifestRevision({ ...before, generatedAt: "2026-01-02T00:00:00.000Z" }),
     metadataGuards: { inventory: [{ stateKey: scope.stateKey, revision: before.revision }],
-      runtime: [{ path: "instructions.md", hash: exact?.hash ?? hash(content),
+      runtime: [{ path: "instructions.md", hash: exact?.hash ?? fileHash,
         snapshotDigest: (await observeOwnershipRuntime(path)).snapshotDigest, ...(exact && !legacyGuard ? { managedBlock: exact } : {}) }] },
   };
-  return { root, path, content, body, prefix, journal, manifest: installManifestPath(root, "fixture", scope) };
+  return { root, path, content, body, prefix, fileHash, journal, manifest: installManifestPath(root, "fixture", scope) };
 }
 
 describe("metadata runtime CAS hash domains", () => {
@@ -52,6 +53,9 @@ describe("metadata runtime CAS hash domains", () => {
       expect(Buffer.byteLength(f.prefix)).toBe(8593);
       expect(f.journal.metadataGuards!.runtime[0]!.hash).toBe(hash(f.body));
       expect(hash(f.content)).not.toBe(hash(f.body));
+    } else {
+      expect(f.journal.metadataGuards!.runtime[0]!.hash).toBe(f.fileHash);
+      expect(f.fileHash).not.toBe(hash(f.content));
     }
     await expect(commitManifestMetadataJournal(f.journal)).resolves.toMatchObject({ adapter: "fixture" });
     expect(await readFile(f.path, "utf8")).toBe(f.content);
@@ -67,7 +71,10 @@ describe("metadata runtime CAS hash domains", () => {
   it.each(["unchanged", "body", "prefix", "file-hash", "snapshot", "inventory"])("loads a legacy whole-file hash plus managedBlock journal (%s)", async (change) => {
     const f = await fixture();
     const guard = f.journal.metadataGuards!.runtime[0]!;
-    guard.hash = hash(f.content);
+    // Production whole-file guards use the transport's file-domain hash, including "file\0".
+    guard.hash = f.fileHash;
+    expect(guard.hash).toBe(createHash("sha256").update("file\0").update(f.content).digest("hex"));
+    expect(guard.hash).not.toBe(hash(f.content));
     expect(guard.managedBlock!.hash).toBe(hash(f.body));
     expect(guard.hash).not.toBe(guard.managedBlock!.hash);
     await writeApplyJournal(f.journal);

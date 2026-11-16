@@ -80,17 +80,17 @@ describe.sequential("native audited ownership handoff", () => {
       expect(preview).toMatchObject({ dryRun: true, runtimeOperations: 0, status: "partial",
         nextCommand: "agentwheel mutation recover-runtime fixture-handoff" });
       expect(preview.journals).toEqual([expect.objectContaining({ path: f.journal, manifestPath: f.manifest, auditPaths: [f.audit] })]);
-    expect(await snapshotTree(f.root)).toEqual(before);
-    const cli = resolve("dist/index.js");
-    await ensureCliBuild(cli);
-    for (const action of ["recover", "finalize", "recover-runtime"]) {
-      const result = await execute(process.execPath, [cli, "mutation", action, "fixture-handoff", "--dry-run", "--json"],
-        { cwd: f.workspace, env: { ...process.env, HOME: f.home } });
-      expect(JSON.parse(result.stdout)).toMatchObject({ dryRun: true, runtimeOperations: 0, requestedAction: action });
       expect(await snapshotTree(f.root)).toEqual(before);
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
-    expect(observation.events).toEqual([]);
+      const cli = resolve("dist/index.js");
+      await ensureCliBuild(cli);
+      for (const action of ["recover", "finalize", "recover-runtime"]) {
+        const result = await execute(process.execPath, [cli, "mutation", action, "fixture-handoff", "--dry-run", "--json"],
+          { cwd: f.workspace, env: { ...process.env, HOME: f.home } });
+        expect(JSON.parse(result.stdout)).toMatchObject({ dryRun: true, runtimeOperations: 0, requestedAction: action });
+        expect(await snapshotTree(f.root)).toEqual(before);
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+      expect(observation.events).toEqual([]);
     } finally { observation.close(); }
     const recovered = await recoverMutationRuntime("fixture-handoff");
     expect(recovered.status).toBe("succeeded");

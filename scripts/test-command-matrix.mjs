@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { spawnSync, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { build } from "esbuild";
+
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
+// Use the bundler shipped with the pinned, direct tsup development dependency.
+const { build } = createRequire(require.resolve("tsup/package.json"))("esbuild");
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const read = path => readFile(join(root, path), "utf8");

@@ -10,7 +10,7 @@ it("read_missing_git_preserves_cache", async () => {
   try {
     const driver = new GitSourceDriver();
     // Local nonexistent source: clone must fail without network access.
-    const resolved = await driver.resolve(`git+file://${join(root, "missing.git")}`, { cacheRoot: join(root, "cache") });
+    const resolved = await driver.resolve(`git:file://${join(root, "missing.git")}`, { cacheRoot: join(root, "cache") });
     await mkdir(resolved.resolvedPath, { recursive: true });
     await writeFile(join(resolved.resolvedPath, "sentinel"), "preserve me");
     const before = await snapshot(root);

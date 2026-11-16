@@ -19,7 +19,7 @@ export async function collectRepositoryStatus(workspaceRoot: string): Promise<Re
     const { stdout } = await execFileAsync(
       "git",
       ["-C", workspaceRoot, "status", "--porcelain=v2", "--branch"],
-      { maxBuffer: 10 * 1024 * 1024 },
+      { maxBuffer: 10 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
     );
     const lines = stdout.split(/\r?\n/).filter(Boolean);
     const branch = valueAfter(lines, "# branch.head ");

@@ -1,5 +1,5 @@
 import { rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { expect, it } from "vitest";
 import { readFixture } from "../helpers/read-effects.js";
 
@@ -35,5 +35,55 @@ it("read_missing_git_preserves_cache_status", async () => {
     expect(observed.result.stdout, observed.result.stderr).not.toBe("");
     expect(JSON.parse(observed.result.stdout).command).toBe("status");
     expect.soft(observed.changes).toEqual([]);
+  } finally { await fixture.dispose(); }
+}, 30_000);
+
+it("read_effects_match_explicit_policy_diagnostics_consumer", async () => {
+  const fixture = await readFixture(true);
+  try {
+    const consumer = join(fixture.root,"diagnostics.mjs");
+    await writeFile(consumer, `import { spawnSync } from "node:child_process";
+const result = spawnSync(process.execPath, [process.env.SYNTHETIC_CLI,...process.argv.slice(2)], {stdio:"inherit"});
+process.exitCode = result.status ?? 1;`);
+    const observed = await fixture.probe([],consumer,{ SYNTHETIC_CLI: resolve("dist/index.js") });
+    expect(observed.result.stdout,observed.result.stderr).not.toBe("");
+    expect(JSON.parse(observed.result.stdout).command).toBe("status");
+    expect(observed.calls.filter(call => call.kind === "network")).toEqual([]);
+    expect(observed.changes).toEqual([]);
+  } finally { await fixture.dispose(); }
+}, 30_000);
+
+it("unqualified_cli_does_not_build_on_read", async () => {
+  const fixture = await readFixture(false);
+  try {
+    const observed = await fixture.probe([],resolve("scripts/agentwheel-local.mjs"),{ AGENTWHEEL_REPO_DIR: fixture.root });
+    expect(observed.result.status).toBe(127);
+    expect(observed.result.stderr).toMatch(/Build explicitly.*never builds implicitly/);
+    expect(observed.calls).toEqual([]);
+    expect(observed.changes).toEqual([]);
+  } finally { await fixture.dispose(); }
+}, 30_000);
+
+it("read_effects_match_explicit_policy_local_wrapper", async () => {
+  const fixture = await readFixture(true);
+  try {
+    const observed = await fixture.probe([],resolve("scripts/agentwheel-local.mjs"),{ AGENTWHEEL_REPO_DIR: process.cwd() });
+    expect(observed.result.stdout,observed.result.stderr).not.toBe("");
+    expect(JSON.parse(observed.result.stdout).command).toBe("status");
+    expect(observed.calls.filter(call => call.kind === "network")).toEqual([]);
+    expect(observed.calls.filter(call => /\b(pnpm|flock|clone|fetch|ls-remote)\b/.test(JSON.stringify(call.args)))).toEqual([]);
+    expect(observed.changes).toEqual([]);
+  } finally { await fixture.dispose(); }
+}, 30_000);
+
+it("read_effects_match_explicit_policy_explicit_refresh", async () => {
+  const fixture = await readFixture(false);
+  try {
+    const observed = await fixture.probe(["--refresh"]);
+    expect(observed.result.stdout,observed.result.stderr).not.toBe("");
+    expect(JSON.parse(observed.result.stdout).command).toBe("status");
+    expect(observed.changes.length).toBeGreaterThan(0);
+    expect(observed.changes.every(path => path.startsWith("tree:workspace/.agentwheel/cache"))).toBe(true);
+    expect(observed.calls.filter(call => call.kind === "network")).toEqual([]);
   } finally { await fixture.dispose(); }
 }, 30_000);

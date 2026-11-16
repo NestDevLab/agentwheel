@@ -1,3 +1,4 @@
+import { isObservation } from "../effects/read-policy.js";
 import { readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -43,14 +44,16 @@ export class RegistryClient {
   }
 
   async getIndex(options: { refresh?: boolean } = {}): Promise<RegistryIndex> {
+    const offline = this.options.offline || isObservation();
+    const refresh = options.refresh && !isObservation();
     const sources = await this.getSources();
     const ttlMs = await this.getTtlMs();
     const cached = await this.readCache();
-    if (!options.refresh && cached && sameSources(cached.sources, sources) && (this.options.offline || !this.isExpired(cached, ttlMs))) {
+    if (!refresh && cached && sameSources(cached.sources, sources) && (offline || !this.isExpired(cached, ttlMs))) {
       this.warnCompatibility(cached.entries);
       return { entries: cached.entries, sources: cached.sources, fetchedAt: cached.fetchedAt, fromCache: true };
     }
-    if (this.options.offline) {
+    if (offline) {
       const reason = cached ? "registry sources changed" : "registry cache is missing";
       const label = this.options.offlineLabel ?? "Offline";
       const hint = this.options.offlineHint ?? `Run without ${label === "Offline" ? "--offline" : "--frozen-lock"} first.`;

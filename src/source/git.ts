@@ -1,3 +1,4 @@
+import { isObservation } from "../effects/read-policy.js";
 import { execFile } from "node:child_process";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -43,6 +44,10 @@ export class GitSourceDriver implements SourceDriver {
   }
 
   async fetch(resolved: ResolvedSource): Promise<ResolvedSource> {
+    if (isObservation()) return this.observe(resolved);
+    if (await pathExists(resolved.resolvedPath) && !(await pathExists(join(resolved.resolvedPath, ".git")))) {
+      throw new Error("Incomplete cached checkout preserved; explicit cache repair is required before refresh.");
+    }
     return withFilesystemLock(`${resolved.resolvedPath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const parsed = parseGitSource(resolved.source);
       const cacheRoot = dirname(resolved.resolvedPath);
@@ -53,7 +58,9 @@ export class GitSourceDriver implements SourceDriver {
         if (resolved.frozenLock) {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
-        await rm(resolved.resolvedPath, { recursive: true, force: true });
+        if (await pathExists(resolved.resolvedPath)) {
+          throw new Error("Incomplete cached checkout preserved; explicit cache repair is required before refresh.");
+        }
         await git([...(await gitAuthArguments(parsed.url)), "clone", "--no-checkout", parsed.url, resolved.resolvedPath]);
         await assertOwnedByCurrentUser(resolved.resolvedPath);
       } else if (!resolved.frozenLock) {
@@ -103,6 +110,23 @@ export class GitSourceDriver implements SourceDriver {
     }, "git cache");
   }
 
+  private async observe(resolved: ResolvedSource): Promise<ResolvedSource> {
+    if (!(await pathExists(join(resolved.resolvedPath, ".git")))) {
+      throw new Error("Observation requires a complete cached Git checkout; existing bytes were preserved. Use --refresh for an absent cache, or explicitly repair an incomplete checkout.");
+    }
+    const parsed = parseGitSource(resolved.source);
+    const commit = await resolveCommit(resolved.resolvedPath, resolved.requestedRef ?? parsed.ref ?? "HEAD");
+    const snapshot = join(dirname(resolved.resolvedPath), `${basename(resolved.resolvedPath)}-${commit.slice(0,12)}`);
+    const packageRoot = parsed.subpath ? join(snapshot, parsed.subpath) : snapshot;
+    if (!(await isDirectory(packageRoot))) {
+      throw new Error("Observation requires an existing cached Git snapshot; use --refresh to materialize it.");
+    }
+    const manifest = await readPackageManifest(packageRoot);
+    return { ...resolved, resolvedPath: packageRoot, resolvedCommit: commit,
+      packageName: manifest?.name, packageVersion: manifest?.version,
+      sourceHash: await hashPath(packageRoot), cacheLeasePath: undefined };
+  }
+
   async list(resolved: ResolvedSource) {
     return this.local.list({ ...resolved, driver: "local" });
   }
@@ -139,7 +163,7 @@ function cachePathFor(url: string, cacheRoot?: string): string {
 }
 
 async function git(args: string[], env?: NodeJS.ProcessEnv) {
-  return execFileAsync("git", args, { env, maxBuffer: 1024 * 1024 * 10 });
+  return execFileAsync("git", args, { env: isObservation() ? { ...process.env, ...env, GIT_OPTIONAL_LOCKS: "0" } : env, maxBuffer: 1024 * 1024 * 10 });
 }
 
 async function resolveCommit(checkoutPath: string, ref: string): Promise<string> {

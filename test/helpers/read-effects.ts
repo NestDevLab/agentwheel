@@ -36,13 +36,13 @@ export async function readFixture(warm: boolean) {
   const policy = { exclude: { "trace.jsonl": "Only the fixture observer evidence is excluded; command state is compared exactly." } };
   return {
     root, workspace, home, temp, cacheRoot, resolved,
-    async probe(extra: string[] = [], entry = join(process.cwd(),"dist/index.js")) {
+    async probe(extra: string[] = [], entry = join(process.cwd(),"dist/index.js"), env: NodeJS.ProcessEnv = {}) {
       const before = await snapshot(root,policy);
       const result = spawnSync(process.execPath, [entry,"status","--installation-type","local","--adapter","codex","--target-root",workspace,"--json",...extra], {
         cwd: workspace, encoding: "utf8", timeout: 30_000,
         env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home,".config"), XDG_CACHE_HOME: join(home,".cache"), TMPDIR: temp,
           AGENTWHEEL_NO_UPDATE_CHECK: "1", GIT_CONFIG_GLOBAL: "/dev/null",
-          NODE_OPTIONS: `--require=${resolve("test/helpers/read-effects-preload.cjs")}`, SYNTHETIC_EFFECT_TRACE: trace },
+          NODE_OPTIONS: `--require=${resolve("test/helpers/read-effects-preload.cjs")}`, SYNTHETIC_EFFECT_TRACE: trace, ...env },
       });
       const calls = (await readFile(trace,"utf8")).trim().split("\n").filter(Boolean).map(line => JSON.parse(line) as { kind: string; name: string; args: unknown[] });
       return { result, calls, changes: diffEffects(before,await snapshot(root,policy)) };

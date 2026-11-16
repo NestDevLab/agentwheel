@@ -1,3 +1,4 @@
+import { withReadEffects } from "../effects/read-policy.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -1677,7 +1678,7 @@ program
   .option("--offline", "use cached version and member status even when stale", false)
   .option("--refresh", "refresh package and member status regardless of TTL", false)
   .option("--recover-legacy-state", "inspect stable state while preserving invalid historical state", false)
-  .action(async (options) => {
+  .action(async (options) => withReadEffects(options, async () => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
     if (composite) {
@@ -1699,7 +1700,7 @@ program
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
-  });
+  }));
 
 const journalCommand = program
   .command("journal")

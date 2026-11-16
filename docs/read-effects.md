@@ -1,0 +1,17 @@
+# Status observation and explicit refresh
+
+`status` now observes local state and existing caches by default, regardless of cache TTL. `status --refresh` explicitly permits cache population, source fetches, snapshot maintenance, version discovery and composite member refresh. `--offline` wins over `--refresh`. Missing or stale evidence remains visible in the status protocol instead of causing an implicit refresh. Useful cached Git snapshots and local sources still support pending-work inspection; an absent cached snapshot returns a named refresh requirement.
+
+The AsyncLocalStorage scope in `src/effects/read-policy.ts` centralizes this distinction across graph sources, registry/version indexes, member reports, and cache writers. Observation never creates cache leases or maintenance locks and does not prune snapshots. Incomplete checkout directories are preserved even during refresh: repair is a separate explicit operation. Git status disables optional index locks. The optional update notifier does not fetch or persist on status reads.
+
+Observation supports built-in local targets and cached composite reports. Unqualified programmatic adapters, source drivers other than local/Git, and direct remote transports refuse before execution; explicit refresh retains their existing admission and execution paths. This deliberately avoids promising zero effects for arbitrary executable code. Other CLI read/preview verbs have not yet been qualified by this batch.
+
+Diagnostics consumers of the versioned `status --json` protocol inherit this policy. Tests exercise a synthetic child-process consumer, not a private fleet configuration. No fleet diagnostics source is changed by this PR.
+
+`scripts/agentwheel-local.mjs` is the generic source-owned local launcher. It requires a prebuilt, current `dist/index.js`, or refuses with an explicit build instruction. It never runs a package manager, acquires a build lock, or builds implicitly, for any verb. `AGENTWHEEL_REPO_DIR` selects a checkout; the default is the repository containing the launcher. This PR does not replace any installed wrapper or retarget a runtime launcher.
+
+## Evidence and limits
+
+The B0a effects helper is reused from PR #201; this PR is based on that branch. Before the product changes, synthetic status fixtures reproduced clone/fetch/tag queries, persistent cache leases and version-index writes, and removal of a sentinel from an incomplete checkout. A separately isolated legacy-launcher probe reproduced one implicit build on a status invocation with a dummy builder. That launcher was unversioned: the replacement above establishes a source-owned implementation without copying host-specific defaults into public source.
+
+The fixture snapshots synthetic HOME, workspace, cache, Git metadata and temp before/after each invocation. A child preload records process calls and rejects Node network APIs; only its exact evidence file is excluded from tree comparison. Tests cover cold/warm/offline/refused reads, a diagnostics protocol consumer, wrapper admission, and explicitly bounded refresh writes. External Git network access is checked through command arguments; this is an application-boundary trace, not a kernel syscall sandbox. Concurrent refresh/prune versus a lease-free observer remains a separate cache-lifecycle qualification concern: observation may report missing evidence but cannot repair or delete it.

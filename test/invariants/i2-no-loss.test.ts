@@ -23,14 +23,15 @@ async function observeIncompleteCacheRead() {
 }
 
 // Expected: a read refuses an incomplete checkout without deleting existing bytes.
-it.fails("read_missing_git_preserves_cache", async () => {
+it("read_missing_git_preserves_cache", async () => {
   const observed = await observeIncompleteCacheRead();
   expect(observed.failure).toBeInstanceOf(Error);
   expect(observed.effects).toEqual([]);
 });
 
-it("read_missing_git_preserves_cache_current_defect_deletes_only_sentinel_tree", async () => {
+it("read_missing_git_preserves_cache_requires_explicit_repair", async () => {
   const observed = await observeIncompleteCacheRead();
   expect(observed.failure).toBeInstanceOf(Error);
-  expect(observed.effects).toEqual(observed.removedPaths);
+  expect(String(observed.failure)).toMatch(/Incomplete cached checkout preserved/);
+  expect(observed.effects).toEqual([]);
 });

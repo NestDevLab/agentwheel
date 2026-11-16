@@ -27,8 +27,11 @@ it.fails("stale_merge_metadata_rejected_in_all_paths", async () => {
     expect(diffEffects(before, await snapshot(root))).toEqual([]);
     const failure = await applyCombinedInstallPlan(preview).then(() => undefined, error => error);
     expect(failure).toBeInstanceOf(Error);
-    expect(String(failure)).toMatch(/managed|contribution|merge/i);
     // Expected: preview blocks the same stale contribution that apply rejects.
     expect(preview.hasBlockingChanges).toBe(true);
+    expect(preview.operations).toEqual(expect.arrayContaining([expect.objectContaining({
+      action: "conflict", blockedReason: expect.stringMatching(/contribution|merge/i),
+    })]));
+    expect(diffEffects(before, await snapshot(root))).toEqual([]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

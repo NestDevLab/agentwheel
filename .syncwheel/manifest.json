@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
+      "worktree_grace_days": 7
     }
   },
   "defaults": {
@@ -37,9 +37,9 @@
       "mgt0478-add-runtimes",
       "own-owner-legacy-migration",
       "invariant-test-baseline",
+      "read-effects-policy",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "read-effects-policy"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -119,11 +119,8 @@
       }
     },
     {
-      "id": "invariant-test-baseline",
-      "branch": "pr/invariant-test-baseline",
       "base": "origin/main",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/invariant-test-baseline",
       "commits": [
         "bd0da97d5a3c6baac126e09522259577a7794ab5",
         "156ee7e3a7f685ac6fa906ffc88d45fb0f7d635f",
@@ -137,6 +134,9 @@
         "3429cb12619b775caf10aa61f044f561e79ce5db",
         "71101a9b4f92ffad1ee817fe50842506dba202e1"
       ],
+      "id": "invariant-test-baseline",
+      "integration_branch": "main-integration",
+      "target_branch": "main",
       "target_remote": "origin",
       "state": "published",
       "publication": {
@@ -144,6 +144,29 @@
       },
       "meta": {
         "purpose": "Synthetic invariant regression tests and command matrix"
+      }
+    },
+    {
+      "id": "read-effects-policy",
+      "branch": "pr/read-effects-policy",
+      "base": "origin/pr/invariant-test-baseline",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [
+        "3f8bf8e4b0aee8b42ab0881917000fc1001c53d9",
+        "c290660627fbcdaa3681362108fa3b6bea80f44a",
+        "cc2ec0c810d6672421c415c6f81ca819cb9a605f",
+        "92e8cf0829245d890a28bd76a914866811762670",
+        "bb1015ebcff3d29f60f0418d2e2cfc87858537f8",
+        "a7edab138632dc4f600cb2732e75a8e2bc07836e"
+      ],
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
       }
     },
     {
@@ -179,29 +202,6 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
-    },
-    {
-      "id": "read-effects-policy",
-      "branch": "pr/read-effects-policy",
-      "base": "origin/pr/invariant-test-baseline",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [
-        "3f8bf8e4b0aee8b42ab0881917000fc1001c53d9",
-        "c290660627fbcdaa3681362108fa3b6bea80f44a",
-        "cc2ec0c810d6672421c415c6f81ca819cb9a605f",
-        "92e8cf0829245d890a28bd76a914866811762670",
-        "bb1015ebcff3d29f60f0418d2e2cfc87858537f8",
-        "a7edab138632dc4f600cb2732e75a8e2bc07836e"
-      ],
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
-      "meta": {
-        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
-      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

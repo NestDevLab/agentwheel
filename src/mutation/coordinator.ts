@@ -397,6 +397,54 @@ async function transitionMutationRuntimeJournal(
 }
 
 
+export interface MutationRecoveryPreview {
+  dryRun: true;
+  operationId: string;
+  status: MutationReceipt["status"];
+  requestedAction: "finalize" | "recover" | "recover-runtime";
+  nextCommand: string;
+  runtimeOperations: 0;
+  journals: Array<{ path: string; manifestPath: string; auditPaths: string[]; removesManifest: boolean }>;
+  steps: string[];
+}
+
+/** Advisory observation only: execution must reacquire locks and revalidate all leases and guards. */
+export async function previewMutationRecovery(
+  operationId: string,
+  requestedAction: MutationRecoveryPreview["requestedAction"] = "recover-runtime",
+): Promise<MutationRecoveryPreview> {
+  const receipt = await readMutationReceipt(operationId);
+  assertRuntimeRecoveryReceipt(receipt);
+  const { readLinkedLocalApplyJournal } = await import("../install/transaction.js");
+  const { previewMetadataJournal } = await import("../install/apply.js");
+  const journals: MutationRecoveryPreview["journals"] = [];
+  for (const entry of receipt.runtimeJournals.filter((link) => link.status !== "resolved")) {
+    if (entry.transport === "ssh") throw new Error("Read-only recovery preview does not support SSH journals.");
+    let transport = localTransport;
+    if (entry.transport === "local-run-as") {
+      const pinned = entry.runAsIdentity!;
+      const current = resolveRunAsIdentity(pinned.user, pinned.root);
+      if (!sameRunAsIdentity(pinned, current)) throw new Error("Runtime recovery run-as identity changed.");
+      transport = createRunAsTransport(current);
+    }
+    const journal = await readLinkedLocalApplyJournal(entry.path, receipt.operationId, entry.journalDigest, entry.transportDescription, transport);
+    if (journal.mutation?.reason !== receipt.reason || journal.mutation.noCommit !== receipt.noCommit) {
+      throw new Error("Runtime apply journal mutation metadata does not match its durable receipt.");
+    }
+    journals.push({ path: entry.path, ...await previewMetadataJournal(journal, transport) });
+  }
+  return {
+    dryRun: true, operationId: receipt.operationId, status: receipt.status, requestedAction,
+    nextCommand: `agentwheel mutation recover-runtime ${receipt.operationId}`,
+    runtimeOperations: 0, journals,
+    steps: [
+      "Acquire mutation and runtime locks and revalidate receipt, journal, repository, inventory and runtime guards",
+      "Roll forward guarded metadata and audit intent without runtime operations",
+      "Resolve linked journals and verify revisioning under the recorded policy",
+    ],
+  };
+}
+
 export async function resumeMutation(operationId: string, action: "finalize" | "recover"): Promise<MutationReceipt> {
   let receipt = await readMutationReceipt(operationId);
   if (["succeeded", "revisioning-skipped", "no-repository-delta"].includes(receipt.status)) return receipt;

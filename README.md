@@ -643,6 +643,7 @@ agentwheel mutation list
 agentwheel mutation show <operation-id>
 agentwheel mutation finalize <operation-id>
 agentwheel mutation recover-runtime <operation-id>
+agentwheel mutation recover-runtime <operation-id> --dry-run --json
 ```
 
 See [the v1 revision-provider specification](docs/specs/revision-provider-v1.md) for configuration,
@@ -1064,3 +1065,10 @@ Built-in runtime targets:
 ## License
 
 See [`LICENSE`](LICENSE).
+
+For a partial guarded metadata transaction with zero runtime operations, `mutation recover-runtime --dry-run`
+observes the linked journal, runtime block/file hashes, exact snapshots, and inventory without locks,
+receipt/journal updates, files, or revision-provider calls. `mutation recover --dry-run` and
+`mutation finalize --dry-run` show the same preview and identify `recover-runtime` as the required next
+command; ordinary finalize/recover still refuse partial handlers. The preview is advisory: execution
+revalidates repository leases and all guards under locks. Other runtime recovery shapes are refused.

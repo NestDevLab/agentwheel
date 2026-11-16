@@ -883,7 +883,7 @@ async function managedFixture() {
   await seedPlan(seeded, legacyKey, legacyLock);
   const source = await readV2({ target }, legacyKey); const entry = source.entries[0]!;
   const file = join(target, entry.path); const block = await readFile(file, "utf8");
-  const prefix = "# Existing local guidance\r\n\r\nKeep every prefix byte.\r\n\n";
+  const prefix = "x".repeat(8592) + "\n";
   const suffix = "\nKeep every suffix byte.\r\n";
   await writeFile(file, prefix + block + suffix); await chmod(file, 0o640);
   await writeConfig(parent, { schemaVersion: 3, fleetId: "delivery", packages: [fleetPackage()] });

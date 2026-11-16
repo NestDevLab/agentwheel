@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdtemp, rm, readdir } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { spawnSync, execFileSync } from "node:child_process";
@@ -96,7 +96,7 @@ async function main() {
     const commands = await parserCommands(scratch);
     const report = join(reportRoot,"runner.json");
     const json = join(reportRoot,"vitest.json");
-    const runner = spawnSync(process.execPath, [join(dirname(require.resolve("vitest/package.json")), "vitest.mjs"), "run",
+    const runner = spawnSync("pnpm", ["test",
       "--maxWorkers=2", "--reporter=json", "--reporter=./scripts/test-command-reporter.mjs", `--outputFile=${json}`], {
       cwd: root, env: { ...process.env, COMMAND_MATRIX_REPORT: report }, encoding: "utf8", maxBuffer: 40 * 1024 * 1024,
     });

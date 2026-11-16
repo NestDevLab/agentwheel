@@ -1,7 +1,7 @@
-import { requireRefreshEffect } from "../effects/read-policy.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { requireRefreshEffect } from "../effects/read-policy.js";
 import { isIgnoredGeneratedEntry, pathExists } from "../utils/fs.js";
 
 const snapshotNamePattern = /^(.*)-([0-9a-f]{12})$/i;

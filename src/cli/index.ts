@@ -1,4 +1,3 @@
-import { withReadEffects } from "../effects/read-policy.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -6,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { withReadEffects } from "../effects/read-policy.js";
 import { resolveAdapter } from "../adapters/resolve.js";
 import {
   installRootForAdapterInstallationType,

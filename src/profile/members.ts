@@ -1,9 +1,9 @@
-import { isObservation } from "../effects/read-policy.js";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { isObservation } from "../effects/read-policy.js";
 import type { WorkspaceProfileMember } from "../model/workspace.js";
 import {
   statusReportSchema,

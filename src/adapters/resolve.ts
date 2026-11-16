@@ -1,5 +1,5 @@
-import { isObservation } from "../effects/read-policy.js";
 import { resolve } from "node:path";
+import { isObservation } from "../effects/read-policy.js";
 import type { AdapterConfig } from "../model/adapter.js";
 import { loadAdapterConfig } from "../model/adapter.js";
 import { getAdapter } from "./index.js";

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { withReadEffects, isObservation, readEffectPolicy } from "../src/effects/read-policy.js";
+import { withReadEffects, isObservation, readEffectPolicy, isObservationInvocation } from "../src/effects/read-policy.js";
 import { createGitSnapshotLease, pruneGitCache } from "../src/source/cache.js";
 import { maybeCheckForUpdate } from "../src/cli/update-check.js";
 import { collectCompositeMembers } from "../src/profile/members.js";
@@ -61,4 +61,10 @@ it("refuses unknown adapter effects before evaluating the module", async () => {
     });
     expect(diffEffects(before,await snapshot(root))).toEqual([]);
   } finally {await rm(root,{recursive:true,force:true});}
+});
+
+it("conservatively suppresses the notifier when status is an argument value", () => {
+  expect(isObservationInvocation(["node", "cli", "add", "status"])).toBe(true);
+  expect(isObservationInvocation(["node", "cli", "status", "--refresh"])).toBe(false);
+  expect(isObservationInvocation(["node", "cli", "status", "--refresh", "--offline"])).toBe(true);
 });

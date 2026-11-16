@@ -1,9 +1,9 @@
-import { isObservation } from "../effects/read-policy.js";
 import { execFile } from "node:child_process";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { isObservation } from "../effects/read-policy.js";
 import { readPackageManifest } from "../model/package.js";
 import {
   hashPath,
@@ -46,7 +46,7 @@ export class GitSourceDriver implements SourceDriver {
   async fetch(resolved: ResolvedSource): Promise<ResolvedSource> {
     if (isObservation()) return this.observe(resolved);
     if (await pathExists(resolved.resolvedPath) && !(await pathExists(join(resolved.resolvedPath, ".git")))) {
-      throw new Error("Incomplete cached checkout preserved; explicit cache repair is required before refresh.");
+      throw incompleteCheckoutError(resolved.resolvedPath);
     }
     return withFilesystemLock(`${resolved.resolvedPath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const parsed = parseGitSource(resolved.source);
@@ -59,7 +59,7 @@ export class GitSourceDriver implements SourceDriver {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
         if (await pathExists(resolved.resolvedPath)) {
-          throw new Error("Incomplete cached checkout preserved; explicit cache repair is required before refresh.");
+          throw incompleteCheckoutError(resolved.resolvedPath);
         }
         await git([...(await gitAuthArguments(parsed.url)), "clone", "--no-checkout", parsed.url, resolved.resolvedPath]);
         await assertOwnedByCurrentUser(resolved.resolvedPath);
@@ -112,11 +112,12 @@ export class GitSourceDriver implements SourceDriver {
 
   private async observe(resolved: ResolvedSource): Promise<ResolvedSource> {
     if (!(await pathExists(join(resolved.resolvedPath, ".git")))) {
-      throw new Error("Observation requires a complete cached Git checkout; existing bytes were preserved. Use --refresh for an absent cache, or explicitly repair an incomplete checkout.");
+      if (await pathExists(resolved.resolvedPath)) throw incompleteCheckoutError(resolved.resolvedPath);
+      throw new Error(`Observation requires a cached Git checkout at ${JSON.stringify(resolved.resolvedPath)}; rerun the same scoped command with --refresh to create an absent cache.`);
     }
     const parsed = parseGitSource(resolved.source);
     const commit = await resolveCommit(resolved.resolvedPath, resolved.requestedRef ?? parsed.ref ?? "HEAD");
-    const snapshot = join(dirname(resolved.resolvedPath), `${basename(resolved.resolvedPath)}-${commit.slice(0,12)}`);
+    const snapshot = snapshotPathFor(resolved.resolvedPath, commit);
     const packageRoot = parsed.subpath ? join(snapshot, parsed.subpath) : snapshot;
     if (!(await isDirectory(packageRoot))) {
       throw new Error("Observation requires an existing cached Git snapshot; use --refresh to materialize it.");
@@ -184,8 +185,21 @@ async function resolveCommit(checkoutPath: string, ref: string): Promise<string>
   throw lastError;
 }
 
+function incompleteCheckoutError(checkoutPath: string): Error {
+  return new Error(
+    `Incomplete cached checkout preserved at ${JSON.stringify(checkoutPath)}. `
+    + `Manual repair: move this exact directory to a new backup location outside the cache directory ${JSON.stringify(dirname(checkoutPath))}; do not overwrite an existing backup. `
+    + "Confirm the original directory is absent, then rerun the same scoped command with --refresh to clone it again. "
+    + "Agentwheel does not move or remove the directory automatically.",
+  );
+}
+
+function snapshotPathFor(checkoutPath: string, commit: string): string {
+  return join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
+}
+
 async function snapshotCommit(checkoutPath: string, commit: string): Promise<{ path: string; created: boolean }> {
-  const snapshotPath = join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
+  const snapshotPath = snapshotPathFor(checkoutPath, commit);
   if (await pathExists(snapshotPath)) return { path: snapshotPath, created: false };
   const tempPath = join(dirname(checkoutPath), `${basename(snapshotPath)}.tmp-${process.pid}-${Date.now()}`);
   const tempIndexPath = `${tempPath}.index`;

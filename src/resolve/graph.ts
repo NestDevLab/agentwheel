@@ -1,7 +1,7 @@
-import { isObservation } from "../effects/read-policy.js";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { isObservation } from "../effects/read-policy.js";
 import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from "../compose/markdown.js";
 import type { Artifact, PackageItemRequire, PackageItemSuggest } from "../model/artifact.js";
 import { artifactTypeSchema } from "../model/artifact.js";

@@ -1,10 +1,10 @@
-import { isObservation } from "../effects/read-policy.js";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";
+import { isObservation } from "../effects/read-policy.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { readPackageManifest } from "../model/package.js";
 import { compareSemverStrings, parseSemver, satisfiesVersionRange } from "../resolve/semver.js";

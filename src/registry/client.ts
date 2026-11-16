@@ -1,8 +1,8 @@
-import { isObservation } from "../effects/read-policy.js";
 import { readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isObservation } from "../effects/read-policy.js";
 import { registryCacheSchema, registryIndexSchema, type RegistryCache, type RegistryEntry } from "../model/registry.js";
 import { normalizeArtifactSelectors } from "../model/selection.js";
 import { readMergedWorkspaceConfig } from "../model/workspace.js";

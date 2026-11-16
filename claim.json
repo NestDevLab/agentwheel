@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/read-effects-policy"
+  ],
+  "claimed_at": "2026-11-16T18:26:39+00:00",
+  "coordination_id": "default",
+  "operation_token": "ebb9effe-5eca-4c1c-86a3-f6055a19f2f5",
+  "publication_scope": "compose-stack:read-effects-policy",
+  "source_ref": "refs/heads/pr/read-effects-policy",
+  "syncwheel_version": "0.47.14"
+}

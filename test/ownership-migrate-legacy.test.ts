@@ -8,7 +8,6 @@ import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership, type MigrateLe
 import { workspaceOwnerForRoot } from "../src/model/workspace-owner.js";
 import type { InstallManifestEntry, InstallManifestV2 } from "../src/model/manifest.js";
 import { localTransport } from "../src/transport/index.js";
-import { applyJournalPath } from "../src/install/transaction.js";
 import { recoverPendingApply } from "../src/install/apply.js";
 
 const roots: string[] = [];
@@ -25,7 +24,7 @@ async function fixture(merge = false) {
   await writeFile(live, merge ? '{"tools":{"allow":["example"]},"userSetting":true}\n' : "Example skill\n");
   const entry: InstallManifestEntry = { path, artifactType: merge ? "settings" : "skills", artifactName: "example", installName: "example",
     kind: "file", hash: merge ? "a".repeat(64) : await localTransport.hashPath(live), sourceHash: "b".repeat(64),
-    dependencyRole: "root", owners: ["example"], refCount: 1, workspaceOwner: workspaceOwnerForRoot(workspace),
+    updatedAt: new Date().toISOString(), channel: "managed", dependencyRole: "root", owners: ["example"], refCount: 1, workspaceOwner: workspaceOwnerForRoot(workspace),
     ...(merge ? { mergeStrategy: "openclaw-json-deep" as const, mergeRemoval: { tools: { allow: ["example"] } } } : {}) };
   const manifest: InstallManifestV2 = { version: 2, adapter: "openclaw", installationType: "user", stateKey: sourceKey,
     targetRoot: target, generatedAt: new Date().toISOString(), revision: "pending-fixture-00", legacy: false, entries: [entry] };
@@ -54,6 +53,15 @@ describe("current-owner legacy state migration", () => {
     expect(await readFile(f.live)).toEqual(before);
     expect((await planMigrateLegacyOwnership(f.request)).selected).toEqual([]);
     expect((await applyMigrateLegacyOwnership(await reviewed(f.request))).migratedEntries).toBe(0);
+  });
+
+  it("supports unsuffixed source and explicitly configured destination state keys", async () => {
+    const f = await fixture();
+    await rm(installManifestPath(f.target, "openclaw", { stateKey: sourceKey }));
+    await writeInstallManifest({ ...f.manifest, stateKey: "openclaw.user" });
+    const request = { ...f.request, sourceStateKey: "openclaw.user", destinationStateKey: "configured-target" };
+    await applyMigrateLegacyOwnership(await reviewed(request));
+    expect((await read(f.target, "configured-target"))?.entries).toEqual([f.entry]);
   });
 
   it("preserves foreign entries and refuses explicitly selected foreign ownership", async () => {
@@ -119,7 +127,7 @@ describe("current-owner legacy state migration", () => {
     const request = await reviewed({ ...f.request, transport });
     await expect(applyMigrateLegacyOwnership(request)).rejects.toThrow(/Injected crash/);
     await expect(planMigrateLegacyOwnership(f.request)).rejects.toThrow(/Pending/);
-    await recoverPendingApply(f.target, "openclaw", { installationType: "user", stateKey: destinationKey });
+    await recoverPendingApply(f.target, "openclaw", localTransport, { installationType: "user", stateKey: destinationKey });
     await applyMigrateLegacyOwnership(await reviewed(f.request));
     expect(await readFile(f.live)).toEqual(before);
     expect(await read(f.target, sourceKey)).toBeUndefined();

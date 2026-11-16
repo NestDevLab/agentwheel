@@ -53,9 +53,6 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
   const installationType = request.installationType;
   const sourceKey = exactStateKey(request.adapter, request.sourceStateKey, installationType, "source");
   const destinationKey = exactStateKey(request.adapter, request.destinationStateKey, installationType, "destination");
-  if (![sourceKey, destinationKey].every(key => key.startsWith(`${request.adapter}.${installationType}.`))) {
-    throw new Error("State keys must match the selected adapter and installation type.");
-  }
   if (sourceKey === destinationKey) throw new Error("Source and destination state keys must differ.");
   const scope = await resolveWorkspaceOwnershipScope(request.workspaceRoot, { globalRoot: request.globalRoot });
   const owner = workspaceOwnerForRoot(scope.root, scope.fleetId);
@@ -93,12 +90,11 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
     for (const item of inventory) for (const other of item.manifest.entries) {
       const otherPath = containedArtifactPath(targetRoot, other.path);
       if (!(otherPath === path || otherPath.startsWith(`${path}/`) || path.startsWith(`${otherPath}/`))) continue;
-      if (item.stateKey === sourceKey && other === entry) continue;
       // Inventory objects are parsed separately: compare digests, and reject duplicate source entries below.
       if (item.stateKey === sourceKey && entryDigest(other as InstallManifestEntry) === entryDigest(entry)
         && source!.entries.filter(candidate => candidate.path === entry.path).length === 1) continue;
       if (item.stateKey === destinationKey && item.manifest.version === 2
-        && entryDigest(other) === entryDigest(entry) && !covered) { covered = true; continue; }
+        && entryDigest(other as InstallManifestEntry) === entryDigest(entry) && !covered) { covered = true; continue; }
       throw new Error(`Conflicting or overlapping ownership claim at ${entry.path} in ${item.stateKey}.`);
     }
     selected.push({ path: entry.path, sourceEntryDigest: entryDigest(entry), action: covered ? "retire-covered" : "migrate" });

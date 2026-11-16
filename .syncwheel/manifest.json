@@ -1,24 +1,24 @@
 {
   "authority": {
-    "mode": "ai-managed",
     "allow": [
       "source_change"
     ],
     "deny": [
       "destructive_rewrite"
-    ]
+    ],
+    "mode": "ai-managed"
   },
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -49,15 +49,15 @@
       "commits": [],
       "id": "ccp011-ownership-supersession",
       "integration_branch": "main-integration",
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin",
+      "meta": {
+        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -65,15 +65,15 @@
       "commits": [],
       "id": "local-run-as-readonly",
       "integration_branch": "main-integration",
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin",
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -84,68 +84,68 @@
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",
-      "target_branch": "main",
-      "target_remote": "origin",
-      "state": "published",
-      "publication": {
-        "enabled": true
-      },
       "meta": {
         "purpose": "Expose explicit runtime restrictions in add"
-      }
-    },
-    {
-      "id": "retained-install-recovery",
-      "branch": "feat/retained-install-recovery",
-      "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
-      "commits": [],
-      "state": "published",
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Retain verified install snapshots and restore them natively"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "journal-receipt-consumer",
-      "branch": "pr/journal-receipt-consumer",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
+      "branch": "feat/retained-install-recovery",
+      "commits": [],
+      "id": "retained-install-recovery",
       "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Retain verified install snapshots and restore them natively"
+      },
+      "publication": {
+        "enabled": true
+      },
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
+    },
+    {
+      "base": "origin/main",
+      "branch": "pr/journal-receipt-consumer",
       "commits": [
         "b916d0468facc52c7a1f1640054a1f0dce54bf0b"
       ],
-      "state": "published",
+      "id": "journal-receipt-consumer",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "own-owner-legacy-migration",
-      "branch": "pr/own-owner-legacy-migration",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/own-owner-legacy-migration",
       "commits": [
         "92ff30a0c616a7e984a9796b1309cfc54d698891",
         "ad4519cf0c3c9a389439178a769af92632804c9a"
       ],
-      "state": "published",
+      "id": "own-owner-legacy-migration",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

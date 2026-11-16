@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { expect, it } from "vitest";
@@ -98,6 +99,11 @@ it("read_never_evicts_snapshot_warm_cache", async () => {
       const dir = join(fixture.cacheRoot,`synthetic-checkout-${suffix}`);
       await mkdir(dir); await writeFile(join(dir,"sentinel"),"recovery evidence");
     }
+    // A newer source commit makes the old reader materialize a snapshot and run global pruning.
+    const source = join(fixture.root,"source");
+    await writeFile(join(source,"revision"),"new revision");
+    execFileSync("git",["-C",source,"add","revision"]);
+    execFileSync("git",["-C",source,"commit","-m","synthetic revision"]);
     const observed = await fixture.probe([],process.env.SYNTHETIC_READ_CLI);
     expect(observed.result.stdout, observed.result.stderr).not.toBe("");
     expect(JSON.parse(observed.result.stdout).command).toBe("status");

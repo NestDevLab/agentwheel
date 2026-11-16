@@ -27,7 +27,8 @@ async function fixture(managedBlock = true, legacyGuard = false) {
     generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending", legacy: false, entries: legacyGuard ? [{
       path: "instructions.md", artifactType: "instructions", artifactName: "fixture", logicalSelector: "fixture",
       kind: "file", hash: hash(body), sourceHash: hash(body), updatedAt: "2026-01-01T00:00:00.000Z",
-      mode: "managed-block",
+      mode: "managed-block", installName: "fixture", owners: ["fixture"], refCount: 1,
+      channel: "managed", dependencyRole: "root", workspaceOwner: "legacy:unowned",
     }] : [] });
   const before = (await readInstallManifest(root, "fixture", localTransport, scope))!;
   if (before.version !== 2) throw new Error("Expected v2 manifest");

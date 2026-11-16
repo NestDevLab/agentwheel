@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "backup_keep": 2,
+      "worktree_grace_days": 7,
       "backup_retention_days": 30,
-      "worktree_grace_days": 7
+      "backup_keep": 2
     }
   },
   "defaults": {
@@ -159,7 +159,8 @@
         "92e8cf0829245d890a28bd76a914866811762670",
         "bb1015ebcff3d29f60f0418d2e2cfc87858537f8",
         "a7edab138632dc4f600cb2732e75a8e2bc07836e",
-        "6389ee810ba114ffe3102c5dbd8ef8a716e2e326"
+        "6389ee810ba114ffe3102c5dbd8ef8a716e2e326",
+        "667d6d23ca50ab3d9b842ff622811603944ad627"
       ],
       "target_remote": "origin",
       "state": "published",

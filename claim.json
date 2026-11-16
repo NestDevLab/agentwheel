@@ -2,9 +2,9 @@
   "changed_refs": [
     "refs/heads/pr/own-owner-legacy-migration"
   ],
-  "claimed_at": "2026-11-16T09:50:16+00:00",
+  "claimed_at": "2026-11-16T09:53:45+00:00",
   "coordination_id": "default",
-  "operation_token": "818bdc69-e7ad-40c9-9ace-7fdd785531d9",
+  "operation_token": "eec9f133-d34d-490c-aca9-5d817f724d29",
   "publication_scope": "compose-stack:own-owner-legacy-migration",
   "source_ref": "refs/heads/pr/own-owner-legacy-migration",
   "syncwheel_version": "0.47.3"

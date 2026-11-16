@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
+      "worktree_grace_days": 7
     }
   },
   "defaults": {
@@ -38,6 +38,7 @@
       "own-owner-legacy-migration",
       "invariant-test-baseline",
       "read-effects-policy",
+      "cas-block-hash",
       "retained-install-recovery",
       "journal-receipt-consumer"
     ],
@@ -170,6 +171,22 @@
       "meta": {
         "purpose": "Pure observation policy for read routes, based on invariant test baseline"
       }
+    },
+    {
+      "base": "origin/main",
+      "branch": "pr/cas-block-hash",
+      "commits": [
+        "5d423d0c86e219a906958ff1d1262e47e1bd9d82"
+      ],
+      "id": "cas-block-hash",
+      "integration_branch": "main-integration",
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {}
     },
     {
       "base": "origin/main",

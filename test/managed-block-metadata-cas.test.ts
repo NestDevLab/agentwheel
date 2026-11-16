@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { commitManifestMetadataJournal, previewMetadataJournal } from "../src/install/apply.js";
 import { exactManagedInstructionBlockSnapshot } from "../src/install/instructions-block.js";
 import { readInstallManifest, withManifestRevision, writeInstallManifest } from "../src/install/manifest.js";
-import { observeOwnershipRuntime, type ApplyJournal } from "../src/install/transaction.js";
+import { observeOwnershipRuntime, readApplyJournal, writeApplyJournal, type ApplyJournal } from "../src/install/transaction.js";
+import { applyJournalPath } from "../src/install/transaction.js";
 import { installManifestPath } from "../src/install/paths.js";
 import { localTransport } from "../src/transport/index.js";
 
@@ -61,6 +62,37 @@ describe("metadata runtime CAS hash domains", () => {
     await expect(previewMetadataJournal(f.journal)).resolves.toMatchObject({ manifestPath: f.manifest });
     await expect(commitManifestMetadataJournal(f.journal)).resolves.toMatchObject({ adapter: "fixture" });
     expect(await readFile(f.path, "utf8")).toBe(f.content);
+  });
+
+  it.each(["unchanged", "body", "prefix", "file-hash", "snapshot", "inventory"])("loads a legacy whole-file hash plus managedBlock journal (%s)", async (change) => {
+    const f = await fixture();
+    const guard = f.journal.metadataGuards!.runtime[0]!;
+    guard.hash = hash(f.content);
+    expect(guard.managedBlock!.hash).toBe(hash(f.body));
+    expect(guard.hash).not.toBe(guard.managedBlock!.hash);
+    await writeApplyJournal(f.journal);
+    const journalPath = applyJournalPath(f.root, "fixture", scope);
+    const persisted = await readFile(journalPath);
+    const loaded = (await readApplyJournal(f.root, "fixture", localTransport, scope))!;
+    expect(loaded.metadataGuards!.runtime[0]).toEqual(guard);
+    if (change === "body") await writeFile(f.path, f.content.replace(f.body, "Changed guidance.\n"));
+    if (change === "prefix") await writeFile(f.path, "Changed prefix.\n" + f.content);
+    if (change === "file-hash") loaded.metadataGuards!.runtime[0]!.hash = "b".repeat(64);
+    if (change === "snapshot") loaded.metadataGuards!.runtime[0]!.snapshotDigest = "b".repeat(64);
+    if (change === "inventory") loaded.metadataGuards!.inventory.push({ stateKey: "other.local", revision: "b".repeat(64) });
+    const before = await readFile(f.manifest);
+    if (change === "unchanged") {
+      await expect(previewMetadataJournal(loaded)).resolves.toMatchObject({ manifestPath: f.manifest });
+      expect(await readFile(f.manifest)).toEqual(before);
+      expect(await readFile(journalPath)).toEqual(persisted);
+      await expect(commitManifestMetadataJournal(loaded)).resolves.toMatchObject({ adapter: "fixture" });
+      expect(await readFile(f.path, "utf8")).toBe(f.content);
+    } else {
+      await expect(previewMetadataJournal(loaded)).rejects.toThrow(/CAS|drift|marker/i);
+      await expect(commitManifestMetadataJournal(loaded)).rejects.toThrow(/CAS|drift|marker/i);
+      expect(await readFile(f.manifest)).toEqual(before);
+    }
+    expect(await readFile(journalPath)).toEqual(persisted);
   });
 
   it("refuses a preview with any runtime completion record", async () => {

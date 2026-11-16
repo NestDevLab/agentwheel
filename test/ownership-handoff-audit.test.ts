@@ -4,9 +4,8 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import fs from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { watch, type FSWatcher } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot, type OwnershipHandoffRequest } from "../src/lifecycle/ownership.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { installManifestPath } from "../src/install/paths.js";
@@ -75,19 +74,12 @@ describe.sequential("native audited ownership handoff", () => {
     await expect(applyArtifactOwnershipHandoff({ ...f.request, transport })).rejects.toThrow(/interrupted/);
     expect((JSON.parse(await readFile(f.journal, "utf8"))).operations).toEqual([]);
     const before = await snapshotTree(f.root);
-    const spies = ["open", "mkdir", "writeFile", "rename", "rm", "link", "chmod"].map((method) =>
-      vi.spyOn(fs, method as "writeFile").mockImplementation(async () => { throw new Error(`Unexpected write: ${method}`); }));
-    syncBuiltinESMExports();
+    const observation = await observeFilesystemChanges(f.root);
     try {
       const preview = await previewMutationRecovery("fixture-handoff");
       expect(preview).toMatchObject({ dryRun: true, runtimeOperations: 0, status: "partial",
         nextCommand: "agentwheel mutation recover-runtime fixture-handoff" });
       expect(preview.journals).toEqual([expect.objectContaining({ path: f.journal, manifestPath: f.manifest, auditPaths: [f.audit] })]);
-      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-      syncBuiltinESMExports();
-    }
     expect(await snapshotTree(f.root)).toEqual(before);
     const cli = resolve("dist/index.js");
     await ensureCliBuild(cli);
@@ -97,6 +89,9 @@ describe.sequential("native audited ownership handoff", () => {
       expect(JSON.parse(result.stdout)).toMatchObject({ dryRun: true, runtimeOperations: 0, requestedAction: action });
       expect(await snapshotTree(f.root)).toEqual(before);
     }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+    expect(observation.events).toEqual([]);
+    } finally { observation.close(); }
     const recovered = await recoverMutationRuntime("fixture-handoff");
     expect(recovered.status).toBe("succeeded");
     expect((await resumeMutation("fixture-handoff", "recover")).status).toBe("succeeded");
@@ -170,4 +165,16 @@ async function snapshotTree(root: string): Promise<Record<string, string>> {
     }
   }
   await visit(root); return result;
+}
+
+async function observeFilesystemChanges(root: string): Promise<{ events: string[]; close(): void }> {
+  const events: string[] = [], watchers: FSWatcher[] = [];
+  async function visit(path: string): Promise<void> {
+    watchers.push(watch(path, (event, name) => events.push(`${path}:${event}:${name ?? ""}`)));
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      if (entry.isDirectory()) await visit(join(path, entry.name));
+    }
+  }
+  try { await visit(root); } catch (error) { for (const watcher of watchers) watcher.close(); throw error; }
+  return { events, close: () => { for (const watcher of watchers) watcher.close(); } };
 }

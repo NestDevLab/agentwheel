@@ -688,9 +688,14 @@ async function assertMetadataStateGuards(
       ? exactManagedInstructionBlockSnapshot(await transport.readFile(path), selector)
       : undefined;
     const runtimeHash = current ? current.hash : await transport.hashPath(path);
+    const expectedHash = guard.managedBlock?.hash ?? guard.hash;
+    // Legacy journals may pin a whole-file hash alongside an exact block snapshot.
+    // Preserve that file guard as well as comparing the live block with its recorded hash.
+    const legacyFileGuard = guard.managedBlock && guard.hash !== expectedHash;
     if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
       || (await observeOwnershipRuntime(path, transport)).snapshotDigest !== guard.snapshotDigest
-      || runtimeHash !== guard.hash) {
+      || runtimeHash !== expectedHash
+      || (legacyFileGuard && await transport.hashPath(path) !== guard.hash)) {
       throw new Error(`Metadata runtime CAS failed at ${guard.path}; runtime was preserved.`);
     }
     if (guard.managedBlock) {

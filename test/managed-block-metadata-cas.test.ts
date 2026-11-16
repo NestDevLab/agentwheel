@@ -15,7 +15,7 @@ const scope = { installationType: "local", stateKey: "fixture.local" };
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
-async function fixture(managedBlock = true) {
+async function fixture(managedBlock = true, legacyGuard = false) {
   const root = await mkdtemp(join(tmpdir(), "agentwheel-metadata-cas-")); roots.push(root);
   const path = join(root, "instructions.md"), body = "Managed guidance.\n";
   const prefix = "x".repeat(8592) + "\n";
@@ -24,7 +24,11 @@ async function fixture(managedBlock = true) {
     : "Entire managed file.\n";
   await writeFile(path, content);
   await writeInstallManifest({ version: 2, adapter: "fixture", ...scope, targetRoot: root,
-    generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending", legacy: false, entries: [] });
+    generatedAt: "2026-01-01T00:00:00.000Z", revision: "pending", legacy: false, entries: legacyGuard ? [{
+      path: "instructions.md", artifactType: "instructions", artifactName: "fixture", logicalSelector: "fixture",
+      kind: "file", hash: hash(body), sourceHash: hash(body), updatedAt: "2026-01-01T00:00:00.000Z",
+      mode: "managed-block",
+    }] : [] });
   const before = (await readInstallManifest(root, "fixture", localTransport, scope))!;
   if (before.version !== 2) throw new Error("Expected v2 manifest");
   const exact = managedBlock ? exactManagedInstructionBlockSnapshot(content, "fixture") : undefined;
@@ -34,7 +38,7 @@ async function fixture(managedBlock = true) {
     manifest: withManifestRevision({ ...before, generatedAt: "2026-01-02T00:00:00.000Z" }),
     metadataGuards: { inventory: [{ stateKey: scope.stateKey, revision: before.revision }],
       runtime: [{ path: "instructions.md", hash: exact?.hash ?? hash(content),
-        snapshotDigest: (await observeOwnershipRuntime(path)).snapshotDigest, ...(exact ? { managedBlock: exact } : {}) }] },
+        snapshotDigest: (await observeOwnershipRuntime(path)).snapshotDigest, ...(exact && !legacyGuard ? { managedBlock: exact } : {}) }] },
   };
   return { root, path, content, body, prefix, journal, manifest: installManifestPath(root, "fixture", scope) };
 }
@@ -47,6 +51,13 @@ describe("metadata runtime CAS hash domains", () => {
       expect(f.journal.metadataGuards!.runtime[0]!.hash).toBe(hash(f.body));
       expect(hash(f.content)).not.toBe(hash(f.body));
     }
+    await expect(commitManifestMetadataJournal(f.journal)).resolves.toMatchObject({ adapter: "fixture" });
+    expect(await readFile(f.path, "utf8")).toBe(f.content);
+  });
+
+  it("resolves a legacy zero-operation block guard from the verified inventory", async () => {
+    const f = await fixture(true, true);
+    await expect(previewMetadataJournal(f.journal)).resolves.toMatchObject({ manifestPath: f.manifest });
     await expect(commitManifestMetadataJournal(f.journal)).resolves.toMatchObject({ adapter: "fixture" });
     expect(await readFile(f.path, "utf8")).toBe(f.content);
   });

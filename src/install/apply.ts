@@ -679,9 +679,16 @@ async function assertMetadataStateGuards(
     const path = metadataRuntimePath(journal.targetRoot, guard.path);
     // Older metadata journals record the block hash but not its selector. Resolve it
     // from the exact CAS-verified inventory, never from arbitrary live marker text.
-    const selectors = new Set(inventory.flatMap((item) => item.manifest.entries)
-      .filter((entry) => entry.path === guard.path && entry.mode === "managed-block" && entry.hash === guard.hash)
-      .map((entry) => managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName)));
+    const selectors = new Set(inventory.flatMap(({ manifest }) => {
+      if (manifest.version === 2) {
+        return manifest.entries
+          .filter((entry) => entry.path === guard.path && entry.mode === "managed-block" && entry.hash === guard.hash)
+          .map((entry) => managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName));
+      }
+      return manifest.entries
+        .filter((entry) => entry.path === guard.path && entry.mode === "managed-block" && entry.hash === guard.hash)
+        .map((entry) => managedInstructionSelector(undefined, entry.artifactType, entry.artifactName));
+    }));
     if (!guard.managedBlock && selectors.size > 1) throw new Error(`Ambiguous metadata managed block at ${guard.path}.`);
     const selector = guard.managedBlock?.selector ?? [...selectors][0];
     const current = selector

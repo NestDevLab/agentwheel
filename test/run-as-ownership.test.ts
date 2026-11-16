@@ -123,7 +123,8 @@ describe.skipIf(process.platform !== "linux" || uid === 0).sequential("confined 
     const f = await fixture(), before = await f.transport.ownershipObservation!(f.artifact);
     await writeInstallManifest({ ...f.manifest, entries: [{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.workspace) }] });
     const request = { targetRoot: f.target, workspaceRoot: f.workspace, globalRoot: f.home, adapter: "openclaw",
-      installationType: "user", sourceStateKey: sourceKey, destinationStateKey: destinationKey, transport: f.transport };
+      installationType: "user", sourceStateKey: sourceKey, destinationStateKey: destinationKey, transport: f.transport,
+      desiredCoverage: f.adopt.desiredCoverage, destinationGraphLockPath: f.adopt.destinationGraphLockPath };
     const plan = await planMigrateLegacyOwnership(request);
     expect(plan.transport?.identity).toEqual(f.transport.runAsIdentity);
     const reviewed = { ...request, planDigest: plan.planDigest, expectedSourceRevision: plan.source.revision!,

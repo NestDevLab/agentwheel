@@ -10,7 +10,8 @@ import { workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { activeMutationMetadata } from "../mutation/coordinator.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport, type TargetTransport } from "../transport/index.js";
-import { commitOwnershipManifestMetadata } from "./ownership-adopt-legacy.js";
+import { assertNoOrphanDestinationGraphLock, commitOwnershipManifestMetadata, desiredCoverageIdentity, desiredCovers,
+  type AdoptLegacyDesiredArtifact, type DesiredCoverageIdentity } from "./ownership-adopt-legacy.js";
 import { containedArtifactPath, verifyManifestEntryRuntime } from "./ownership.js";
 import { assertExpected, canonicalJson, entryDigest, exactStateKey, ownershipRunAsEndpoint, requireManifest } from "./ownership-retire-stale.js";
 
@@ -22,6 +23,11 @@ export interface MigrateLegacyOwnershipRequest {
   destinationStateKey: string;
   workspaceRoot: string;
   globalRoot?: string;
+  /** What a plain install of the configured packages would install now. */
+  desiredCoverage: AdoptLegacyDesiredArtifact[];
+  destinationGraphLockPath: string;
+  /** Migrate entries the configured packages no longer install; the next install then removes them. */
+  allowUndesired?: boolean;
   paths?: string[];
   transport?: TargetTransport;
   planDigest?: string;
@@ -37,8 +43,11 @@ export interface MigrateLegacyOwnershipPlan {
   owner: string;
   source: { stateKey: string; manifestPath: string; revision: string | null };
   destination: { stateKey: string; manifestPath: string; revision: string | null };
-  selected: Array<{ path: string; sourceEntryDigest: string; action: "migrate" | "retire-covered" }>;
+  selected: Array<{ path: string; sourceEntryDigest: string; action: "migrate" | "retire-covered"; desired: boolean }>;
+  alreadyMigrated: Array<{ path: string; destinationEntryDigest: string }>;
   retained: Array<{ path: string; owner: string }>;
+  allowUndesired: boolean;
+  desiredCoverage: DesiredCoverageIdentity[];
   manifestInventoryRevision: string;
   metadataGuards: MetadataStateGuards;
   transport?: ReturnType<typeof ownershipRunAsEndpoint>;
@@ -63,6 +72,7 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
   const load = async (key: string) => await readInstallManifest(targetRoot, request.adapter, transport, { installationType, stateKey: key })
     ? requireManifest(identity, key, transport, "migration") : undefined;
   const source = await load(sourceKey), destination = await load(destinationKey);
+  await assertNoOrphanDestinationGraphLock(Boolean(destination), request.destinationGraphLockPath, "migrating legacy state");
   if (source?.adapterCode || destination?.adapterCode) throw new Error("Programmatic adapter state cannot be migrated.");
   const inventory = await listInstallManifests(targetRoot, undefined, transport);
   if (transport.kind === "local") {
@@ -72,14 +82,32 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
   const requested = request.paths ? [...new Set(request.paths)].sort() : undefined;
   for (const path of requested ?? []) containedArtifactPath(targetRoot, path);
   const entries = source?.entries.filter(entry => entry.workspaceOwner === owner && (!requested || requested.includes(entry.path))) ?? [];
-  // An absent source is an idempotent no-op. An existing source must prove every explicit selection.
-  if (source && requested?.some(path => !entries.some(entry => entry.path === path))) {
-    throw new Error("Every selected path must exist in the source and be owned by the current workspace.");
+  // A path already moved by an earlier apply has left the source and sits, owned and unchanged, in the destination.
+  const alreadyMigrated: MigrateLegacyOwnershipPlan["alreadyMigrated"] = [];
+  for (const path of requested ?? []) {
+    if (entries.some(entry => entry.path === path)) continue;
+    const atPath = destination?.entries.filter(entry => entry.path === path) ?? [];
+    if (!source?.entries.some(entry => entry.path === path) && atPath.length === 1 && atPath[0]!.workspaceOwner === owner) {
+      await verifyManifestEntryRuntime(targetRoot, atPath[0]!, transport);
+      alreadyMigrated.push({ path, destinationEntryDigest: entryDigest(atPath[0]!) });
+    } else if (source) {
+      throw new Error("Every selected path must exist in the source and be owned by the current workspace.");
+    }
   }
+  const desiredByPath = new Map<string, AdoptLegacyDesiredArtifact[]>();
+  for (const item of request.desiredCoverage) desiredByPath.set(item.path, [...desiredByPath.get(item.path) ?? [], item]);
   const selected: MigrateLegacyOwnershipPlan["selected"] = [];
   const runtime: MetadataStateGuards["runtime"] = [];
   for (const entry of entries) {
     if (entry.semanticPlugin || entry.semanticCommand || entry.executed) throw new Error(`Unsupported semantic claim at ${entry.path}.`);
+    const desiredAtPath = desiredByPath.get(entry.path) ?? [];
+    if (desiredAtPath.length && !desiredAtPath.some(item => desiredCovers(item, entry))) {
+      throw new Error(`The current graph plans a different artifact at ${entry.path}; legacy state cannot be migrated there.`);
+    }
+    if (!desiredAtPath.length && !request.allowUndesired) {
+      throw new Error(`The configured packages no longer install ${entry.path}, so the next install would remove it after migration; `
+        + "select only desired paths with --path, or pass --allow-undesired to migrate it anyway.");
+    }
     const path = containedArtifactPath(targetRoot, entry.path);
     if (path === targetRoot || path.startsWith(`${targetRoot}/.agentwheel/`) || path === `${targetRoot}/.agentwheel`) {
       throw new Error(`Runtime claim overlaps metadata at ${entry.path}.`);
@@ -98,7 +126,7 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
         && entryDigest(other as InstallManifestEntry) === entryDigest(entry) && !covered) { covered = true; continue; }
       throw new Error(`Conflicting or overlapping ownership claim at ${entry.path} in ${item.stateKey}.`);
     }
-    selected.push({ path: entry.path, sourceEntryDigest: entryDigest(entry), action: covered ? "retire-covered" : "migrate" });
+    selected.push({ path: entry.path, sourceEntryDigest: entryDigest(entry), action: covered ? "retire-covered" : "migrate", desired: desiredAtPath.length > 0 });
     runtime.push({ path: entry.path, hash: await transport.hashPath(path), snapshotDigest: observation.snapshotDigest });
   }
   const selectedDigests = new Set(selected.map(entry => entry.sourceEntryDigest));
@@ -107,8 +135,11 @@ export async function planMigrateLegacyOwnership(request: MigrateLegacyOwnership
     source: { stateKey: sourceKey, manifestPath: installManifestPath(targetRoot, request.adapter, { stateKey: sourceKey }), revision: source?.revision ?? null },
     destination: { stateKey: destinationKey, manifestPath: installManifestPath(targetRoot, request.adapter, { stateKey: destinationKey }), revision: destination?.revision ?? null },
     selected: selected.sort((a, b) => a.path.localeCompare(b.path)),
+    alreadyMigrated,
     retained: (source?.entries ?? []).filter(entry => !selectedDigests.has(entryDigest(entry)))
       .map(entry => ({ path: entry.path, owner: entry.workspaceOwner })).sort((a, b) => a.path.localeCompare(b.path)),
+    allowUndesired: request.allowUndesired === true,
+    desiredCoverage: desiredCoverageIdentity(request.desiredCoverage, new Set(selected.map(entry => entry.path))),
     manifestInventoryRevision: createHash("sha256").update(JSON.stringify(inventory.map(item => [item.fileName, item.manifest.revision]))).digest("hex"),
     metadataGuards: { inventory: inventory.map(item => ({ stateKey: item.stateKey, revision: item.manifest.revision })), runtime: runtime.sort((a, b) => a.path.localeCompare(b.path)) },
     ...(endpoint ? { transport: endpoint } : {}),
@@ -139,7 +170,11 @@ export async function applyMigrateLegacyOwnership(request: MigrateLegacyOwnershi
     if (!plan.selected.length) return { ...plan, applied: true, migratedEntries: 0, retiredCoveredEntries: 0 };
     const identity = { targetRoot: plan.targetRoot, adapter: plan.adapter, installationType: plan.installationType };
     const source = await requireManifest(identity, plan.source.stateKey, transport, "source");
-    const destination = plan.destination.revision ? await requireManifest(identity, plan.destination.stateKey, transport, "destination") : undefined;
+    const destination = await readInstallManifest(plan.targetRoot, plan.adapter, transport, { installationType: plan.installationType, stateKey: plan.destination.stateKey })
+      ? await requireManifest(identity, plan.destination.stateKey, transport, "destination") : undefined;
+    // The entries committed below come from this read, not from the plan.
+    assertExpected(plan.source.revision ?? "absent", source.revision, "source revision");
+    assertExpected(plan.destination.revision ?? "absent", destination?.revision ?? "absent", "destination revision");
     const selected = new Map(plan.selected.map(entry => [entry.sourceEntryDigest, entry.action]));
     const adopted = source.entries.filter(entry => selected.get(entryDigest(entry)) === "migrate");
     const now = new Date().toISOString();

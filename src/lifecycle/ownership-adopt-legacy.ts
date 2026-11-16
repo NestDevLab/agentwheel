@@ -275,11 +275,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
   }
   const source = await requireManifest(identity, input.sourceStateKey, transport, "source");
   const destination = await readDestination(identity, input.destinationStateKey, transport);
-  if (!destination && await pathExists(request.destinationGraphLockPath)) {
-    throw new Error(
-      `Destination has a stable graph lock without a stable manifest at ${request.destinationGraphLockPath}; reconcile it before adopting legacy ownership.`,
-    );
-  }
+  await assertNoOrphanDestinationGraphLock(Boolean(destination), request.destinationGraphLockPath, "adopting legacy ownership");
   const desiredByPath = new Map<string, AdoptLegacyDesiredArtifact[]>();
   for (const item of request.desiredCoverage) desiredByPath.set(item.path, [...desiredByPath.get(item.path) ?? [], item]);
   const { entries: selectedEntries, retained, provenance } = await selectLegacySource(
@@ -402,14 +398,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     retained: retained.sort((left, right) => left.path.localeCompare(right.path) || left.owner.localeCompare(right.owner)),
     remainingDuplicates: remainingDuplicates.sort((left, right) =>
       left.stateKey.localeCompare(right.stateKey) || left.path.localeCompare(right.path)),
-    // identity only, so a newer package revision doesn't invalidate a reviewed plan
-    desiredCoverage: request.desiredCoverage
-      .filter((item) => selectedPaths.has(item.path))
-      .map(({ path, artifactType, artifactName, kind, mode, logicalSelector }) => ({ path, artifactType, artifactName, kind,
-        ...(mode ? { mode, logicalSelector: managedInstructionSelector(logicalSelector, artifactType, artifactName) } : {}) }))
-      .sort((left, right) => left.path.localeCompare(right.path)
-        || left.artifactType.localeCompare(right.artifactType)
-        || left.artifactName.localeCompare(right.artifactName)),
+    desiredCoverage: desiredCoverageIdentity(request.desiredCoverage, selectedPaths),
     ...(guardedInventory ? { metadataGuards: {
       inventory: guardedInventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
       runtime: selected.map((entry) => ({ path: entry.path, hash: entry.runtimeHash!, snapshotDigest: entry.runtimeSnapshotDigest!,
@@ -603,7 +592,26 @@ function assertSupportedLegacyEntry(entry: InstallManifestEntry, targetRoot: str
   containedArtifactPath(targetRoot, entry.path);
 }
 
-function desiredCovers(item: AdoptLegacyDesiredArtifact, entry: InstallManifestEntry): boolean {
+export type DesiredCoverageIdentity = Pick<AdoptLegacyDesiredArtifact, "path" | "artifactType" | "artifactName" | "kind" | "mode" | "logicalSelector">;
+
+// Identity only, so a newer package revision doesn't invalidate a reviewed plan.
+export function desiredCoverageIdentity(coverage: AdoptLegacyDesiredArtifact[], paths: ReadonlySet<string>): DesiredCoverageIdentity[] {
+  return coverage
+    .filter((item) => paths.has(item.path))
+    .map(({ path, artifactType, artifactName, kind, mode, logicalSelector }) => ({ path, artifactType, artifactName, kind,
+      ...(mode ? { mode, logicalSelector: managedInstructionSelector(logicalSelector, artifactType, artifactName) } : {}) }))
+    .sort((left, right) => left.path.localeCompare(right.path)
+      || left.artifactType.localeCompare(right.artifactType)
+      || left.artifactName.localeCompare(right.artifactName));
+}
+
+export async function assertNoOrphanDestinationGraphLock(destinationExists: boolean, graphLockPath: string, action: string): Promise<void> {
+  if (!destinationExists && await pathExists(graphLockPath)) {
+    throw new Error(`Destination has a stable graph lock without a stable manifest at ${graphLockPath}; reconcile it before ${action}.`);
+  }
+}
+
+export function desiredCovers(item: AdoptLegacyDesiredArtifact, entry: InstallManifestEntry): boolean {
   return item.artifactType === entry.artifactType
     && item.artifactName === entry.artifactName
     && item.kind === entry.kind

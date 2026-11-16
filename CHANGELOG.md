@@ -2,8 +2,6 @@
 
 ## 0.22.6
 
-- Add reviewed, metadata-only `ownership migrate-legacy` for current-owner claims, including exact managed JSON contributions and confined local-run-as targets.
-
 - Refuse a pin that would bring a different artifact onto an install name already taken in a profile, before anything is written. Collisions already in the config only warn, so a pin can still repair them, and an unreachable source only warns.
 - Refuse a pin that would leave a package override matching nothing, which also breaks install, and point at selectors by source that survive a pin.
 - Report every colliding install name in one error instead of stopping at the first.

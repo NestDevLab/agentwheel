@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Verify metadata-only migration on a disposable copy of an existing snapshot.
 
-Never accesses a live service root. The operator supplies an already captured,
-readable snapshot containing .agentwheel and its claimed runtime paths.
+The operator must pass an already captured, readable snapshot containing
+.agentwheel and its claimed runtime paths, never a live service root: this
+script only reads --snapshot-root and cannot tell a snapshot from a live root.
+The evidence directory it prints holds a full copy of that runtime; remove it
+once the run has been reviewed.
 """
 import argparse
 import hashlib
@@ -12,7 +15,10 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
+
+PENDING_METADATA_SUFFIXES = ('.runtime-apply-lock', '.apply-journal.json')
 
 
 def snapshot(root):
@@ -35,6 +41,8 @@ def main():
     parser.add_argument('--current-owner', required=True, help='exact owner string after any separately reviewed handoff')
     parser.add_argument('--cli', type=Path, required=True)
     parser.add_argument('--node', default='node')
+    parser.add_argument('--path', action='append', default=[], dest='paths',
+        help='select one exact relative runtime path (repeatable), passed to migrate-legacy')
     parser.add_argument('--apply', action='store_true', help='also apply on the disposable copy and verify runtime equality')
     args = parser.parse_args()
     source = args.snapshot_root.resolve(strict=True)
@@ -43,6 +51,9 @@ def main():
         raise RuntimeError('Expected an already captured snapshot with .agentwheel metadata')
     if any(path.is_symlink() for path in source.rglob('*')):
         raise RuntimeError('Copy check refuses symlinks')
+    pending = sorted(path.name for path in (source / '.agentwheel').iterdir() if path.name.endswith(PENDING_METADATA_SUFFIXES))
+    if pending:
+        raise RuntimeError(f'Snapshot holds a runtime apply lock or pending journal, so it was captured mid-apply: {", ".join(pending)}')
     key = args.source_state_key
     if not key or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-' for c in key):
         raise RuntimeError('Source state key must be canonical')
@@ -72,14 +83,25 @@ def main():
         'packages': [{'name': 'copy-selection', 'source': str(pack), 'driver': 'local', 'mode': 'pinned', 'installationType': installation_type}],
         'mutationPolicy': {'reason': 'required', 'journal': 'required', 'revisioning': {'mode': 'off'}}}
     (workspace / '.agentwheel/config.json').write_text(json.dumps(config, indent=2) + '\n')
-    env = {**os.environ, 'HOME': str(target), 'AGENTWHEEL_MUTATION_STATE_ROOT': str(base / 'receipts')}
-    command = [args.node, str(cli), 'ownership', 'migrate-legacy', '--local', '--agent', 'copy', '--source-state-key', key]
+    # Keep operator credentials and Agentwheel overrides out of the copy run.
+    env = {'PATH': os.environ.get('PATH', os.defpath), 'HOME': str(target), 'AGENTWHEEL_MUTATION_STATE_ROOT': str(base / 'receipts')}
+    if 'LANG' in os.environ:
+        env['LANG'] = os.environ['LANG']
+    # The copy's pack is empty, so every entry is undesired here. A real apply must review
+    # desiredCoverage and run without --allow-undesired unless removal on next install is intended.
+    command = [args.node, str(cli), 'ownership', 'migrate-legacy', '--local', '--agent', 'copy', '--source-state-key', key,
+        '--allow-undesired', *[arg for path in args.paths for arg in ('--path', path)]]
     def run(extra):
-        return subprocess.run(command + extra, cwd=workspace, env=env, check=True, capture_output=True, text=True).stdout
+        result = subprocess.run(command + extra, cwd=workspace, env=env, capture_output=True, text=True)
+        if result.returncode:
+            print(result.stderr, end='', file=sys.stderr)
+            print(result.stdout, end='', file=sys.stderr)
+            raise RuntimeError(f'migrate-legacy exited with {result.returncode}')
+        return result.stdout
     before = snapshot(target)
     plan = json.loads(run(['--json']))
     (base / 'plan.json').write_text(json.dumps(plan, indent=2) + '\n')
-    print(f'Evidence directory: {base}', flush=True)
+    print(f'Evidence directory (full runtime copy, remove after review): {base}', flush=True)
     print(f'Plan digest: {plan["planDigest"]}; selected entries: {len(plan["selected"])}', flush=True)
     if not plan['selected']:
         raise RuntimeError('Expected a nonempty migration plan')
@@ -92,7 +114,7 @@ def main():
         if snapshot(target) != before:
             raise RuntimeError('Runtime bytes or modes changed in disposable copy')
         repeated = json.loads(run(['--json']))
-        if repeated['selected']:
+        if repeated['selected'] or sorted(item['path'] for item in repeated['alreadyMigrated']) != sorted(set(args.paths)):
             raise RuntimeError('Migration was not idempotent')
         (base / 'after.json').write_text(json.dumps(repeated, indent=2) + '\n')
         print('PASS: copied claims migrated, runtime bytes/modes unchanged, rerun is a no-op')

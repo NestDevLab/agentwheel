@@ -195,7 +195,7 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
         generatedAt: now,
         entries: [...base.entries, ...adopted].sort((left, right) => left.path.localeCompare(right.path)),
       });
-      await commitMetadata(next, destination?.revision ?? null, now, transport, guards);
+      await commitOwnershipManifestMetadata(next, destination?.revision ?? null, now, transport, guards);
       if (guards) guards = {
         ...guards,
         inventory: [...guards.inventory.filter((item) => item.stateKey !== current.destination.stateKey),
@@ -204,7 +204,7 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
       };
     }
     declareMutationPath(current.source.manifestPath);
-    await commitMetadata({ ...source, entries: retained }, source.revision, now, transport, guards);
+    await commitOwnershipManifestMetadata({ ...source, entries: retained }, source.revision, now, transport, guards);
     return {
       ...current,
       applied: true,
@@ -218,7 +218,7 @@ export async function applyAdoptLegacyOwnership(request: AdoptLegacyOwnershipReq
   }
 }
 
-async function commitMetadata(
+export async function commitOwnershipManifestMetadata(
   manifest: InstallManifestV2,
   baseRevision: string | null,
   now: string,

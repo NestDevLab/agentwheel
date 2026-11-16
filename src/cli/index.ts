@@ -49,6 +49,7 @@ import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
 import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
+import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership } from "../lifecycle/ownership-migrate-legacy.js";
 import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
 import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
@@ -1331,6 +1332,61 @@ ownershipCommand
     for (const entry of result.selected) console.log(`- ${entry.path}: ${entry.sourceEntryDigest} -> ${entry.destinationEntryDigest}`);
     console.log(`Plan digest: ${result.planDigest}`);
     if (!options.apply) console.log(`Apply: ${applyCommand}`);
+  });
+
+ownershipCommand
+  .command("migrate-legacy")
+  .description("plan metadata-only migration of current-owner entries into the current install state; runtime bytes never change")
+  .requiredOption("--source-state-key <key>", "exact old install-manifest state key")
+  .option("--path <path>", "select one exact relative runtime path (repeatable); defaults to all current-owner entries", (value: string, previous: string[]) => [...previous, value], [])
+  .option("--agent <name>", "one named local or local-run-as target")
+  .option("--profile <name>", "profile resolving to one target")
+  .option("--fleet <id>", "registered governing fleet")
+  .option("--local", "use the nearest local workspace", false)
+  .option("--user", "use the user workspace", false)
+  .option("-i, --installation-type <type>", "installation type used by configured packages")
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256|absent>", "reviewed source revision; required with --apply")
+  .option("--expected-destination-revision <sha256|absent>", "reviewed destination revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed full inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata migration", false)
+  .option("--json", "print the complete deterministic plan as JSON", false)
+  .action(async (options) => {
+    if (Boolean(options.agent) === Boolean(options.profile)) throw new Error("Legacy state migration requires exactly one of --agent or --profile.");
+    const plainOptions = { ...normalizeRuntimeScopeOptions(options), installationType: undefined };
+    const targets = await resolveCliTargets(plainOptions);
+    if (targets.length !== 1) throw new Error("Legacy state migration requires exactly one target.");
+    const target = targets[0]!;
+    if (target.transport === "ssh") throw new Error("Legacy state migration does not support SSH targets.");
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const groups = new Map<string, PackageGraphGroup>();
+    for (const pkg of packagesForCliTarget(config.packages, target, plainOptions)) graphGroupForPackage(groups, target, pkg, plainOptions).packages.push(pkg);
+    if (groups.size !== 1) throw new Error("Legacy state migration requires packages resolving to exactly one adapter configuration and installation type.");
+    const group = [...groups.values()][0]!;
+    if (options.installationType && options.installationType !== group.installationType) throw new Error("Requested installation type differs from configured install state.");
+    const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+    const stable = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
+    const request = { targetRoot: stable.installRoot, adapter: adapter.name, installationType: group.installationType,
+      sourceStateKey: options.sourceStateKey, destinationStateKey: stable.stateKey, workspaceRoot: target.workspaceRoot,
+      paths: options.path.length ? options.path : undefined, transport: transportForTarget(target),
+      planDigest: options.planDigest, expectedSourceRevision: options.expectedSourceRevision,
+      expectedDestinationRevision: options.expectedDestinationRevision, expectedInventoryRevision: options.expectedInventoryRevision };
+    const result = options.apply ? await applyMigrateLegacyOwnership(request) : await planMigrateLegacyOwnership(request);
+    const applyArgs = ["agentwheel", "ownership", "migrate-legacy", "--source-state-key", result.source.stateKey,
+      ...(options.agent ? ["--agent", options.agent] : ["--profile", options.profile]),
+      ...(options.fleet ? ["--fleet", options.fleet] : []), ...(options.local ? ["--local"] : []), ...(options.user ? ["--user"] : []),
+      "--installation-type", group.installationType,
+      ...options.path.flatMap((path: string) => ["--path", path]),
+      "--plan-digest", result.planDigest, "--expected-source-revision", result.source.revision ?? "absent",
+      "--expected-destination-revision", result.destination.revision ?? "absent", "--expected-inventory-revision", result.manifestInventoryRevision, "--apply"];
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    if (options.json) { console.log(JSON.stringify({ ...result, applyCommand }, null, 2)); return; }
+    console.log(`${options.apply ? "Migrated legacy state" : "Legacy state migration plan"}: ${result.selected.length} entries`);
+    console.log(`Owner: ${result.owner}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision ?? "absent"}`);
+    console.log(`Destination: ${result.destination.stateKey} revision ${result.destination.revision ?? "absent"}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
   });
 
 ownershipCommand

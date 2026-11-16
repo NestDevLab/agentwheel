@@ -10,13 +10,13 @@ The report records input-byte and parser hashes, runner and Node versions. It ex
 
 `test/helpers/effects.ts` records file bytes in base64, permission bits, directories and symlink targets without following links. Explicit manifest paths record complete parsed claims as well as original bytes. With `git: true`, the snapshot also records the staged index (semantic entries and raw bytes), refs and symbolic HEAD; the filesystem tree includes raw Git metadata. Locks under the fixture root are included. Filesystem atime, mtime, ctime and birthtime are not recorded; all listed content and permission fields are compared exactly. There are no default path exclusions. A caller may exclude only an exact file or symlink path with a nonempty reason; directories are always traversed and manifest claims cannot be excluded. Compare snapshots with `diffEffects`; unknown changed paths remain visible. This is an isolated filesystem observer, not a syscall/network/process tracer.
 
-## Expected failures
+## Invariant cases
 
-The invariant tests use synthetic fixtures and no live targets. Each expected-failure test has an adjacent ordinary test that checks the exact current defect, so a broken setup cannot masquerade as an expected failure. A product fix must remove that marker in the same change: an unexpected pass fails CI. Do not replace the marker with skip or todo.
+The invariant tests use synthetic fixtures and no live targets. I2 now uses ordinary regression tests; I5 remains an expected failure. Each expected-failure test has an adjacent ordinary test that checks the exact current defect, so a broken setup cannot masquerade as an expected failure. A product fix must remove that marker in the same change: an unexpected pass fails CI. Do not replace the marker with skip or todo.
 
 | Invariant | Case | Observed defect |
 | --- | --- | --- |
-| I2 | `read_missing_git_preserves_cache` | Fetch removes an existing incomplete cache directory and its sentinel before a failing local clone. |
+| I2 | `read_missing_git_preserves_cache` | Fixed: an incomplete cache checkout is preserved and refuses implicit repair. |
 | I5 | `stale_merge_metadata_rejected_in_all_paths` | Preview accepts unchanged source with stale contribution metadata while apply rejects the contribution. |
 
 An unreachable source during pin preflight produces a warning by design, not a defect: it does not prove a new artifact collision. The existing pin-preflight tests retain that intended behavior.

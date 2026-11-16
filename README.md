@@ -107,6 +107,7 @@ Fragments are Agentwheel composition inputs, not runtime file-drop targets.
 | `agentwheel uninstall <name-or-source>` | Remove a configured package from runtimes and config. |
 | `agentwheel uninstall <name> --keep-files` | Remove from config/manifest while leaving runtime files unmanaged. |
 | `agentwheel status` | Show configured packages, manifest/lock presence, and install state. For a named fleet, use `--fleet <fleet-id> --profile <name>`; `--fleet <fleet-id> --all` uses profile `all` when present. |
+| `agentwheel ownership migrate-legacy` | Plan or apply metadata-only migration of current-owner legacy claims, including exact merge contributions, into the current install state. See [operator procedure](docs/ownership-legacy-migration.md). |
 | `agentwheel ownership handoff <type/name>` | Transfer one manifest entry to a different workspace root after exact owner, hash, and revision checks; runtime content is not rewritten. |
 | `agentwheel mcp retire <package>` | Preview removal of one exact legacy MCP contribution under an explicitly selected install-state key; add `--apply` only after review. |
 | `agentwheel doctor` | Check runtime setup and suggest explicit companion/selected skill install commands when they are missing. |

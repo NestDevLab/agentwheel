@@ -49,6 +49,7 @@ import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
 import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
 import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
+import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership } from "../lifecycle/ownership-migrate-legacy.js";
 import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
 import { inventoryHistoricalLocks, planLegacyRecovery } from "../lifecycle/legacy-recovery-plan.js";
 import { discoverPackageVersions, effectiveTrackingRef, type VersionAvailability } from "../version/policy.js";
@@ -1333,6 +1334,87 @@ ownershipCommand
     if (!options.apply) console.log(`Apply: ${applyCommand}`);
   });
 
+/** What a plain install of the group would install now, resolved against the same stable state identity. */
+async function legacyDesiredCoverage(group: PackageGraphGroup, adapter: Awaited<ReturnType<typeof resolveAdapterForTarget>>, stableStateKey: string, action: string) {
+  const { installationType, adapterOptions } = group;
+  const stableGraphLockPath = graphLockPathForTarget(
+    group.target.workspaceRoot,
+    targetKeyForTarget(group.target, adapter.name),
+    adapter.name,
+    targetFingerprintParts(group.target, adapter, adapterOptions, installationType),
+    targetIdentityContext(group.target, adapter, installationType),
+  );
+  const desiredCoverage = await withFreshReadOnlyGraphPlan(group.target, adapter, adapterOptions, installationType, group.packages, async (graphPlan) => {
+    if (graphPlan.plan.stateKey !== stableStateKey || graphPlan.graphLockPath !== stableGraphLockPath) {
+      throw new Error(`Current source graph resolved a different target state identity; ${action} cannot proceed.`);
+    }
+    return desiredCoverageFromPlan(graphPlan.plan);
+  });
+  return { stableGraphLockPath, desiredCoverage };
+}
+
+ownershipCommand
+  .command("migrate-legacy")
+  .description("plan metadata-only migration of current-owner entries into the current install state; runtime bytes never change")
+  .requiredOption("--source-state-key <key>", "exact old install-manifest state key")
+  .option("--path <path>", "select one exact relative runtime path (repeatable); defaults to all current-owner entries", (value: string, previous: string[]) => [...previous, value], [])
+  .option("--agent <name>", "one named local or local-run-as target")
+  .option("--profile <name>", "profile resolving to one target")
+  .option("--fleet <id>", "registered governing fleet")
+  .option("--local", "use the nearest local workspace", false)
+  .option("--user", "use the user workspace", false)
+  .option("-i, --installation-type <type>", "installation type used by configured packages")
+  .option("--allow-undesired", "also migrate entries the configured packages no longer install; the next install removes them", false)
+  .option("--plan-digest <sha256>", "reviewed plan digest; required with --apply")
+  .option("--expected-source-revision <sha256|absent>", "reviewed source revision; required with --apply")
+  .option("--expected-destination-revision <sha256|absent>", "reviewed destination revision; required with --apply")
+  .option("--expected-inventory-revision <sha256>", "reviewed full inventory revision; required with --apply")
+  .option("--apply", "apply the exact reviewed metadata migration", false)
+  .option("--json", "print the complete deterministic plan as JSON", false)
+  .action(async (options, command: Command) => {
+    if (Boolean(options.agent) === Boolean(options.profile)) throw new Error("Legacy state migration requires exactly one of --agent or --profile.");
+    const plainOptions = { ...normalizeRuntimeScopeOptions(options), installationType: undefined };
+    const targets = await resolveCliTargets(plainOptions);
+    if (targets.length !== 1) throw new Error("Legacy state migration requires exactly one target.");
+    const target = targets[0]!;
+    if (target.transport === "ssh") throw new Error("Legacy state migration does not support SSH targets.");
+    const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+    const groups = new Map<string, PackageGraphGroup>();
+    for (const pkg of packagesForCliTarget(config.packages, target, plainOptions)) graphGroupForPackage(groups, target, pkg, plainOptions).packages.push(pkg);
+    if (groups.size !== 1) throw new Error("Legacy state migration requires packages resolving to exactly one adapter configuration and installation type.");
+    const group = [...groups.values()][0]!;
+    if (options.installationType && options.installationType !== group.installationType) throw new Error("Requested installation type differs from configured install state.");
+    const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+    const stable = installStateForTarget(group.target, adapter, group.adapterOptions, group.installationType);
+    const { stableGraphLockPath, desiredCoverage } = await legacyDesiredCoverage(group, adapter, stable.stateKey, "legacy state migration");
+    const request = { targetRoot: stable.installRoot, adapter: adapter.name, installationType: group.installationType,
+      sourceStateKey: options.sourceStateKey, destinationStateKey: stable.stateKey, workspaceRoot: target.workspaceRoot,
+      desiredCoverage, destinationGraphLockPath: stableGraphLockPath, allowUndesired: options.allowUndesired === true,
+      paths: options.path.length ? options.path : undefined, transport: transportForTarget(target),
+      planDigest: options.planDigest, expectedSourceRevision: options.expectedSourceRevision,
+      expectedDestinationRevision: options.expectedDestinationRevision, expectedInventoryRevision: options.expectedInventoryRevision };
+    const result = options.apply ? await applyMigrateLegacyOwnership(request) : await planMigrateLegacyOwnership(request);
+    const applyArgs = ["agentwheel", "ownership", "migrate-legacy", "--source-state-key", result.source.stateKey,
+      ...(options.agent ? ["--agent", options.agent] : ["--profile", options.profile]),
+      ...(options.fleet ? ["--fleet", options.fleet] : []), ...(options.local ? ["--local"] : []), ...(options.user ? ["--user"] : []),
+      "--installation-type", group.installationType,
+      ...options.path.flatMap((path: string) => ["--path", path]),
+      ...(result.allowUndesired ? ["--allow-undesired"] : []),
+      "--plan-digest", result.planDigest, "--expected-source-revision", result.source.revision ?? "absent",
+      "--expected-destination-revision", result.destination.revision ?? "absent", "--expected-inventory-revision", result.manifestInventoryRevision, "--apply",
+      "--reason", (command.optsWithGlobals() as GlobalMutationOptions).reason ?? "<reason>"];
+    const applyCommand = applyArgs.map(shellQuoteArgument).join(" ");
+    if (options.json) { console.log(JSON.stringify({ ...result, applyCommand }, null, 2)); return; }
+    console.log(`${options.apply ? "Migrated legacy state" : "Legacy state migration plan"}: ${result.selected.length} entries`);
+    console.log(`Owner: ${result.owner}`);
+    console.log(`Source: ${result.source.stateKey} revision ${result.source.revision ?? "absent"}`);
+    console.log(`Destination: ${result.destination.stateKey} revision ${result.destination.revision ?? "absent"}`);
+    for (const entry of result.selected) console.log(`- ${entry.path}: ${entry.action}${entry.desired ? "" : " (not desired: the next install removes it)"}`);
+    for (const entry of result.alreadyMigrated) console.log(`  already migrated ${entry.path}`);
+    console.log(`Plan digest: ${result.planDigest}`);
+    if (!options.apply) console.log(`Apply from ${target.workspaceRoot}: ${applyCommand}`);
+  });
+
 ownershipCommand
   .command("adopt-legacy")
   .description("move proven legacy-keyed ownership into this workspace's stable target state without rewriting runtime artifacts")
@@ -1411,19 +1493,7 @@ ownershipCommand
     }
     const adapter = await resolveAdapterForTarget(group.target, adapterOptions);
     const stable = installStateForTarget(group.target, adapter, adapterOptions, installationType);
-    const stableGraphLockPath = graphLockPathForTarget(
-      group.target.workspaceRoot,
-      targetKeyForTarget(group.target, adapter.name),
-      adapter.name,
-      targetFingerprintParts(group.target, adapter, adapterOptions, installationType),
-      targetIdentityContext(group.target, adapter, installationType),
-    );
-    const desiredCoverage = await withFreshReadOnlyGraphPlan(group.target, adapter, adapterOptions, installationType, group.packages, async (graphPlan) => {
-      if (graphPlan.plan.stateKey !== stable.stateKey || graphPlan.graphLockPath !== stableGraphLockPath) {
-        throw new Error("Current source graph resolved a different target state identity; legacy ownership adoption cannot proceed.");
-      }
-      return desiredCoverageFromPlan(graphPlan.plan);
-    });
+    const { stableGraphLockPath, desiredCoverage } = await legacyDesiredCoverage(group, adapter, stable.stateKey, "legacy ownership adoption");
     const request = {
       targetRoot: stable.installRoot,
       adapter: adapter.name,

@@ -1,3 +1,4 @@
+import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership } from "../src/lifecycle/ownership-migrate-legacy.js";
 import { createHash } from "node:crypto";
 import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -118,6 +119,23 @@ async function retireRequest(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe.skipIf(process.platform !== "linux" || uid === 0).sequential("confined run-as ownership metadata", () => {
+  it("migrates current-owner state through the confined worker without runtime changes", async () => {
+    const f = await fixture(), before = await f.transport.ownershipObservation!(f.artifact);
+    await writeInstallManifest({ ...f.manifest, entries: [{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.workspace) }] });
+    const request = { targetRoot: f.target, workspaceRoot: f.workspace, globalRoot: f.home, adapter: "openclaw",
+      installationType: "user", sourceStateKey: sourceKey, destinationStateKey: destinationKey, transport: f.transport,
+      desiredCoverage: f.adopt.desiredCoverage, destinationGraphLockPath: f.adopt.destinationGraphLockPath };
+    const plan = await planMigrateLegacyOwnership(request);
+    expect(plan.transport?.identity).toEqual(f.transport.runAsIdentity);
+    const reviewed = { ...request, planDigest: plan.planDigest, expectedSourceRevision: plan.source.revision!,
+      expectedDestinationRevision: plan.destination.revision ?? "absent", expectedInventoryRevision: plan.manifestInventoryRevision };
+    await expect(applyMigrateLegacyOwnership(reviewed)).rejects.toThrow(/durable.*receipt/i);
+    expect(await governed(f, () => applyMigrateLegacyOwnership(reviewed))).toMatchObject({ migratedEntries: 1 });
+    expect(await f.transport.ownershipObservation!(f.artifact)).toEqual(before);
+    expect((await readInstallManifest(f.target, "openclaw", f.transport, { installationType: "user", stateKey: destinationKey }))?.entries)
+      .toEqual([{ ...f.entry, workspaceOwner: workspaceOwnerForRoot(f.workspace) }]);
+  }, 30_000);
+
   it("adopts and retires metadata only with a durable caller receipt, preserving every runtime byte and mode", async () => {
     const f = await fixture(), before = await f.transport.ownershipObservation!(f.artifact), lock = await readFile(f.lockPath);
     const plan = await planAdoptLegacyOwnership(f.adopt), request = reviewedAdoption(f.adopt, plan);

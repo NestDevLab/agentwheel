@@ -215,6 +215,7 @@ describe.skipIf(process.getuid?.() === 0)("confined run-as ownership metadata", 
     await writeFile(f.runtimePath, content);
     const value = await journal(f);
     const exact = exactManagedInstructionBlockSnapshot(content, "fixture");
+    value.metadataAudit!.runtime[0]!.hash = hash;
     value.metadataAudit!.runtime[0]!.managedBlock = valid ? exact : { ...exact, prefixHash: "b".repeat(64) };
     await writeApplyJournal(value, f.transport);
     if (valid) await expect(commitManifestMetadataJournal(value, f.transport)).resolves.toMatchObject({ adapter: "openclaw" });

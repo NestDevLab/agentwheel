@@ -2,15 +2,17 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import * as fs from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot, type OwnershipHandoffRequest } from "../src/lifecycle/ownership.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { installManifestPath } from "../src/install/paths.js";
 import { applyJournalPath, ownershipRuntimeSnapshot } from "../src/install/transaction.js";
-import { recoverMutationRuntime, resumeMutation } from "../src/mutation/coordinator.js";
+import { recoverMutationRuntime, resumeMutation, previewMutationRecovery } from "../src/mutation/coordinator.js";
 import { listMutationReceipts } from "../src/mutation/receipts.js";
+import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
 import { localTransport, type TargetTransport } from "../src/transport/index.js";
 
 const execute = promisify(execFile), roots: string[] = [];
@@ -71,6 +73,25 @@ describe.sequential("native audited ownership handoff", () => {
     } };
     await expect(applyArtifactOwnershipHandoff({ ...f.request, transport })).rejects.toThrow(/interrupted/);
     expect((JSON.parse(await readFile(f.journal, "utf8"))).operations).toEqual([]);
+    const before = await snapshotTree(f.root);
+    const spies = ["open", "mkdir", "writeFile", "rename", "rm", "link", "chmod"].map((method) =>
+      vi.spyOn(fs, method as "writeFile").mockImplementation(async () => { throw new Error(`Unexpected write: ${method}`); }));
+    try {
+      const preview = await previewMutationRecovery("fixture-handoff");
+      expect(preview).toMatchObject({ dryRun: true, runtimeOperations: 0, status: "partial",
+        nextCommand: "agentwheel mutation recover-runtime fixture-handoff" });
+      expect(preview.journals).toEqual([expect.objectContaining({ path: f.journal, manifestPath: f.manifest, auditPaths: [f.audit] })]);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally { for (const spy of spies) spy.mockRestore(); }
+    expect(await snapshotTree(f.root)).toEqual(before);
+    const cli = resolve("dist/index.js");
+    await ensureCliBuild(cli);
+    for (const action of ["recover", "finalize", "recover-runtime"]) {
+      const result = await execute(process.execPath, [cli, "mutation", action, "fixture-handoff", "--dry-run", "--json"],
+        { cwd: f.workspace, env: { ...process.env, HOME: f.home } });
+      expect(JSON.parse(result.stdout)).toMatchObject({ dryRun: true, runtimeOperations: 0, requestedAction: action });
+      expect(await snapshotTree(f.root)).toEqual(before);
+    }
     const recovered = await recoverMutationRuntime("fixture-handoff");
     expect(recovered.status).toBe("succeeded");
     expect((await resumeMutation("fixture-handoff", "recover")).status).toBe("succeeded");
@@ -132,4 +153,16 @@ async function fixture(rejecting = false) {
 async function source(f: Awaited<ReturnType<typeof fixture>>) {
   const m = await readInstallManifest(f.target, "claude", localTransport, scope);
   if (!m || m.version !== 2) throw new Error("missing fixture"); return m;
+}
+
+async function snapshotTree(root: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  async function visit(path: string): Promise<void> {
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) { result[child] = "directory"; await visit(child); }
+      else result[child] = (await readFile(child)).toString("base64");
+    }
+  }
+  await visit(root); return result;
 }

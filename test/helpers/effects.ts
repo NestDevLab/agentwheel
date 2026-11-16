@@ -1,11 +1,11 @@
 import { lstat, readdir, readFile, readlink } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 
 export interface EffectSnapshot {
   tree: Record<string, { kind: string; mode: number; bytes?: string; target?: string }>;
   claims: Record<string, unknown>;
-  git?: { index: string; refs: string; head: string };
+  git?: { index: string; refs: string; head: string; indexBytes: string };
 }
 export interface EffectPolicy {
   // Exact relative paths only, each with a fixture-specific reason. No globs or prefixes.
@@ -24,7 +24,7 @@ export async function snapshot(root: string, policy: EffectPolicy = {}): Promise
     const path = join(root, relative);
     const stat = await lstat(path);
     if (stat.isDirectory()) {
-      if (relative) result.tree[relative] = { kind: "directory", mode: stat.mode & 0o7777 };
+      result.tree[relative || "."] = { kind: "directory", mode: stat.mode & 0o7777 };
       for (const name of (await readdir(path)).sort()) await visit(relative ? `${relative}/${name}` : name);
     } else if (!Object.hasOwn(policy.exclude ?? {}, relative)) {
       result.tree[relative] = stat.isSymbolicLink()
@@ -38,7 +38,9 @@ export async function snapshot(root: string, policy: EffectPolicy = {}): Promise
   for (const path of policy.manifests ?? []) result.claims[path] = JSON.parse(await readFile(join(root, path), "utf8"));
   if (policy.git) {
     const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
-    result.git = { index: git("ls-files", "--stage", "-z"), refs: git("show-ref", "--head"), head: git("symbolic-ref", "-q", "HEAD") };
+    const indexPath = git("rev-parse", "--git-path", "index").trim();
+    const indexBytes = (await readFile(isAbsolute(indexPath) ? indexPath : resolve(root,indexPath))).toString("base64");
+    result.git = { indexBytes, index: git("ls-files", "--stage", "-z"), refs: git("show-ref", "--head"), head: git("symbolic-ref", "-q", "HEAD") };
   }
   return result;
 }

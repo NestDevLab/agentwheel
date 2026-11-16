@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/invariant-test-baseline"
+  ],
+  "claimed_at": "2026-11-16T12:55:51+00:00",
+  "coordination_id": "default",
+  "operation_token": "056e7a25-bc63-4259-a064-a14b7f857ca2",
+  "publication_scope": "compose-stack:invariant-test-baseline",
+  "source_ref": "refs/heads/pr/invariant-test-baseline",
+  "syncwheel_version": "0.47.7"
+}

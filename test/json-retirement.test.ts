@@ -43,7 +43,7 @@ describe("owned JSON contribution retirement", () => {
     const installed = await readInstallManifest(f.root, adapter.name);
     if (!installed || installed.version !== 2) throw new Error("expected current manifest");
     // A second state owns an overlapping path. Retirement must preserve it.
-    await writeInstallManifest(f.root, { ...installed, stateKey: "fixture.local.foreign", entries: [{
+    await writeInstallManifest({ ...installed, stateKey: "fixture.local.foreign", entries: [{
       ...installed.entries[0]!, packageName: "fixture/other", owners: ["fixture/other"],
       workspaceOwner: "workspace:other", mergeRemoval: { shared: 2 },
     }] });
@@ -81,6 +81,8 @@ describe("owned JSON contribution retirement", () => {
     await applyCombinedInstallPlan(plan);
     expect((await f.get()).retired).toBe(1);
     expect((await f.get()).theme).toBe("user");
+    await applyCombinedInstallPlan(await f.update({ replacement: true }, "fixture/replacement"));
+    expect((await f.get()).retired).toBe(1);
   });
 
   it("retires stale ownership even when a prior installer already saved the new source hash", async () => {
@@ -90,7 +92,7 @@ describe("owned JSON contribution retirement", () => {
     const state = await readInstallManifest(f.root, adapter.name);
     if (!state || state.version !== 2) throw new Error("expected current manifest");
     state.entries[0]!.sourceHash = next.hash;
-    await writeInstallManifest(f.root, state);
+    await writeInstallManifest(state);
     const plan = await f.update({ keep: true });
     expect(plan.operations[0]!.action).toBe("update");
     await applyCombinedInstallPlan(plan);

@@ -317,8 +317,9 @@ async function createPlanFromOperations(
             JSON.parse(await readFile(op.sourcePath!, "utf8")), existing.mergeRemoval, protectedContributions);
           op.jsonRetirement = retirement;
           mergeRemoval = combineMergeRemovals(retained, mergeRemoval);
-        } else {
-          // Never retire a contribution merely because an unrelated producer targets the same file.
+        } else if (op.mergeStrategy !== "json-deep" ||
+          (existing.packageName === op.packageName && operationMatchesManifestEntry(op, existing))) {
+          // Do not transfer an unrelated artifact's contribution to a replacement producer.
           mergeRemoval = combineMergeRemovals(existing.mergeRemoval, mergeRemoval);
         }
       }

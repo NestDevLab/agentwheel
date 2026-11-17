@@ -1064,3 +1064,18 @@ Built-in runtime targets:
 ## License
 
 See [`LICENSE`](LICENSE).
+
+### Updating merged JSON contributions
+
+For `json-deep` targets, updates retire recorded contributions omitted by the same
+artifact's new source. The plan lists exact JSON path segments to retire. Untracked
+keys and contributions recorded in other target manifests remain intact. If a
+retired value was edited outside the artifact, the plan reports its preservation
+and relinquishes ownership of that value. Existing arrays keep their merge and
+ordering behavior; an omitted array is retired only if its entire recorded value
+still matches. Application checks planned retirement values again, and journal
+recovery verifies both the new source and the absence of retired paths.
+
+Retirement uses recorded ownership, including leftover contributions from older
+installers even when the source hash is unchanged. It does not infer ownership
+from a cached source, or adopt pre-existing user values implicitly.

@@ -177,7 +177,15 @@
       "base": "origin/main",
       "branch": "pr/cas-block-hash",
       "commits": [
-        "5d423d0c86e219a906958ff1d1262e47e1bd9d82"
+        "5d423d0c86e219a906958ff1d1262e47e1bd9d82",
+        "e9bb7341bfa88bf288263a2cfbac1960b436e9ca",
+        "d83a2143f196651192043e82fc1608a2e80eef69",
+        "ff0d7d4e2d881c01baa213cdcf75909177003aa6",
+        "daa319d3c8db41c7766e4ee7c0dd5d4940f34542",
+        "0a9e06cad35bbe38fb28365b26505cc8decc334b",
+        "db9b2c64806fef8df232e190fd5ee78cf3dc236e",
+        "67e7fdcdf30b1e306f5626e82f5598dfdb64450c",
+        "927605efd52123a314475814623fcc96ab67a9cb"
       ],
       "id": "cas-block-hash",
       "integration_branch": "main-integration",

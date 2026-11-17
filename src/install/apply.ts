@@ -803,7 +803,8 @@ async function applyOperation(
       });
     }
     if (operation.mergeStrategy === "json-deep") {
-      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport,
+        (source, dest) => mergeJsonFile(source, dest, operation.jsonRetirement));
     } else if (operation.mergeStrategy === "openclaw-json-deep") {
       await mergeOpenClawJsonWithTransport(operation.sourcePath, operation.destPath, transport);
     } else if (operation.mergeStrategy === "yaml-deep") {
@@ -1387,6 +1388,14 @@ async function operationLanded(operation: InstallOperation, transport: TargetTra
   }
   if (operation.mergeStrategy) {
     if (!operation.sourcePath) return false;
+    if (operation.jsonRetirement?.remove.length) {
+      const current = JSON.parse(await transport.readFile(operation.destPath));
+      for (const { path } of operation.jsonRetirement.remove) {
+        let value = current;
+        for (const segment of path) value = value !== null && typeof value === "object" && Object.hasOwn(value, segment) ? value[segment] : undefined;
+        if (value !== undefined) return false;
+      }
+    }
     try {
       await assertMergedSourceContribution(
         operation.sourcePath,

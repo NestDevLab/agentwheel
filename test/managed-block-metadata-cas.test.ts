@@ -94,12 +94,13 @@ describe("metadata runtime CAS hash domains", () => {
       expect(await readFile(journalPath)).toEqual(persisted);
       await expect(commitManifestMetadataJournal(loaded)).resolves.toMatchObject({ adapter: "fixture" });
       expect(await readFile(f.path, "utf8")).toBe(f.content);
+      await expect(readFile(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
     } else {
       await expect(previewMetadataJournal(loaded)).rejects.toThrow(/CAS|drift|marker/i);
       await expect(commitManifestMetadataJournal(loaded)).rejects.toThrow(/CAS|drift|marker/i);
       expect(await readFile(f.manifest)).toEqual(before);
+      expect(await readFile(journalPath)).toEqual(persisted);
     }
-    expect(await readFile(journalPath)).toEqual(persisted);
   });
 
   it("refuses a preview with any runtime completion record", async () => {

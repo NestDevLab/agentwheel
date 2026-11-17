@@ -576,9 +576,10 @@ describe("transactional apply", () => {
     };
 
     const first = await acquireApplyLock(target, adapter.name, transport);
-    expect(mkdirCalls).toEqual([lockPath]);
+    const inventoryLockPath = join(target, ".agentwheel/runtime-inventory-apply-lock");
+    expect(mkdirCalls).toEqual([inventoryLockPath, lockPath]);
     await expect(acquireApplyLock(target, adapter.name, transport)).rejects.toThrow(/Apply lock already exists/);
-    expect(mkdirCalls).toEqual([lockPath, lockPath]);
+    expect(mkdirCalls).toEqual([inventoryLockPath, lockPath, inventoryLockPath]);
     await first.release();
   });
 

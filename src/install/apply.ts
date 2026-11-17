@@ -148,6 +148,7 @@ export async function recoverPendingApply(
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
     await validateJournal(journal);
+    await assertJsonRecoveryInventory(journal, transport);
     if (expectedLink?.resolveOnly) {
       await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
       return journal.manifest;
@@ -212,7 +213,23 @@ async function assertRuntimeJournalGate(
   );
 }
 
+async function assertJsonRecoveryInventory(journal: ApplyJournal, transport: TargetTransport): Promise<void> {
+  if (!journal.jsonForeignInventory) return;
+  // The journal may already have committed its own manifest before interruption.
+  // Permit that one transition; every other manifest must remain exactly pinned.
+  const ownPath = installManifestPath(journal.targetRoot, journal.adapter, journal);
+  const current = (await listInstallManifests(journal.targetRoot, undefined, transport))
+    .filter((item) => item.path !== ownPath && item.stateKey !== journal.stateRemoveKey)
+    .map((item) => ({ path: item.path, revision: item.manifest.revision! }));
+  if (JSON.stringify(current) !== JSON.stringify(journal.jsonForeignInventory)) {
+    throw new Error("JSON contribution inventory changed before recovery; no runtime changes applied.");
+  }
+}
+
 async function assertRuntimeStateRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  if (plan.jsonInventoryRevision && plan.jsonInventoryRevision !== await computeInstallManifestInventoryRevision(plan.targetRoot, undefined, transport)) {
+    throw new Error("JSON contribution inventory changed after planning; replan needed.");
+  }
   if (!plan.runtimeStateRevision) return;
   const current = await computeInstallManifestInventoryRevision(plan.targetRoot, plan.adapter, transport);
   if (current !== plan.runtimeStateRevision) {
@@ -259,6 +276,7 @@ async function applyPlanTransactionally(
       targetRoot: plan.targetRoot,
       baseRevision: plan.baseRevision,
       graphLockDigest,
+      jsonForeignInventory: plan.jsonForeignInventory,
       createdAt: now,
       updatedAt: now,
       operations: plan.operations,
@@ -803,7 +821,8 @@ async function applyOperation(
       });
     }
     if (operation.mergeStrategy === "json-deep") {
-      await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
+      await mergeWithTransport(operation.sourcePath, operation.destPath, transport,
+        (source, dest) => mergeJsonFile(source, dest, operation.jsonRetirement));
     } else if (operation.mergeStrategy === "openclaw-json-deep") {
       await mergeOpenClawJsonWithTransport(operation.sourcePath, operation.destPath, transport);
     } else if (operation.mergeStrategy === "yaml-deep") {
@@ -1387,6 +1406,14 @@ async function operationLanded(operation: InstallOperation, transport: TargetTra
   }
   if (operation.mergeStrategy) {
     if (!operation.sourcePath) return false;
+    if (operation.jsonRetirement?.remove.length) {
+      const current = JSON.parse(await transport.readFile(operation.destPath));
+      for (const { path } of operation.jsonRetirement.remove) {
+        let value = current;
+        for (const segment of path) value = value !== null && typeof value === "object" && Object.hasOwn(value, segment) ? value[segment] : undefined;
+        if (value !== undefined) return false;
+      }
+    }
     try {
       await assertMergedSourceContribution(
         operation.sourcePath,

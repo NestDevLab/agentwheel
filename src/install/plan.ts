@@ -21,7 +21,10 @@ import type { TargetTransport } from "../transport/index.js";
 import { filterArtifactsByAdapterTargets } from "../validation/adapter-targets.js";
 import { filterArtifactsByInstallFormat, validateArtifactsForInstall } from "../validation/artifacts.js";
 import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
-import { computeInstallManifestInventoryRevision } from "./manifest.js";
+import { computeInstallManifestInventoryRevision, listInstallManifests } from "./manifest.js";
+import { planJsonRetirement, type JsonRetirement } from "./json-merge.js";
+import { readFile } from "node:fs/promises";
+import { installManifestPath } from "./paths.js";
 import { normalizeOwners } from "./desired.js";
 import {
   claudeInstructionBridgesAgents,
@@ -63,6 +66,7 @@ export interface InstallOperation {
   execute?: boolean;
   mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
   mergeRemoval?: MergeRemoval;
+  jsonRetirement?: JsonRetirement;
   mergeCreatedDestination?: boolean;
   exactMergeRemoval?: boolean;
   exactMergeAdoption?: boolean;
@@ -111,6 +115,8 @@ export interface InstallPlan {
   hasBlockingChanges: boolean;
   baseRevision: string | null;
   runtimeStateRevision?: string;
+  jsonInventoryRevision?: string;
+  jsonForeignInventory?: Array<{ path: string; revision: string }>;
   stateMigration?: InstallStateMigration;
   targetStateFilePreconditions?: TargetStateFilePreconditions;
   migrationReport?: MigrationReport;
@@ -236,6 +242,11 @@ async function createPlanFromOperations(
   const { desired, collisions } = await splitCollisionOperations(preparedOps, manifestByPath, transport);
   const operations: InstallOperation[] = [];
   operations.push(...collisions);
+  const hasJsonMerge = desiredOps.some((op) => op.mergeStrategy === "json-deep");
+  const jsonInventoryRevision = hasJsonMerge
+    ? await computeInstallManifestInventoryRevision(targetRoot, undefined, transport) : undefined;
+  const mergeStates = hasJsonMerge ? await listInstallManifests(targetRoot, undefined, transport) : [];
+
 
   for (const op of desired.values()) {
     if (op.action === "plugin") {
@@ -299,8 +310,28 @@ async function createPlanFromOperations(
         continue;
       }
       if (existing && "mergeRemoval" in existing && existing.mergeRemoval) {
-        mergeRemoval = combineMergeRemovals(existing.mergeRemoval, mergeRemoval);
+        if (op.mergeStrategy === "json-deep" && currentContent !== undefined
+          && existing.packageName === op.packageName && operationMatchesManifestEntry(op, existing)
+          && "owners" in existing && JSON.stringify(normalizeOwners(existing.owners)) === JSON.stringify(normalizeOwners(op.owners ?? []))) {
+          const protectedContributions = mergeStates
+            .filter(({ manifest: state }) => state.revision !== manifest?.revision)
+            .flatMap(({ manifest: state }) => state.entries)
+            .filter((entry) => entry.path === op.relativeDestPath && entry.mergeRemoval)
+            .map((entry) => entry.mergeRemoval!);
+          const { retirement, retained } = planJsonRetirement(JSON.parse(currentContent),
+            JSON.parse(await readFile(op.sourcePath!, "utf8")), existing.mergeRemoval, protectedContributions);
+          op.jsonRetirement = retirement;
+          mergeRemoval = combineMergeRemovals(retained, mergeRemoval);
+        } else if (op.mergeStrategy !== "json-deep" ||
+          (existing.packageName === op.packageName && operationMatchesManifestEntry(op, existing))) {
+          // Do not transfer an unrelated artifact's contribution to a replacement producer.
+          mergeRemoval = combineMergeRemovals(existing.mergeRemoval, mergeRemoval);
+        }
       }
+      const retirementReason = op.jsonRetirement
+        ? [...op.jsonRetirement.remove.map(({ path }) => `retire ${JSON.stringify(path)}`),
+          ...op.jsonRetirement.preserved.map(({ path, reason }) => `preserve ${JSON.stringify(path)}: ${reason}`)].join("; ") : "";
+      const describe = (reason: string): string => retirementReason ? `${reason}; ${retirementReason}` : reason;
       if (!exists) {
         operations.push({ ...op, action: "create", mergeRemoval, mergeCreatedDestination: true, reason: "merge destination missing" });
         continue;
@@ -320,12 +351,12 @@ async function createPlanFromOperations(
         });
         continue;
       }
-      if (existing && existing.sourceHash === op.desiredHash) {
+      if (existing && existing.sourceHash === op.desiredHash && !op.jsonRetirement?.remove.length && !op.jsonRetirement?.preserved.length) {
         operations.push(options.forceDrift
           ? { ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing.mergeCreatedDestination, currentHash, manifestHash: existing.hash, reason: "force refreshing managed merge destination" }
           : { ...op, action: "skip", mergeRemoval: existing.mergeRemoval, mergeCreatedDestination: existing.mergeCreatedDestination, currentHash, manifestHash: existing.hash, reason: "merged source already up to date" });
       } else {
-        operations.push({ ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing?.mergeCreatedDestination, currentHash, manifestHash: existing?.hash, reason: existing ? "merge source changed" : "merge into existing destination" });
+        operations.push({ ...op, action: "update", mergeRemoval, mergeCreatedDestination: existing?.mergeCreatedDestination, currentHash, manifestHash: existing?.hash, reason: describe(existing ? "merge source changed" : "merge into existing destination") });
       }
       continue;
     }
@@ -466,6 +497,9 @@ async function createPlanFromOperations(
     }
   }
 
+  if (jsonInventoryRevision && jsonInventoryRevision !== await computeInstallManifestInventoryRevision(targetRoot, undefined, transport)) {
+    throw new Error("JSON contribution inventory changed during planning; replan needed.");
+  }
   for (const operation of operations) assertOperationContained(operation, targetRoot);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(targetRoot, adapter.name, transport);
@@ -481,6 +515,11 @@ async function createPlanFromOperations(
     hasBlockingChanges: operations.some((op) => op.action === "drift" || op.action === "conflict"),
     baseRevision: options.baseRevision ?? manifest?.revision ?? null,
     runtimeStateRevision,
+    jsonInventoryRevision,
+    jsonForeignInventory: hasJsonMerge ? mergeStates.filter((item) =>
+      item.path !== installManifestPath(targetRoot, adapter.name, options)
+      && item.stateKey !== options.stateMigration?.fromStateKey)
+      .map((item) => ({ path: item.path, revision: item.manifest.revision! })) : undefined,
     stateMigration: options.stateMigration,
     migrationReport: migration.report,
     graphLockDigest: options.graphLockDigest,

@@ -80,7 +80,7 @@ describe("durable local run-as recovery", () => {
     transport.prepareApply = async () => { calls.push("prepare"); };
     transport.mkdirExclusive = async () => { calls.push("mkdir"); };
     await acquireApplyLock(identity.root, "codex", transport);
-    expect(calls).toEqual(["prepare", "mkdir"]);
+    expect(calls).toEqual(["prepare", "mkdir", "mkdir"]);
     expect(() => assertGovernedRuntimeTransportSupported({ ...transport, runAsIdentity: undefined })).toThrow(/pinned identity/);
     expect(() => assertGovernedRuntimeTransportSupported({ ...transport, prepareApply: undefined })).toThrow(/preparation/);
   });
@@ -175,7 +175,10 @@ describe("durable local run-as recovery", () => {
     })).rejects.toThrow(/digest/);
     expect(transport.copyWithin).not.toHaveBeenCalled();
     expect(transport.atomicCopy).not.toHaveBeenCalled();
-    expect(transport.writeJsonAtomic).toHaveBeenCalledTimes(1); // lock owner only
+    expect(transport.writeJsonAtomic).toHaveBeenCalledTimes(2); // shared and adapter lock owners only
+    for (const [path] of vi.mocked(transport.writeJsonAtomic).mock.calls) {
+      expect(path).toMatch(/(?:runtime-inventory-apply-lock|runtime-apply-lock)\/owner\.json$/);
+    }
   });
 
   it("rejects receipt link collisions when any pinned account field changes", async () => {

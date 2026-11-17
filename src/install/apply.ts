@@ -148,6 +148,7 @@ export async function recoverPendingApply(
     const journal = await readApplyJournal(targetRoot, adapter, transport, scope);
     if (!journal) return undefined;
     await validateJournal(journal);
+    await assertJsonRecoveryInventory(journal, transport);
     if (expectedLink?.resolveOnly) {
       await removeApplyJournal(targetRoot, adapter, transport, scope, journal);
       return journal.manifest;
@@ -212,6 +213,19 @@ async function assertRuntimeJournalGate(
   );
 }
 
+async function assertJsonRecoveryInventory(journal: ApplyJournal, transport: TargetTransport): Promise<void> {
+  if (!journal.jsonForeignInventory) return;
+  // The journal may already have committed its own manifest before interruption.
+  // Permit that one transition; every other manifest must remain exactly pinned.
+  const ownPath = installManifestPath(journal.targetRoot, journal.adapter, journal);
+  const current = (await listInstallManifests(journal.targetRoot, undefined, transport))
+    .filter((item) => item.path !== ownPath && item.stateKey !== journal.stateRemoveKey)
+    .map((item) => ({ path: item.path, revision: item.manifest.revision! }));
+  if (JSON.stringify(current) !== JSON.stringify(journal.jsonForeignInventory)) {
+    throw new Error("JSON contribution inventory changed before recovery; no runtime changes applied.");
+  }
+}
+
 async function assertRuntimeStateRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
   if (plan.jsonInventoryRevision && plan.jsonInventoryRevision !== await computeInstallManifestInventoryRevision(plan.targetRoot, undefined, transport)) {
     throw new Error("JSON contribution inventory changed after planning; replan needed.");
@@ -262,6 +276,7 @@ async function applyPlanTransactionally(
       targetRoot: plan.targetRoot,
       baseRevision: plan.baseRevision,
       graphLockDigest,
+      jsonForeignInventory: plan.jsonForeignInventory,
       createdAt: now,
       updatedAt: now,
       operations: plan.operations,

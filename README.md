@@ -1079,3 +1079,7 @@ recovery verifies both the new source and the absence of retired paths.
 Retirement uses recorded ownership, including leftover contributions from older
 installers even when the source hash is unchanged. It does not infer ownership
 from a cached source, or adopt pre-existing user values implicitly.
+
+Target mutations also share an inventory lock across adapters. The apply journal
+pins foreign manifest revisions so recovery rejects new ownership claims before
+replaying any retirement, while allowing its own already-committed manifest.

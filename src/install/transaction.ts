@@ -56,6 +56,7 @@ export interface ApplyJournal {
   targetRoot: string;
   baseRevision: string | null;
   graphLockDigest?: string;
+  jsonForeignInventory?: Array<{ path: string; revision: string }>;
   createdAt: string;
   updatedAt: string;
   operations: InstallOperation[];
@@ -220,7 +221,6 @@ export async function acquireApplyLock(
   assertGovernedRuntimeTransportSupported(transport);
   if (transport.kind === "local-run-as") await transport.prepareApply!();
   const lockPath = applyLockPath(targetRoot, adapter, scope);
-  const ownerPath = join(lockPath, "owner.json");
   const metadata = {
     pid: process.pid,
     adapter,
@@ -231,18 +231,29 @@ export async function acquireApplyLock(
     createdAt: new Date().toISOString(),
   };
 
+  // All target writers share an inventory lock, including different adapters and
+  // metadata-only ownership operations. Adapter locks remain for compatibility.
+  const sharedPath = join(metadataDir(targetRoot), "runtime-inventory-apply-lock");
+  const acquired: string[] = [];
   try {
-    await transport.mkdirExclusive(lockPath);
+    for (const path of [sharedPath, lockPath]) {
+      try {
+        await transport.mkdirExclusive(path);
+      } catch (error) {
+        if (!isAlreadyExists(error)) throw error;
+        await handleExistingLock(path, join(path, "owner.json"), transport, options);
+        await transport.mkdirExclusive(path);
+      }
+      acquired.push(path);
+      await transport.writeJsonAtomic(join(path, "owner.json"), metadata);
+    }
   } catch (error) {
-    if (!isAlreadyExists(error)) throw error;
-    await handleExistingLock(lockPath, ownerPath, transport, options);
-    await transport.mkdirExclusive(lockPath);
+    for (const path of acquired.reverse()) await transport.rm(path);
+    throw error;
   }
-  await transport.writeJsonAtomic(ownerPath, metadata);
-
   return {
     path: lockPath,
-    release: () => transport.rm(lockPath),
+    async release() { for (const path of acquired.slice().reverse()) await transport.rm(path); },
   };
 }
 
@@ -479,6 +490,7 @@ export function applyJournalLinkDigest(
     stateRemoveKey: journal.stateRemoveKey ?? null,
     workspaceConfigPath: journal.workspaceConfigPath ?? null,
     operations: journal.operations,
+    ...(journal.jsonForeignInventory ? { jsonForeignInventory: journal.jsonForeignInventory } : {}),
     // Preserve existing local v2 receipt digests across upgrades. Run-as is a
     // new contract: every caller-side write payload must be pinned.
     ...(transport.kind === "local-run-as" ? {

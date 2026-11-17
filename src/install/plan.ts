@@ -24,6 +24,7 @@ import type { DesiredArtifact, DesiredEntryMeta } from "./desired.js";
 import { computeInstallManifestInventoryRevision, listInstallManifests } from "./manifest.js";
 import { planJsonRetirement, type JsonRetirement } from "./json-merge.js";
 import { readFile } from "node:fs/promises";
+import { installManifestPath } from "./paths.js";
 import { normalizeOwners } from "./desired.js";
 import {
   claudeInstructionBridgesAgents,
@@ -115,6 +116,7 @@ export interface InstallPlan {
   baseRevision: string | null;
   runtimeStateRevision?: string;
   jsonInventoryRevision?: string;
+  jsonForeignInventory?: Array<{ path: string; revision: string }>;
   stateMigration?: InstallStateMigration;
   targetStateFilePreconditions?: TargetStateFilePreconditions;
   migrationReport?: MigrationReport;
@@ -514,6 +516,10 @@ async function createPlanFromOperations(
     baseRevision: options.baseRevision ?? manifest?.revision ?? null,
     runtimeStateRevision,
     jsonInventoryRevision,
+    jsonForeignInventory: hasJsonMerge ? mergeStates.filter((item) =>
+      item.path !== installManifestPath(targetRoot, adapter.name, options)
+      && item.stateKey !== options.stateMigration?.fromStateKey)
+      .map((item) => ({ path: item.path, revision: item.manifest.revision! })) : undefined,
     stateMigration: options.stateMigration,
     migrationReport: migration.report,
     graphLockDigest: options.graphLockDigest,

@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AdapterConfig } from "../src/model/adapter.js";
-import { applyCombinedInstallPlan, createCombinedInstallPlan, readInstallManifest, writeInstallManifest, type DesiredArtifact } from "../src/install/index.js";
+import { applyCombinedInstallPlan, createCombinedInstallPlan, readInstallManifest, writeInstallManifest, recoverPendingApply, type DesiredArtifact } from "../src/install/index.js";
 import { mergeJsonUpdate, planJsonRetirement } from "../src/install/json-merge.js";
 import { hashPath } from "../src/utils/fs.js";
+import { localTransport } from "../src/transport/index.js";
+import { acquireApplyLock, applyJournalPath } from "../src/install/transaction.js";
+import type { MergeRemoval } from "../src/install/merge-removal.js";
 import { formatPlan } from "../src/cli/format.js";
 
 const roots: string[] = [];
@@ -116,7 +119,7 @@ describe("owned JSON contribution retirement", () => {
     if (!installed || installed.version !== 2) throw new Error("expected current manifest");
     const foreign = { ...installed, adapter: "other-adapter", stateKey: "other.local.foreign", entries: [{
       ...installed.entries[0]!, packageName: "fixture/other", owners: ["fixture/other"],
-      workspaceOwner: "workspace:other", mergeRemoval: { shared: 1 },
+      workspaceOwner: "workspace:other", mergeRemoval: { shared: 1 } as MergeRemoval,
     }] };
     await writeInstallManifest(foreign);
     const plan = await f.update({});
@@ -127,6 +130,56 @@ describe("owned JSON contribution retirement", () => {
     const replanned = await f.update({});
     await applyCombinedInstallPlan(replanned);
     expect(await f.get()).toMatchObject({ shared: 1, owned: 2 });
+  });
+
+  it("serializes different adapters at a shared target", async () => {
+    const f = await fixture();
+    const lock = await acquireApplyLock(f.root, "first");
+    try { await expect(acquireApplyLock(f.root, "second")).rejects.toThrow(/Apply lock already exists/); }
+    finally { await lock.release(); }
+    const second = await acquireApplyLock(f.root, "second");
+    await second.release();
+  });
+
+  for (const phase of ["prepared", "committed"] as const) {
+    it(`recovers JSON retirement after interruption at ${phase}`, async () => {
+      const f = await fixture();
+      await applyCombinedInstallPlan(await f.update({ retired: 1, keep: true }));
+      const plan = await f.update({ keep: true });
+      const failing = { ...localTransport,
+        async writeJsonAtomic(path: string, value: unknown) {
+          await localTransport.writeJsonAtomic(path, value);
+          if (phase === "prepared" && path.endsWith(".apply-journal.json")) throw new Error("injected interruption");
+        },
+        async rm(path: string) {
+          if (phase === "committed" && path.endsWith(".apply-journal.json")) throw new Error("injected interruption");
+          await localTransport.rm(path);
+        },
+      };
+      await expect(applyCombinedInstallPlan(plan, { transport: failing })).rejects.toThrow(/injected interruption/);
+      await recoverPendingApply(f.root, adapter.name);
+      expect(await f.get()).not.toHaveProperty("retired");
+    });
+  }
+
+  it("refuses recovery after another adapter claims a retired path, without runtime writes", async () => {
+    const f = await fixture();
+    await applyCombinedInstallPlan(await f.update({ retired: 1, keep: true }));
+    const plan = await f.update({ keep: true });
+    const failing = { ...localTransport, async writeJsonAtomic(path: string, value: unknown) {
+      await localTransport.writeJsonAtomic(path, value);
+      if (path.endsWith(".apply-journal.json")) throw new Error("injected interruption");
+    } };
+    await expect(applyCombinedInstallPlan(plan, { transport: failing })).rejects.toThrow(/injected interruption/);
+    const before = await readFile(f.dest, "utf8");
+    const state = await readInstallManifest(f.root, adapter.name);
+    if (!state || state.version !== 2) throw new Error("expected current manifest");
+    await writeInstallManifest({ ...state, adapter: "foreign", stateKey: "foreign.local.fixture", entries: [{
+      ...state.entries[0]!, mergeRemoval: { retired: 1 },
+    }] });
+    await expect(recoverPendingApply(f.root, adapter.name)).rejects.toThrow(/inventory changed before recovery/);
+    expect(await readFile(f.dest, "utf8")).toBe(before);
+    expect(await localTransport.pathExists(applyJournalPath(f.root, adapter.name))).toBe(true);
   });
 
   it("uses exact paths, compares objects independent of key order, and refuses post-plan edits", () => {

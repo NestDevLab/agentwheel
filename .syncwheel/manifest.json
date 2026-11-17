@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
+      "worktree_grace_days": 7
     }
   },
   "defaults": {
@@ -39,9 +39,9 @@
       "invariant-test-baseline",
       "read-effects-policy",
       "cas-block-hash",
+      "json-contribution-retirement",
       "retained-install-recovery",
-      "journal-receipt-consumer",
-      "json-contribution-retirement"
+      "journal-receipt-consumer"
     ],
     "strategy": "cherry-pick"
   },
@@ -53,15 +53,15 @@
       "commits": [],
       "id": "ccp011-ownership-supersession",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
-      },
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin",
       "publication": {
         "enabled": false
       },
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      }
     },
     {
       "base": "origin/main",
@@ -69,15 +69,15 @@
       "commits": [],
       "id": "local-run-as-readonly",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      },
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin",
       "publication": {
         "enabled": false
       },
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      }
     },
     {
       "base": "origin/main",
@@ -88,15 +88,15 @@
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Expose explicit runtime restrictions in add"
-      },
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Expose explicit runtime restrictions in add"
+      }
     },
     {
       "base": "origin/main",
@@ -110,15 +110,15 @@
       ],
       "id": "own-owner-legacy-migration",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
-      },
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
+      }
     },
     {
       "base": "origin/main",
@@ -138,15 +138,15 @@
       ],
       "id": "invariant-test-baseline",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Synthetic invariant regression tests and command matrix"
-      },
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Synthetic invariant regression tests and command matrix"
+      }
     },
     {
       "base": "origin/pr/invariant-test-baseline",
@@ -163,15 +163,15 @@
       ],
       "id": "read-effects-policy",
       "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
-      },
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
+      "meta": {
+        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
+      }
     },
     {
       "base": "origin/main",
@@ -189,13 +189,35 @@
       ],
       "id": "cas-block-hash",
       "integration_branch": "main-integration",
-      "meta": {},
+      "target_branch": "main",
+      "target_remote": "origin",
+      "state": "published",
       "publication": {
         "enabled": true
       },
-      "state": "published",
+      "meta": {}
+    },
+    {
+      "id": "json-contribution-retirement",
+      "branch": "pr/json-contribution-retirement",
+      "base": "origin/main",
       "target_branch": "main",
-      "target_remote": "origin"
+      "integration_branch": "main-integration",
+      "commits": [
+        "7b7b990c53d61709f33df1f9c93e3898595d6e10",
+        "a8d4fa3b3391cfff5b0c12c31af6eb9eab7820df",
+        "1799e92bec1bd721cc3542f9183a27edb00ed133",
+        "a7402511f419ab2c46ee770863e8108769f5c2b9",
+        "ced8552793a0ebb740589ea5bc3b21520138223f"
+      ],
+      "target_remote": "origin",
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Retire omitted JSON contributions without removing user or foreign values"
+      }
     },
     {
       "base": "origin/main",
@@ -223,28 +245,6 @@
       "integration_branch": "main-integration",
       "meta": {
         "purpose": "Audit-linked consumer receipt supersession; publication remains separately gated"
-      },
-      "publication": {
-        "enabled": true
-      },
-      "state": "published",
-      "target_branch": "main",
-      "target_remote": "origin"
-    },
-    {
-      "base": "origin/main",
-      "branch": "pr/json-contribution-retirement",
-      "commits": [
-        "7b7b990c53d61709f33df1f9c93e3898595d6e10",
-        "a8d4fa3b3391cfff5b0c12c31af6eb9eab7820df",
-        "1799e92bec1bd721cc3542f9183a27edb00ed133",
-        "a7402511f419ab2c46ee770863e8108769f5c2b9",
-        "ced8552793a0ebb740589ea5bc3b21520138223f"
-      ],
-      "id": "json-contribution-retirement",
-      "integration_branch": "main-integration",
-      "meta": {
-        "purpose": "Retire omitted JSON contributions without removing user or foreign values"
       },
       "publication": {
         "enabled": true

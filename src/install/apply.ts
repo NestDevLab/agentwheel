@@ -213,6 +213,9 @@ async function assertRuntimeJournalGate(
 }
 
 async function assertRuntimeStateRevision(plan: InstallPlan, transport: TargetTransport): Promise<void> {
+  if (plan.jsonInventoryRevision && plan.jsonInventoryRevision !== await computeInstallManifestInventoryRevision(plan.targetRoot, undefined, transport)) {
+    throw new Error("JSON contribution inventory changed after planning; replan needed.");
+  }
   if (!plan.runtimeStateRevision) return;
   const current = await computeInstallManifestInventoryRevision(plan.targetRoot, plan.adapter, transport);
   if (current !== plan.runtimeStateRevision) {

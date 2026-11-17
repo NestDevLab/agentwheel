@@ -99,6 +99,36 @@ describe("owned JSON contribution retirement", () => {
     expect(await f.get()).not.toHaveProperty("retired");
   });
 
+  it("preserves an empty owned object through an update, then retires it", async () => {
+    const f = await fixture();
+    await applyCombinedInstallPlan(await f.update({ empty: {}, sibling: 1 }));
+    await applyCombinedInstallPlan(await f.update({ empty: {}, sibling: 2 }));
+    const state = await readInstallManifest(f.root, adapter.name);
+    expect(state?.entries[0]?.mergeRemoval).toHaveProperty("empty", {});
+    await applyCombinedInstallPlan(await f.update({ sibling: 2 }));
+    expect(await f.get()).not.toHaveProperty("empty");
+  });
+
+  it("protects another adapter's contribution and detects changes to that inventory", async () => {
+    const f = await fixture();
+    await applyCombinedInstallPlan(await f.update({ shared: 1, owned: 2 }));
+    const installed = await readInstallManifest(f.root, adapter.name);
+    if (!installed || installed.version !== 2) throw new Error("expected current manifest");
+    const foreign = { ...installed, adapter: "other-adapter", stateKey: "other.local.foreign", entries: [{
+      ...installed.entries[0]!, packageName: "fixture/other", owners: ["fixture/other"],
+      workspaceOwner: "workspace:other", mergeRemoval: { shared: 1 },
+    }] };
+    await writeInstallManifest(foreign);
+    const plan = await f.update({});
+    expect(plan.operations[0]!.jsonRetirement?.remove.map((entry) => entry.path)).toEqual([["owned"]]);
+    foreign.entries[0]!.mergeRemoval = { shared: 1, owned: 2 };
+    await writeInstallManifest(foreign);
+    await expect(applyCombinedInstallPlan(plan)).rejects.toThrow(/inventory changed/);
+    const replanned = await f.update({});
+    await applyCombinedInstallPlan(replanned);
+    expect(await f.get()).toMatchObject({ shared: 1, owned: 2 });
+  });
+
   it("uses exact paths, compares objects independent of key order, and refuses post-plan edits", () => {
     const current = { "a.b": 1, nested: { retired: 2, user: 3 }, array: [{ b: 2, a: 1 }, "user"] };
     const source = { nested: {}, array: ["user"] };

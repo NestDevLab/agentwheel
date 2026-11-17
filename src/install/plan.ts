@@ -114,6 +114,7 @@ export interface InstallPlan {
   hasBlockingChanges: boolean;
   baseRevision: string | null;
   runtimeStateRevision?: string;
+  jsonInventoryRevision?: string;
   stateMigration?: InstallStateMigration;
   targetStateFilePreconditions?: TargetStateFilePreconditions;
   migrationReport?: MigrationReport;
@@ -239,8 +240,10 @@ async function createPlanFromOperations(
   const { desired, collisions } = await splitCollisionOperations(preparedOps, manifestByPath, transport);
   const operations: InstallOperation[] = [];
   operations.push(...collisions);
-  const mergeStates = desiredOps.some((op) => op.mergeStrategy === "json-deep")
-    ? await listInstallManifests(targetRoot, adapter.name, transport) : [];
+  const hasJsonMerge = desiredOps.some((op) => op.mergeStrategy === "json-deep");
+  const jsonInventoryRevision = hasJsonMerge
+    ? await computeInstallManifestInventoryRevision(targetRoot, undefined, transport) : undefined;
+  const mergeStates = hasJsonMerge ? await listInstallManifests(targetRoot, undefined, transport) : [];
 
 
   for (const op of desired.values()) {
@@ -492,6 +495,9 @@ async function createPlanFromOperations(
     }
   }
 
+  if (jsonInventoryRevision && jsonInventoryRevision !== await computeInstallManifestInventoryRevision(targetRoot, undefined, transport)) {
+    throw new Error("JSON contribution inventory changed during planning; replan needed.");
+  }
   for (const operation of operations) assertOperationContained(operation, targetRoot);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(targetRoot, adapter.name, transport);
@@ -507,6 +513,7 @@ async function createPlanFromOperations(
     hasBlockingChanges: operations.some((op) => op.action === "drift" || op.action === "conflict"),
     baseRevision: options.baseRevision ?? manifest?.revision ?? null,
     runtimeStateRevision,
+    jsonInventoryRevision,
     stateMigration: options.stateMigration,
     migrationReport: migration.report,
     graphLockDigest: options.graphLockDigest,

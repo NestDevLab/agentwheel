@@ -76,7 +76,7 @@ export function planJsonRetirement(
         const desired = at(incoming, next)!;
         if (isRecord(value) && isRecord(desired)) {
           const children = visit(value, next);
-          if (Object.keys(children).length) retained[key] = children;
+          if (Object.keys(children).length || (Object.keys(value).length === 0 && Object.keys(desired).length === 0)) retained[key] = children;
         } else {
           // Remember the value now contributed, rather than an obsolete scalar value.
           retained[key] = Array.isArray(value) && Array.isArray(desired)

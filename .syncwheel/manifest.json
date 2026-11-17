@@ -1,24 +1,24 @@
 {
   "authority": {
-    "mode": "ai-managed",
     "allow": [
       "source_change"
     ],
     "deny": [
       "destructive_rewrite"
-    ]
+    ],
+    "mode": "ai-managed"
   },
   "channels": [],
   "coordination": {
-    "mode": "active-active",
-    "id": "default",
-    "remote": "origin",
-    "state_branch": "syncwheel/state/default",
     "gc": {
-      "worktree_grace_days": 7,
+      "backup_keep": 2,
       "backup_retention_days": 30,
-      "backup_keep": 2
-    }
+      "worktree_grace_days": 7
+    },
+    "id": "default",
+    "mode": "active-active",
+    "remote": "origin",
+    "state_branch": "syncwheel/state/default"
   },
   "defaults": {
     "base_branch": "main",
@@ -53,15 +53,15 @@
       "commits": [],
       "id": "ccp011-ownership-supersession",
       "integration_branch": "main-integration",
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin",
+      "meta": {
+        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Guarded legacy ownership supersession for CT111 plugin rollout"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -69,15 +69,15 @@
       "commits": [],
       "id": "local-run-as-readonly",
       "integration_branch": "main-integration",
-      "state": "draft",
-      "target_branch": "main",
-      "target_remote": "origin",
+      "meta": {
+        "purpose": "Read-only local run-as transport"
+      },
       "publication": {
         "enabled": false
       },
-      "meta": {
-        "purpose": "Read-only local run-as transport"
-      }
+      "state": "draft",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -88,15 +88,15 @@
       ],
       "id": "mgt0478-add-runtimes",
       "integration_branch": "main-integration",
-      "target_branch": "main",
-      "target_remote": "origin",
-      "state": "published",
+      "meta": {
+        "purpose": "Expose explicit runtime restrictions in add"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Expose explicit runtime restrictions in add"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -110,15 +110,15 @@
       ],
       "id": "own-owner-legacy-migration",
       "integration_branch": "main-integration",
-      "target_branch": "main",
-      "target_remote": "origin",
-      "state": "published",
+      "meta": {
+        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Migrate current-owner legacy claims without rewriting runtime files"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -138,22 +138,19 @@
       ],
       "id": "invariant-test-baseline",
       "integration_branch": "main-integration",
-      "target_branch": "main",
-      "target_remote": "origin",
-      "state": "published",
+      "meta": {
+        "purpose": "Synthetic invariant regression tests and command matrix"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Synthetic invariant regression tests and command matrix"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
-      "id": "read-effects-policy",
-      "branch": "pr/read-effects-policy",
       "base": "origin/pr/invariant-test-baseline",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/read-effects-policy",
       "commits": [
         "3f8bf8e4b0aee8b42ab0881917000fc1001c53d9",
         "c290660627fbcdaa3681362108fa3b6bea80f44a",
@@ -164,14 +161,17 @@
         "6389ee810ba114ffe3102c5dbd8ef8a716e2e326",
         "667d6d23ca50ab3d9b842ff622811603944ad627"
       ],
-      "target_remote": "origin",
-      "state": "published",
+      "id": "read-effects-policy",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Pure observation policy for read routes, based on invariant test baseline"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -181,13 +181,13 @@
       ],
       "id": "cas-block-hash",
       "integration_branch": "main-integration",
-      "target_branch": "main",
-      "target_remote": "origin",
-      "state": "published",
+      "meta": {},
       "publication": {
         "enabled": true
       },
-      "meta": {}
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     },
     {
       "base": "origin/main",
@@ -224,24 +224,24 @@
       "target_remote": "origin"
     },
     {
-      "id": "json-contribution-retirement",
-      "branch": "pr/json-contribution-retirement",
       "base": "origin/main",
-      "target_remote": "origin",
-      "target_branch": "main",
-      "integration_branch": "main-integration",
+      "branch": "pr/json-contribution-retirement",
       "commits": [
         "7b7b990c53d61709f33df1f9c93e3898595d6e10",
         "a8d4fa3b3391cfff5b0c12c31af6eb9eab7820df",
         "1799e92bec1bd721cc3542f9183a27edb00ed133"
       ],
-      "state": "published",
+      "id": "json-contribution-retirement",
+      "integration_branch": "main-integration",
+      "meta": {
+        "purpose": "Retire omitted JSON contributions without removing user or foreign values"
+      },
       "publication": {
         "enabled": true
       },
-      "meta": {
-        "purpose": "Retire omitted JSON contributions without removing user or foreign values"
-      }
+      "state": "published",
+      "target_branch": "main",
+      "target_remote": "origin"
     }
   ],
   "syncwheel_tracking": "git-tracked",

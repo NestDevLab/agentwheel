@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/cas-block-hash": "927605efd52123a314475814623fcc96ab67a9cb"
+    "refs/heads/pr/json-contribution-retirement": "ced8552793a0ebb740589ea5bc3b21520138223f"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -20,6 +20,7 @@
     "refs/heads/pr/handoff-from-fleet": "0c8f05645c0bc508f3fb3af6cccd1067b89528ca",
     "refs/heads/pr/invariant-test-baseline": "ff31e309a2b4d7c5b1b9df77911026ac9f0d8b61",
     "refs/heads/pr/journal-compatibility": "c7ad9c2378ac2e08b2d2cecc2e65a75e81b7eda2",
+    "refs/heads/pr/json-contribution-retirement": "0f44b0c1648e2985f1a534cba972468712088b96",
     "refs/heads/pr/legacy-fleet-target-recovery": "89b8cc1326fc6121c73f3ade592de7d3e54afd3c",
     "refs/heads/pr/legacy-graph-only-recovery": "9eaf9bcbe657efc133117ffb64a6e7e4d6b61f2c",
     "refs/heads/pr/legacy-managed-block-0212": "92aeb8c0360a24c2e0e23f609ebe68781839e252",
@@ -70,7 +71,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-17T12:36:24+00:00",
+  "created_at": "2026-11-17T22:37:20+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -102,6 +103,7 @@
     "refs/heads/pr/handoff-from-fleet": "fb185ac82fa4c0e293afc0ee77306b500988ddf7",
     "refs/heads/pr/invariant-test-baseline": "71101a9b4f92ffad1ee817fe50842506dba202e1",
     "refs/heads/pr/journal-compatibility": "3687f20ac5f3298e185c6206202976f4c4d7c377",
+    "refs/heads/pr/json-contribution-retirement": "ced8552793a0ebb740589ea5bc3b21520138223f",
     "refs/heads/pr/legacy-fleet-target-recovery": "390300337547f05c60f48439b5c1656f5d256e69",
     "refs/heads/pr/legacy-graph-lock-admission": "973ab382ad4b3d9c63f484449e580f7feb09bbe6",
     "refs/heads/pr/legacy-graph-only-recovery": "5a981a9a0ee2ba0d5c714f3d32d97a2694b9950f",
@@ -204,7 +206,8 @@
         "own-owner-legacy-migration",
         "invariant-test-baseline",
         "read-effects-policy",
-        "cas-block-hash"
+        "cas-block-hash",
+        "json-contribution-retirement"
       ],
       "strategy": "cherry-pick"
     },
@@ -334,18 +337,36 @@
         "id": "cas-block-hash",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/json-contribution-retirement",
+        "commits": [
+          "7b7b990c53d61709f33df1f9c93e3898595d6e10",
+          "a8d4fa3b3391cfff5b0c12c31af6eb9eab7820df",
+          "1799e92bec1bd721cc3542f9183a27edb00ed133",
+          "a7402511f419ab2c46ee770863e8108769f5c2b9",
+          "ced8552793a0ebb740589ea5bc3b21520138223f"
+        ],
+        "id": "json-contribution-retirement",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "5b09cd4a-a773-4ed5-b9e1-77208bd9d65a",
-  "parent_state": "faf5e054021e3d566f2e201ed4f3799ea89d518f",
+  "operation_token": "786753c0-6ea5-4e98-a526-aae2aad8e257",
+  "parent_state": "f5373df7c061bdeecdf10224500456e93580eb22",
   "projection_status": "partial",
-  "publication_id": "dc458e7b-cb02-44fc-b86c-dab9873a7343",
-  "publication_scope": "compose-stack:cas-block-hash",
+  "publication_id": "e85de4b4-8717-4495-aac2-6b0a0ec27218",
+  "publication_scope": "compose-stack:json-contribution-retirement",
   "schema_version": 2,
-  "syncwheel_version": "0.47.25",
+  "syncwheel_version": "0.47.28",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

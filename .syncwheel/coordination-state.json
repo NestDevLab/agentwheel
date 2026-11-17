@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/cas-block-hash": "db9b2c64806fef8df232e190fd5ee78cf3dc236e"
+    "refs/heads/pr/cas-block-hash": "927605efd52123a314475814623fcc96ab67a9cb"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -12,7 +12,7 @@
     "refs/heads/main-integration": "0dcb0d9ec7a38bd21a649357fdd6726d42888e2a",
     "refs/heads/pr/adopt-legacy-managed-block-0212": "d40018b6c14655a8ef9e1aba26cae7483ce1dcb0",
     "refs/heads/pr/aw-ownership-adopt-legacy": "96791821bea1b8481437e3382fe1ea445801a181",
-    "refs/heads/pr/cas-block-hash": "b3901a79171a08b170c3d2976cad394b1fcf4524",
+    "refs/heads/pr/cas-block-hash": "b593af0a768c954eb70208c2d1e280ad8d0bf1ed",
     "refs/heads/pr/dogfood-profile-recovery": "bd98c5aa4f0ccd2d8bd5e3ed9efdccf44fd9e1ad",
     "refs/heads/pr/durable-legacy-retirement": "21d1b43bdbc77c94e205f35a66057b8037e90ab3",
     "refs/heads/pr/fleet-policy-audited-handoff": "c61ecc8032e0aeb17047cad17e7109942b63c75e",
@@ -70,7 +70,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-16T20:18:08+00:00",
+  "created_at": "2026-11-17T12:36:24+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -93,7 +93,7 @@
     "refs/heads/pr/amf-exact-mcp-retirement": "9c00b557333c7d4b5eea0ab4c20995c1ebd0064a",
     "refs/heads/pr/amf-merge-adoption": "502b70a2f74d4318075228a47f432aede3166af1",
     "refs/heads/pr/aw-ownership-adopt-legacy": "6fd21adcb62da1c5e634e6b27f1c84735a284eac",
-    "refs/heads/pr/cas-block-hash": "db9b2c64806fef8df232e190fd5ee78cf3dc236e",
+    "refs/heads/pr/cas-block-hash": "927605efd52123a314475814623fcc96ab67a9cb",
     "refs/heads/pr/dogfood-profile-recovery": "fc8de2d9f6a503c6c78cbbe74e94536ab0c1d620",
     "refs/heads/pr/durable-legacy-retirement": "930a61cb60dcd96549fcf3ec7612cca05651f371",
     "refs/heads/pr/fleet-policy-audited-handoff": "2f69bdd762e296dbfdae70ea8f2ac301f1c54587",
@@ -327,7 +327,9 @@
           "ff0d7d4e2d881c01baa213cdcf75909177003aa6",
           "daa319d3c8db41c7766e4ee7c0dd5d4940f34542",
           "0a9e06cad35bbe38fb28365b26505cc8decc334b",
-          "db9b2c64806fef8df232e190fd5ee78cf3dc236e"
+          "db9b2c64806fef8df232e190fd5ee78cf3dc236e",
+          "67e7fdcdf30b1e306f5626e82f5598dfdb64450c",
+          "927605efd52123a314475814623fcc96ab67a9cb"
         ],
         "id": "cas-block-hash",
         "integration_branch": "main-integration",
@@ -337,13 +339,13 @@
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "2e921a5a-50d3-49b7-be62-7662324fb1fe",
-  "parent_state": "76562db79c685074c24f17fca9ea5ed0b1f040c3",
+  "operation_token": "5b09cd4a-a773-4ed5-b9e1-77208bd9d65a",
+  "parent_state": "faf5e054021e3d566f2e201ed4f3799ea89d518f",
   "projection_status": "partial",
-  "publication_id": "4c69e98b-d150-45b4-8b7e-a4282a6cba2e",
+  "publication_id": "dc458e7b-cb02-44fc-b86c-dab9873a7343",
   "publication_scope": "compose-stack:cas-block-hash",
   "schema_version": 2,
-  "syncwheel_version": "0.47.17",
+  "syncwheel_version": "0.47.25",
   "tombstones": [
     {
       "branch": "pr/amf-merge-adoption",

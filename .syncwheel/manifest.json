@@ -15,9 +15,9 @@
     "remote": "origin",
     "state_branch": "syncwheel/state/default",
     "gc": {
-      "backup_keep": 2,
+      "worktree_grace_days": 7,
       "backup_retention_days": 30,
-      "worktree_grace_days": 7
+      "backup_keep": 2
     }
   },
   "defaults": {
@@ -41,7 +41,8 @@
       "cas-block-hash",
       "json-contribution-retirement",
       "retained-install-recovery",
-      "journal-receipt-consumer"
+      "journal-receipt-consumer",
+      "unapplied-retirement-recovery"
     ],
     "strategy": "cherry-pick"
   },
@@ -252,6 +253,22 @@
       "state": "published",
       "target_branch": "main",
       "target_remote": "origin"
+    },
+    {
+      "id": "unapplied-retirement-recovery",
+      "branch": "pr/unapplied-retirement-recovery",
+      "base": "origin/main",
+      "target_remote": "origin",
+      "target_branch": "main",
+      "integration_branch": "main-integration",
+      "commits": [],
+      "state": "published",
+      "publication": {
+        "enabled": true
+      },
+      "meta": {
+        "purpose": "Recover guarded ownership retirements with proof that no effects remain"
+      }
     }
   ],
   "syncwheel_tracking": "git-tracked",

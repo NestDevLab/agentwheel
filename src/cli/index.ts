@@ -1,3 +1,4 @@
+import { inspectOpenClawTopicOwnership } from "../lifecycle/openclaw-topic-ownership.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -1142,6 +1143,34 @@ ownershipCommand
     console.log(`Owner: ${result.fromOwner} -> ${result.toOwner}`);
     if (result.planDigest) console.log(`Plan digest: ${result.planDigest}`);
     if (result.manifestInventoryRevision) console.log(`Inventory revision: ${result.manifestInventoryRevision}`);
+  });
+
+ownershipCommand
+  .command("inspect-openclaw-topic")
+  .description("inspect the exact settings claims for an OpenClaw Telegram topic")
+  .requiredOption("--agent <name>", "exact named OpenClaw target")
+  .requiredOption("--source-state-key <key>", "exact donor install manifest")
+  .requiredOption("--source-owner <owner>", "exact donor workspace owner")
+  .requiredOption("--chat-id <id>", "exact Telegram group ID")
+  .requiredOption("--topic-id <id>", "exact Telegram topic ID")
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .action(async (options) => {
+    const targets = await resolveCliTargets({ agent: options.agent, local: options.local, fleet: options.fleet });
+    if (targets.length !== 1 || targets[0]?.adapter !== "openclaw") {
+      throw new Error("Topic ownership inspection requires one named OpenClaw target.");
+    }
+    const target = targets[0];
+    const result = await inspectOpenClawTopicOwnership({
+      targetRoot: target.targetRoot,
+      installationType: target.installationType ?? "user",
+      sourceStateKey: options.sourceStateKey,
+      sourceOwner: options.sourceOwner,
+      chatId: options.chatId,
+      topicId: options.topicId,
+      transport: transportForTarget(target),
+    });
+    console.log(JSON.stringify(result, null, 2));
   });
 
 ownershipCommand

@@ -172,7 +172,8 @@ export async function assertJsonKeyOwnershipInventory(
     for (const entry of item.manifest.entries) for (const operation of operations) {
       if (entry.path !== operation.relativeDestPath || !["create", "update", "skip", "remove"].includes(operation.action)) continue;
       if (!entry.keyOwnership && !operation.keyOwnership) continue;
-      if (!entry.keyOwnership || !operation.keyOwnership || item.manifest.version !== 2
+      if (!entry.keyOwnership || entry.mergeStrategy !== "openclaw-json-keys"
+        || !operation.keyOwnership || operation.mergeStrategy !== "openclaw-json-keys" || item.manifest.version !== 2
         || item.manifest.installationType !== installationType) {
         throw new Error("JSON key ownership conflicts with an existing whole-file or legacy claim.");
       }

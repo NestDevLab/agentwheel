@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.2
+
+- Repair unconsumed OpenClaw key handoffs using the recipient's configured state and canonical workspace or fleet owner. Validate that same identity on new handoffs.
+
 ## 0.23.1
 
 - Opt in to exclusive per-key ownership for user-scoped OpenClaw settings. Independent packages can share a settings file, and releasing a key restores its previous value.

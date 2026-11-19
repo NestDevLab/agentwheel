@@ -1,6 +1,6 @@
 {
   "changed_refs": {
-    "refs/heads/pr/json-contribution-retirement": "ced8552793a0ebb740589ea5bc3b21520138223f"
+    "refs/heads/pr/openclaw-key-ownership-rehome": "6d7231acb485618dbc174d742d83bb28290a76a1"
   },
   "claims": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "fd270efc931e8f3a41088e0642c7ad3a7b38ad31",
@@ -39,6 +39,7 @@
     "refs/heads/pr/mgt0521-recovery-head": "ee3c708de301355f210a6f36c84d4c502dc08b9b",
     "refs/heads/pr/normalize-workspace-owner-prefix": "133967a71cd4fc394a1d48781516c09de3515dd3",
     "refs/heads/pr/openclaw-capability-consent": "37fd12084381062bebae65ba98620b48046204eb",
+    "refs/heads/pr/openclaw-key-ownership-rehome": "236f167fd702423e18edc87b7adac0aef7bd4cbb",
     "refs/heads/pr/own-owner-legacy-migration": "0474431641bed7b34969071edef770321ced8b55",
     "refs/heads/pr/ownership-release-claim": "98f8c75eac7aa2bf0c5facc6ede9861cc6ba2ce3",
     "refs/heads/pr/ownership-release-claim-0211": "b0cef8eb441ab445f29183561840c033a6c3d49f",
@@ -71,7 +72,7 @@
     "refs/heads/syncwheel/draft/stable-legacy-state-recovery": "0e5e5ff28ff1e042e0d321d848abb7f7d11b2437"
   },
   "coordination_id": "default",
-  "created_at": "2026-11-17T22:37:20+00:00",
+  "created_at": "2026-11-19T09:57:23+00:00",
   "installation_id": "e83434d1-e09b-4dd1-8bdf-a5f7970573c6",
   "managed_refs": {
     "refs/heads/branch/agentwheel-resolver-selection-refresh": "4f526d30c8dd48349aaca007014b10080c21493c",
@@ -124,6 +125,7 @@
     "refs/heads/pr/mgt0521-recovery-head": null,
     "refs/heads/pr/normalize-workspace-owner-prefix": "46fd118c4cc5c817f5b2d604630f7ed0cdeea658",
     "refs/heads/pr/openclaw-capability-consent": "d90be1986a5d9495a742b472224ac46e4269b9ce",
+    "refs/heads/pr/openclaw-key-ownership-rehome": "6d7231acb485618dbc174d742d83bb28290a76a1",
     "refs/heads/pr/orphaned-fleet-ownership-journal-target": "7f0c58be9a9aa514cd15b762a58a0e5423e50632",
     "refs/heads/pr/orphaned-fleet-ownership-recovery": "b8d2fdae3359c3d728d692f4d428724be6a46203",
     "refs/heads/pr/own-owner-legacy-migration": "d4c76f790d0c06f3d72af3c94a606b4204a8ca7a",
@@ -207,7 +209,8 @@
         "invariant-test-baseline",
         "read-effects-policy",
         "cas-block-hash",
-        "json-contribution-retirement"
+        "json-contribution-retirement",
+        "openclaw-key-ownership-rehome"
       ],
       "strategy": "cherry-pick"
     },
@@ -355,16 +358,39 @@
         "id": "json-contribution-retirement",
         "integration_branch": "main-integration",
         "target_branch": "main"
+      },
+      {
+        "base": {
+          "kind": "remote-ref",
+          "ref": "refs/heads/main",
+          "role": "canonical"
+        },
+        "branch": "pr/openclaw-key-ownership-rehome",
+        "commits": [
+          "adfa87f7779ddcc459fa7753090a585cd3ab7479",
+          "218bafac67e4815e562e44074c6c1493aa091618",
+          "c103e1f98def56a977b31c7c03a8f4d2dea548d6",
+          "6485392bc7d13f54a2f7f5bdf895bf3332410507",
+          "087200d958ca91e20b5e7dda18e382acc61b64c4",
+          "dfe444eccd55ea07c85d88fed989873ce0e71cfd",
+          "298ab2e3775ac97c3d48f7be32dd26af540970c3",
+          "ea1085041f82fbffc417eb9d395ec2758362270a",
+          "2fab4db8074e5a629c9db3bc68c94b871c43a21a",
+          "052805d21eaffc4e54846f85aef4363c4e2e3dfd"
+        ],
+        "id": "openclaw-key-ownership-rehome",
+        "integration_branch": "main-integration",
+        "target_branch": "main"
       }
     ],
     "version": 2
   },
   "manifest_digest": "e759efab3dc654bd21c2556fd3ef08f67a42eda337137f7300e652bbdc5bf91f",
-  "operation_token": "786753c0-6ea5-4e98-a526-aae2aad8e257",
-  "parent_state": "f5373df7c061bdeecdf10224500456e93580eb22",
+  "operation_token": "92126810-c08d-423f-8798-30ccc22d288f",
+  "parent_state": "2f82197553ba5643f62092f01de3ae60e734c51e",
   "projection_status": "partial",
-  "publication_id": "e85de4b4-8717-4495-aac2-6b0a0ec27218",
-  "publication_scope": "compose-stack:json-contribution-retirement",
+  "publication_id": "cdaf2849-aefc-4aba-a260-59b54d04e2ec",
+  "publication_scope": "compose-stack:openclaw-key-ownership-rehome",
   "schema_version": 2,
   "syncwheel_version": "0.47.28",
   "tombstones": [

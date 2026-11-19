@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join, posix, resolve } from "node:path";
 import type { AdapterConfig } from "../model/adapter.js";
 import { defaultInstallationType, installRootForAdapterInstallationType, installRootForArtifacts, resolveInstallationTypeForArtifacts } from "../model/adapter.js";
@@ -183,6 +183,30 @@ export async function createSourcePlan(options: SourcePlanOptions): Promise<Sour
 }
 
 export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Promise<GraphSourcePlanResult> {
+  return resolveGraphSources(options);
+}
+
+interface FreshGraphSourceEvidence {
+  stateKey: string;
+  installRoot: string;
+  desiredArtifacts: DesiredArtifact[];
+  graphLockDigest: string;
+}
+
+export async function inspectFreshGraphSources<T>(
+  options: GraphSourcePlanOptions,
+  inspect: (evidence: FreshGraphSourceEvidence) => Promise<T>,
+): Promise<T> {
+  return resolveGraphSources({ ...options, readOnly: true, freshGraphOnly: true }, inspect);
+}
+
+async function resolveGraphSources(options: GraphSourcePlanOptions): Promise<GraphSourcePlanResult>;
+async function resolveGraphSources<T>(
+  options: GraphSourcePlanOptions, inspect: (evidence: FreshGraphSourceEvidence) => Promise<T>,
+): Promise<T>;
+async function resolveGraphSources<T>(
+  options: GraphSourcePlanOptions, inspect?: (evidence: FreshGraphSourceEvidence) => Promise<T>,
+): Promise<GraphSourcePlanResult | T> {
   if (options.roots.length === 0 && !options.allowEmptyRoots) {
     throw new Error("At least one source is required for a graph plan.");
   }
@@ -343,6 +367,11 @@ export async function createGraphSourcePlan(options: GraphSourcePlanOptions): Pr
       throw new Error(
         `Adapter ${options.adapter.name} resolved a different install root after rendering; target state identity cannot be proven.`,
       );
+    }
+    if (inspect) {
+      const evidence = await inspect({ stateKey, installRoot: resolvedInstallRoot, desiredArtifacts, graphLockDigest });
+      await rm(bundle.root, { recursive: true, force: true });
+      return evidence;
     }
     const manifest = priorState.manifest;
     const basePlan = options.retireExactMcp

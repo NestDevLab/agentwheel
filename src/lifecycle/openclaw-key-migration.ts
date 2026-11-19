@@ -40,6 +40,16 @@ const decisionSchema = z.union([
 const decisionsSchema = z.array(decisionSchema).min(1);
 type Decision = z.infer<typeof decisionSchema>;
 
+export interface OpenClawRehomeSource {
+  artifactType: "settings" | "mcp";
+  artifactName: string;
+  packageName?: string;
+  owners: readonly string[];
+  graphNodeId: string;
+  logicalSelector: string;
+  sourceHash: string;
+}
+
 export interface OpenClawKeyMigrationRequest {
   targetRoot: string;
   sourceStateKey: string;
@@ -51,8 +61,8 @@ export interface OpenClawKeyMigrationRequest {
     workspaceOwner: string;
     agentName: string;
     artifactFile: string;
-    keyedArtifactTypes: ReadonlyArray<"settings" | "mcp">;
-    packageNames: readonly string[];
+    graphDigest: string;
+    configuredArtifacts: readonly OpenClawRehomeSource[];
   };
   transport?: TargetTransport;
 }
@@ -96,6 +106,9 @@ export async function applyOpenClawKeyMigration(request: OpenClawKeyMigrationReq
               workspaceOwner: plan.rehome.workspaceOwner,
               agentName: plan.rehome.agentName,
               sourceHash: plan.rehome.sourceHash,
+              graphDigest: plan.rehome.graphDigest,
+              graphNodeId: plan.rehome.graphNodeId,
+              logicalSelector: plan.rehome.logicalSelector,
             },
           } : {}),
         },
@@ -252,10 +265,15 @@ async function qualifyRehome(
   const owner = parseWorkspaceOwner(request.workspaceOwner);
   if (!owner || workspaceOwnerForRoot(owner.root, owner.fleetId) !== request.workspaceOwner
     || request.workspaceOwner === entry.workspaceOwner || !request.agentName.trim() || request.stateKey !== stateKey
-    || !claims.length || (entry.artifactType !== "settings" && entry.artifactType !== "mcp")
-    || !request.keyedArtifactTypes.includes(entry.artifactType)
-    || (entry.packageName !== undefined && !request.packageNames.includes(entry.packageName))) {
+    || !claims.length || !/^[a-f0-9]{64}$/u.test(request.graphDigest)) {
     throw new Error("Rehome requires a different named workspace with the same exact state and a keyed artifact mapping.");
+  }
+  const [configured] = request.configuredArtifacts;
+  if (request.configuredArtifacts.length !== 1 || !configured || configured.artifactType !== entry.artifactType
+    || configured.artifactName !== entry.artifactName || !configured.graphNodeId || !configured.logicalSelector
+    || (!entry.packageName ? configured.packageName !== undefined
+      : configured.packageName !== entry.packageName && !configured.owners.includes(entry.packageName))) {
+    throw new Error("Rehome requires exactly the same artifact identity in the configured source graph.");
   }
   const artifactPath = resolve(request.artifactFile);
   const sourcePath = relative(owner.root, artifactPath);
@@ -269,6 +287,10 @@ async function qualifyRehome(
   await assertNoSymlinkPath(artifactPath);
   if (!(await lstat(artifactPath)).isFile()) throw new Error("Rehome artifact must be a regular file.");
   const bytes = await readFile(artifactPath, "utf8");
+  const sourceHash = jsonFileHash(bytes);
+  if (sourceHash !== configured.sourceHash) {
+    throw new Error("Rehome artifact bytes must match the configured source graph.");
+  }
   const fragment = parseOpenClawJsonMergeSource(bytes);
   // The first keyed update must see these same values without consulting an environment.
   if (JSON.stringify(fragment).includes("${")) throw new Error("Rehome requires a literal fragment without environment placeholders.");
@@ -280,7 +302,7 @@ async function qualifyRehome(
   return {
     workspaceOwner: request.workspaceOwner, stateKey, agentName: request.agentName, sourcePath,
     artifactName: entry.artifactName, artifactType: entry.artifactType, packageName: entry.packageName,
-    sourceHash: jsonFileHash(bytes),
+    sourceHash, graphDigest: request.graphDigest, graphNodeId: configured.graphNodeId, logicalSelector: configured.logicalSelector,
   };
 }
 

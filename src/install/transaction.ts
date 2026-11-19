@@ -255,9 +255,7 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
     installationType: journal.installationType,
     stateKey: journal.stateKey,
   });
-  const privateOwnership = journal.manifest.entries.some((entry) => entry.keyOwnership || entry.keyMigration)
-    || journal.operations.some((operation) => operation.keyOwnership || operation.keyRelease || operation.keyMigration);
-  const write = privateOwnership
+  const write = applyJournalContainsKeyOwnership(journal)
     ? await requirePrivateOwnershipMetadata(transport, journal.targetRoot)
     : transport.writeJsonAtomic.bind(transport);
   let link: Omit<RuntimeJournalReceipt, "status"> | undefined;
@@ -289,6 +287,11 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
   });
   if ((journal.metadataAudit || journal.metadataGuards) && transport.kind === "local") await syncMetadataPath(path);
   if (link) await activateActiveRuntimeJournal(link);
+}
+
+function applyJournalContainsKeyOwnership(journal: ApplyJournal): boolean {
+  return journal.manifest.entries.some((entry) => entry.keyOwnership || entry.keyMigration)
+    || journal.operations.some((operation) => operation.keyOwnership || operation.keyRelease || operation.keyMigration);
 }
 
 export async function readApplyJournal(
@@ -419,13 +422,16 @@ export async function abortApplyJournal(
   try {
     const journalPath = applyJournalPath(targetRoot, adapter, scope);
     if (!(await transport.pathExists(journalPath))) return undefined;
-    const stateKey = stateKeyFor(adapter, scope);
-    const archivePath = join(metadataDir(targetRoot), "archive", `${stateKey}.apply-journal.failed-${journalTimestamp(new Date())}.json`);
     const content = await transport.readFile(journalPath);
     const journal = parseApplyJournal(JSON.parse(content));
     if (journal.metadataAudit || journal.metadataGuards) {
       throw new Error("A guarded metadata transaction must be recovered and verified; abort cannot discard its partial state.");
     }
+    if (applyJournalContainsKeyOwnership(journal)) {
+      throw new Error("A keyed ownership transaction must be recovered and verified before proceeding.");
+    }
+    const stateKey = stateKeyFor(adapter, scope);
+    const archivePath = join(metadataDir(targetRoot), "archive", `${stateKey}.apply-journal.failed-${journalTimestamp(new Date())}.json`);
     await transport.writeFileAtomic(archivePath, content.endsWith("\n") ? content : `${content}\n`);
     if (journal.mutation) await beginResolveMutationRuntimeJournal(journal.mutation.operationId, journalPath);
     await transport.rm(journalPath);

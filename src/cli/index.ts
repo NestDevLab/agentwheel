@@ -1,4 +1,4 @@
-import { applyOpenClawKeyMigration, planOpenClawKeyMigration } from "../lifecycle/openclaw-key-migration.js";
+import { applyOpenClawKeyMigration, planOpenClawKeyMigration, type OpenClawRehomeSource } from "../lifecycle/openclaw-key-migration.js";
 import { inspectOpenClawTopicOwnership } from "../lifecycle/openclaw-topic-ownership.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ import type { WorkspacePackage, WorkspaceProfile } from "../model/workspace.js";
 import { ejectArtifact, remember } from "../lifecycle/customization.js";
 import { syncProfile } from "../lifecycle/profile.js";
 import { forgetTrustedSources } from "../lifecycle/trust.js";
-import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, discoverTargetApplyJournal, graphLockPathForTarget, resolvePriorTargetState, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
+import { assertNoForeignWorkspaceStateForPlan, createGraphSourcePlan, desiredArtifactsFromGraphBundle, discoverTargetApplyJournal, graphLockPathForTarget, inspectFreshGraphSources, resolvePriorTargetState, type GraphSourcePlanOptions, type GraphSourcePlanResult } from "../lifecycle/source-plan.js";
 import { RegistryClient, resolvePackageSource, selectorsFromRegistryEntry } from "../registry/client.js";
 import { createRegistryPublishDraft } from "../registry/publish.js";
 import { formatReloadCommands, reloadRuntimeAfterPluginChanges } from "../runtime/reload.js";
@@ -1183,7 +1183,7 @@ ownershipCommand
   .requiredOption("--source-owner <owner>", "exact recorded workspace owner")
   .requiredOption("--historical-artifact <path>", "exact historical artifact bytes in a caller-owned file")
   .requiredOption("--decisions <path>", "reviewed JSON decision list for every historical or recorded key")
-  .option("--rehome-artifact <path>", "prove the retained fragment in the selected named workspace at the same state key")
+  .option("--rehome-artifact <path>", "prove the exact configured fragment in the named workspace at the same state key")
   .option("--local", "use the nearest local workspace", false)
   .option("--fleet <id>", "use one registered named fleet")
   .option("--plan-digest <sha256>", "exact reviewed plan digest, required to apply")
@@ -1198,26 +1198,9 @@ ownershipCommand
     const decisionsPath = normalizeCliPath(options.decisions);
     await assertNoSymlinkPath(decisionsPath);
     if (!(await lstat(decisionsPath)).isFile()) throw new Error("Migration decisions must be a regular file.");
-    let rehome;
-    if (options.rehomeArtifact) {
-      const adapter = await resolveAdapterForTarget(target, {});
-      const state = installStateForTarget(target, adapter, {}, "user");
-      if (!target.agentName || state.installRoot !== target.targetRoot || state.stateKey !== options.sourceStateKey) {
-        throw new Error("Rehome target must resolve to the exact existing state at the same runtime root.");
-      }
-      const keyedArtifactTypes = (["settings", "mcp"] as const).filter((type) => {
-        const mapping = targetMappingForArtifact(adapter, type, "user");
-        return mapping?.merge === "openclaw-json-keys" && mapping.dest === ".openclaw/openclaw.json" && mapping.root === "target";
-      });
-      const config = await readMergedWorkspaceConfig(target.workspaceRoot);
-      const packageNames = packagesForCliTarget(config.packages, target, {}).map((pkg) => pkg.name);
-      const ownership = await resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId });
-      rehome = {
-        stateKey: state.stateKey, agentName: target.agentName,
-        workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
-        artifactFile: normalizeCliPath(options.rehomeArtifact), keyedArtifactTypes, packageNames,
-      };
-    }
+    const rehome = options.rehomeArtifact
+      ? await describeOpenClawRehome(target, options.sourceStateKey, normalizeCliPath(options.rehomeArtifact))
+      : undefined;
     const request = {
       targetRoot: target.targetRoot, sourceStateKey: options.sourceStateKey, sourceOwner: options.sourceOwner,
       historicalArtifact: normalizeCliPath(options.historicalArtifact),
@@ -3975,11 +3958,23 @@ async function withFreshReadOnlyGraphPlan<T>(
   packages: WorkspacePackage[],
   use: (graphPlan: GraphSourcePlanResult) => Promise<T>,
 ): Promise<T> {
+  return withFreshSourceOptions(target, adapter, adapterOptions, installationType, packages,
+    async (options) => use(await createGraphSourcePlan(options)));
+}
+
+async function withFreshSourceOptions<T>(
+  target: RuntimeTarget,
+  adapter: AdapterConfig,
+  adapterOptions: { adapterConfig?: string; adapterModule?: string },
+  installationType: string,
+  packages: WorkspacePackage[],
+  use: (options: GraphSourcePlanOptions) => Promise<T>,
+): Promise<T> {
   const stage = await mkdtemp(join(tmpdir(), "agentwheel-recovery-"));
   const priorTmpdir = process.env.TMPDIR;
   try {
     process.env.TMPDIR = stage;
-    const graphPlan = await createGraphSourcePlan({
+    return await use({
       roots: packages.map((pkg) => ({
         rootId: pkg.name, source: pkg.source, mode: pkg.mode, version: pkg.version,
         ref: pkg.requestedRef, select: pkg.selection ? undefined : normalizeArtifactSelectors(pkg.select, pkg.skills),
@@ -3994,12 +3989,53 @@ async function withFreshReadOnlyGraphPlan<T>(
       deferForeignStateCheck: true, cacheRoot: join(stage, "source-cache"),
       registryCachePath: join(stage, "registry.json"),
     });
-    return await use(graphPlan);
   } finally {
     if (priorTmpdir === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = priorTmpdir;
     await rm(stage, { recursive: true, force: true });
   }
+}
+
+async function describeOpenClawRehome(target: RuntimeTarget, stateKey: string, artifactFile: string) {
+  const agentName = target.agentName;
+  if (!agentName) throw new Error("Rehome requires one named OpenClaw user target.");
+  const userTarget = { ...target, installationType: "user" };
+  const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+  const groups = new Map<string, PackageGraphGroup>();
+  for (const pkg of packagesForCliTarget(config.packages, userTarget, {})) {
+    const group = graphGroupForPackage(groups, userTarget, pkg, {});
+    group.packages.push(pkg);
+  }
+  const userGroups = [...groups.values()].filter((group) => group.installationType === "user");
+  const [group] = userGroups;
+  if (userGroups.length !== 1 || !group) {
+    throw new Error("Rehome requires an unambiguous configured source graph for the named user target.");
+  }
+  const adapter = await resolveAdapterForTarget(group.target, group.adapterOptions);
+  if (adapter.programmatic) throw new Error("Rehome requires a declarative OpenClaw adapter.");
+  const ownership = await resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId });
+  const workspaceOwner = workspaceOwnerForRoot(ownership.root, ownership.fleetId);
+  return withFreshSourceOptions(group.target, adapter, group.adapterOptions, "user", group.packages,
+    (options) => inspectFreshGraphSources({ ...options, yes: false }, async (evidence) => {
+      if (evidence.stateKey !== stateKey || evidence.installRoot !== target.targetRoot) {
+        throw new Error("Rehome target must resolve to the exact existing state at the same runtime root.");
+      }
+      const configuredArtifacts: OpenClawRehomeSource[] = [];
+      for (const artifact of evidence.desiredArtifacts) {
+        const mapping = targetMappingForArtifact(adapter, artifact.type, "user");
+        if (mapping?.dest !== ".openclaw/openclaw.json" || mapping.root !== "target") continue;
+        if (mapping.merge !== "openclaw-json-keys" || artifact.kind !== "file"
+          || (artifact.type !== "settings" && artifact.type !== "mcp") || !artifact.meta.graphNodeId || !artifact.meta.logicalSelector) {
+          throw new Error("Rehome requires a keyed mapping for every selected artifact at the OpenClaw config path.");
+        }
+        configuredArtifacts.push({
+          artifactType: artifact.type, artifactName: artifact.name, packageName: artifact.packageName,
+          owners: artifact.meta.owners, graphNodeId: artifact.meta.graphNodeId, logicalSelector: artifact.meta.logicalSelector,
+          sourceHash: artifact.hash,
+        });
+      }
+      return { stateKey, agentName, workspaceOwner, artifactFile, graphDigest: evidence.graphLockDigest, configuredArtifacts };
+    }));
 }
 
 function installStateForTarget(

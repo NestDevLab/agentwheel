@@ -294,6 +294,9 @@ function assertRetirableSourceEntry(
   entry: InstallManifestEntry,
   abandonIncompleteMergeOwner: boolean,
 ): void {
+  if (entry.mergeStrategy === "openclaw-json-keys") {
+    throw new Error("OpenClaw key claims cannot be retired with legacy whole-file ownership procedures.");
+  }
   if (entry.semanticPlugin || entry.semanticCommand || entry.executed) {
     throw new Error(`Cannot retire semantic source ownership at ${entry.path}.`);
   }
@@ -310,6 +313,9 @@ async function assertContributionCoverage(
   transport: TargetTransport,
   abandonIncompleteMergeOwner: boolean,
 ): Promise<RetireStaleOwnershipEntry["coverage"]> {
+  if (destination.mergeStrategy === "openclaw-json-keys") {
+    throw new Error("OpenClaw key claims do not cover a legacy whole-file ownership retirement.");
+  }
   containedArtifactPath(targetRoot, source.path);
   const sourceManagedBlock = source.mode === "managed-block";
   const destinationManagedBlock = destination.mode === "managed-block";

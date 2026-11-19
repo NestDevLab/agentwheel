@@ -1,7 +1,9 @@
+import { applyOpenClawKeyMigration, planOpenClawKeyMigration } from "../lifecycle/openclaw-key-migration.js";
 import { inspectOpenClawTopicOwnership } from "../lifecycle/openclaw-topic-ownership.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { assertNoSymlinkPath } from "../install/transaction.js";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1174,6 +1176,40 @@ ownershipCommand
       topicId: options.topicId,
       transport: transportForTarget(target),
     });
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+ownershipCommand
+  .command("migrate-openclaw-keys")
+  .description("migrate an exact OpenClaw legacy fragment claim without rewriting the live config")
+  .requiredOption("--agent <name>", "exact named OpenClaw user target")
+  .requiredOption("--source-state-key <key>", "exact legacy install manifest")
+  .requiredOption("--source-owner <owner>", "exact recorded workspace owner")
+  .requiredOption("--historical-artifact <path>", "exact historical artifact bytes in a caller-owned file")
+  .requiredOption("--decisions <path>", "reviewed JSON decision list for every historical or recorded key")
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("--plan-digest <sha256>", "exact reviewed plan digest, required to apply")
+  .option("--apply", "commit the reviewed metadata-only migration", false)
+  .action(async (options) => {
+    const targets = await resolveCliTargets({ agent: options.agent, local: options.local, fleet: options.fleet });
+    const [target] = targets;
+    if (targets.length !== 1 || !target || target.adapter !== "openclaw"
+      || (target.installationType !== undefined && target.installationType !== "user")) {
+      throw new Error("OpenClaw migration requires one named OpenClaw user target.");
+    }
+    const decisionsPath = normalizeCliPath(options.decisions);
+    await assertNoSymlinkPath(decisionsPath);
+    if (!(await lstat(decisionsPath)).isFile()) throw new Error("Migration decisions must be a regular file.");
+    const request = {
+      targetRoot: target.targetRoot, sourceStateKey: options.sourceStateKey, sourceOwner: options.sourceOwner,
+      historicalArtifact: normalizeCliPath(options.historicalArtifact),
+      decisions: JSON.parse(await readFile(decisionsPath, "utf8")),
+      transport: transportForTarget(target),
+    };
+    const result = options.apply
+      ? await applyOpenClawKeyMigration(request, options.planDigest ?? "")
+      : await planOpenClawKeyMigration(request);
     console.log(JSON.stringify(result, null, 2));
   });
 
@@ -2620,8 +2656,9 @@ async function runExactMcpRetirement(packageName: string, options: GraphCliOptio
   }
   const result = results[0]!;
   try {
-    const publicPlan = { ...result.plan, operations: result.plan.operations.map(({ keyOwnership, keyRelease, ...operation }) => ({
+    const publicPlan = { ...result.plan, operations: result.plan.operations.map(({ keyOwnership, keyRelease, keyMigration, ...operation }) => ({
       ...operation,
+      ...(keyMigration ? { migrationDigest: keyMigration.planDigest } : {}),
       ...(keyOwnership ? { ownedKeys: keyOwnership.map((claim) => claim.path) } : {}),
       ...(keyRelease?.length ? { releasedKeys: keyRelease.map((claim) => claim.path) } : {}),
     })) };

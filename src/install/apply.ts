@@ -352,7 +352,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
     : kept;
-  const preserved = [...preservedKept, ...skipped].filter((operation) => operation.preserveInManifest !== false);
+  const preserved = [...preservedKept, ...skipped, ...removable.filter((operation) => operation.keyMigration)]
+    .filter((operation) => operation.preserveInManifest !== false);
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   let finalManifest = withManifestRevision({
@@ -371,7 +372,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       }
       return manifestEntryForOperation(operation, {
         now,
-        hash: operation.manifestHash,
+        hash: operation.keyMigration && operation.action === "remove" ? operation.keyResultHash! : operation.manifestHash,
         sourceHash: operation.desiredHash,
         graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
       });
@@ -914,6 +915,7 @@ async function applyOperation(
       await removeManagedInstructionBlock(operation.destPath, selector, transport, managedBlockMutationOptions(operation));
     } else if (operation.keyOwnership) {
       await applyOwnedJsonKeys(operation, transport);
+      return operation.keyMigration ? entryForCompletedOperation(operation, transport, now, context.graphLockDigest) : undefined;
     } else if (operation.mergeStrategy) {
       if (operation.mergeCreatedDestination) {
         await transport.rm(operation.destPath);
@@ -1188,7 +1190,7 @@ async function entryForCompletedOperation(
   now: string,
   graphLockDigest: string | undefined,
 ): Promise<InstallManifestEntry | undefined> {
-  if (operation.action === "remove") return undefined;
+  if (operation.action === "remove" && !operation.keyMigration) return undefined;
   if (operation.action === "create" || operation.action === "update") {
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
@@ -1205,6 +1207,11 @@ async function entryForCompletedOperation(
       hash: await transport.hashPath(operation.destPath),
       sourceHash: requireDesiredHash(operation),
       graphLockDigest,
+    });
+  }
+  if (operation.action === "remove" && operation.keyMigration) {
+    return manifestEntryForOperation(operation, {
+      now, hash: operation.keyResultHash!, sourceHash: requireDesiredHash(operation), graphLockDigest,
     });
   }
   if (operation.action === "skip") {
@@ -1253,6 +1260,7 @@ function manifestEntryForOperation(
     mergeRemoval: operation.mergeRemoval,
     mergeCreatedDestination: operation.mergeCreatedDestination,
     keyOwnership: operation.keyOwnership,
+    keyMigration: operation.keyMigration,
     mode: operation.mode,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,

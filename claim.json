@@ -1,0 +1,11 @@
+{
+  "changed_refs": [
+    "refs/heads/pr/openclaw-key-ownership-rehome"
+  ],
+  "claimed_at": "2026-11-19T09:57:22+00:00",
+  "coordination_id": "default",
+  "operation_token": "92126810-c08d-423f-8798-30ccc22d288f",
+  "publication_scope": "compose-stack:openclaw-key-ownership-rehome",
+  "source_ref": "refs/heads/pr/openclaw-key-ownership-rehome",
+  "syncwheel_version": "0.47.28"
+}

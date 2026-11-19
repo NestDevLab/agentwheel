@@ -15,9 +15,14 @@ export async function mergeOpenClawJsonFile(sourcePath: string, destPath: string
 
 export async function renderOpenClawJsonMergeSource(sourcePath: string): Promise<JsonValue> {
   return expandEnvPlaceholders(
-    normalizeOpenClawConfig(JSON.parse(await readFile(sourcePath, "utf8")) as JsonValue),
+    parseOpenClawJsonMergeSource(await readFile(sourcePath, "utf8")),
     sourcePath,
   );
+}
+
+/** Normalize names without consulting the environment or expanding credential placeholders. */
+export function parseOpenClawJsonMergeSource(content: string): JsonValue {
+  return normalizeOpenClawConfig(JSON.parse(content) as JsonValue);
 }
 
 function mergeOpenClawJson(base: JsonValue, incoming: JsonValue, path: string[] = []): JsonValue {

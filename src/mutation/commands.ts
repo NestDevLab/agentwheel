@@ -44,6 +44,8 @@ export const commandGovernance = {
   "package migrate": "governed-always",
   remember: "governed-always",
   "ownership handoff": "governed-unless-dry-run",
+  "ownership inspect-openclaw-topic": "read-only",
+  "ownership migrate-openclaw-keys": "governed-apply",
   "ownership recovery-plan": "incidental-cache",
   "ownership retire-stale": "governed-apply",
   "ownership release-claim": "governed-apply",

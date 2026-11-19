@@ -1,3 +1,4 @@
+import { assertJsonKeyOwnershipInventory, planJsonKeyChange, type JsonKeyClaim } from "./json-key-ownership.js";
 import { basename, join, relative } from "node:path";
 import {
   defaultInstallationType,
@@ -61,9 +62,13 @@ export interface InstallOperation {
   semanticCommand?: string[];
   semanticPlugin?: SemanticPluginSpec;
   execute?: boolean;
-  mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
+  mergeStrategy?: "json-deep" | "openclaw-json-deep" | "openclaw-json-keys" | "yaml-deep" | "codex-toml-mcp";
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
+  keyOwnership?: JsonKeyClaim[];
+  keyMigration?: InstallManifestEntry["keyMigration"];
+  keyRelease?: JsonKeyClaim[];
+  keyResultHash?: string;
   exactMergeRemoval?: boolean;
   exactMergeAdoption?: boolean;
   mode?: ManagedInstructionBlockMode;
@@ -224,6 +229,7 @@ async function createPlanFromOperations(
   transport: TargetTransport,
   options: CombinedInstallPlanOptions,
 ): Promise<InstallPlan> {
+  const installationType = options.installationType ?? defaultInstallationType;
   const workspaceOwner = options.workspaceOwner;
   if (workspaceOwner) {
     for (const op of desiredOps) op.workspaceOwner = workspaceOwner;
@@ -262,6 +268,24 @@ async function createPlanFromOperations(
 
     if (op.mode === managedInstructionBlockMode) {
       operations.push(...await planManagedBlockOperation(op, manifestByPath, transport, options, workspaceOwner, targetRoot));
+      continue;
+    }
+
+    if (op.mergeStrategy === "openclaw-json-keys" || manifestByPath.get(op.relativeDestPath)?.keyOwnership) {
+      const existing = manifestByPath.get(op.relativeDestPath);
+      if (op.mergeStrategy !== "openclaw-json-keys" || op.relativeDestPath !== ".openclaw/openclaw.json"
+        || (op.artifactType !== "settings" && !(op.artifactType === "mcp" && existing?.keyMigration))
+        || adapter.name !== "openclaw" || installationType !== "user"
+        || !workspaceOwner || options.stateMigration
+        || (existing && (!existing.keyOwnership || !entryOwnedByWorkspace(existing, workspaceOwner)))) {
+        throw new Error("JSON key ownership cannot implicitly adopt or replace the existing ownership mode.");
+      }
+      const content = await transport.pathExists(op.destPath) ? await transport.readFile(op.destPath) : undefined;
+      if (existing?.keyMigration && (existing.artifactType !== op.artifactType || existing.artifactName !== op.artifactName
+        || !packageIdentityMatches(existing, op))) {
+        throw new Error("Migrated OpenClaw artifact identity does not match the configured source.");
+      }
+      operations.push(await planJsonKeyChange({ ...op, keyMigration: existing?.keyMigration }, content, existing?.keyOwnership ?? []));
       continue;
     }
 
@@ -409,6 +433,15 @@ async function createPlanFromOperations(
     if (desired.has(entry.path)) continue;
     const semanticPlugin = entry.semanticPlugin;
     const destPath = semanticPlugin ? targetRoot : join(targetRoot, entry.path);
+    if (entry.keyOwnership && (!workspaceOwner || entryOwnedByWorkspace(entry, workspaceOwner))) {
+      operations.push(await planJsonKeyChange({
+        action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
+        kind: entry.kind, destPath, relativeDestPath: entry.path, reason: staleRemovalReason(entry),
+        desiredHash: entry.sourceHash, manifestHash: entry.hash,
+        channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
+      }, await transport.readFile(destPath), entry.keyOwnership, true));
+      continue;
+    }
     if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
     const inferredMode = semanticPlugin
       ? undefined
@@ -467,6 +500,7 @@ async function createPlanFromOperations(
   }
 
   for (const operation of operations) assertOperationContained(operation, targetRoot);
+  await assertJsonKeyOwnershipInventory(operations, targetRoot, adapter.name, installationType, options.stateKey, transport);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(targetRoot, adapter.name, transport);
   if (options.runtimeStateRevision && runtimeStateRevision !== options.runtimeStateRevision) {
@@ -875,7 +909,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
 
 function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership" | "keyMigration"
 > {
   if ("owners" in entry) {
     return {
@@ -888,6 +922,8 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
       graphLockDigest: entry.graphLockDigest,
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,
+      keyOwnership: entry.keyOwnership,
+      keyMigration: entry.keyMigration,
     };
   }
   return {

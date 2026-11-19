@@ -11,6 +11,7 @@ import errno
 import json
 import os
 import platform
+import re
 import secrets
 import stat
 import sys
@@ -220,7 +221,14 @@ class Filesystem:
                 os.unlink(name, dir_fd=fd)
                 os.fsync(fd)
 
-    def write(self, path, data, mode=None):
+    def require_private_metadata(self, path, fd=None):
+        if relative(path, False) != '.agentwheel':
+            reject('Private metadata requires the .agentwheel directory')
+        for info in (os.fstat(self.root), os.fstat(fd) if fd is not None else self.info(path)):
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+                raise OSError(errno.EPERM, 'Private metadata requires a target and .agentwheel directory writable only by their owner')
+
+    def write(self, path, data, mode=None, private_metadata=False):
         path = relative(path, False)
         try:
             info = self.info(path)
@@ -229,7 +237,12 @@ class Filesystem:
             existing_mode = stat.S_IMODE(info.st_mode) & 0o777
         except FileNotFoundError:
             existing_mode = 0o600
-        with self.parent(path, True) as (parent, name):
+        with self.parent(path, not private_metadata) as (parent, name):
+            if private_metadata:
+                directory, _, _ = path.rpartition('/')
+                if not re.fullmatch(r'[a-zA-Z0-9._-]+[.](?:install-manifest|apply-journal)[.]json', name):
+                    reject('Unsupported private metadata path')
+                self.require_private_metadata(directory, parent)
             temp = '.agentwheel-file-' + secrets.token_hex(16)
             fd = self.open_at(parent, temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             try:
@@ -341,10 +354,14 @@ class Filesystem:
             if type(request.get('includeIgnored')) is not bool:
                 reject('includeIgnored must be boolean')
             return self.snapshot(path, request['includeIgnored'])
+        if operation == 'assertPrivateMetadataDirectory':
+            return self.require_private_metadata(path)
         if operation == 'mkdirExclusive':
             self.mkdir(path)
         elif operation == 'writeFileAtomic':
             self.write(path, decode(request.get('content')))
+        elif operation == 'writePrivateMetadataAtomic':
+            self.write(path, decode(request.get('content')), 0o600, True)
         elif operation == 'installSnapshot':
             self.install(path, request.get('entries'))
         elif operation == 'copyWithin':

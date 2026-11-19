@@ -183,6 +183,90 @@ until migration apply support is enabled.
 | Hermes | other artifacts | `unsupported` | `unsupported` | Hooks and local skills require custom adapter/config support. |
 | All built-ins | `fragments` | `agentwheel-internal` | `agentwheel-internal` | Fragments compose other artifacts during resolution; they are never runtime file-drop targets. |
 
+For an existing user-scoped `.openclaw/openclaw.json`, a custom settings target
+may opt in with `"merge": "openclaw-json-keys"`. Each JSON leaf is an exclusive
+claim. Arrays are claimed and replaced as a unit. Distinct install states can
+share an existing object branch when their claims do not overlap. Updates and
+uninstall restore the preceding values of released keys. Configurations with
+unresolved legacy claims require provenance review and an explicit migration
+before switching modes. Use a release that supports the selected strategy for
+every writer of the target. The built-in adapter continues using its existing
+merge strategy.
+
+### Migrating an OpenClaw legacy fragment
+
+`ownership migrate-openclaw-keys` plans one metadata-only conversion of a named
+OpenClaw user install state. Supply the exact recorded workspace owner and a
+caller-owned copy of the original artifact. The planner uses the old source
+hash to verify its bytes and computes its JSON leaf footprint without expanding
+environment or secret placeholders. Settings and MCP fragments are supported.
+Whole-file deletion rights are out of scope.
+
+The JSON decision file explicitly lists each leaf path from the historical
+source or recorded legacy delta:
+
+```json
+[
+  {"path": ["channels", "example", "skills"], "disposition": "handoff", "stateKey": "openclaw.user.recipient", "workspaceOwner": "workspace-root:/example/recipient"},
+  {"path": ["channels", "example", "enabled"], "disposition": "adopt-current"},
+  {"path": ["channels", "example", "roles"], "disposition": "retain-recorded"}
+]
+```
+
+- `release` leaves the runtime value in place and stops the migrated artifact
+  from reclaiming the key or an overlapping path. Remove released values from
+  the artifact source before its next install or update. An incoming artifact's
+  first install then records the existing values as its rollback baseline.
+- `handoff` releases the key from the donor and reserves its exact path for the
+  reviewed destination state key and workspace owner. The same reservation
+  stays in effect after the recipient rolls back.
+- `adopt-current` explicitly accepts the current value as the restoration
+  baseline when historical rollback is unknown. It attributes an exclusive
+  claim by reviewed decision and carries no assertion about the older preimage.
+- `retain-recorded` uses the exact legacy removal delta to preserve known
+  removal behavior for the selected leaf. For additive arrays it retains the
+  other current members as the baseline. Ambiguous replacement arrays are
+  refused. Existing object parents are preserved because the legacy manifest
+  cannot prove whether they previously existed.
+
+Preview every state before applying, with a fresh plan for each transaction.
+The reviewed digest binds the complete manifest inventory, runtime snapshot,
+endpoint identity, source bytes and decisions. Use `--apply --plan-digest`
+with the reviewed digest and normal mutation authorization. The transaction
+updates only that manifest. Its journal can be recovered via the normal
+`mutation recover-runtime` receipt flow. The old delta and released-path fence
+remain in the manifest, including after removal of the migrated artifact.
+The config bytes are guarded throughout migration.
+
+When the historical workspace is unavailable, supply `--rehome-artifact`
+with the continuing fragment in the selected named target's workspace.
+The target must resolve to the existing state key and have a keyed mapping
+for the exact artifact. Use a literal fragment of the same name with
+exactly the retained keys and their current values. Keep the
+existing package identity. The reviewed digest binds the new workspace,
+target name, resolved source graph, logical artifact selector and rendered
+bytes. The migration changes the owner of
+that one entry and records the previous owner and proof hash in its history.
+Sibling entries keep their workspace owner. Uninstall refuses a rehomed
+state with multiple workspace owners.
+
+Keyed manifests and journals can contain configuration values and their
+preimages. Agentwheel writes them atomically with mode `0600` using the
+target owner, on supported local and local-run-as transports. The runtime
+root and its actual `.agentwheel` directory must be owned by that identity
+and writable only by the owner. Local paths also require trusted ancestors.
+Review and secure a shared-writable
+directory before starting a keyed operation.
+Recover and verify interrupted keyed installs and uninstalls through the
+runtime journal. Abort refuses to archive these private journals or discard
+their rollback evidence.
+
+All remaining whole-file claims still block keyed installs. Convert those states
+with their own decisions before installing the new artifact. Point continuing
+legacy packages at the same governed install-state keys with an opt-in adapter
+and sources that exclude released keys. Test the incoming install, an
+independent donor update and the incoming rollback before any rollout.
+
 ## Audit Notes
 
 - Codex custom prompts are documented but deprecated, user-home only, and superseded by skills; the built-in adapter rejects OpenPack `commands`.

@@ -1,3 +1,4 @@
+import { assertJsonKeyOwnershipInventory, assertOwnedJsonKeys, jsonFileHash, renderJsonKeyTransition } from "./json-key-ownership.js";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { declareMutationPath } from "../mutation/declarations.js";
@@ -244,6 +245,8 @@ async function applyPlanTransactionally(
   try {
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
+    await assertJsonKeyOwnershipInventory(plan.operations, plan.targetRoot, plan.adapter,
+      plan.installationType, plan.stateKey, transport);
     await assertBaseRevision(plan, transport);
     await assertTargetStateFilePreconditions(plan, transport, options.graphLock?.path);
     await assertStateMigrationPreconditions(plan, transport);
@@ -323,6 +326,9 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const resolvedOptions = typeof options === "boolean" ? { dryRun: options } : options;
   const transport = resolvedOptions.transport ?? localTransport;
   const scope = { installationType: plan.installationType, stateKey: plan.stateKey };
+  if (resolvedOptions.keepFiles && plan.operations.some((operation) => operation.action === "remove" && operation.keyOwnership)) {
+    throw new Error("Key ownership must restore original values when relinquished.");
+  }
   if (resolvedOptions.keepFiles && resolvedOptions.force) {
     throw new Error("--keep-files cannot be combined with --force.");
   }
@@ -346,7 +352,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   const preservedKept = resolvedOptions.keepFiles
     ? kept.filter((operation) => shouldPreserveKeptOperationWhenKeepingFiles(operation))
     : kept;
-  const preserved = [...preservedKept, ...skipped].filter((operation) => operation.preserveInManifest !== false);
+  const preserved = [...preservedKept, ...skipped, ...removable.filter((operation) => operation.keyMigration)]
+    .filter((operation) => operation.preserveInManifest !== false);
   for (const operation of [...removable, ...preserved]) assertOperationContained(operation, plan.targetRoot);
   const now = new Date().toISOString();
   let finalManifest = withManifestRevision({
@@ -365,7 +372,7 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
       }
       return manifestEntryForOperation(operation, {
         now,
-        hash: operation.manifestHash,
+        hash: operation.keyMigration && operation.action === "remove" ? operation.keyResultHash! : operation.manifestHash,
         sourceHash: operation.desiredHash,
         graphLockDigest: operation.graphLockDigest ?? plan.graphLockDigest,
       });
@@ -376,6 +383,8 @@ export async function uninstall(plan: InstallPlan, options: UninstallOptions | b
   try {
     await assertRuntimeJournalGate(plan.targetRoot, plan.adapter, transport, scope);
     await assertRuntimeStateRevision(plan, transport);
+    await assertJsonKeyOwnershipInventory(plan.operations, plan.targetRoot, plan.adapter,
+      plan.installationType, plan.stateKey, transport);
     await assertBaseRevision(plan, transport);
     await assertTargetStateFilePreconditions(plan, transport, resolvedOptions.graphLock?.path);
     await assertStateMigrationPreconditions(plan, transport);
@@ -447,6 +456,7 @@ function shouldPreserveKeptOperationWhenKeepingFiles(operation: InstallOperation
 }
 
 function isForceRemovableKeep(operation: InstallOperation): boolean {
+  if (operation.keyOwnership) return false;
   return operation.action === "keep" && operation.preserveInManifest !== true;
 }
 
@@ -802,7 +812,9 @@ async function applyOperation(
         graphLockDigest: context.graphLockDigest,
       });
     }
-    if (operation.mergeStrategy === "json-deep") {
+    if (operation.keyOwnership) {
+      await applyOwnedJsonKeys(operation, transport);
+    } else if (operation.mergeStrategy === "json-deep") {
       await mergeWithTransport(operation.sourcePath, operation.destPath, transport, mergeJsonFile);
     } else if (operation.mergeStrategy === "openclaw-json-deep") {
       await mergeOpenClawJsonWithTransport(operation.sourcePath, operation.destPath, transport);
@@ -838,6 +850,9 @@ async function applyOperation(
         throw new Error(`Managed block changed after planning: ${operation.relativeDestPath}`);
       }
       verifiedCurrentHash = operation.desiredHash;
+    } else if (operation.keyOwnership) {
+      assertOwnedJsonKeys(await transport.readFile(operation.destPath), operation.keyOwnership);
+      verifiedCurrentHash = await transport.hashPath(operation.destPath);
     } else if (operation.mergeStrategy && hasMergeRemovalContent(operation.mergeRemoval)) {
       if (!(await transport.pathExists(operation.destPath))) {
         throw new Error(`Merge skip destination disappeared after planning: ${operation.relativeDestPath}`);
@@ -898,6 +913,9 @@ async function applyOperation(
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
       await removeManagedInstructionBlock(operation.destPath, selector, transport, managedBlockMutationOptions(operation));
+    } else if (operation.keyOwnership) {
+      await applyOwnedJsonKeys(operation, transport);
+      return operation.keyMigration ? entryForCompletedOperation(operation, transport, now, context.graphLockDigest) : undefined;
     } else if (operation.mergeStrategy) {
       if (operation.mergeCreatedDestination) {
         await transport.rm(operation.destPath);
@@ -1172,7 +1190,7 @@ async function entryForCompletedOperation(
   now: string,
   graphLockDigest: string | undefined,
 ): Promise<InstallManifestEntry | undefined> {
-  if (operation.action === "remove") return undefined;
+  if (operation.action === "remove" && !operation.keyMigration) return undefined;
   if (operation.action === "create" || operation.action === "update") {
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
@@ -1189,6 +1207,11 @@ async function entryForCompletedOperation(
       hash: await transport.hashPath(operation.destPath),
       sourceHash: requireDesiredHash(operation),
       graphLockDigest,
+    });
+  }
+  if (operation.action === "remove" && operation.keyMigration) {
+    return manifestEntryForOperation(operation, {
+      now, hash: operation.keyResultHash!, sourceHash: requireDesiredHash(operation), graphLockDigest,
     });
   }
   if (operation.action === "skip") {
@@ -1236,6 +1259,8 @@ function manifestEntryForOperation(
     mergeStrategy: operation.mergeStrategy,
     mergeRemoval: operation.mergeRemoval,
     mergeCreatedDestination: operation.mergeCreatedDestination,
+    keyOwnership: operation.keyOwnership,
+    keyMigration: operation.keyMigration,
     mode: operation.mode,
     composedFrom: operation.composedFrom,
     graphLockDigest: operation.graphLockDigest ?? values.graphLockDigest,
@@ -1357,10 +1382,14 @@ function isJournaledMutation(operation: InstallOperation): boolean {
 }
 
 function operationNeedsSource(operation: InstallOperation): boolean {
-  return operation.action === "create" || operation.action === "update";
+  return !operation.keyOwnership && (operation.action === "create" || operation.action === "update");
 }
 
 async function operationLanded(operation: InstallOperation, transport: TargetTransport): Promise<boolean> {
+  if (operation.keyResultHash) {
+    return await transport.pathExists(operation.destPath)
+      && await transport.hashPath(operation.destPath) === operation.keyResultHash;
+  }
   if (operation.action === "remove") {
     if (operation.mode === managedInstructionBlockMode) {
       const selector = managedInstructionSelector(operation.logicalSelector, operation.artifactType, operation.artifactName);
@@ -1449,10 +1478,39 @@ async function removeMergeWithTransport(destPath: string, strategy: NonNullable<
   } finally { await rm(tempRoot, { recursive: true, force: true }); }
 }
 
+async function applyOwnedJsonKeys(operation: InstallOperation, transport: TargetTransport): Promise<void> {
+  const read = async () => await transport.pathExists(operation.destPath) ? await transport.readFile(operation.destPath) : undefined;
+  const before = await read();
+  if ((before === undefined ? undefined : jsonFileHash(before)) !== operation.currentHash || !operation.keyResultHash) {
+    throw new Error("OpenClaw configuration changed after key ownership planning.");
+  }
+  const rendered = renderJsonKeyTransition(before, operation.keyOwnership!, operation.keyRelease ?? []);
+  if (jsonFileHash(rendered) !== operation.keyResultHash) throw new Error("OpenClaw key result changed after planning.");
+  await writeValidatedOpenClawConfig(operation.destPath, transport, async (localDest) => {
+    await writeFile(localDest, rendered, { encoding: "utf8", mode: 0o600 });
+  }, async () => {
+    if (await read() !== before) throw new Error("OpenClaw configuration changed during validation.");
+  });
+}
+
 async function mergeOpenClawJsonWithTransport(
   sourcePath: string,
   destPath: string,
   transport: TargetTransport,
+): Promise<void> {
+  await writeValidatedOpenClawConfig(destPath, transport, async (localDest) => {
+    if (await transport.pathExists(destPath)) {
+      await writeFile(localDest, await transport.readFile(destPath), "utf8");
+    }
+    await mergeOpenClawJsonFile(sourcePath, localDest);
+  });
+}
+
+async function writeValidatedOpenClawConfig(
+  destPath: string,
+  transport: TargetTransport,
+  render: (localDest: string) => Promise<void>,
+  recheck?: () => Promise<void>,
 ): Promise<void> {
   const tempRoot = await mkdtemp(join(tmpdir(), "agentwheel-openclaw-merge-"));
   const localDest = join(tempRoot, basename(destPath) || "openclaw.json");
@@ -1460,14 +1518,12 @@ async function mergeOpenClawJsonWithTransport(
     ? localDest
     : `${destPath}.validate-agentwheel-${process.pid}-${Date.now()}`;
   try {
-    if (await transport.pathExists(destPath)) {
-      await writeFile(localDest, await transport.readFile(destPath), "utf8");
-    }
-    await mergeOpenClawJsonFile(sourcePath, localDest);
+    await render(localDest);
     if (transport.kind !== "local") {
       await transport.atomicCopy(localDest, validationPath, "file");
     }
     await validateOpenClawConfig(validationPath, destPath, transport);
+    await recheck?.();
     await transport.atomicCopy(localDest, destPath, "file");
   } finally {
     if (transport.kind !== "local") await transport.rm(validationPath);

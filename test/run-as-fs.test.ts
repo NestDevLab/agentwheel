@@ -25,7 +25,7 @@ async function fixture() {
 }
 const content = (text: string | Buffer) => Buffer.from(text).toString("base64");
 // Instrument real syscalls in a disposable subprocess; production has no test hooks.
-function tracedRequest(root: string, operations: Record<string, unknown>[], failAfter?: string) {
+function tracedRequest(root: string, operations: Record<string, unknown>[], failAfter?: string, observeWriteMode = false) {
   const source = `
 import errno,json,os,runpy,sys
 module=runpy.run_path(sys.argv[1],run_name='filesystem_test')
@@ -47,6 +47,7 @@ def wrap(name):
                 events.append(['fsync-failed',event[1]])
                 raise OSError(errno.EIO,'Injected durability failure')
         elif name=='fchmod': event=[name,label(args[0])]
+        elif name=='write': event=[name,label(args[0]),oct(os.fstat(args[0]).st_mode & 0o777)]
         elif name=='rename': event=[name,child(kwargs['src_dir_fd'],args[0]),child(kwargs['dst_dir_fd'],args[1]),label(kwargs['dst_dir_fd'])]
         else: event=[name,child(kwargs['dir_fd'],args[0]),label(kwargs['dir_fd'])]
         result=original(*args,**kwargs)
@@ -54,6 +55,7 @@ def wrap(name):
         return result
     setattr(os,name,call)
 for name in ('mkdir','unlink','rmdir','rename','fchmod','fsync'): wrap(name)
+if config['observeWriteMode']: wrap('write')
 filesystem=module['Filesystem'](root,os.getuid(),os.getgid())
 try:
     for operation in config['operations']:
@@ -66,7 +68,7 @@ finally:
 print(json.dumps({**response,'events':events}))
 `;
   const result = spawnSync("/usr/bin/python3", ["-I", "-c", source, helper, root], {
-    input: JSON.stringify({ operations, failAfter }), encoding: "utf8", maxBuffer: 24 * 1024 * 1024,
+    input: JSON.stringify({ operations, failAfter, observeWriteMode }), encoding: "utf8", maxBuffer: 24 * 1024 * 1024,
   });
   if (result.error) throw result.error;
   expect(result.status, result.stderr).toBe(0);
@@ -83,6 +85,28 @@ describe("confined filesystem identity", () => {
 });
 
 describe.skipIf(!linuxUser)("Linux openat2 confined filesystem", () => {
+  it("writes private metadata through an owner-only temporary file even over a broader legacy file", async () => {
+    const root = await fixture();
+    const metadata = join(root, ".agentwheel");
+    const path = ".agentwheel/openclaw.user.fixture.install-manifest.json";
+    await mkdir(metadata);
+    await writeFile(join(root, path), "legacy");
+    await chmod(join(root, path), 0o664);
+    expect(request(root, "assertPrivateMetadataDirectory", { path: ".agentwheel" }).error).toBeUndefined();
+    const operation = { operation: "writePrivateMetadataAtomic", path, content: content("private") };
+    const traced = tracedRequest(root, [operation], undefined, true);
+    expect(traced.error).toBeUndefined();
+    expect(traced.events.filter((event) => event[0] === "write")).toEqual([
+      ["write", expect.stringMatching(/^\.agentwheel\/\.agentwheel-file-/), "0o600"],
+    ]);
+    expect((await stat(join(root, path))).mode & 0o777).toBe(0o600);
+    expect(await readFile(join(root, path), "utf8")).toBe("private");
+    await chmod(metadata, 0o775);
+    expect(request(root, "writePrivateMetadataAtomic", { path, content: content("refused") }).error?.code).toBe("EPERM");
+    expect(request(root, "writePrivateMetadataAtomic", { path: "openclaw.user.fixture.install-manifest.json", content: content("refused") }).error).toBeDefined();
+    expect(await readFile(join(root, path), "utf8")).toBe("private");
+  });
+
   it("probes without writes and preserves structured missing/existing errors", async () => {
     const root = await fixture();
     expect(request(root, "probe").result).toBe(true);

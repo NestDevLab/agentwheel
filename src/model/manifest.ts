@@ -39,9 +39,36 @@ export const manifestEntryV1Schema = z.object({
   semanticCommand: z.array(z.string()).optional(),
   semanticPlugin: semanticPluginSpecSchema.optional(),
   executed: z.boolean().optional(),
-  mergeStrategy: z.enum(["json-deep", "openclaw-json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  mergeStrategy: z.enum(["json-deep", "openclaw-json-deep", "openclaw-json-keys", "yaml-deep", "codex-toml-mcp"]).optional(),
   mergeRemoval: mergeRemovalSchema.optional(),
   mergeCreatedDestination: z.boolean().optional(),
+  keyOwnership: z.array(z.object({
+    path: z.array(z.string().min(1)).min(1),
+    value: mergeValueSchema,
+    previous: mergeValueSchema.optional(),
+    createdParents: z.array(z.number().int().positive()),
+  })).optional(),
+  keyMigration: z.object({
+    legacyEntryDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    historicalSourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    planDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    legacyRemoval: mergeRemovalSchema.optional(),
+    releasedPaths: z.array(z.array(z.string().min(1)).min(1)),
+    handoffs: z.array(z.object({
+      path: z.array(z.string().min(1)).min(1),
+      stateKey: z.string().min(1),
+      workspaceOwner: z.string().min(1),
+    })).optional(),
+    rehome: z.object({
+      previousWorkspaceOwner: z.string().min(1),
+      workspaceOwner: z.string().min(1),
+      agentName: z.string().min(1),
+      sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+      graphDigest: z.string().regex(/^[a-f0-9]{64}$/),
+      graphNodeId: z.string().min(1),
+      logicalSelector: z.string().min(1),
+    }).optional(),
+  }).optional(),
   mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });
@@ -55,7 +82,13 @@ export const manifestEntrySchema = manifestEntryV1Schema.extend({
   refCount: z.number().int().positive(),
   workspaceOwner: z.string().min(1).default(legacyUnownedWorkspaceOwner),
   graphLockDigest: z.string().min(1).optional(),
-}).transform((entry) => {
+}).refine((entry) => (entry.keyOwnership !== undefined) === (entry.mergeStrategy === "openclaw-json-keys")
+  && (!entry.keyMigration || entry.keyOwnership !== undefined)
+  && (!entry.keyOwnership || (entry.kind === "file"
+    && (entry.artifactType === "settings" || (entry.artifactType === "mcp" && entry.keyMigration !== undefined))
+    && (entry.keyOwnership.length > 0 || entry.keyMigration !== undefined)
+    && entry.path === ".openclaw/openclaw.json" && !entry.mergeRemoval && !entry.mergeCreatedDestination)),
+{ message: "Invalid OpenClaw key ownership entry" }).transform((entry) => {
   const owners = [...new Set(entry.owners)].sort();
   return {
     ...entry,

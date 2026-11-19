@@ -6,6 +6,7 @@ import { applyCombinedInstallPlan, recoverPendingApply, uninstall } from "../src
 import { applyOpenClawKeyMigration, planOpenClawKeyMigration } from "../src/lifecycle/openclaw-key-migration.js";
 import type { InstallManifestEntry } from "../src/model/manifest.js";
 import type { DesiredArtifact } from "../src/install/desired.js";
+import type { MergeRemoval } from "../src/install/merge-removal.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { createCombinedInstallPlan } from "../src/install/plan.js";
 import { createUninstallPlan } from "../src/install/uninstall.js";
@@ -18,7 +19,7 @@ const adapter = adapterSchema.parse({
   name: "openclaw",
   targets: { settings: { user: { dest: path, root: "target", merge: "openclaw-json-keys" } } },
 });
-const topic = (value: object) => ({ channels: { telegram: { groups: { "-10012345": { topics: { "85": value } } } } } });
+const topic = (value: MergeRemoval) => ({ channels: { telegram: { groups: { "-10012345": { topics: { "85": value } } } } } });
 const baselineTopic = { skills: ["supplies"], systemPrompt: "Previous wording", ingest: true };
 const baseline = { agents: { list: [{ id: "fixture", workspace: "/fixture" }] }, mcp: { servers: { fixture: {} } }, ...topic(baselineTopic) };
 

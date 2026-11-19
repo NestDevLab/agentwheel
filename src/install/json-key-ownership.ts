@@ -71,7 +71,7 @@ function set(root: MergeRemoval, path: readonly string[], value: MergeValue | un
 }
 
 export function parseKeyOwnedConfig(content: string | undefined): MergeRemoval {
-  const value: unknown = content === undefined ? {} : JSON.parseKeyOwnedConfig(content);
+  const value: unknown = content === undefined ? {} : JSON.parse(content);
   if (!isObject(value) || Object.hasOwn(value, "$include")) {
     throw new Error("Key ownership requires a standalone OpenClaw JSON object.");
   }

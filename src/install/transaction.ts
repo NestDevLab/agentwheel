@@ -1,3 +1,4 @@
+import { requirePrivateOwnershipMetadata } from "./manifest.js";
 import { createHash } from "node:crypto";
 import { cp, lstat, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -254,6 +255,11 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
     installationType: journal.installationType,
     stateKey: journal.stateKey,
   });
+  const privateOwnership = journal.manifest.entries.some((entry) => entry.keyOwnership || entry.keyMigration)
+    || journal.operations.some((operation) => operation.keyOwnership || operation.keyRelease || operation.keyMigration);
+  const write = privateOwnership
+    ? await requirePrivateOwnershipMetadata(transport, journal.targetRoot)
+    : transport.writeJsonAtomic.bind(transport);
   let link: Omit<RuntimeJournalReceipt, "status"> | undefined;
   if (journal.mutation) {
     const digest = applyJournalLinkDigest(journal, transport);
@@ -277,7 +283,7 @@ export async function writeApplyJournal(journal: ApplyJournal, transport: Target
     };
     await reserveActiveRuntimeJournal(link);
   }
-  await transport.writeJsonAtomic(path, {
+  await write(path, {
     ...journal,
     updatedAt: new Date().toISOString(),
   });

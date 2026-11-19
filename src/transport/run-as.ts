@@ -169,6 +169,11 @@ export function createRunAsTransport(identity: RunAsIdentity, runner: RunAsRunne
     mkdirExclusive: async (path) => { await prepareApply(); await run("mkdirExclusive", path); },
     writeFileAtomic: async (path, content) => { await prepareApply(); await run("writeFileAtomic", path, { content }); },
     writeJsonAtomic: async (path, data) => { await prepareApply(); await run("writeFileAtomic", path, { content: `${JSON.stringify(data, null, 2)}\n` }); },
+    assertPrivateMetadataDirectory: async (path) => { await run("assertPrivateMetadataDirectory", path); },
+    writePrivateJsonAtomic: async (path, data) => {
+      await prepareApply();
+      await run("writePrivateMetadataAtomic", path, { content: `${JSON.stringify(data, null, 2)}\n` });
+    },
     atomicCopy: async (source, dest, kind, expectedHash) => {
       await prepareApply();
       const payload = await stageRunAsCopy(source, kind, expectedHash ?? await hashPath(source));

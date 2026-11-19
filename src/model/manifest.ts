@@ -59,6 +59,12 @@ export const manifestEntryV1Schema = z.object({
       stateKey: z.string().min(1),
       workspaceOwner: z.string().min(1),
     })).optional(),
+    rehome: z.object({
+      previousWorkspaceOwner: z.string().min(1),
+      workspaceOwner: z.string().min(1),
+      agentName: z.string().min(1),
+      sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    }).optional(),
   }).optional(),
   mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),

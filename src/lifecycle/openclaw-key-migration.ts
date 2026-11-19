@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { commitManifestMetadataJournal } from "../install/apply.js";
@@ -8,7 +8,7 @@ import {
   assertJsonKeyHandoff, assertOwnedJsonKeys, jsonFileHash, jsonKeyClaimsOverlap, jsonKeyLeaves, jsonKeyPathsOverlap,
   parseKeyOwnedConfig, readJsonKey, safeJsonKey, type JsonKeyClaim,
 } from "../install/json-key-ownership.js";
-import { listInstallManifests, withManifestRevision, type DiscoveredInstallManifest } from "../install/manifest.js";
+import { listInstallManifests, requirePrivateOwnershipMetadata, withManifestRevision, type DiscoveredInstallManifest } from "../install/manifest.js";
 import { type MergeValue } from "../install/merge-removal.js";
 import { parseOpenClawJsonMergeSource } from "../install/openclaw-json-merge.js";
 import { installManifestPath, stateKeyFor } from "../install/paths.js";
@@ -16,8 +16,8 @@ import {
   acquireApplyLock, assertNoSymlinkPath, assertOwnershipMetadataTransportSupported, listAllApplyJournals,
   mutationMetadataForApplyJournal, observeOwnershipRuntime, writeApplyJournal, type ApplyJournal,
 } from "../install/transaction.js";
-import { installManifestV2Schema } from "../model/manifest.js";
-import { parseWorkspaceOwner } from "../model/workspace-owner.js";
+import { installManifestV2Schema, type InstallManifestEntry } from "../model/manifest.js";
+import { parseWorkspaceOwner, workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport, type TargetTransport } from "../transport/index.js";
 import { canonicalJson, entryDigest, exactStateKey, ownershipRunAsEndpoint } from "./ownership-retire-stale.js";
@@ -46,6 +46,14 @@ export interface OpenClawKeyMigrationRequest {
   sourceOwner: string;
   historicalArtifact: string;
   decisions: unknown;
+  rehome?: {
+    stateKey: string;
+    workspaceOwner: string;
+    agentName: string;
+    artifactFile: string;
+    keyedArtifactTypes: ReadonlyArray<"settings" | "mcp">;
+    packageNames: readonly string[];
+  };
   transport?: TargetTransport;
 }
 
@@ -60,6 +68,7 @@ export async function applyOpenClawKeyMigration(request: OpenClawKeyMigrationReq
   const stateKey = exactStateKey(adapter, request.sourceStateKey, installationType, "source");
   assertOwnershipMetadataTransportSupported(transport);
   if (transport.kind === "local") await assertNoSymlinkPath(join(targetRoot, ".agentwheel"));
+  await requirePrivateOwnershipMetadata(transport, targetRoot);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, { installationType, stateKey });
   try {
     const { plan, source, entry, claims, releasedPaths, handoffs, inventory } = await observe(request);
@@ -74,12 +83,21 @@ export async function applyOpenClawKeyMigration(request: OpenClawKeyMigrationReq
         mergeStrategy: "openclaw-json-keys",
         mergeRemoval: undefined,
         mergeCreatedDestination: undefined,
+        ...(plan.rehome ? { workspaceOwner: plan.rehome.workspaceOwner, sourceHash: plan.rehome.sourceHash } : {}),
         keyOwnership: claims,
         keyMigration: {
           legacyEntryDigest: plan.legacyEntryDigest, historicalSourceHash: plan.sourceHash,
           planDigest: reviewedDigest,
           legacyRemoval: entry.mergeRemoval,
           releasedPaths, handoffs,
+          ...(plan.rehome ? {
+            rehome: {
+              previousWorkspaceOwner: plan.sourceOwner,
+              workspaceOwner: plan.rehome.workspaceOwner,
+              agentName: plan.rehome.agentName,
+              sourceHash: plan.rehome.sourceHash,
+            },
+          } : {}),
         },
       }),
     });
@@ -180,9 +198,10 @@ async function observe(request: OpenClawKeyMigrationRequest) {
     claims.push({ path: decision.path, value, ...(previous === undefined ? {} : { previous }), createdParents: [] });
   }
   assertOwnedJsonKeys(content, claims);
+  const rehome = await qualifyRehome(request.rehome, entry, stateKey, targetRoot, claims);
   for (const other of inventory) for (const peer of other.manifest.entries) {
     if (other.stateKey === stateKey || peer.path !== path) continue;
-    assertJsonKeyHandoff(claims, peer.keyMigration, stateKey, entry.workspaceOwner);
+    assertJsonKeyHandoff(claims, peer.keyMigration, stateKey, rehome?.workspaceOwner ?? entry.workspaceOwner);
     for (const handoff of handoffs) {
       if (peer.keyOwnership?.some((claim) => jsonKeyPathsOverlap(claim.path, handoff.path)
         && (!isDeepStrictEqual(claim.path, handoff.path) || other.stateKey !== handoff.stateKey
@@ -201,6 +220,7 @@ async function observe(request: OpenClawKeyMigrationRequest) {
   // Validate the projected entry before presenting it for review.
   installManifestV2Schema.parse({ ...source, entries: [{
     ...entry, mergeStrategy: "openclaw-json-keys", mergeRemoval: undefined, mergeCreatedDestination: undefined,
+    ...(rehome ? { workspaceOwner: rehome.workspaceOwner, sourceHash: rehome.sourceHash } : {}),
     keyOwnership: claims,
     keyMigration: { legacyEntryDigest: entryDigest(entry), historicalSourceHash: entry.sourceHash, planDigest: "0".repeat(64), releasedPaths, handoffs },
   }] });
@@ -219,8 +239,49 @@ async function observe(request: OpenClawKeyMigrationRequest) {
     originalDelta: entry.mergeRemoval === undefined ? "missing" : recorded.length ? "recorded" : "empty",
     decisions,
     claimDigest: digest(claims),
+    ...(rehome ? { rehome } : {}),
   };
   return { plan: { ...plan, planDigest: digest(plan) }, source, entry, claims, releasedPaths, handoffs, inventory };
+}
+
+async function qualifyRehome(
+  request: OpenClawKeyMigrationRequest["rehome"], entry: InstallManifestEntry, stateKey: string, targetRoot: string,
+  claims: JsonKeyClaim[],
+) {
+  if (!request) return undefined;
+  const owner = parseWorkspaceOwner(request.workspaceOwner);
+  if (!owner || workspaceOwnerForRoot(owner.root, owner.fleetId) !== request.workspaceOwner
+    || request.workspaceOwner === entry.workspaceOwner || !request.agentName.trim() || request.stateKey !== stateKey
+    || !claims.length || (entry.artifactType !== "settings" && entry.artifactType !== "mcp")
+    || !request.keyedArtifactTypes.includes(entry.artifactType)
+    || (entry.packageName !== undefined && !request.packageNames.includes(entry.packageName))) {
+    throw new Error("Rehome requires a different named workspace with the same exact state and a keyed artifact mapping.");
+  }
+  const artifactPath = resolve(request.artifactFile);
+  const sourcePath = relative(owner.root, artifactPath);
+  const fromTarget = relative(targetRoot, owner.root);
+  if (!isAbsolute(request.artifactFile) || !sourcePath || isAbsolute(sourcePath)
+    || sourcePath === ".." || sourcePath.startsWith("../")
+    || (fromTarget !== ".." && !fromTarget.startsWith("../") && !isAbsolute(fromTarget))
+    || basename(artifactPath) !== entry.artifactName) {
+    throw new Error("Rehome requires the same artifact name in the destination workspace, outside the runtime root.");
+  }
+  await assertNoSymlinkPath(artifactPath);
+  if (!(await lstat(artifactPath)).isFile()) throw new Error("Rehome artifact must be a regular file.");
+  const bytes = await readFile(artifactPath, "utf8");
+  const fragment = parseOpenClawJsonMergeSource(bytes);
+  // The first keyed update must see these same values without consulting an environment.
+  if (JSON.stringify(fragment).includes("${")) throw new Error("Rehome requires a literal fragment without environment placeholders.");
+  const leaves = jsonKeyLeaves(fragment);
+  if (leaves.length !== claims.length || leaves.some(({ path, value }) => !claims.some((claim) =>
+    isDeepStrictEqual(claim.path, path) && isDeepStrictEqual(claim.value, value)))) {
+    throw new Error("Rehome artifact must declare exactly the retained keys and current values.");
+  }
+  return {
+    workspaceOwner: request.workspaceOwner, stateKey, agentName: request.agentName, sourcePath,
+    artifactName: entry.artifactName, artifactType: entry.artifactType, packageName: entry.packageName,
+    sourceHash: jsonFileHash(bytes),
+  };
 }
 
 function previousFromLegacyDelta(recorded: MergeValue | undefined, value: MergeValue, decision: Decision): MergeValue | undefined {

@@ -1183,6 +1183,7 @@ ownershipCommand
   .requiredOption("--source-owner <owner>", "exact recorded workspace owner")
   .requiredOption("--historical-artifact <path>", "exact historical artifact bytes in a caller-owned file")
   .requiredOption("--decisions <path>", "reviewed JSON decision list for every historical or recorded key")
+  .option("--rehome-artifact <path>", "prove the retained fragment in the selected named workspace at the same state key")
   .option("--local", "use the nearest local workspace", false)
   .option("--fleet <id>", "use one registered named fleet")
   .option("--plan-digest <sha256>", "exact reviewed plan digest, required to apply")
@@ -1197,10 +1198,31 @@ ownershipCommand
     const decisionsPath = normalizeCliPath(options.decisions);
     await assertNoSymlinkPath(decisionsPath);
     if (!(await lstat(decisionsPath)).isFile()) throw new Error("Migration decisions must be a regular file.");
+    let rehome;
+    if (options.rehomeArtifact) {
+      const adapter = await resolveAdapterForTarget(target, {});
+      const state = installStateForTarget(target, adapter, {}, "user");
+      if (!target.agentName || state.installRoot !== target.targetRoot || state.stateKey !== options.sourceStateKey) {
+        throw new Error("Rehome target must resolve to the exact existing state at the same runtime root.");
+      }
+      const keyedArtifactTypes = (["settings", "mcp"] as const).filter((type) => {
+        const mapping = targetMappingForArtifact(adapter, type, "user");
+        return mapping?.merge === "openclaw-json-keys" && mapping.dest === ".openclaw/openclaw.json" && mapping.root === "target";
+      });
+      const config = await readMergedWorkspaceConfig(target.workspaceRoot);
+      const packageNames = packagesForCliTarget(config.packages, target, {}).map((pkg) => pkg.name);
+      const ownership = await resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId });
+      rehome = {
+        stateKey: state.stateKey, agentName: target.agentName,
+        workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
+        artifactFile: normalizeCliPath(options.rehomeArtifact), keyedArtifactTypes, packageNames,
+      };
+    }
     const request = {
       targetRoot: target.targetRoot, sourceStateKey: options.sourceStateKey, sourceOwner: options.sourceOwner,
       historicalArtifact: normalizeCliPath(options.historicalArtifact),
       decisions: JSON.parse(await readFile(decisionsPath, "utf8")),
+      rehome,
       transport: transportForTarget(target),
     };
     const result = options.apply
@@ -1632,7 +1654,7 @@ program
         continue;
       }
       const plan = {
-        ...filterUninstallPlanBySelection(await createUninstallPlan(manifest), selectedArtifactsFromOptions(options)),
+        ...filterUninstallPlanBySelection(await createUninstallPlan(manifest, transport, state.workspaceOwner), selectedArtifactsFromOptions(options)),
         stateKey: state.stableStateKey,
         stateMigration: state.migration,
         targetStateFilePreconditions: state.targetStateFilePreconditions,
@@ -3825,6 +3847,7 @@ async function uninstallConfiguredPackage(target: RuntimeTarget, packageName: st
     try {
       const uninstallPlan = await createOwnershipUninstallPlan(manifest, remainingDesired, adapter, transport, {
         graphLockDigest: remainingGraphPlan?.graphLockDigest,
+        workspaceOwner: removedState.workspaceOwner,
       });
       const transitionPlan = remainingGraphPlan?.plan;
       const plan: InstallPlan = {
@@ -4027,6 +4050,7 @@ interface ResolvedCliTargetState {
   installRoot: string;
   stateKey: string;
   stableStateKey: string;
+  workspaceOwner: string;
   stableGraphLockPath: string;
   manifest?: InstallManifest;
   graphLock?: GraphLock;
@@ -4057,6 +4081,7 @@ async function resolveCliTargetState(
     readSourceLock(stable.installRoot, adapter.name, transport, stable),
     resolveWorkspaceOwnershipScope(target.workspaceRoot, { fleetId: target.fleetId }),
   ]);
+  const workspaceOwner = workspaceOwnerForRoot(ownership.root, ownership.fleetId);
   const prior = await resolvePriorTargetState({
     adapter: adapter.name,
     installationType,
@@ -4064,7 +4089,7 @@ async function resolveCliTargetState(
     explicitStateKey: target.stateKey,
     fleetId: target.fleetId,
     installRoot: stable.installRoot,
-    workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId),
+    workspaceOwner,
     graphLockPath: stableGraphLockPath,
     stableManifest,
     stableLock,
@@ -4078,6 +4103,7 @@ async function resolveCliTargetState(
     installRoot: stable.installRoot,
     stateKey: prior.migration?.fromStateKey ?? stable.stateKey,
     stableStateKey: stable.stateKey,
+    workspaceOwner,
     stableGraphLockPath,
     manifest: prior.manifest,
     graphLock: prior.graphLock,

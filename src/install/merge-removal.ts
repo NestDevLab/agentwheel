@@ -7,7 +7,7 @@ import { renderOpenClawJsonMergeSource } from "./openclaw-json-merge.js";
 export type MergeValue = null | boolean | number | string | MergeValue[] | { [key: string]: MergeValue };
 export type MergeRemoval = Record<string, MergeValue>;
 
-type MergeStrategy = "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
+type MergeStrategy = "json-deep" | "openclaw-json-deep" | "openclaw-json-keys" | "yaml-deep" | "codex-toml-mcp";
 
 export class MergeAdoptionMismatchError extends Error {}
 
@@ -16,6 +16,7 @@ export function assertExactMergeContribution(
   strategy: MergeStrategy,
   currentContent: string,
 ): void {
+  if (strategy === "openclaw-json-keys") throw new Error("JSON key ownership requires its own apply or rollback plan.");
   if (strategy === "codex-toml-mcp") {
     assertExactMcpMergeContribution(contribution, strategy, currentContent);
     return;
@@ -90,6 +91,7 @@ export async function mergeRemovalForInstall(
   currentContent: string | undefined,
   options: { adoptExisting?: "generic" | "mcp" } = {},
 ): Promise<MergeRemoval> {
+  if (strategy === "openclaw-json-keys") throw new Error("JSON key ownership requires its own apply or rollback plan.");
   const source = await readMergeSource(sourcePath, strategy);
   if (currentContent === undefined) return source;
   if (options.adoptExisting) {
@@ -120,6 +122,7 @@ export async function mergeRemovalForInstall(
 }
 
 export async function removeMergeContribution(destPath: string, strategy: MergeStrategy, removal: MergeRemoval): Promise<void> {
+  if (strategy === "openclaw-json-keys") throw new Error("JSON key ownership requires its own apply or rollback plan.");
   const content = await readFile(destPath, "utf8");
   if (strategy === "codex-toml-mcp") {
     const servers = isRecord(removal.mcpServers) ? removal.mcpServers : removal;
@@ -137,6 +140,7 @@ export function mergeContributionAbsent(
   strategy: MergeStrategy,
   currentContent: string,
 ): boolean {
+  if (strategy === "openclaw-json-keys") throw new Error("JSON key ownership requires its own apply or rollback plan.");
   if (strategy === "codex-toml-mcp") {
     const servers = isRecord(removal.mcpServers) ? removal.mcpServers : removal;
     const currentServers = codexTomlMcpServerNames(currentContent);

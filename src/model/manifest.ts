@@ -61,7 +61,10 @@ export const manifestEntrySchema = manifestEntryV1Schema.extend({
   refCount: z.number().int().positive(),
   workspaceOwner: z.string().min(1).default(legacyUnownedWorkspaceOwner),
   graphLockDigest: z.string().min(1).optional(),
-}).transform((entry) => {
+}).refine((entry) => (entry.keyOwnership !== undefined) === (entry.mergeStrategy === "openclaw-json-keys")
+  && (!entry.keyOwnership || (entry.kind === "file" && entry.artifactType === "settings"
+    && entry.path === ".openclaw/openclaw.json" && !entry.mergeRemoval && !entry.mergeCreatedDestination)),
+{ message: "Invalid OpenClaw key ownership entry" }).transform((entry) => {
   const owners = [...new Set(entry.owners)].sort();
   return {
     ...entry,

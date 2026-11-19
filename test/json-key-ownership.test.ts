@@ -14,7 +14,7 @@ import { hashPath } from "../src/utils/fs.js";
 const path = ".openclaw/openclaw.json";
 const adapter = adapterSchema.parse({
   name: "openclaw",
-  targets: { settings: { user: { dest: path, root: "target", merge: "openclaw-json-deep", mergeOwnership: "keys" } } },
+  targets: { settings: { user: { dest: path, root: "target", merge: "openclaw-json-keys" } } },
 });
 const topic = (value: object) => ({ channels: { telegram: { groups: { "-10012345": { topics: { "85": value } } } } } });
 const baselineTopic = { skills: ["supplies"], systemPrompt: "Previous wording", ingest: true };
@@ -79,7 +79,7 @@ it("rejects same-key claims and whole-file legacy claims without changing the fi
   const legacy = scope("legacy");
   await writeInstallManifest({
     ...first, ...legacy,
-    entries: first.entries.map((entry) => ({ ...entry, keyOwnership: undefined, workspaceOwner: legacy.workspaceOwner })),
+    entries: first.entries.map((entry) => ({ ...entry, keyOwnership: undefined, mergeStrategy: "openclaw-json-deep", workspaceOwner: legacy.workspaceOwner })),
   });
   await expect(createUninstallPlan(first, transport)).rejects.toThrow("whole-file or legacy claim");
   await expect(makePlan(root, keep, "keep")).rejects.toThrow("whole-file or legacy claim");

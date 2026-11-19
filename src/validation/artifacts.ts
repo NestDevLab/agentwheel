@@ -234,7 +234,7 @@ async function validateGenericStructure(artifact: Artifact, target: TargetMappin
     }
   }
 
-  if (target.merge === "json-deep" || target.merge === "openclaw-json-deep") {
+  if (target.merge === "json-deep" || target.merge === "openclaw-json-deep" || target.merge === "openclaw-json-keys") {
     const parsed = await parseJsonObjectArtifact(artifact);
     if (!parsed.ok) issues.push({ artifact, message: parsed.message });
   }

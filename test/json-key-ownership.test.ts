@@ -40,7 +40,7 @@ async function settings(sourceRoot: string, owner: string, data: object): Promis
   const name = owner + ".json";
   const sourcePath = join(sourceRoot, name);
   await writeFile(sourcePath, JSON.stringify(data));
-  return { type: "settings", name, kind: "file", sourcePath, hash: await hashPath(sourcePath), meta: { dependencyRole: "root", owners: [owner] } };
+  return { type: "settings", name, kind: "file", sourcePath, relativePath: "settings/" + name, channel: "managed", hash: await hashPath(sourcePath), meta: { dependencyRole: "root", owners: [owner] } };
 }
 
 async function makePlan(root: string, artifact: DesiredArtifact, owner: string, transportOverride = transport) {

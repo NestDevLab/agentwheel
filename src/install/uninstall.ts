@@ -245,9 +245,14 @@ export async function createOwnershipUninstallPlan(
 }
 
 function assertUninstallWorkspace(manifest: InstallManifest, workspaceOwner: string | undefined): void {
-  if (workspaceOwner !== undefined && manifest.version === 2 && manifest.entries.some((entry) =>
-    entry.keyMigration?.rehome && entry.workspaceOwner !== workspaceOwner)) {
+  if (manifest.version !== 2) return;
+  const rehomed = manifest.entries.find((entry) => entry.keyMigration?.rehome);
+  if (!rehomed) return;
+  if (workspaceOwner !== rehomed.workspaceOwner) {
     throw new Error("Rehomed OpenClaw ownership requires uninstall from the selected workspace.");
+  }
+  if (manifest.entries.some((entry) => entry.workspaceOwner !== workspaceOwner)) {
+    throw new Error("Uninstall cannot safely operate on a rehomed install state with multiple workspace owners.");
   }
 }
 

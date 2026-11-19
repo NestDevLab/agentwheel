@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import { applyCombinedInstallPlan, recoverPendingApply, uninstall } from "../src/install/apply.js";
 import { applyOpenClawKeyMigration, planOpenClawKeyMigration } from "../src/lifecycle/openclaw-key-migration.js";
@@ -10,8 +10,8 @@ import type { MergeRemoval } from "../src/install/merge-removal.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { createCombinedInstallPlan } from "../src/install/plan.js";
 import { installManifestPath } from "../src/install/paths.js";
-import { applyJournalPath } from "../src/install/transaction.js";
-import { createUninstallPlan } from "../src/install/uninstall.js";
+import { abortApplyJournal, applyBackupDir, applyJournalPath, readApplyJournal } from "../src/install/transaction.js";
+import { createOwnershipUninstallPlan, createUninstallPlan } from "../src/install/uninstall.js";
 import { adapterSchema } from "../src/model/adapter.js";
 import { localTransport } from "../src/transport/index.js";
 import { hashPath } from "../src/utils/fs.js";
@@ -92,7 +92,7 @@ it("rejects same-key claims and whole-file legacy claims without changing the fi
   expect(await readFile(join(root, path))).toEqual(before);
 }));
 
-it("recovers a landed keyed write after interruption before the receipt", () => withFixture(async (root, sourceRoot) => {
+it.each(["install", "uninstall"] as const)("keeps an interrupted keyed %s journal private and recoverable", (mode) => withFixture(async (root, sourceRoot) => {
   const keep = await settings(sourceRoot, "keep", topic({ systemPrompt: "New wording" }));
   const faulty = {
     ...transport,
@@ -102,10 +102,35 @@ it("recovers a landed keyed write after interruption before the receipt", () => 
     },
   };
   const plan = await makePlan(root, keep, "keep");
-  await expect(applyCombinedInstallPlan(plan, { transport: faulty })).rejects.toThrow("interrupted after write");
+  if (mode === "install") {
+    await expect(applyCombinedInstallPlan(plan, { transport: faulty })).rejects.toThrow("interrupted after write");
+  } else {
+    const installed = await applyCombinedInstallPlan(plan, { transport });
+    await expect(uninstall(await createUninstallPlan(installed, transport), { transport: faulty }))
+      .rejects.toThrow("interrupted after write");
+  }
+  const journalPath = applyJournalPath(root, "openclaw", scope("keep"));
+  const backupPath = join(applyBackupDir(root, "openclaw", scope("keep")), "0");
+  const [journalBytes, backupBytes, runtimeBytes] = await Promise.all([
+    readFile(journalPath), readFile(backupPath), readFile(join(root, path)),
+  ]);
+  const journal = await readApplyJournal(root, "openclaw", transport, scope("keep"));
+  expect(journal?.metadataGuards).toBeUndefined();
+  expect(journal?.metadataAudit).toBeUndefined();
+  expect((await stat(journalPath)).mode & 0o777).toBe(0o600);
+  await expect(abortApplyJournal(root, "openclaw", transport, scope("keep"))).rejects.toThrow("must be recovered and verified");
+  await expect(stat(join(root, ".agentwheel", "archive"))).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readFile(journalPath)).toEqual(journalBytes);
+  expect(await readFile(backupPath)).toEqual(backupBytes);
+  expect(await readFile(join(root, path))).toEqual(runtimeBytes);
   const manifest = await recoverPendingApply(root, "openclaw", transport, scope("keep"));
-  expect(manifest?.entries[0]?.keyOwnership?.[0]).toMatchObject({ value: "New wording", previous: "Previous wording" });
-  expect((await makePlan(root, keep, "keep")).operations[0].action).toBe("skip");
+  if (mode === "install") {
+    expect(manifest?.entries[0]?.keyOwnership?.[0]).toMatchObject({ value: "New wording", previous: "Previous wording" });
+    expect((await makePlan(root, keep, "keep")).operations[0].action).toBe("skip");
+  } else {
+    expect(await readInstallManifest(root, "openclaw", transport, scope("keep"))).toBeUndefined();
+    expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual(baseline);
+  }
 }));
 
 it("stops before replacement when config changes during validation", () => withFixture(async (root, sourceRoot) => {
@@ -149,6 +174,21 @@ function migration(root: string, artifact: DesiredArtifact, owner: string, decis
   };
 }
 
+function rehomeSource(artifact: DesiredArtifact) {
+  return {
+    stateKey: scope("supplies").stateKey,
+    workspaceOwner: "workspace-root:" + dirname(artifact.sourcePath),
+    agentName: "fixture",
+    artifactFile: artifact.sourcePath,
+    graphDigest: "a".repeat(64),
+    configuredArtifacts: [{
+      artifactType: "settings" as const, artifactName: artifact.name, owners: ["supplies"],
+      graphNodeId: "supplies@1.0.0+fixture", logicalSelector: "supplies:settings/supplies.json",
+      sourceHash: artifact.hash,
+    }],
+  };
+}
+
 it("migrates a recorded donor and four incomplete historical owners, then installs, updates and rolls back", () => withFixture(async (root, sourceRoot) => {
   const donor = await settings(sourceRoot, "supplies", topic(baselineTopic));
   await legacy(root, donor, "supplies", topic({ skills: ["supplies"], systemPrompt: baselineTopic.systemPrompt }));
@@ -168,16 +208,14 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   const configuredRoot = join(sourceRoot, "durable");
   await mkdir(configuredRoot);
   const replacement = await settings(configuredRoot, "supplies", topic({ ingest: true }));
-  const replacementOwner = "workspace-root:" + configuredRoot;
+  const rehome = rehomeSource(replacement);
+  const replacementOwner = rehome.workspaceOwner;
   const source = { ...migration(root, donor, "supplies", [
     ...["skills", "systemPrompt"].map((key) => ({
       path: topicKey(key), disposition: "handoff", stateKey: scope("keep").stateKey, workspaceOwner: scope("keep").workspaceOwner,
     })),
     decide(topicKey("ingest"), "adopt-current"),
-  ]), rehome: {
-    stateKey: scope("supplies").stateKey, workspaceOwner: replacementOwner, agentName: "fixture",
-    artifactFile: replacement.sourcePath, keyedArtifactTypes: ["settings"] as const, packageNames: [],
-  } };
+  ]), rehome };
   const before = await readFile(join(root, path));
   const reviewed = await planOpenClawKeyMigration(source);
   expect(reviewed.originalDelta).toBe("recorded");
@@ -185,11 +223,12 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   expect(JSON.stringify(reviewed)).not.toContain(baselineTopic.systemPrompt);
   await expect(planOpenClawKeyMigration({ ...source, rehome: { ...source.rehome, stateKey: scope("other").stateKey } }))
     .rejects.toThrow("same exact state");
-  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: false })));
-  await expect(applyOpenClawKeyMigration(source, reviewed.planDigest)).rejects.toThrow("exactly the retained keys and current values");
-  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: true }), null, 2));
-  await expect(applyOpenClawKeyMigration(source, reviewed.planDigest)).rejects.toThrow("plan changed");
-  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: true })));
+  const otherSource = await settings(sourceRoot, "supplies-next", topic({ ingest: false, skills: ["supplies"] }));
+  await expect(planOpenClawKeyMigration({ ...source, rehome: {
+    ...rehome, configuredArtifacts: [{ ...rehome.configuredArtifacts[0]!, sourceHash: otherSource.hash }],
+  } })).rejects.toThrow("must match the configured source graph");
+  await expect(applyOpenClawKeyMigration({ ...source, rehome: { ...rehome, graphDigest: "b".repeat(64) } }, reviewed.planDigest))
+    .rejects.toThrow("plan changed");
   await applyOpenClawKeyMigration(source, reviewed.planDigest);
   const keep = await settings(sourceRoot, "keep", {
     ...topic({ skills: ["supplies", "keep"], systemPrompt: "Migrated wording" }),
@@ -224,6 +263,34 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   expect(fence?.entries[0]?.keyMigration?.rehome).toEqual(updated?.entries[0]?.keyMigration?.rehome);
   const connector = await readInstallManifest(root, "openclaw", transport, scope("connector"));
   expect(connector?.entries[0]).toMatchObject({ artifactType: "mcp", keyOwnership: [] });
+}));
+
+it("refuses to uninstall a rehomed state with a foreign sibling skill", () => withFixture(async (root, sourceRoot) => {
+  const donor = await settings(sourceRoot, "supplies", topic({ ingest: true }));
+  const original = await legacy(root, donor, "supplies", {});
+  const installed = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
+  if (installed?.version !== 2) throw new Error("Fixture did not install a version 2 manifest.");
+  const skillPath = ".openclaw/workspace/skills/legacy/SKILL.md";
+  await mkdir(dirname(join(root, skillPath)), { recursive: true });
+  await writeFile(join(root, skillPath), "original skill");
+  const skill = { ...original, path: skillPath, kind: "file" as const, artifactType: "skills" as const, artifactName: "legacy",
+    installName: "legacy", hash: await hashPath(join(root, skillPath)), mergeStrategy: undefined, mergeRemoval: undefined };
+  await writeInstallManifest({ ...installed, entries: [...installed.entries, skill] }, transport);
+  const configuredRoot = join(sourceRoot, "durable");
+  await mkdir(configuredRoot);
+  const replacement = await settings(configuredRoot, "supplies", topic({ ingest: true }));
+  const request = { ...migration(root, donor, "supplies", [decide(topicKey("ingest"), "adopt-current")]), rehome: rehomeSource(replacement) };
+  await applyOpenClawKeyMigration(request, (await planOpenClawKeyMigration(request)).planDigest);
+  const migrated = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
+  const manifestPath = installManifestPath(root, "openclaw", scope("supplies"));
+  const [beforeManifest, beforeConfig] = await Promise.all([readFile(manifestPath), readFile(join(root, path))]);
+  expect(migrated?.entries.find((entry) => entry.path === skillPath)).toMatchObject({ workspaceOwner: request.sourceOwner });
+  await expect(createUninstallPlan(migrated!, transport, request.rehome.workspaceOwner)).rejects.toThrow("multiple workspace owners");
+  await expect(createOwnershipUninstallPlan(migrated!, [], adapter, transport, { workspaceOwner: request.rehome.workspaceOwner }))
+    .rejects.toThrow("multiple workspace owners");
+  expect(await readFile(manifestPath)).toEqual(beforeManifest);
+  expect(await readFile(join(root, path))).toEqual(beforeConfig);
+  expect(await readFile(join(root, skillPath), "utf8")).toBe("original skill");
 }));
 
 it("requires explicit dispositions and exact pinned source bytes, never inferring a rollback preimage from a missing delta", () => withFixture(async (root, sourceRoot) => {

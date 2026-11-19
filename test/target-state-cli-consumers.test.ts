@@ -7,7 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { stateKeyFor } from "../src/install/paths.js";
 import { workspaceOwnerForRoot } from "../src/lifecycle/ownership.js";
 import { computeTargetFingerprint } from "../src/model/graph-lock.js";
+import { CURRENT_OPENPACK_SCHEMA_VERSION } from "../src/model/package.js";
 import { ensureCliBuild } from "./helpers/ensure-cli-build.js";
+import { hashPath } from "../src/utils/fs.js";
 
 const execFileAsync = promisify(execFile);
 const cli = join(process.cwd(), "dist", "index.js");
@@ -34,6 +36,70 @@ afterAll(async () => {
 });
 
 describe("released target state CLI consumers", () => {
+  it("rejects a rehome proof file when the configured artifact still declares released keys", async () => {
+    const workspace = await tempRoot("agentwheel-rehome-workspace-");
+    const runtime = await tempRoot("agentwheel-rehome-runtime-");
+    const packageRoot = join(workspace, "package");
+    const artifactName = "settings.json";
+    const configured = join(packageRoot, "settings", artifactName);
+    const decoy = join(workspace, "proof", artifactName);
+    const stateKey = "openclaw.user.rehome";
+    const packageName = "fixture/rehome";
+    const oldOwner = workspaceOwnerForRoot(join(workspace, "absent"));
+    const configPath = join(runtime, ".openclaw", "openclaw.json");
+    const oldValues = JSON.stringify({ retained: false, released: "prior" });
+    const retainedValues = JSON.stringify({ retained: false });
+    await Promise.all([dirname(configured), dirname(decoy), dirname(configPath), join(workspace, ".agentwheel"), join(runtime, ".agentwheel")]
+      .map((directory) => mkdir(directory, { recursive: true })));
+    await writeFile(join(packageRoot, "openpack.json"), JSON.stringify({
+      schemaVersion: CURRENT_OPENPACK_SCHEMA_VERSION, name: packageName, version: "1.0.0",
+      provides: [{ type: "settings", path: `settings/${artifactName}` }],
+    }));
+    await writeFile(configured, oldValues);
+    await writeFile(decoy, retainedValues);
+    await writeFile(configPath, oldValues);
+    const historical = join(workspace, "historical.json");
+    await writeFile(historical, oldValues);
+    await writeFile(join(workspace, "adapter.json"), JSON.stringify({
+      name: "openclaw", targets: { settings: { user: { dest: ".openclaw/openclaw.json", root: "target", merge: "openclaw-json-keys" } } },
+    }));
+    await writeFile(join(workspace, ".agentwheel", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      packages: [{ name: packageName, source: packageRoot, adapter: "openclaw", installationType: "user" }],
+      agents: { runtime: { adapter: "openclaw", adapterConfig: "adapter.json", root: runtime, stateKey, installationType: "user" } },
+    }));
+    const manifestPath = join(runtime, ".agentwheel", `${stateKey}.install-manifest.json`);
+    const now = "2025-01-01T00:00:00.000Z";
+    await writeFile(manifestPath, JSON.stringify({
+      version: 2, adapter: "openclaw", targetRoot: runtime, installationType: "user", stateKey, revision: "a".repeat(64), generatedAt: now,
+      entries: [{
+        path: ".openclaw/openclaw.json", artifactType: "settings", artifactName, installName: artifactName, kind: "file",
+        hash: await hashPath(configPath), sourceHash: await hashPath(historical), updatedAt: now, packageName, owners: [packageName],
+        refCount: 1, workspaceOwner: oldOwner, mergeStrategy: "openclaw-json-deep", mergeRemoval: {},
+      }],
+    }));
+    const decisions = join(workspace, "decisions.json");
+    await writeFile(decisions, JSON.stringify([
+      { path: ["retained"], disposition: "adopt-current" },
+      { path: ["released"], disposition: "release" },
+    ]));
+    const args = [
+      "ownership", "migrate-openclaw-keys", "--local", "--agent", "runtime", "--source-state-key", stateKey,
+      "--source-owner", oldOwner, "--historical-artifact", historical, "--decisions", decisions, "--rehome-artifact", decoy,
+    ];
+    const originalManifest = await readFile(manifestPath);
+    await expect(runCli(args, { cwd: workspace })).rejects.toMatchObject({
+      stderr: expect.stringContaining("Rehome artifact bytes must match the configured source graph."),
+    });
+    await writeFile(configured, retainedValues);
+    const first = JSON.parse((await runCli(args, { cwd: workspace })).stdout);
+    const second = JSON.parse((await runCli(args, { cwd: workspace })).stdout);
+    expect(second.planDigest).toBe(first.planDigest);
+    expect(first.rehome).toMatchObject({ artifactName, stateKey, sourceHash: await hashPath(configured), graphDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(await readFile(manifestPath)).toEqual(originalManifest);
+    expect(await readFile(configPath, "utf8")).toBe(oldValues);
+  }, 30_000);
+
   it("migrates released state during a scoped package update without losing its sibling", async () => {
     const workspace = await tempRoot("agentwheel-cli-released-package-");
     const alpha = await gitSkillPackage("released-package-alpha", { "released-alpha": "alpha-v1" });

@@ -119,6 +119,7 @@ export async function planJsonKeyChange(
   previous: JsonKeyClaim[],
   removing = false,
 ): Promise<InstallOperation> {
+  if (content === undefined) throw new Error("Key ownership requires an existing OpenClaw configuration.");
   const config = parse(content);
   assertCurrent(config, previous);
   const desired = removing ? [] : leaves(await renderOpenClawJsonMergeSource(operation.sourcePath!));
@@ -148,9 +149,9 @@ export async function planJsonKeyChange(
   const unchanged = !removing && isDeepStrictEqual(previous, desired);
   return {
     ...operation,
-    action: removing ? "remove" : unchanged ? "skip" : content === undefined ? "create" : "update",
+    action: removing ? "remove" : unchanged ? "skip" : "update",
     reason: removing ? "restore the previous values of owned JSON keys" : unchanged ? "owned JSON keys already match" : "apply owned JSON keys",
-    currentHash: content === undefined ? undefined : jsonFileHash(content),
+    currentHash: jsonFileHash(content),
     keyOwnership: desired,
     keyRelease: released,
     keyResultHash: unchanged ? undefined : jsonFileHash(renderJsonKeyTransition(content, desired, released)),

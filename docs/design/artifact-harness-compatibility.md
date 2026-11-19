@@ -183,6 +183,16 @@ until migration apply support is enabled.
 | Hermes | other artifacts | `unsupported` | `unsupported` | Hooks and local skills require custom adapter/config support. |
 | All built-ins | `fragments` | `agentwheel-internal` | `agentwheel-internal` | Fragments compose other artifacts during resolution; they are never runtime file-drop targets. |
 
+For an existing user-scoped `.openclaw/openclaw.json`, a custom settings target
+may opt in with `"merge": "openclaw-json-keys"`. Each JSON leaf is an exclusive
+claim. Arrays are claimed and replaced as a unit. Distinct install states can
+share an existing object branch when their claims do not overlap. Updates and
+uninstall restore the preceding values of released keys. Configurations with
+unresolved legacy claims require provenance review and an explicit migration
+before switching modes. Use a release that supports the selected strategy for
+every writer of the target. The built-in adapter continues using its existing
+merge strategy.
+
 ## Audit Notes
 
 - Codex custom prompts are documented but deprecated, user-home only, and superseded by skills; the built-in adapter rejects OpenPack `commands`.

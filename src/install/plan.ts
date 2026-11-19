@@ -62,10 +62,9 @@ export interface InstallOperation {
   semanticCommand?: string[];
   semanticPlugin?: SemanticPluginSpec;
   execute?: boolean;
-  mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
+  mergeStrategy?: "json-deep" | "openclaw-json-deep" | "openclaw-json-keys" | "yaml-deep" | "codex-toml-mcp";
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
-  mergeOwnership?: "keys";
   keyOwnership?: JsonKeyClaim[];
   keyRelease?: JsonKeyClaim[];
   keyResultHash?: string;
@@ -271,9 +270,9 @@ async function createPlanFromOperations(
       continue;
     }
 
-    if (op.mergeOwnership || manifestByPath.get(op.relativeDestPath)?.keyOwnership) {
+    if (op.mergeStrategy === "openclaw-json-keys" || manifestByPath.get(op.relativeDestPath)?.keyOwnership) {
       const existing = manifestByPath.get(op.relativeDestPath);
-      if (op.mergeOwnership !== "keys" || op.mergeStrategy !== "openclaw-json-deep"
+      if (op.mergeStrategy !== "openclaw-json-keys" || op.relativeDestPath !== ".openclaw/openclaw.json"
         || op.artifactType !== "settings" || adapter.name !== "openclaw" || installationType !== "user"
         || !workspaceOwner || options.stateMigration
         || (existing && (!existing.keyOwnership || !entryOwnedByWorkspace(existing, workspaceOwner)))) {
@@ -1057,7 +1056,6 @@ async function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, 
     channel: artifact.channel ?? "managed",
     packageName: artifact.packageName,
     mergeStrategy: target.merge,
-    mergeOwnership: target.mergeOwnership,
     mode: target.mode,
     composedFrom: metadata.composedFrom,
     ...metadata,

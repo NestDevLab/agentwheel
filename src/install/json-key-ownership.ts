@@ -150,7 +150,8 @@ export async function planJsonKeyChange(
     }
   }
   const released = previous.filter((old) => !desired.some((claim) => isDeepStrictEqual(old.path, claim.path)));
-  const unchanged = !removing && isDeepStrictEqual(previous, desired);
+  const unchanged = !removing && !released.length && previous.length === desired.length
+    && desired.every((claim) => previous.some((old) => isDeepStrictEqual(old, claim)));
   if (removing && !previous.length && operation.keyMigration) {
     return { ...operation, action: "keep", reason: "preserve the OpenClaw migration fence",
       preserveInManifest: true, currentHash: jsonFileHash(content) };

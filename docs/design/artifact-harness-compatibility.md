@@ -238,6 +238,23 @@ updates only that manifest. Its journal can be recovered via the normal
 remain in the manifest, including after removal of the migrated artifact.
 The config bytes are guarded throughout migration.
 
+When the historical workspace is unavailable, supply `--rehome-artifact`
+with the continuing fragment in the selected named target's workspace.
+The target must resolve to the existing state key and have a keyed mapping
+for the exact artifact. Use a literal fragment of the same name with
+exactly the retained keys and their current values. Keep the
+existing package identity. The reviewed digest binds the new workspace,
+target name, artifact identity and bytes. The migration changes the owner of
+that one entry and records the previous owner and proof hash in its history.
+
+Keyed manifests and journals can contain configuration values and their
+preimages. Agentwheel writes them atomically with mode `0600` using the
+target owner, on supported local and local-run-as transports. The runtime
+root and its actual `.agentwheel` directory must be owned by that identity
+and writable only by the owner. Local paths also require trusted ancestors.
+Review and secure a shared-writable
+directory before starting a keyed operation.
+
 All remaining whole-file claims still block keyed installs. Convert those states
 with their own decisions before installing the new artifact. Point continuing
 legacy packages at the same governed install-state keys with an opt-in adapter

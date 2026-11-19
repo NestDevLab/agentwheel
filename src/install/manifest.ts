@@ -75,10 +75,22 @@ export function computeSourceLockRevision(lock: SourceLock | undefined): string 
 
 export async function writeInstallManifest(manifest: InstallManifest, transport: TargetTransport = localTransport): Promise<void> {
   const next = withManifestRevision(manifest);
-  await transport.writeJsonAtomic(installManifestPath(next.targetRoot, next.adapter, {
+  const path = installManifestPath(next.targetRoot, next.adapter, {
     installationType: next.installationType,
     stateKey: next.stateKey,
-  }), stripReadOnlyManifestFields(next));
+  });
+  const write = next.entries.some((entry) => entry.keyOwnership || entry.keyMigration)
+    ? await requirePrivateOwnershipMetadata(transport, next.targetRoot)
+    : transport.writeJsonAtomic.bind(transport);
+  await write(path, stripReadOnlyManifestFields(next));
+}
+
+export async function requirePrivateOwnershipMetadata(transport: TargetTransport, targetRoot: string) {
+  if (!transport.assertPrivateMetadataDirectory || !transport.writePrivateJsonAtomic) {
+    throw new Error("OpenClaw key ownership requires an owner-only atomic metadata writer.");
+  }
+  await transport.assertPrivateMetadataDirectory(metadataDir(targetRoot));
+  return transport.writePrivateJsonAtomic.bind(transport);
 }
 
 export async function writeSourceLock(

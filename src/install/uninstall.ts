@@ -17,7 +17,9 @@ type ManifestEntry = InstallManifestEntry | InstallManifestV1Entry;
 export async function createUninstallPlan(
   manifest: InstallManifest,
   transport: TargetTransport = localTransport,
+  workspaceOwner?: string,
 ): Promise<InstallPlan> {
+  assertUninstallWorkspace(manifest, workspaceOwner);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport);
   const operations: InstallOperation[] = [];
   for (const entry of manifest.entries) {
@@ -107,8 +109,9 @@ export async function createOwnershipUninstallPlan(
   remainingDesired: DesiredArtifact[],
   adapter: AdapterConfig,
   transport: TargetTransport = localTransport,
-  options: { graphLockDigest?: string } = {},
+  options: { graphLockDigest?: string; workspaceOwner?: string } = {},
 ): Promise<InstallPlan> {
+  assertUninstallWorkspace(manifest, options.workspaceOwner);
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport);
   const installationType = "installationType" in manifest ? manifest.installationType : defaultInstallationType;
   const stateKey = "stateKey" in manifest ? manifest.stateKey : undefined;
@@ -239,6 +242,13 @@ export async function createOwnershipUninstallPlan(
     adapterCode: manifest.adapterCode,
     graphLockDigest: options.graphLockDigest,
   };
+}
+
+function assertUninstallWorkspace(manifest: InstallManifest, workspaceOwner: string | undefined): void {
+  if (workspaceOwner !== undefined && manifest.version === 2 && manifest.entries.some((entry) =>
+    entry.keyMigration?.rehome && entry.workspaceOwner !== workspaceOwner)) {
+    throw new Error("Rehomed OpenClaw ownership requires uninstall from the selected workspace.");
+  }
 }
 
 async function currentEntryHash(entry: ManifestEntry, destPath: string, transport: TargetTransport): Promise<string | undefined> {

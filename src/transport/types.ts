@@ -17,6 +17,8 @@ export interface TargetTransport {
   listDir(path: string): Promise<string[]>;
   writeFileAtomic(path: string, content: string): Promise<void>;
   writeJsonAtomic(path: string, data: unknown): Promise<void>;
+  assertPrivateMetadataDirectory?(path: string): Promise<void>;
+  writePrivateJsonAtomic?(path: string, data: unknown): Promise<void>;
   atomicCopy(source: string, dest: string, kind: "file" | "dir", expectedHash?: string): Promise<void>;
   copyWithin?(source: string, dest: string, kind: "file" | "dir"): Promise<void>;
   rm(path: string): Promise<void>;

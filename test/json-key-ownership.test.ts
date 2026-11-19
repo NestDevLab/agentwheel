@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -9,6 +9,8 @@ import type { DesiredArtifact } from "../src/install/desired.js";
 import type { MergeRemoval } from "../src/install/merge-removal.js";
 import { readInstallManifest, writeInstallManifest } from "../src/install/manifest.js";
 import { createCombinedInstallPlan } from "../src/install/plan.js";
+import { installManifestPath } from "../src/install/paths.js";
+import { applyJournalPath } from "../src/install/transaction.js";
 import { createUninstallPlan } from "../src/install/uninstall.js";
 import { adapterSchema } from "../src/model/adapter.js";
 import { localTransport } from "../src/transport/index.js";
@@ -24,15 +26,16 @@ const baselineTopic = { skills: ["supplies"], systemPrompt: "Previous wording", 
 const baseline = { agents: { list: [{ id: "fixture", workspace: "/fixture" }] }, mcp: { servers: { fixture: {} } }, ...topic(baselineTopic) };
 
 async function withFixture(run: (root: string, sourceRoot: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), "agentwheel-json-keys-"));
+  const fixture = await mkdtemp(join(tmpdir(), "agentwheel-json-keys-"));
+  const root = join(fixture, "runtime");
+  const sourceRoot = join(fixture, "sources");
   try {
-    const sourceRoot = join(root, "sources");
     await mkdir(sourceRoot);
-    await mkdir(join(root, ".openclaw"));
+    await mkdir(join(root, ".openclaw"), { recursive: true });
     await writeFile(join(root, path), JSON.stringify(baseline, null, 2) + "\n");
     await run(root, sourceRoot);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(fixture, { recursive: true, force: true });
   }
 }
 
@@ -46,8 +49,8 @@ async function settings(sourceRoot: string, owner: string, data: object): Promis
   return { type: "settings", name, kind: "file", sourcePath, relativePath: "settings/" + name, channel: "managed", hash: await hashPath(sourcePath), meta: { dependencyRole: "root", owners: [owner] } };
 }
 
-async function makePlan(root: string, artifact: DesiredArtifact, owner: string, transportOverride = transport) {
-  const options = scope(owner);
+async function makePlan(root: string, artifact: DesiredArtifact, owner: string, transportOverride = transport, workspaceOwner = scope(owner).workspaceOwner) {
+  const options = { ...scope(owner), workspaceOwner };
   const manifest = await readInstallManifest(root, "openclaw", transportOverride, options);
   return createCombinedInstallPlan([artifact], adapter, root, manifest, transportOverride, { ...options, baseRevision: manifest?.revision ?? null });
 }
@@ -162,16 +165,31 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
     await legacy(root, source, spec.owner, index === 1 ? undefined : {});
     policies.push(migration(root, source, spec.owner, [decide(spec.keys, "release")]));
   }
-  const source = migration(root, donor, "supplies", [
+  const configuredRoot = join(sourceRoot, "durable");
+  await mkdir(configuredRoot);
+  const replacement = await settings(configuredRoot, "supplies", topic({ ingest: true }));
+  const replacementOwner = "workspace-root:" + configuredRoot;
+  const source = { ...migration(root, donor, "supplies", [
     ...["skills", "systemPrompt"].map((key) => ({
       path: topicKey(key), disposition: "handoff", stateKey: scope("keep").stateKey, workspaceOwner: scope("keep").workspaceOwner,
     })),
     decide(topicKey("ingest"), "adopt-current"),
-  ]);
+  ]), rehome: {
+    stateKey: scope("supplies").stateKey, workspaceOwner: replacementOwner, agentName: "fixture",
+    artifactFile: replacement.sourcePath, keyedArtifactTypes: ["settings"] as const, packageNames: [],
+  } };
   const before = await readFile(join(root, path));
   const reviewed = await planOpenClawKeyMigration(source);
   expect(reviewed.originalDelta).toBe("recorded");
+  expect(reviewed.rehome).toMatchObject({ workspaceOwner: replacementOwner, stateKey: scope("supplies").stateKey, sourceHash: replacement.hash });
   expect(JSON.stringify(reviewed)).not.toContain(baselineTopic.systemPrompt);
+  await expect(planOpenClawKeyMigration({ ...source, rehome: { ...source.rehome, stateKey: scope("other").stateKey } }))
+    .rejects.toThrow("same exact state");
+  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: false })));
+  await expect(applyOpenClawKeyMigration(source, reviewed.planDigest)).rejects.toThrow("exactly the retained keys and current values");
+  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: true }), null, 2));
+  await expect(applyOpenClawKeyMigration(source, reviewed.planDigest)).rejects.toThrow("plan changed");
+  await writeFile(replacement.sourcePath, JSON.stringify(topic({ ingest: true })));
   await applyOpenClawKeyMigration(source, reviewed.planDigest);
   const keep = await settings(sourceRoot, "keep", {
     ...topic({ skills: ["supplies", "keep"], systemPrompt: "Migrated wording" }),
@@ -183,21 +201,27 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
     await applyOpenClawKeyMigration(policy, reviewed.planDigest);
   }
   expect(await readFile(join(root, path))).toEqual(before);
-  await expect(makePlan(root, donor, "supplies")).rejects.toThrow("still declares released keys");
+  await expect(makePlan(root, replacement, "supplies")).rejects.toThrow("cannot implicitly adopt");
+  await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
+  expect((await makePlan(root, replacement, "supplies", transport, replacementOwner)).operations[0].action).toBe("skip");
   await expect(makePlan(root, keep, "wrong-recipient")).rejects.toThrow("reserved for another exact recipient");
   const installed = await applyCombinedInstallPlan(await makePlan(root, keep, "keep"), { transport });
-  const updatedDonor = await settings(sourceRoot, "supplies", topic({ ingest: false }));
-  await applyCombinedInstallPlan(await makePlan(root, updatedDonor, "supplies"), { transport });
+  const updatedDonor = await settings(configuredRoot, "supplies", topic({ ingest: false }));
+  await applyCombinedInstallPlan(await makePlan(root, updatedDonor, "supplies", transport, replacementOwner), { transport });
   await uninstall(await createUninstallPlan(installed, transport), { transport });
   expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual({ ...baseline, ...topic({ ...baselineTopic, ingest: false }) });
   const updated = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
   expect(updated?.entries[0]?.keyMigration?.legacyRemoval).toEqual(topic({
     skills: ["supplies"], systemPrompt: baselineTopic.systemPrompt,
   }));
-  await expect(makePlan(root, donor, "supplies")).rejects.toThrow("still declares released keys");
-  await uninstall(await createUninstallPlan(updated!, transport), { transport });
+  expect(updated?.entries[0]?.keyMigration?.rehome).toMatchObject({ previousWorkspaceOwner: source.sourceOwner, workspaceOwner: replacementOwner });
+  await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
+  await expect(createUninstallPlan(updated!, transport, source.sourceOwner)).rejects.toThrow("selected workspace");
+  await uninstall(await createUninstallPlan(updated!, transport, replacementOwner), { transport });
   expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual(baseline);
-  await expect(makePlan(root, donor, "supplies")).rejects.toThrow("still declares released keys");
+  await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
+  const fence = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
+  expect(fence?.entries[0]?.keyMigration?.rehome).toEqual(updated?.entries[0]?.keyMigration?.rehome);
   const connector = await readInstallManifest(root, "openclaw", transport, scope("connector"));
   expect(connector?.entries[0]).toMatchObject({ artifactType: "mcp", keyOwnership: [] });
 }));
@@ -233,13 +257,15 @@ it("preserves an additive array's recorded removal and restores its prior member
 it.each(["before", "after"] as const)("recovers a %s-metadata-write interruption with unchanged config", (interrupt) => withFixture(async (root, sourceRoot) => {
   const donor = await settings(sourceRoot, "supplies", topic({ ingest: true }));
   const original = await legacy(root, donor, "supplies", {});
+  const manifestPath = installManifestPath(root, "openclaw", scope("supplies"));
+  await chmod(manifestPath, 0o664);
   const before = await readFile(join(root, path));
   const faulty = {
     ...transport,
-    writeJsonAtomic: async (...args: Parameters<typeof transport.writeJsonAtomic>) => {
+    writePrivateJsonAtomic: async (...args: Parameters<NonNullable<typeof transport.writePrivateJsonAtomic>>) => {
       const manifestWrite = args[0].endsWith(".install-manifest.json");
       if (manifestWrite && interrupt === "before") throw new Error("injected metadata interruption");
-      await transport.writeJsonAtomic(...args);
+      await transport.writePrivateJsonAtomic!(...args);
       if (manifestWrite && interrupt === "after") throw new Error("injected metadata interruption");
     },
   };
@@ -247,9 +273,27 @@ it.each(["before", "after"] as const)("recovers a %s-metadata-write interruption
   const plan = await planOpenClawKeyMigration(request);
   await expect(applyOpenClawKeyMigration(request, "f".repeat(64))).rejects.toThrow("plan changed");
   await expect(applyOpenClawKeyMigration(request, plan.planDigest)).rejects.toThrow("injected metadata interruption");
+  expect((await stat(applyJournalPath(root, "openclaw", scope("supplies")))).mode & 0o777).toBe(0o600);
   await expect(planOpenClawKeyMigration(request)).rejects.toThrow("pending runtime journals");
   const recovered = await recoverPendingApply(root, "openclaw", transport, scope("supplies"));
+  expect((await stat(manifestPath)).mode & 0o777).toBe(0o600);
   expect(recovered?.entries[0]?.keyMigration).toMatchObject({ legacyRemoval: original.mergeRemoval, planDigest: plan.planDigest });
   expect(await recoverPendingApply(root, "openclaw", transport, scope("supplies"))).toBeUndefined();
   expect(await readFile(join(root, path))).toEqual(before);
+}));
+
+it("refuses private ownership writes through an unsupported transport or a shared-writable metadata directory", () => withFixture(async (root, sourceRoot) => {
+  const donor = await settings(sourceRoot, "supplies", topic({ ingest: true }));
+  await legacy(root, donor, "supplies", {});
+  const manifestPath = installManifestPath(root, "openclaw", scope("supplies"));
+  const before = await readFile(manifestPath);
+  const request = migration(root, donor, "supplies", [decide(topicKey("ingest"), "adopt-current")]);
+  const plan = await planOpenClawKeyMigration(request);
+  await expect(applyOpenClawKeyMigration({
+    ...request, transport: { ...transport, writePrivateJsonAtomic: undefined },
+  }, plan.planDigest)).rejects.toThrow("owner-only atomic metadata writer");
+  await chmod(join(root, ".agentwheel"), 0o775);
+  await expect(applyOpenClawKeyMigration(request, plan.planDigest)).rejects.toThrow("writable only by their owner");
+  expect(await readFile(manifestPath)).toEqual(before);
+  await expect(stat(applyJournalPath(root, "openclaw", scope("supplies")))).rejects.toMatchObject({ code: "ENOENT" });
 }));

@@ -14,7 +14,7 @@ const relativePath = z.string().min(1).max(4096).refine((path) => path === "." |
   && !path.includes("\\") && !path.includes("\0") && path.split("/").every((part) => part !== "" && part !== "." && part !== "..")), { message: "Run-as path is not a contained relative path." });
 const requestSchema = z.object({
   version: z.literal(1),
-  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "probe", "mkdirExclusive", "writeFileAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
+  operation: z.enum(["pathExists", "hashPath", "readFile", "listDir", "ownershipSnapshot", "ownershipObservation", "probe", "mkdirExclusive", "writeFileAtomic", "assertPrivateMetadataDirectory", "writePrivateMetadataAtomic", "copy", "copyWithin", "rm", "validateOpenClawConfig"]),
   path: relativePath,
   validatorRoot: z.string().optional(), validationSnapshot: z.string().optional(), content: z.string().optional(), source: relativePath.optional(), payload: z.unknown().optional(),
 }).strict();
@@ -90,9 +90,10 @@ export async function executeRequest(root: string, uid: number, gid: number, inp
     if (!request.source) throw new Error("Run-as copyWithin requires a contained source.");
     return fs("copyWithin", { source: request.source });
   }
-  if (request.operation === "writeFileAtomic") {
+  if (request.operation === "assertPrivateMetadataDirectory") return fs("assertPrivateMetadataDirectory");
+  if (request.operation === "writeFileAtomic" || request.operation === "writePrivateMetadataAtomic") {
     if (request.content === undefined) throw new Error("Run-as write requires content.");
-    return fs("writeFileAtomic", { content: Buffer.from(request.content).toString("base64") });
+    return fs(request.operation, { content: Buffer.from(request.content).toString("base64") });
   }
   // This is the sole subprocess operation; no caller-supplied command or argv exists.
   await fs("readFile"); // Confined regular-file/path verification before validation.

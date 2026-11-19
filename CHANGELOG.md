@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.1
+
+- Opt in to exclusive per-key ownership for user-scoped OpenClaw settings. Independent packages can share a settings file, and releasing a key restores its previous value.
+- Inspect and migrate eligible legacy OpenClaw contributions using their exact source and recorded ownership, with recovery for interrupted changes.
+- Keep edge-only selections transitive when a selected node is also a root.
+
 ## 0.22.6
 
 - Refuse a pin that would bring a different artifact onto an install name already taken in a profile, before anything is written. Collisions already in the config only warn, so a pin can still repair them, and an unreachable source only warns.

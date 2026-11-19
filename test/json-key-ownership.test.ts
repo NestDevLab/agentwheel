@@ -101,3 +101,16 @@ it("recovers a landed keyed write after interruption before the receipt", () => 
   expect(manifest?.entries[0]?.keyOwnership?.[0]).toMatchObject({ value: "New wording", previous: "Previous wording" });
   expect((await makePlan(root, keep, "keep")).operations[0].action).toBe("skip");
 }));
+
+it("stops before replacement when config changes during validation", () => withFixture(async (root, sourceRoot) => {
+  const keep = await settings(sourceRoot, "keep", topic({ systemPrompt: "New wording" }));
+  const plan = await makePlan(root, keep, "keep");
+  const concurrent = JSON.stringify({ ...baseline, diagnostics: { enabled: true } });
+  const validating = {
+    ...transport,
+    execFile: async () => { await writeFile(join(root, path), concurrent); return "validated"; },
+  };
+  await expect(applyCombinedInstallPlan(plan, { transport: validating })).rejects.toThrow("configuration changed during validation");
+  expect(await readFile(join(root, path), "utf8")).toBe(concurrent);
+  expect(await readInstallManifest(root, "openclaw", transport, scope("keep"))).toBeUndefined();
+}));

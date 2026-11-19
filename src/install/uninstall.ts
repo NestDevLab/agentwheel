@@ -113,7 +113,8 @@ export async function createOwnershipUninstallPlan(
   const installationType = "installationType" in manifest ? manifest.installationType : defaultInstallationType;
   const stateKey = "stateKey" in manifest ? manifest.stateKey : undefined;
   const keyedEntry = manifest.entries.find((entry) => entry.keyOwnership && "workspaceOwner" in entry);
-  const keyedOwner = keyedEntry && "workspaceOwner" in keyedEntry ? keyedEntry.workspaceOwner : undefined;
+  const keyedOwner = keyedEntry && "workspaceOwner" in keyedEntry && typeof keyedEntry.workspaceOwner === "string"
+    ? keyedEntry.workspaceOwner : undefined;
   const desiredPlan = keyedOwner
     ? await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, manifest, transport,
         { installationType, stateKey, workspaceOwner: keyedOwner })

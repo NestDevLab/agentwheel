@@ -2620,7 +2620,12 @@ async function runExactMcpRetirement(packageName: string, options: GraphCliOptio
   }
   const result = results[0]!;
   try {
-    console.log(options.json ? JSON.stringify(result.plan, null, 2) : formatGraphPlan(result));
+    const publicPlan = { ...result.plan, operations: result.plan.operations.map(({ keyOwnership, keyRelease, ...operation }) => ({
+      ...operation,
+      ...(keyOwnership ? { ownedKeys: keyOwnership.map((claim) => claim.path) } : {}),
+      ...(keyRelease?.length ? { releasedKeys: keyRelease.map((claim) => claim.path) } : {}),
+    })) };
+    console.log(options.json ? JSON.stringify(publicPlan, null, 2) : formatGraphPlan(result));
     if (result.plan.hasBlockingChanges) {
       process.exitCode = 1;
       return;

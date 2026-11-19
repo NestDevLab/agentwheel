@@ -229,6 +229,7 @@ async function createPlanFromOperations(
   transport: TargetTransport,
   options: CombinedInstallPlanOptions,
 ): Promise<InstallPlan> {
+  const installationType = options.installationType ?? defaultInstallationType;
   const workspaceOwner = options.workspaceOwner;
   if (workspaceOwner) {
     for (const op of desiredOps) op.workspaceOwner = workspaceOwner;

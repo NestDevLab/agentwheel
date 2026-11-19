@@ -100,6 +100,78 @@ describe("released target state CLI consumers", () => {
     expect(await readFile(configPath, "utf8")).toBe(oldValues);
   }, 30_000);
 
+  it("repairs a reservation to the registered fleet owner instead of the nested profile", async () => {
+    const fleet = await tempRoot("agentwheel-repair-fleet-");
+    const recipient = join(fleet, "profiles", "recipient");
+    const donor = await tempRoot("agentwheel-repair-donor-");
+    const runtime = await tempRoot("agentwheel-repair-runtime-");
+    const configPath = join(runtime, ".openclaw", "openclaw.json");
+    const donorKey = "openclaw.user.donor";
+    const recipientKey = "openclaw.user.recipient";
+    const owner = workspaceOwnerForRoot(donor);
+    const statePath = join(runtime, ".agentwheel", donorKey + ".install-manifest.json");
+    const content = JSON.stringify({ retained: true, reserved: "fixture" });
+    const now = "2025-01-01T00:00:00.000Z";
+    const target = { adapter: "openclaw", root: runtime, installationType: "user" };
+    for (const dir of [fleet, recipient, donor, runtime]) await mkdir(join(dir, ".agentwheel"), { recursive: true });
+    await mkdir(dirname(configPath));
+    await writeFile(configPath, content);
+    await writeFile(join(fleet, ".agentwheel/config.json"), JSON.stringify({
+      schemaVersion: 3, fleetId: "example", packages: [{ name: "fixture", source: fleet }],
+    }));
+    await runCli(["fleet", "register", "example", "--root", fleet, "--required-package", "fixture"]);
+    await writeFile(join(donor, ".agentwheel/config.json"), JSON.stringify({
+      schemaVersion: 2, packages: [], agents: { runtime: { ...target, stateKey: donorKey } },
+    }));
+    const recipientConfig = join(recipient, ".agentwheel/config.json");
+    const recipientTarget = { ...target, stateKey: recipientKey, adapterConfig: "adapter.json" };
+    await writeFile(recipientConfig, JSON.stringify({
+      schemaVersion: 2, packages: [], agents: { runtime: recipientTarget },
+    }));
+    await writeFile(join(recipient, "adapter.json"), JSON.stringify({
+      name: "openclaw", targets: { settings: { user: { root: "target", dest: ".openclaw/openclaw.json", merge: "openclaw-json-keys" } } },
+    }));
+    await writeFile(statePath, JSON.stringify({
+      version: 2, adapter: "openclaw", targetRoot: runtime, installationType: "user", stateKey: donorKey,
+      revision: "a".repeat(64), generatedAt: now,
+      entries: [{
+        path: ".openclaw/openclaw.json", artifactType: "settings", artifactName: "settings.json", installName: "settings.json",
+        kind: "file", hash: await hashPath(configPath), sourceHash: await hashPath(configPath), updatedAt: now,
+        owners: ["fixture"], refCount: 1, workspaceOwner: owner, mergeStrategy: "openclaw-json-keys",
+        keyOwnership: [{ path: ["retained"], value: true, previous: true, createdParents: [] }],
+        keyMigration: {
+          legacyEntryDigest: "a".repeat(64), historicalSourceHash: "b".repeat(64), planDigest: "c".repeat(64),
+          releasedPaths: [["reserved"]],
+          handoffs: [{ path: ["reserved"], stateKey: recipientKey, workspaceOwner: workspaceOwnerForRoot(recipient) }],
+        },
+      }],
+    }));
+    const paths = join(donor, "paths.json");
+    await writeFile(paths, JSON.stringify([["reserved"]]));
+    const args = [
+      "ownership", "repair-openclaw-key-handoffs", "--local", "--agent", "runtime",
+      "--source-state-key", donorKey, "--source-owner", owner,
+      "--recipient-workspace", recipient, "--recipient-agent", "runtime", "--paths", paths,
+    ];
+    const preview = JSON.parse((await runCli(args, { cwd: donor })).stdout);
+    const canonicalOwner = workspaceOwnerForRoot(fleet, "example");
+    expect(preview.recipient).toEqual({ stateKey: recipientKey, workspaceOwner: canonicalOwner });
+    await writeFile(recipientConfig, JSON.stringify({
+      schemaVersion: 2, packages: [], agents: { runtime: { ...recipientTarget, root: donor } },
+    }));
+    await expect(runCli([...args, "--apply", "--plan-digest", preview.planDigest], { cwd: donor })).rejects.toMatchObject({
+      stderr: expect.stringContaining("on the donor runtime"),
+    });
+    await writeFile(recipientConfig, JSON.stringify({
+      schemaVersion: 2, packages: [], agents: { runtime: recipientTarget },
+    }));
+    const result = JSON.parse((await runCli([...args, "--apply", "--plan-digest", preview.planDigest], { cwd: donor })).stdout);
+    expect(result.applied).toBe(true);
+    const applied = JSON.parse(await readFile(statePath, "utf8"));
+    expect(applied.entries[0].keyMigration.handoffs[0].workspaceOwner).toBe(canonicalOwner);
+    expect(await readFile(configPath, "utf8")).toBe(content);
+  });
+
   it("migrates released state during a scoped package update without losing its sibling", async () => {
     const workspace = await tempRoot("agentwheel-cli-released-package-");
     const alpha = await gitSkillPackage("released-package-alpha", { "released-alpha": "alpha-v1" });

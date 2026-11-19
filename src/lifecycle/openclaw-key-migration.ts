@@ -16,7 +16,7 @@ import {
   acquireApplyLock, assertNoSymlinkPath, assertOwnershipMetadataTransportSupported, listAllApplyJournals,
   mutationMetadataForApplyJournal, observeOwnershipRuntime, writeApplyJournal, type ApplyJournal,
 } from "../install/transaction.js";
-import { installManifestV2Schema, type InstallManifestEntry } from "../model/manifest.js";
+import { installManifestV2Schema, type InstallManifestEntry, type InstallManifestV2 } from "../model/manifest.js";
 import { parseWorkspaceOwner, workspaceOwnerForRoot } from "../model/workspace-owner.js";
 import { declareMutationPath } from "../mutation/declarations.js";
 import { localTransport, type TargetTransport } from "../transport/index.js";
@@ -50,12 +50,18 @@ export interface OpenClawRehomeSource {
   sourceHash: string;
 }
 
+export interface OpenClawKeyRecipient {
+  stateKey: string;
+  workspaceOwner: string;
+}
+
 export interface OpenClawKeyMigrationRequest {
   targetRoot: string;
   sourceStateKey: string;
   sourceOwner: string;
   historicalArtifact: string;
   decisions: unknown;
+  recipients?: readonly OpenClawKeyRecipient[];
   rehome?: {
     stateKey: string;
     workspaceOwner: string;
@@ -72,6 +78,40 @@ export async function planOpenClawKeyMigration(request: OpenClawKeyMigrationRequ
 }
 
 export async function applyOpenClawKeyMigration(request: OpenClawKeyMigrationRequest, reviewedDigest: string) {
+  return withOwnershipLock(request, reviewedDigest, async () => {
+    const { plan, source, entry, claims, releasedPaths, handoffs, inventory } = await observe(request);
+    if (plan.planDigest !== reviewedDigest) throw new Error("OpenClaw migration plan changed; review a new plan.");
+    const replacement: InstallManifestEntry = {
+      ...entry,
+      mergeStrategy: "openclaw-json-keys",
+      mergeRemoval: undefined,
+      mergeCreatedDestination: undefined,
+      ...(plan.rehome ? { workspaceOwner: plan.rehome.workspaceOwner, sourceHash: plan.rehome.sourceHash } : {}),
+      keyOwnership: claims,
+      keyMigration: {
+        legacyEntryDigest: plan.legacyEntryDigest, historicalSourceHash: plan.sourceHash,
+        planDigest: reviewedDigest, legacyRemoval: entry.mergeRemoval, releasedPaths, handoffs,
+        ...(plan.rehome ? {
+          rehome: {
+            previousWorkspaceOwner: plan.sourceOwner,
+            workspaceOwner: plan.rehome.workspaceOwner,
+            agentName: plan.rehome.agentName,
+            sourceHash: plan.rehome.sourceHash,
+            graphDigest: plan.rehome.graphDigest,
+            graphNodeId: plan.rehome.graphNodeId,
+            logicalSelector: plan.rehome.logicalSelector,
+          },
+        } : {}),
+      },
+    };
+    const manifestRevisionAfter = await writeOwnershipChange(request, source, entry, replacement, inventory, plan);
+    return { ...plan, applied: true, manifestRevisionAfter };
+  });
+}
+
+type OwnershipRequest = Pick<OpenClawKeyMigrationRequest, "targetRoot" | "sourceStateKey" | "sourceOwner" | "transport">;
+
+async function withOwnershipLock<T>(request: OwnershipRequest, reviewedDigest: string, apply: () => Promise<T>): Promise<T> {
   if (!/^[a-f0-9]{64}$/u.test(reviewedDigest)) throw new Error("Apply requires the exact reviewed plan digest.");
   const transport = request.transport ?? localTransport;
   const targetRoot = resolve(request.targetRoot);
@@ -81,60 +121,141 @@ export async function applyOpenClawKeyMigration(request: OpenClawKeyMigrationReq
   await requirePrivateOwnershipMetadata(transport, targetRoot);
   const lock = await acquireApplyLock(targetRoot, adapter, transport, {}, { installationType, stateKey });
   try {
-    const { plan, source, entry, claims, releasedPaths, handoffs, inventory } = await observe(request);
-    if (plan.planDigest !== reviewedDigest) throw new Error("OpenClaw migration plan changed; review a new plan.");
-    const mutation = mutationMetadataForApplyJournal();
-    const now = new Date().toISOString();
-    const after = withManifestRevision({
-      ...source, targetRoot, stateKey,
-      generatedAt: now,
-      entries: source.entries.map((item) => item !== entry ? item : {
-        ...entry,
-        mergeStrategy: "openclaw-json-keys",
-        mergeRemoval: undefined,
-        mergeCreatedDestination: undefined,
-        ...(plan.rehome ? { workspaceOwner: plan.rehome.workspaceOwner, sourceHash: plan.rehome.sourceHash } : {}),
-        keyOwnership: claims,
-        keyMigration: {
-          legacyEntryDigest: plan.legacyEntryDigest, historicalSourceHash: plan.sourceHash,
-          planDigest: reviewedDigest,
-          legacyRemoval: entry.mergeRemoval,
-          releasedPaths, handoffs,
-          ...(plan.rehome ? {
-            rehome: {
-              previousWorkspaceOwner: plan.sourceOwner,
-              workspaceOwner: plan.rehome.workspaceOwner,
-              agentName: plan.rehome.agentName,
-              sourceHash: plan.rehome.sourceHash,
-              graphDigest: plan.rehome.graphDigest,
-              graphNodeId: plan.rehome.graphNodeId,
-              logicalSelector: plan.rehome.logicalSelector,
-            },
-          } : {}),
-        },
-      }),
-    });
-    declareMutationPath(installManifestPath(targetRoot, adapter, { installationType, stateKey }));
-    const journal: ApplyJournal = {
-      version: mutation ? 2 : 1,
-      ...(mutation ? { mutation } : {}),
-      mode: "uninstall", adapter, installationType, stateKey, targetRoot,
-      baseRevision: source.revision, createdAt: now, updatedAt: now, operations: [], completed: [],
-      manifest: after,
-      metadataGuards: {
-        inventory: revisions(inventory),
-        runtime: [{ path, hash: plan.runtimeHash, snapshotDigest: plan.runtimeSnapshotDigest }],
-      },
-    };
-    await writeApplyJournal(journal, transport);
-    await commitManifestMetadataJournal(journal, transport);
-    return { ...plan, applied: true, manifestRevisionAfter: after.revision };
+    return await apply();
   } finally {
     await lock.release();
   }
 }
 
-async function observe(request: OpenClawKeyMigrationRequest) {
+async function writeOwnershipChange(
+  request: OwnershipRequest, source: InstallManifestV2, entry: InstallManifestEntry, replacement: InstallManifestEntry,
+  inventory: DiscoveredInstallManifest[], snapshot: { runtimeHash: string; runtimeSnapshotDigest: string },
+) {
+  const transport = request.transport ?? localTransport;
+  const targetRoot = resolve(request.targetRoot);
+  const stateKey = request.sourceStateKey;
+  const mutation = mutationMetadataForApplyJournal();
+  const now = new Date().toISOString();
+  const after = withManifestRevision(installManifestV2Schema.parse({
+    ...source, targetRoot, stateKey, generatedAt: now,
+    entries: source.entries.map((item) => item === entry ? replacement : item),
+  }));
+  declareMutationPath(installManifestPath(targetRoot, adapter, { installationType, stateKey }));
+  const journal: ApplyJournal = {
+    version: mutation ? 2 : 1,
+    ...(mutation ? { mutation } : {}),
+    mode: "uninstall", adapter, installationType, stateKey, targetRoot,
+    baseRevision: source.revision, createdAt: now, updatedAt: now, operations: [], completed: [],
+    manifest: after,
+    metadataGuards: {
+      inventory: revisions(inventory),
+      runtime: [{ path, hash: snapshot.runtimeHash, snapshotDigest: snapshot.runtimeSnapshotDigest }],
+    },
+  };
+  await writeApplyJournal(journal, transport);
+  await commitManifestMetadataJournal(journal, transport);
+  return after.revision;
+}
+
+export interface OpenClawKeyRepairRequest extends OwnershipRequest {
+  recipient: OpenClawKeyRecipient;
+  paths: unknown;
+}
+
+export async function planOpenClawKeyRepair(request: OpenClawKeyRepairRequest) {
+  return (await observeRepair(request)).plan;
+}
+
+export async function applyOpenClawKeyRepair(request: OpenClawKeyRepairRequest, reviewedDigest: string) {
+  return withOwnershipLock(request, reviewedDigest, async () => {
+    const { plan, source, entry, replacement, inventory } = await observeRepair(request);
+    if (plan.planDigest !== reviewedDigest) throw new Error("OpenClaw repair plan changed; review a new plan.");
+    if (!plan.changes.length) return { ...plan, applied: false, manifestRevisionAfter: source.revision };
+    const manifestRevisionAfter = await writeOwnershipChange(request, source, entry, replacement, inventory, plan);
+    return { ...plan, applied: true, manifestRevisionAfter };
+  });
+}
+
+async function observeRepair(request: OpenClawKeyRepairRequest) {
+  const { transport, targetRoot, stateKey, endpoint, source, entry, inventory } = await observeSource(request);
+  const migration = entry.keyMigration;
+  const handoffs = migration?.handoffs;
+  if (entry.mergeStrategy !== "openclaw-json-keys" || !migration || !handoffs?.length || !entry.keyOwnership) {
+    throw new Error("Repair requires an existing migrated OpenClaw key reservation.");
+  }
+  const { recipient } = request;
+  const recipientKey = exactStateKey(adapter, recipient.stateKey, installationType, "recipient");
+  if (recipientKey === stateKey || !isCanonicalOwner(recipient.workspaceOwner)) {
+    throw new Error("Repair requires a different configured recipient with canonical ownership.");
+  }
+  const paths = z.array(decisionPathSchema).min(1).parse(request.paths).sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
+  if (new Set(paths.map(canonicalJson)).size !== paths.length) throw new Error("Duplicate repair key path.");
+  const changes: Array<{ path: string[]; previousWorkspaceOwner: string; workspaceOwner: string }> = [];
+  for (const key of paths) {
+    const matches = handoffs.filter((handoff) => isDeepStrictEqual(handoff.path, key));
+    const [previous] = matches;
+    if (matches.length !== 1 || !previous || previous.stateKey !== recipientKey
+      || !migration.releasedPaths.some((released) => isDeepStrictEqual(released, key))) {
+      throw new Error("Repair requires one exact reservation for the configured recipient state.");
+    }
+    for (const item of inventory) for (const peer of item.manifest.entries) {
+      if (peer.path !== path) continue;
+      if (peer.keyOwnership?.some((claim) => jsonKeyPathsOverlap(claim.path, key))) {
+        throw new Error("Cannot repair a reservation for an already claimed key.");
+      }
+      if (item.stateKey !== stateKey && peer.keyMigration?.handoffs?.some((handoff) => jsonKeyPathsOverlap(handoff.path, key))) {
+        throw new Error("Cannot repair a reservation that overlaps another handoff.");
+      }
+    }
+    if (previous.workspaceOwner !== recipient.workspaceOwner) {
+      changes.push({ path: key, previousWorkspaceOwner: previous.workspaceOwner, workspaceOwner: recipient.workspaceOwner });
+    }
+  }
+  const snapshot = await observeOwnershipRuntime(join(targetRoot, path), transport);
+  if (snapshot.kind !== "file") throw new Error("OpenClaw configuration must be a regular file.");
+  const content = await transport.readFile(join(targetRoot, path));
+  assertOwnedJsonKeys(content, entry.keyOwnership);
+  const config = parseKeyOwnedConfig(content);
+  for (const key of paths) {
+    const value = readJsonKey(config, key);
+    if (value === undefined || (value !== null && typeof value === "object" && !Array.isArray(value))) {
+      throw new Error("Repair requires an existing atomic value at each reserved key.");
+    }
+  }
+  const runtimeHash = jsonFileHash(content);
+  await assertObservationCurrent(targetRoot, transport, inventory, snapshot.snapshotDigest, runtimeHash);
+  const plan = {
+    targetRoot, adapter, installationType, stateKey, recipient, ...(endpoint ? { transport: endpoint } : {}),
+    sourceOwner: entry.workspaceOwner, manifestRevision: source.revision, entryDigest: entryDigest(entry),
+    inventoryDigest: digest(revisions(inventory)), runtimeHash, runtimeSnapshotDigest: snapshot.snapshotDigest, paths, changes,
+  };
+  const replacement = {
+    ...entry, keyMigration: { ...migration, handoffs: handoffs.map((handoff) =>
+      changes.some((change) => isDeepStrictEqual(change.path, handoff.path))
+        ? { ...handoff, workspaceOwner: recipient.workspaceOwner } : handoff) },
+  };
+  return { plan: { ...plan, planDigest: digest(plan) }, source, entry, replacement, inventory };
+}
+
+function isCanonicalOwner(value: string): boolean {
+  const owner = parseWorkspaceOwner(value);
+  return !!owner && workspaceOwnerForRoot(owner.root, owner.fleetId) === value;
+}
+
+async function assertObservationCurrent(
+  targetRoot: string, transport: TargetTransport, inventory: DiscoveredInstallManifest[],
+  snapshotDigest: string, runtimeHash: string,
+) {
+  const destPath = join(targetRoot, path);
+  const afterRuntime = await observeOwnershipRuntime(destPath, transport);
+  if (afterRuntime.snapshotDigest !== snapshotDigest || await transport.hashPath(destPath) !== runtimeHash
+    || digest(revisions(await listInstallManifests(targetRoot, undefined, transport))) !== digest(revisions(inventory))) {
+    throw new Error("OpenClaw config or ownership inventory changed during planning.");
+  }
+  await assertNoPending(targetRoot, transport);
+}
+
+async function observeSource(request: OwnershipRequest) {
   const transport = request.transport ?? localTransport;
   const targetRoot = resolve(request.targetRoot);
   const endpoint = ownershipRunAsEndpoint(transport, targetRoot);
@@ -157,10 +278,16 @@ async function observe(request: OpenClawKeyMigrationRequest) {
   const [entry] = entries;
   if (entries.length !== 1 || !entry || entry.workspaceOwner !== request.sourceOwner
     || !parseWorkspaceOwner(entry.workspaceOwner) || entry.kind !== "file"
-    || (entry.artifactType !== "settings" && entry.artifactType !== "mcp") || entry.mergeStrategy !== legacyStrategy
+    || (entry.artifactType !== "settings" && entry.artifactType !== "mcp")
     || entry.mergeCreatedDestination || entry.mode || entry.semanticCommand || entry.semanticPlugin || entry.executed) {
-    throw new Error("Migration requires a single named legacy fragment claim, without whole-file deletion rights.");
+    throw new Error("Ownership changes require one exact configuration fragment without whole-file deletion rights.");
   }
+  return { transport, targetRoot, destPath, stateKey, endpoint, source, entry, inventory };
+}
+
+async function observe(request: OpenClawKeyMigrationRequest) {
+  const { transport, targetRoot, destPath, stateKey, endpoint, source, entry, inventory } = await observeSource(request);
+  if (entry.mergeStrategy !== legacyStrategy) throw new Error("Migration requires a legacy OpenClaw JSON merge claim.");
   await assertNoSymlinkPath(request.historicalArtifact);
   if (!(await lstat(request.historicalArtifact)).isFile()) throw new Error("Historical artifact must be a regular file.");
   const historical = await readFile(request.historicalArtifact, "utf8");
@@ -192,8 +319,10 @@ async function observe(request: OpenClawKeyMigrationRequest) {
     if (decision.disposition === "release" || decision.disposition === "handoff") {
       if (decision.disposition === "handoff") {
         const recipient = exactStateKey(adapter, decision.stateKey, installationType, "recipient");
-        if (recipient === stateKey || !parseWorkspaceOwner(decision.workspaceOwner)) {
-          throw new Error("OpenClaw handoff requires a different, named recipient install state.");
+        const matches = (request.recipients ?? []).filter((candidate) => candidate.stateKey === recipient);
+        if (recipient === stateKey || !isCanonicalOwner(decision.workspaceOwner)
+          || matches.length !== 1 || matches[0]?.workspaceOwner !== decision.workspaceOwner) {
+          throw new Error("OpenClaw handoff requires the exact ownership of a different configured recipient.");
         }
         handoffs.push({ path: decision.path, stateKey: recipient, workspaceOwner: decision.workspaceOwner });
       }
@@ -238,12 +367,7 @@ async function observe(request: OpenClawKeyMigrationRequest) {
     keyMigration: { legacyEntryDigest: entryDigest(entry), historicalSourceHash: entry.sourceHash, planDigest: "0".repeat(64), releasedPaths, handoffs },
   }] });
   const runtimeHash = jsonFileHash(content);
-  const afterRuntime = await observeOwnershipRuntime(destPath, transport);
-  if (afterRuntime.snapshotDigest !== beforeRuntime.snapshotDigest || await transport.hashPath(destPath) !== runtimeHash
-    || digest(revisions(await listInstallManifests(targetRoot, undefined, transport))) !== digest(revisions(inventory))) {
-    throw new Error("OpenClaw config or ownership inventory changed during migration planning.");
-  }
-  await assertNoPending(targetRoot, transport);
+  await assertObservationCurrent(targetRoot, transport, inventory, beforeRuntime.snapshotDigest, runtimeHash);
   const plan = {
     targetRoot, adapter, installationType, stateKey, sourceOwner: entry.workspaceOwner, sourceHash: entry.sourceHash,
     ...(endpoint ? { transport: endpoint } : {}),

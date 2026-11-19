@@ -1,4 +1,4 @@
-import { applyOpenClawKeyMigration, planOpenClawKeyMigration, type OpenClawRehomeSource } from "../lifecycle/openclaw-key-migration.js";
+import { applyOpenClawKeyMigration, applyOpenClawKeyRepair, planOpenClawKeyMigration, planOpenClawKeyRepair, type OpenClawRehomeSource } from "../lifecycle/openclaw-key-migration.js";
 import { inspectOpenClawTopicOwnership } from "../lifecycle/openclaw-topic-ownership.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -7,6 +7,8 @@ import { assertNoSymlinkPath } from "../install/transaction.js";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import { z } from "zod";
 import { Command } from "commander";
 import { resolveAdapter } from "../adapters/resolve.js";
 import {
@@ -50,7 +52,7 @@ import { resolveTargetStateIdentity } from "../model/target-state.js";
 import { diffGraphLocks } from "../resolve/graph-diff.js";
 import { resolveCliVersion } from "./version.js";
 import { applyArtifactOwnershipHandoff, planArtifactOwnershipHandoff, workspaceOwnerForRoot } from "../lifecycle/ownership.js";
-import { applyRetireStaleOwnership, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
+import { applyRetireStaleOwnership, ownershipRunAsEndpoint, planRetireStaleOwnership } from "../lifecycle/ownership-retire-stale.js";
 import { applyReleaseOwnership, planReleaseOwnership } from "../lifecycle/ownership-release.js";
 import { applyMigrateLegacyOwnership, planMigrateLegacyOwnership } from "../lifecycle/ownership-migrate-legacy.js";
 import { applyAdoptLegacyOwnership, desiredCoverageFromPlan, planAdoptLegacyOwnership } from "../lifecycle/ownership-adopt-legacy.js";
@@ -1188,6 +1190,7 @@ ownershipCommand
   .requiredOption("--historical-artifact <path>", "exact historical artifact bytes in a caller-owned file")
   .requiredOption("--decisions <path>", "reviewed JSON decision list for every historical or recorded key")
   .option("--rehome-artifact <path>", "prove the exact configured fragment in the named workspace at the same state key")
+  .option("--recipients <path>", "JSON list of configured recipient workspaces and agents for handoff decisions")
   .option("--local", "use the nearest local workspace", false)
   .option("--fleet <id>", "use one registered named fleet")
   .option("--plan-digest <sha256>", "exact reviewed plan digest, required to apply")
@@ -1209,12 +1212,50 @@ ownershipCommand
       targetRoot: target.targetRoot, sourceStateKey: options.sourceStateKey, sourceOwner: options.sourceOwner,
       historicalArtifact: normalizeCliPath(options.historicalArtifact),
       decisions: JSON.parse(await readFile(decisionsPath, "utf8")),
+      recipients: options.recipients
+        ? await Promise.all(z.array(z.strictObject({
+          workspace: z.string().min(1), agent: z.string().min(1),
+        })).min(1).parse(await readOwnershipInput(options.recipients)).map(({ workspace, agent }) =>
+          describeOpenClawKeyRecipient(target, workspace, agent)))
+        : undefined,
       rehome,
       transport: transportForTarget(target),
     };
     const result = options.apply
       ? await applyOpenClawKeyMigration(request, options.planDigest ?? "")
       : await planOpenClawKeyMigration(request);
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+ownershipCommand
+  .command("repair-openclaw-key-handoffs")
+  .description("correct the owner of unconsumed OpenClaw key reservations without writing runtime configuration")
+  .requiredOption("--agent <name>", "named OpenClaw user target for the existing donor")
+  .requiredOption("--source-state-key <key>", "exact migrated donor install state")
+  .requiredOption("--source-owner <owner>", "exact recorded donor workspace owner")
+  .requiredOption("--recipient-workspace <path>", "workspace of the configured recipient")
+  .requiredOption("--recipient-agent <name>", "named recipient agent in that workspace")
+  .requiredOption("--paths <path>", "JSON array of exact reserved key paths to repair")
+  .option("--local", "use the nearest local workspace", false)
+  .option("--fleet <id>", "use one registered named fleet")
+  .option("--plan-digest <sha256>", "exact reviewed repair plan digest")
+  .option("--apply", "commit the reviewed metadata-only repair", false)
+  .action(async (options) => {
+    const targets = await resolveCliTargets({ agent: options.agent, local: options.local, fleet: options.fleet });
+    const [target] = targets;
+    if (targets.length !== 1 || !target || target.adapter !== "openclaw"
+      || (target.installationType !== undefined && target.installationType !== "user")) {
+      throw new Error("OpenClaw repair requires one named OpenClaw user target.");
+    }
+    const request = {
+      targetRoot: target.targetRoot, sourceStateKey: options.sourceStateKey, sourceOwner: options.sourceOwner,
+      recipient: await describeOpenClawKeyRecipient(target, options.recipientWorkspace, options.recipientAgent),
+      paths: await readOwnershipInput(options.paths),
+      transport: transportForTarget(target),
+    };
+    const result = options.apply
+      ? await applyOpenClawKeyRepair(request, options.planDigest ?? "")
+      : await planOpenClawKeyRepair(request);
     console.log(JSON.stringify(result, null, 2));
   });
 
@@ -4067,6 +4108,38 @@ async function withFreshSourceOptions<T>(
     else process.env.TMPDIR = priorTmpdir;
     await rm(stage, { recursive: true, force: true });
   }
+}
+
+async function readOwnershipInput(input: string): Promise<unknown> {
+  const file = normalizeCliPath(input);
+  await assertNoSymlinkPath(file);
+  if (!(await lstat(file)).isFile()) throw new Error("Ownership input must be a regular file.");
+  return JSON.parse(await readFile(file, "utf8"));
+}
+
+async function describeOpenClawKeyRecipient(source: RuntimeTarget, workspace: string, agent: string) {
+  const cwd = await realpath(normalizeCliPath(workspace));
+  const recipient = await resolveRuntimeTarget({ cwd, agent });
+  if (await realpath(recipient.workspaceRoot) !== cwd || recipient.adapter !== "openclaw"
+    || recipient.installationType !== "user" || !recipient.stateKey || recipient.transport !== source.transport
+    || !["local", "local-run-as"].includes(recipient.transport)
+    || resolve(recipient.targetRoot) !== resolve(source.targetRoot)) {
+    throw new Error("Recipient must be a named OpenClaw user target with an explicit state on the donor runtime.");
+  }
+  const endpoint = (target: RuntimeTarget) => ownershipRunAsEndpoint(transportForTarget(target), target.targetRoot)?.identity;
+  if (!isDeepStrictEqual(endpoint(recipient), endpoint(source))) {
+    throw new Error("Recipient and donor must use the same service account and runtime endpoint.");
+  }
+  const adapterOptions = adapterOptionsForTarget(recipient, {});
+  const adapter = await resolveAdapterForTarget(recipient, {});
+  const mapping = targetMappingForArtifact(adapter, "settings", "user");
+  const state = installStateForTarget(recipient, adapter, adapterOptions, "user");
+  if (adapter.programmatic || mapping?.dest !== ".openclaw/openclaw.json"
+    || mapping.merge !== "openclaw-json-keys" || state.installRoot !== resolve(source.targetRoot)) {
+    throw new Error("Recipient must have a declarative keyed mapping to the donor OpenClaw configuration.");
+  }
+  const ownership = await resolveWorkspaceOwnershipScope(recipient.workspaceRoot, { fleetId: recipient.fleetId });
+  return { stateKey: state.stateKey, workspaceOwner: workspaceOwnerForRoot(ownership.root, ownership.fleetId) };
 }
 
 async function describeOpenClawRehome(target: RuntimeTarget, stateKey: string, artifactFile: string) {

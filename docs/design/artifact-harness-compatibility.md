@@ -229,6 +229,13 @@ source or recorded legacy delta:
   refused. Existing object parents are preserved because the legacy manifest
   cannot prove whether they previously existed.
 
+For handoff decisions, supply `--recipients <file>` with a JSON array of
+`{"workspace": "/example/workspace", "agent": "recipient-agent"}` entries.
+Agentwheel derives the canonical owner from the registered fleet and verifies
+that the configured recipient uses the same OpenClaw user endpoint and a keyed
+settings mapping. The owner and state key in every decision must match the
+resolved identity.
+
 Preview every state before applying, with a fresh plan for each transaction.
 The reviewed digest binds the complete manifest inventory, runtime snapshot,
 endpoint identity, source bytes and decisions. Use `--apply --plan-digest`
@@ -237,6 +244,24 @@ updates only that manifest. Its journal can be recovered via the normal
 `mutation recover-runtime` receipt flow. The old delta and released-path fence
 remain in the manifest, including after removal of the migrated artifact.
 The config bytes are guarded throughout migration.
+
+
+### Repairing an unconsumed OpenClaw key reservation
+
+Run `ownership repair-openclaw-key-handoffs` from the donor workspace with the
+exact donor state and recorded owner. Pass `--recipient-workspace`,
+`--recipient-agent`, and `--paths` pointing to a JSON array of exact key paths.
+The recipient state key must already match the reservation. Repair changes
+only the canonical owner recorded on those reservations. A key already held by
+a keyed install state cannot be repaired by this command.
+
+Review the plan, then run the same command with `--apply --plan-digest <digest>`.
+The native metadata journal guards the manifest inventory, endpoint, and
+unchanged OpenClaw configuration. Repeating a successful repair produces no
+changes. Recover an interrupted metadata transaction through the operation
+receipt before planning again.
+
+### Moving an OpenClaw legacy fragment to a continuing workspace
 
 When the historical workspace is unavailable, supply `--rehome-artifact`
 with the continuing fragment in the selected named target's workspace.

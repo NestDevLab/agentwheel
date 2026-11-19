@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import { applyCombinedInstallPlan, recoverPendingApply, uninstall } from "../src/install/apply.js";
-import { applyOpenClawKeyMigration, planOpenClawKeyMigration } from "../src/lifecycle/openclaw-key-migration.js";
+import { applyOpenClawKeyMigration, applyOpenClawKeyRepair, planOpenClawKeyMigration, planOpenClawKeyRepair } from "../src/lifecycle/openclaw-key-migration.js";
 import type { InstallManifestEntry } from "../src/model/manifest.js";
 import type { DesiredArtifact } from "../src/install/desired.js";
 import type { MergeRemoval } from "../src/install/merge-removal.js";
@@ -189,7 +189,14 @@ function rehomeSource(artifact: DesiredArtifact) {
   };
 }
 
-it("migrates a recorded donor and four incomplete historical owners, then installs, updates and rolls back", () => withFixture(async (root, sourceRoot) => {
+it("repairs a migrated reservation, reconciles four historical owners, then installs, updates and rolls back", () => withFixture(async (root, sourceRoot) => {
+  const live = {
+    ...baseline,
+    mcp: { servers: { ...baseline.mcp.servers, other: { url: "http://current.example.invalid" } } },
+    plugins: { compat: { enabled: false } },
+    notifications: { enabled: true },
+  };
+  await writeFile(join(root, path), JSON.stringify(live));
   const donor = await settings(sourceRoot, "supplies", topic(baselineTopic));
   await legacy(root, donor, "supplies", topic({ skills: ["supplies"], systemPrompt: baselineTopic.systemPrompt }));
   const nonDonors = [
@@ -203,19 +210,23 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
     const source = await settings(sourceRoot, spec.owner, spec.fragment);
     if (index === 0) source.type = "mcp";
     await legacy(root, source, spec.owner, index === 1 ? undefined : {});
-    policies.push(migration(root, source, spec.owner, [decide(spec.keys, "release")]));
+    policies.push(migration(root, source, spec.owner, [decide(spec.keys, spec.owner === "older-policy" ? "release" : "adopt-current")]));
   }
   const configuredRoot = join(sourceRoot, "durable");
   await mkdir(configuredRoot);
   const replacement = await settings(configuredRoot, "supplies", topic({ ingest: true }));
   const rehome = rehomeSource(replacement);
   const replacementOwner = rehome.workspaceOwner;
+  const oldRecipient = scope("keep");
+  const recipient = { stateKey: oldRecipient.stateKey, workspaceOwner: "workspace-root:/fixture|fleet-id:example" };
   const source = { ...migration(root, donor, "supplies", [
     ...["skills", "systemPrompt"].map((key) => ({
       path: topicKey(key), disposition: "handoff", stateKey: scope("keep").stateKey, workspaceOwner: scope("keep").workspaceOwner,
     })),
     decide(topicKey("ingest"), "adopt-current"),
-  ]), rehome };
+  ]), rehome, recipients: [oldRecipient] };
+  await expect(planOpenClawKeyMigration({ ...source, recipients: [recipient] }))
+    .rejects.toThrow("exact ownership of a different configured recipient");
   const before = await readFile(join(root, path));
   const reviewed = await planOpenClawKeyMigration(source);
   expect(reviewed.originalDelta).toBe("recorded");
@@ -230,6 +241,33 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   await expect(applyOpenClawKeyMigration({ ...source, rehome: { ...rehome, graphDigest: "b".repeat(64) } }, reviewed.planDigest))
     .rejects.toThrow("plan changed");
   await applyOpenClawKeyMigration(source, reviewed.planDigest);
+  const originalDonor = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
+  const repair = {
+    targetRoot: root, sourceStateKey: scope("supplies").stateKey, sourceOwner: replacementOwner,
+    paths: ["skills", "systemPrompt"].map(topicKey), recipient, transport,
+  };
+  const repairPlan = await planOpenClawKeyRepair(repair);
+  expect(repairPlan.changes.map(({ path }) => path.at(-1))).toEqual(["skills", "systemPrompt"]);
+  expect(JSON.stringify(repairPlan)).not.toContain(baselineTopic.systemPrompt);
+  await expect(planOpenClawKeyRepair({ ...repair, recipient: scope("wrong") })).rejects.toThrow("exact reservation");
+  await expect(applyOpenClawKeyRepair(repair, "f".repeat(64))).rejects.toThrow("plan changed");
+  const interrupted = { ...repair, transport: {
+    ...transport,
+    writePrivateJsonAtomic: async (...args: Parameters<NonNullable<typeof transport.writePrivateJsonAtomic>>) => {
+      await transport.writePrivateJsonAtomic!(...args);
+      if (args[0].endsWith(".install-manifest.json")) throw new Error("injected repair interruption");
+    },
+  } };
+  await expect(applyOpenClawKeyRepair(interrupted, repairPlan.planDigest)).rejects.toThrow("injected repair interruption");
+  await expect(planOpenClawKeyRepair(repair)).rejects.toThrow("pending runtime journals");
+  await recoverPendingApply(root, "openclaw", transport, scope("supplies"));
+  const repairedDonor = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
+  expect(repairedDonor?.entries[0]?.keyOwnership).toEqual(originalDonor?.entries[0]?.keyOwnership);
+  expect(repairedDonor?.entries[0]?.keyMigration?.handoffs?.map((handoff) => handoff.workspaceOwner))
+    .toEqual([recipient.workspaceOwner, recipient.workspaceOwner]);
+  const repeated = await planOpenClawKeyRepair(repair);
+  expect(repeated.changes).toEqual([]);
+  expect((await applyOpenClawKeyRepair(repair, repeated.planDigest)).applied).toBe(false);
   const keep = await settings(sourceRoot, "keep", {
     ...topic({ skills: ["supplies", "keep"], systemPrompt: "Migrated wording" }),
     plugins: { entries: { keep: { enabled: true } } },
@@ -244,11 +282,13 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
   expect((await makePlan(root, replacement, "supplies", transport, replacementOwner)).operations[0].action).toBe("skip");
   await expect(makePlan(root, keep, "wrong-recipient")).rejects.toThrow("reserved for another exact recipient");
-  const installed = await applyCombinedInstallPlan(await makePlan(root, keep, "keep"), { transport });
+  await expect(makePlan(root, keep, "keep")).rejects.toThrow("reserved for another exact recipient");
+  const installed = await applyCombinedInstallPlan(await makePlan(root, keep, "keep", transport, recipient.workspaceOwner), { transport });
+  await expect(planOpenClawKeyRepair(repair)).rejects.toThrow("already claimed");
   const updatedDonor = await settings(configuredRoot, "supplies", topic({ ingest: false }));
   await applyCombinedInstallPlan(await makePlan(root, updatedDonor, "supplies", transport, replacementOwner), { transport });
-  await uninstall(await createUninstallPlan(installed, transport), { transport });
-  expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual({ ...baseline, ...topic({ ...baselineTopic, ingest: false }) });
+  await uninstall(await createUninstallPlan(installed, transport, recipient.workspaceOwner), { transport });
+  expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual({ ...live, ...topic({ ...baselineTopic, ingest: false }) });
   const updated = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
   expect(updated?.entries[0]?.keyMigration?.legacyRemoval).toEqual(topic({
     skills: ["supplies"], systemPrompt: baselineTopic.systemPrompt,
@@ -257,12 +297,13 @@ it("migrates a recorded donor and four incomplete historical owners, then instal
   await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
   await expect(createUninstallPlan(updated!, transport, source.sourceOwner)).rejects.toThrow("selected workspace");
   await uninstall(await createUninstallPlan(updated!, transport, replacementOwner), { transport });
-  expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual(baseline);
+  expect(JSON.parse(await readFile(join(root, path), "utf8"))).toEqual(live);
   await expect(makePlan(root, donor, "supplies", transport, replacementOwner)).rejects.toThrow("still declares released keys");
   const fence = await readInstallManifest(root, "openclaw", transport, scope("supplies"));
   expect(fence?.entries[0]?.keyMigration?.rehome).toEqual(updated?.entries[0]?.keyMigration?.rehome);
   const connector = await readInstallManifest(root, "openclaw", transport, scope("connector"));
-  expect(connector?.entries[0]).toMatchObject({ artifactType: "mcp", keyOwnership: [] });
+  expect(connector?.entries[0]?.artifactType).toBe("mcp");
+  expect(connector?.entries[0]?.keyOwnership).toMatchObject([{ value: "http://current.example.invalid", previous: "http://current.example.invalid" }]);
 }));
 
 it("refuses to uninstall a rehomed state with a foreign sibling skill", () => withFixture(async (root, sourceRoot) => {

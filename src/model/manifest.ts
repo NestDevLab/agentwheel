@@ -42,6 +42,12 @@ export const manifestEntryV1Schema = z.object({
   mergeStrategy: z.enum(["json-deep", "openclaw-json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
   mergeRemoval: mergeRemovalSchema.optional(),
   mergeCreatedDestination: z.boolean().optional(),
+  keyOwnership: z.array(z.object({
+    path: z.array(z.string().min(1)).min(1),
+    value: mergeValueSchema,
+    previous: mergeValueSchema.optional(),
+    createdParents: z.array(z.number().int().positive()),
+  })).min(1).optional(),
   mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });

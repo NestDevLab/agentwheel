@@ -1,3 +1,4 @@
+import { assertJsonKeyOwnershipInventory, planJsonKeyChange } from "./json-key-ownership.js";
 import { join } from "node:path";
 import { defaultInstallationType } from "../model/adapter.js";
 import type { AdapterConfig } from "../model/adapter.js";
@@ -22,6 +23,14 @@ export async function createUninstallPlan(
   for (const entry of manifest.entries) {
     const semanticPlugin = "semanticPlugin" in entry ? entry.semanticPlugin : undefined;
     const destPath = semanticPlugin ? manifest.targetRoot : join(manifest.targetRoot, entry.path);
+    if (entry.keyOwnership) {
+      operations.push(await planJsonKeyChange({
+        action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
+        kind: entry.kind, destPath, relativeDestPath: entry.path, reason: removalReason(entry, "uninstall managed artifact"),
+        channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
+      }, await transport.readFile(destPath), entry.keyOwnership, true));
+      continue;
+    }
     if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
     const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     if (currentHash !== entry.hash) {
@@ -72,6 +81,9 @@ export async function createUninstallPlan(
       });
     }
   }
+  await assertJsonKeyOwnershipInventory(operations, manifest.targetRoot, manifest.adapter,
+    "installationType" in manifest ? manifest.installationType : defaultInstallationType,
+    "stateKey" in manifest ? manifest.stateKey : undefined, transport);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   if (runtimeStateRevision !== await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport)) {
     throw new Error("Runtime manifest inventory changed during uninstall planning; replan needed.");
@@ -141,6 +153,14 @@ export async function createOwnershipUninstallPlan(
       continue;
     }
 
+    if (entry.keyOwnership) {
+      operations.push(await planJsonKeyChange({
+        action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
+        kind: entry.kind, destPath, relativeDestPath: entry.path, reason: removalReason(entry, "owner set became empty"),
+        channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
+      }, await transport.readFile(destPath), entry.keyOwnership, true));
+      continue;
+    }
     if (currentHash !== entry.hash) {
       operations.push({
         action: "keep",
@@ -191,6 +211,9 @@ export async function createOwnershipUninstallPlan(
     }
   }
 
+  await assertJsonKeyOwnershipInventory(operations, manifest.targetRoot, manifest.adapter,
+    "installationType" in manifest ? manifest.installationType : defaultInstallationType,
+    "stateKey" in manifest ? manifest.stateKey : undefined, transport);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   if (runtimeStateRevision !== await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport)) {
     throw new Error("Runtime manifest inventory changed during ownership uninstall planning; replan needed.");
@@ -218,7 +241,7 @@ async function currentEntryHash(entry: ManifestEntry, destPath: string, transpor
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership"
 > {
   if ("owners" in entry) {
     return {
@@ -231,6 +254,7 @@ function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: strin
       graphLockDigest: entry.graphLockDigest,
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,
+      keyOwnership: entry.keyOwnership,
     };
   }
   return {

@@ -29,6 +29,7 @@ export const targetMappingSchema = z.object({
     "copilot-agent",
   ]).optional(),
   merge: z.enum(["json-deep", "openclaw-json-deep", "yaml-deep", "codex-toml-mcp"]).optional(),
+  mergeOwnership: z.literal("keys").optional(),
   mode: z.enum(["managed-block"]).optional(),
 });
 

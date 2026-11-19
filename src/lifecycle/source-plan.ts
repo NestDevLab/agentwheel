@@ -979,6 +979,7 @@ async function assertNoForeignWorkspaceState(check: ForeignStateCheck): Promise<
       const owner = "workspaceOwner" in manifestEntry ? manifestEntry.workspaceOwner : undefined;
       if (typeof owner !== "string" || !owner.startsWith(workspaceOwnerPrefix)) continue;
       if (ownedByWorkspace(owner, check.workspaceOwner, root, ownsSubWorkspaces)) continue;
+      if (manifestEntry.keyOwnership && plannedOperations.get(manifestEntry.path)?.every((operation) => operation.keyOwnership)) continue;
       if (planned.has(manifestEntry.path)
         && !(await isDisjointVerifiedMergeContribution(
           check,

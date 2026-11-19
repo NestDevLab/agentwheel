@@ -1,3 +1,4 @@
+import { assertJsonKeyOwnershipInventory, planJsonKeyChange, type JsonKeyClaim } from "./json-key-ownership.js";
 import { basename, join, relative } from "node:path";
 import {
   defaultInstallationType,
@@ -64,6 +65,10 @@ export interface InstallOperation {
   mergeStrategy?: "json-deep" | "openclaw-json-deep" | "yaml-deep" | "codex-toml-mcp";
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
+  mergeOwnership?: "keys";
+  keyOwnership?: JsonKeyClaim[];
+  keyRelease?: JsonKeyClaim[];
+  keyResultHash?: string;
   exactMergeRemoval?: boolean;
   exactMergeAdoption?: boolean;
   mode?: ManagedInstructionBlockMode;
@@ -265,6 +270,19 @@ async function createPlanFromOperations(
       continue;
     }
 
+    if (op.mergeOwnership || manifestByPath.get(op.relativeDestPath)?.keyOwnership) {
+      const existing = manifestByPath.get(op.relativeDestPath);
+      if (op.mergeOwnership !== "keys" || op.mergeStrategy !== "openclaw-json-deep"
+        || op.artifactType !== "settings" || adapter.name !== "openclaw" || installationType !== "user"
+        || !workspaceOwner || options.stateMigration
+        || (existing && (!existing.keyOwnership || !entryOwnedByWorkspace(existing, workspaceOwner)))) {
+        throw new Error("JSON key ownership cannot implicitly adopt or replace the existing ownership mode.");
+      }
+      const content = await transport.pathExists(op.destPath) ? await transport.readFile(op.destPath) : undefined;
+      operations.push(await planJsonKeyChange(op, content, existing?.keyOwnership ?? []));
+      continue;
+    }
+
     if (op.mergeStrategy) {
       const existing = manifestByPath.get(op.relativeDestPath);
       const exists = await transport.pathExists(op.destPath);
@@ -409,6 +427,14 @@ async function createPlanFromOperations(
     if (desired.has(entry.path)) continue;
     const semanticPlugin = entry.semanticPlugin;
     const destPath = semanticPlugin ? targetRoot : join(targetRoot, entry.path);
+    if (entry.keyOwnership && (!workspaceOwner || entryOwnedByWorkspace(entry, workspaceOwner))) {
+      operations.push(await planJsonKeyChange({
+        action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
+        kind: entry.kind, destPath, relativeDestPath: entry.path, reason: staleRemovalReason(entry),
+        channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
+      }, await transport.readFile(destPath), entry.keyOwnership, true));
+      continue;
+    }
     if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
     const inferredMode = semanticPlugin
       ? undefined
@@ -467,6 +493,7 @@ async function createPlanFromOperations(
   }
 
   for (const operation of operations) assertOperationContained(operation, targetRoot);
+  await assertJsonKeyOwnershipInventory(operations, targetRoot, adapter.name, installationType, options.stateKey, transport);
   operations.sort((a, b) => a.relativeDestPath.localeCompare(b.relativeDestPath));
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(targetRoot, adapter.name, transport);
   if (options.runtimeStateRevision && runtimeStateRevision !== options.runtimeStateRevision) {
@@ -875,7 +902,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
 
 function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership"
 > {
   if ("owners" in entry) {
     return {
@@ -888,6 +915,7 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
       graphLockDigest: entry.graphLockDigest,
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,
+      keyOwnership: entry.keyOwnership,
     };
   }
   return {
@@ -1028,6 +1056,7 @@ async function operationForArtifact(artifact: Artifact, adapter: AdapterConfig, 
     channel: artifact.channel ?? "managed",
     packageName: artifact.packageName,
     mergeStrategy: target.merge,
+    mergeOwnership: target.mergeOwnership,
     mode: target.mode,
     composedFrom: metadata.composedFrom,
     ...metadata,

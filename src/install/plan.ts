@@ -66,6 +66,7 @@ export interface InstallOperation {
   mergeRemoval?: MergeRemoval;
   mergeCreatedDestination?: boolean;
   keyOwnership?: JsonKeyClaim[];
+  keyMigration?: InstallManifestEntry["keyMigration"];
   keyRelease?: JsonKeyClaim[];
   keyResultHash?: string;
   exactMergeRemoval?: boolean;
@@ -273,13 +274,18 @@ async function createPlanFromOperations(
     if (op.mergeStrategy === "openclaw-json-keys" || manifestByPath.get(op.relativeDestPath)?.keyOwnership) {
       const existing = manifestByPath.get(op.relativeDestPath);
       if (op.mergeStrategy !== "openclaw-json-keys" || op.relativeDestPath !== ".openclaw/openclaw.json"
-        || op.artifactType !== "settings" || adapter.name !== "openclaw" || installationType !== "user"
+        || (op.artifactType !== "settings" && !(op.artifactType === "mcp" && existing?.keyMigration))
+        || adapter.name !== "openclaw" || installationType !== "user"
         || !workspaceOwner || options.stateMigration
         || (existing && (!existing.keyOwnership || !entryOwnedByWorkspace(existing, workspaceOwner)))) {
         throw new Error("JSON key ownership cannot implicitly adopt or replace the existing ownership mode.");
       }
       const content = await transport.pathExists(op.destPath) ? await transport.readFile(op.destPath) : undefined;
-      operations.push(await planJsonKeyChange(op, content, existing?.keyOwnership ?? []));
+      if (existing?.keyMigration && (existing.artifactType !== op.artifactType || existing.artifactName !== op.artifactName
+        || !packageIdentityMatches(existing, op))) {
+        throw new Error("Migrated OpenClaw artifact identity does not match the configured source.");
+      }
+      operations.push(await planJsonKeyChange({ ...op, keyMigration: existing?.keyMigration }, content, existing?.keyOwnership ?? []));
       continue;
     }
 
@@ -431,6 +437,7 @@ async function createPlanFromOperations(
       operations.push(await planJsonKeyChange({
         action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
         kind: entry.kind, destPath, relativeDestPath: entry.path, reason: staleRemovalReason(entry),
+        desiredHash: entry.sourceHash, manifestHash: entry.hash,
         channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
       }, await transport.readFile(destPath), entry.keyOwnership, true));
       continue;
@@ -902,7 +909,7 @@ function operationMetadataFromDesired(artifact: Artifact, meta: DesiredEntryMeta
 
 function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership" | "keyMigration"
 > {
   if ("owners" in entry) {
     return {
@@ -916,6 +923,7 @@ function operationMetadataFromEntry(entry: PlanningManifestEntry): Pick<
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,
       keyOwnership: entry.keyOwnership,
+      keyMigration: entry.keyMigration,
     };
   }
   return {

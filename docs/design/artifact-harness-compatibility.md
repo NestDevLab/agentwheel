@@ -193,6 +193,57 @@ before switching modes. Use a release that supports the selected strategy for
 every writer of the target. The built-in adapter continues using its existing
 merge strategy.
 
+### Migrating an OpenClaw legacy fragment
+
+`ownership migrate-openclaw-keys` plans one metadata-only conversion of a named
+OpenClaw user install state. Supply the exact recorded workspace owner and a
+caller-owned copy of the original artifact. The planner uses the old source
+hash to verify its bytes and computes its JSON leaf footprint without expanding
+environment or secret placeholders. Settings and MCP fragments are supported.
+Whole-file deletion rights are out of scope.
+
+The JSON decision file explicitly lists each leaf path from the historical
+source or recorded legacy delta:
+
+```json
+[
+  {"path": ["channels", "example", "skills"], "disposition": "handoff", "stateKey": "openclaw.user.recipient", "workspaceOwner": "workspace-root:/example/recipient"},
+  {"path": ["channels", "example", "enabled"], "disposition": "adopt-current"},
+  {"path": ["channels", "example", "roles"], "disposition": "retain-recorded"}
+]
+```
+
+- `release` leaves the runtime value in place and stops the migrated artifact
+  from reclaiming the key or an overlapping path. Remove released values from
+  the artifact source before its next install or update. An incoming artifact's
+  first install then records the existing values as its rollback baseline.
+- `handoff` releases the key from the donor and reserves its exact path for the
+  reviewed destination state key and workspace owner. The same reservation
+  stays in effect after the recipient rolls back.
+- `adopt-current` explicitly accepts the current value as the restoration
+  baseline when historical rollback is unknown. It attributes an exclusive
+  claim by reviewed decision and carries no assertion about the older preimage.
+- `retain-recorded` uses the exact legacy removal delta to preserve known
+  removal behavior for the selected leaf. For additive arrays it retains the
+  other current members as the baseline. Ambiguous replacement arrays are
+  refused. Existing object parents are preserved because the legacy manifest
+  cannot prove whether they previously existed.
+
+Preview every state before applying, with a fresh plan for each transaction.
+The reviewed digest binds the complete manifest inventory, runtime snapshot,
+endpoint identity, source bytes and decisions. Use `--apply --plan-digest`
+with the reviewed digest and normal mutation authorization. The transaction
+updates only that manifest. Its journal can be recovered via the normal
+`mutation recover-runtime` receipt flow. The old delta and released-path fence
+remain in the manifest, including after removal of the migrated artifact.
+The config bytes are guarded throughout migration.
+
+All remaining whole-file claims still block keyed installs. Convert those states
+with their own decisions before installing the new artifact. Point continuing
+legacy packages at the same governed install-state keys with an opt-in adapter
+and sources that exclude released keys. Test the incoming install, an
+independent donor update and the incoming rollback before any rollout.
+
 ## Audit Notes
 
 - Codex custom prompts are documented but deprecated, user-home only, and superseded by skills; the built-in adapter rejects OpenPack `commands`.

@@ -47,7 +47,19 @@ export const manifestEntryV1Schema = z.object({
     value: mergeValueSchema,
     previous: mergeValueSchema.optional(),
     createdParents: z.array(z.number().int().positive()),
-  })).min(1).optional(),
+  })).optional(),
+  keyMigration: z.object({
+    legacyEntryDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    historicalSourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    planDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    legacyRemoval: mergeRemovalSchema.optional(),
+    releasedPaths: z.array(z.array(z.string().min(1)).min(1)),
+    handoffs: z.array(z.object({
+      path: z.array(z.string().min(1)).min(1),
+      stateKey: z.string().min(1),
+      workspaceOwner: z.string().min(1),
+    })).optional(),
+  }).optional(),
   mode: z.enum(["managed-block"]).optional(),
   composedFrom: z.array(composedFromEntrySchema).optional(),
 });
@@ -62,7 +74,10 @@ export const manifestEntrySchema = manifestEntryV1Schema.extend({
   workspaceOwner: z.string().min(1).default(legacyUnownedWorkspaceOwner),
   graphLockDigest: z.string().min(1).optional(),
 }).refine((entry) => (entry.keyOwnership !== undefined) === (entry.mergeStrategy === "openclaw-json-keys")
-  && (!entry.keyOwnership || (entry.kind === "file" && entry.artifactType === "settings"
+  && (!entry.keyMigration || entry.keyOwnership !== undefined)
+  && (!entry.keyOwnership || (entry.kind === "file"
+    && (entry.artifactType === "settings" || (entry.artifactType === "mcp" && entry.keyMigration !== undefined))
+    && (entry.keyOwnership.length > 0 || entry.keyMigration !== undefined)
     && entry.path === ".openclaw/openclaw.json" && !entry.mergeRemoval && !entry.mergeCreatedDestination)),
 { message: "Invalid OpenClaw key ownership entry" }).transform((entry) => {
   const owners = [...new Set(entry.owners)].sort();

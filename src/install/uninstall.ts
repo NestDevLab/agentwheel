@@ -27,11 +27,12 @@ export async function createUninstallPlan(
       operations.push(await planJsonKeyChange({
         action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
         kind: entry.kind, destPath, relativeDestPath: entry.path, reason: removalReason(entry, "uninstall managed artifact"),
+        desiredHash: entry.sourceHash, manifestHash: entry.hash,
         channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
       }, await transport.readFile(destPath), entry.keyOwnership, true));
       continue;
     }
-    if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
+    if (!semanticPlugin && !entry.keyOwnership && !(await transport.pathExists(destPath))) continue;
     const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     if (currentHash !== entry.hash) {
       operations.push({
@@ -111,10 +112,16 @@ export async function createOwnershipUninstallPlan(
   const runtimeStateRevision = await computeInstallManifestInventoryRevision(manifest.targetRoot, manifest.adapter, transport);
   const installationType = "installationType" in manifest ? manifest.installationType : defaultInstallationType;
   const stateKey = "stateKey" in manifest ? manifest.stateKey : undefined;
-  const desiredPlan = await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport, { installationType, stateKey });
+  const keyedEntry = manifest.entries.find((entry) => entry.keyOwnership && "workspaceOwner" in entry);
+  const keyedOwner = keyedEntry && "workspaceOwner" in keyedEntry ? keyedEntry.workspaceOwner : undefined;
+  const desiredPlan = keyedOwner
+    ? await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, manifest, transport,
+        { installationType, stateKey, workspaceOwner: keyedOwner })
+    : await createCombinedInstallPlan(remainingDesired, adapter, manifest.targetRoot, undefined, transport, { installationType, stateKey });
   const ownersByPath = new Map(
     desiredPlan.operations
-      .filter((operation) => operation.owners?.length)
+      .filter((operation) => operation.owners?.length
+        && (!keyedOwner || (operation.action !== "remove" && operation.reason !== "preserve the OpenClaw migration fence")))
       .map((operation) => [operation.relativeDestPath, operation.owners ?? []]),
   );
   const operations: InstallOperation[] = [];
@@ -122,7 +129,7 @@ export async function createOwnershipUninstallPlan(
   for (const entry of manifest.entries) {
     const semanticPlugin = "semanticPlugin" in entry ? entry.semanticPlugin : undefined;
     const destPath = semanticPlugin ? manifest.targetRoot : join(manifest.targetRoot, entry.path);
-    if (!semanticPlugin && !(await transport.pathExists(destPath))) continue;
+    if (!semanticPlugin && !entry.keyOwnership && !(await transport.pathExists(destPath))) continue;
     const currentHash = semanticPlugin ? entry.hash : await currentEntryHash(entry, destPath, transport);
     const remainingOwners = ownersByPath.get(entry.path) ?? [];
 
@@ -157,6 +164,7 @@ export async function createOwnershipUninstallPlan(
       operations.push(await planJsonKeyChange({
         action: "remove", artifactType: entry.artifactType, artifactName: entry.artifactName,
         kind: entry.kind, destPath, relativeDestPath: entry.path, reason: removalReason(entry, "owner set became empty"),
+        desiredHash: entry.sourceHash, manifestHash: entry.hash,
         channel: entry.channel, mergeStrategy: entry.mergeStrategy, ...operationMetadataFromEntry(entry),
       }, await transport.readFile(destPath), entry.keyOwnership, true));
       continue;
@@ -241,7 +249,7 @@ async function currentEntryHash(entry: ManifestEntry, destPath: string, transpor
 
 function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: string[]): Pick<
   InstallOperation,
-  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership"
+  "installName" | "logicalSelector" | "graphNodeId" | "dependencyRole" | "owners" | "workspaceOwner" | "graphLockDigest" | "mergeRemoval" | "mergeCreatedDestination" | "keyOwnership" | "keyMigration"
 > {
   if ("owners" in entry) {
     return {
@@ -255,6 +263,7 @@ function operationMetadataFromEntry(entry: ManifestEntry, ownersOverride?: strin
       mergeRemoval: entry.mergeRemoval,
       mergeCreatedDestination: entry.mergeCreatedDestination,
       keyOwnership: entry.keyOwnership,
+      keyMigration: entry.keyMigration,
     };
   }
   return {

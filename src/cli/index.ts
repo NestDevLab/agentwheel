@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { Command } from "commander";
+import { withReadEffects } from "../effects/read-policy.js";
 import { resolveAdapter } from "../adapters/resolve.js";
 import {
   installRootForAdapterInstallationType,
@@ -1788,7 +1789,7 @@ program
   .option("--offline", "use cached version and member status even when stale", false)
   .option("--refresh", "refresh package and member status regardless of TTL", false)
   .option("--recover-legacy-state", "inspect stable state while preserving invalid historical state", false)
-  .action(async (options) => {
+  .action(async (options) => withReadEffects(options, async () => {
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
     if (composite) {
@@ -1810,7 +1811,7 @@ program
     for (const target of targets) {
       await printStatus(target, normalizedOptions);
     }
-  });
+  }));
 
 const journalCommand = program
   .command("journal")

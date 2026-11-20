@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";
+import { isObservation } from "../effects/read-policy.js";
 import type { WorkspacePackage } from "../model/workspace.js";
 import { readPackageManifest } from "../model/package.js";
 import { compareSemverStrings, parseSemver, satisfiesVersionRange } from "../resolve/semver.js";
@@ -66,12 +67,12 @@ export async function discoverPackageVersions(
   const cachedAgeMs = cached ? now.getTime() - new Date(cached.checkedAt).getTime() : Number.POSITIVE_INFINITY;
   const cachedFresh = cachedAgeMs <= ttlSeconds * 1000;
 
-  if (options.offline || (cached && cachedFresh && !options.forceRefresh)) {
+  if (isObservation() || options.offline || (cached && cachedFresh && !options.forceRefresh)) {
     return availabilityFromVersions(pkg, cached?.versions ?? [], {
       checkedAt: cached?.checkedAt ?? null,
       stale: !cachedFresh,
       refreshed: false,
-      error: !cached && options.offline ? "No cached version index is available offline." : undefined,
+      error: !cached && (options.offline || isObservation()) ? "No cached version index is available; use --refresh explicitly." : undefined,
     });
   }
 

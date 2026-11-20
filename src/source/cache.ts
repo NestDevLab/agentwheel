@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { requireRefreshEffect } from "../effects/read-policy.js";
 import { isIgnoredGeneratedEntry, pathExists } from "../utils/fs.js";
 
 const snapshotNamePattern = /^(.*)-([0-9a-f]{12})$/i;
@@ -30,6 +31,7 @@ interface SnapshotEntry {
  * The mutable checkout itself is never removed.
  */
 export async function pruneGitCache(cacheRoot: string, options: GitCachePruneOptions = {}): Promise<GitCachePruneResult> {
+  requireRefreshEffect("cache pruning");
   if (!(await pathExists(cacheRoot))) return { removedPaths: [], retainedPaths: [] };
   if (options.maintenanceLockHeld) return pruneGitCacheUnlocked(cacheRoot, options);
   return withGitCacheMaintenanceLock(
@@ -44,6 +46,7 @@ export async function withGitCacheMaintenanceLock<T>(
   timeoutMs: number,
   fn: () => Promise<T>,
 ): Promise<T> {
+  requireRefreshEffect("persistent cache maintenance locks");
   const lockPath = join(cacheRoot, ".maintenance.lock");
   await mkdir(cacheRoot, { recursive: true });
   const started = Date.now();
@@ -73,6 +76,7 @@ export async function withGitCacheMaintenanceLock<T>(
 }
 
 export async function createGitSnapshotLease(snapshotPath: string): Promise<string> {
+  requireRefreshEffect("persistent snapshot leases");
   const leasePath = `${snapshotPath}${leaseMarker}${process.pid}-${randomUUID()}`;
   await writeFile(leasePath, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }), {
     encoding: "utf8",

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { isObservation } from "../effects/read-policy.js";
 import { extractOpenPackIncludeSelectors, parseOpenPackIncludeSelector } from "../compose/markdown.js";
 import type { Artifact, PackageItemRequire, PackageItemSuggest } from "../model/artifact.js";
 import { artifactTypeSchema } from "../model/artifact.js";
@@ -1005,6 +1006,9 @@ async function fetchPackage(
   if (existing) return existing;
 
   const promise = (async () => {
+    if (isObservation() && !["local", "git"].includes(normalized.driver)) {
+      throw new Error(`Observation cannot qualify source driver '${normalized.driver}'; use --refresh explicitly.`);
+    }
     const driver = getSourceDriver(normalized.driver);
     const resolved = await driver.resolve(normalized.source, {
       cacheRoot: options.cacheRoot ?? join(options.workspaceRoot, ".agentwheel", "cache"),

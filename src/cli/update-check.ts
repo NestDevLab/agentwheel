@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { isObservationInvocation } from "../effects/read-policy.js";
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 300;
@@ -52,6 +53,7 @@ export async function maybeCheckForUpdate(options: UpdateCheckOptions): Promise<
 }
 
 function isDisabled(options: UpdateCheckOptions): boolean {
+  if (isObservationInvocation(options.argv ?? process.argv)) return true;
   const env = options.env ?? process.env;
   if (env.AGENTWHEEL_NO_UPDATE_CHECK === "1" || env.AGENTWHEEL_NO_UPDATE_CHECK === "true") return true;
   if (env.CI) return true;

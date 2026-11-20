@@ -3,6 +3,7 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { isObservation } from "../effects/read-policy.js";
 import { readPackageManifest } from "../model/package.js";
 import {
   hashPath,
@@ -43,6 +44,10 @@ export class GitSourceDriver implements SourceDriver {
   }
 
   async fetch(resolved: ResolvedSource): Promise<ResolvedSource> {
+    if (isObservation()) return this.observe(resolved);
+    if (await pathExists(resolved.resolvedPath) && !(await pathExists(join(resolved.resolvedPath, ".git")))) {
+      throw incompleteCheckoutError(resolved.resolvedPath);
+    }
     return withFilesystemLock(`${resolved.resolvedPath}.lock`, resolved.cacheLockTimeoutMs ?? 30_000, async () => {
       const parsed = parseGitSource(resolved.source);
       const cacheRoot = dirname(resolved.resolvedPath);
@@ -53,7 +58,9 @@ export class GitSourceDriver implements SourceDriver {
         if (resolved.frozenLock) {
           throw new Error(`Frozen lock requires cached git checkout at ${resolved.resolvedPath}`);
         }
-        await rm(resolved.resolvedPath, { recursive: true, force: true });
+        if (await pathExists(resolved.resolvedPath)) {
+          throw incompleteCheckoutError(resolved.resolvedPath);
+        }
         await git([...(await gitAuthArguments(parsed.url)), "clone", "--no-checkout", parsed.url, resolved.resolvedPath]);
         await assertOwnedByCurrentUser(resolved.resolvedPath);
       } else if (!resolved.frozenLock) {
@@ -103,6 +110,24 @@ export class GitSourceDriver implements SourceDriver {
     }, "git cache");
   }
 
+  private async observe(resolved: ResolvedSource): Promise<ResolvedSource> {
+    if (!(await pathExists(join(resolved.resolvedPath, ".git")))) {
+      if (await pathExists(resolved.resolvedPath)) throw incompleteCheckoutError(resolved.resolvedPath);
+      throw new Error(`Observation requires a cached Git checkout at ${JSON.stringify(resolved.resolvedPath)}; rerun the same scoped command with --refresh to create an absent cache.`);
+    }
+    const parsed = parseGitSource(resolved.source);
+    const commit = await resolveCommit(resolved.resolvedPath, resolved.requestedRef ?? parsed.ref ?? "HEAD");
+    const snapshot = snapshotPathFor(resolved.resolvedPath, commit);
+    const packageRoot = parsed.subpath ? join(snapshot, parsed.subpath) : snapshot;
+    if (!(await isDirectory(packageRoot))) {
+      throw new Error("Observation requires an existing cached Git snapshot; use --refresh to materialize it.");
+    }
+    const manifest = await readPackageManifest(packageRoot);
+    return { ...resolved, resolvedPath: packageRoot, resolvedCommit: commit,
+      packageName: manifest?.name, packageVersion: manifest?.version,
+      sourceHash: await hashPath(packageRoot), cacheLeasePath: undefined };
+  }
+
   async list(resolved: ResolvedSource) {
     return this.local.list({ ...resolved, driver: "local" });
   }
@@ -139,7 +164,7 @@ function cachePathFor(url: string, cacheRoot?: string): string {
 }
 
 async function git(args: string[], env?: NodeJS.ProcessEnv) {
-  return execFileAsync("git", args, { env, maxBuffer: 1024 * 1024 * 10 });
+  return execFileAsync("git", args, { env: isObservation() ? { ...process.env, ...env, GIT_OPTIONAL_LOCKS: "0" } : env, maxBuffer: 1024 * 1024 * 10 });
 }
 
 async function resolveCommit(checkoutPath: string, ref: string): Promise<string> {
@@ -160,8 +185,21 @@ async function resolveCommit(checkoutPath: string, ref: string): Promise<string>
   throw lastError;
 }
 
+function incompleteCheckoutError(checkoutPath: string): Error {
+  return new Error(
+    `Incomplete cached checkout preserved at ${JSON.stringify(checkoutPath)}. `
+    + `Manual repair: move this exact directory to a new backup location outside the cache directory ${JSON.stringify(dirname(checkoutPath))}; do not overwrite an existing backup. `
+    + "Confirm the original directory is absent, then rerun the same scoped command with --refresh to clone it again. "
+    + "Agentwheel does not move or remove the directory automatically.",
+  );
+}
+
+function snapshotPathFor(checkoutPath: string, commit: string): string {
+  return join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
+}
+
 async function snapshotCommit(checkoutPath: string, commit: string): Promise<{ path: string; created: boolean }> {
-  const snapshotPath = join(dirname(checkoutPath), `${basename(checkoutPath)}-${commit.slice(0, 12)}`);
+  const snapshotPath = snapshotPathFor(checkoutPath, commit);
   if (await pathExists(snapshotPath)) return { path: snapshotPath, created: false };
   const tempPath = join(dirname(checkoutPath), `${basename(snapshotPath)}.tmp-${process.pid}-${Date.now()}`);
   const tempIndexPath = `${tempPath}.index`;

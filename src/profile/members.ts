@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { isObservation } from "../effects/read-policy.js";
 import type { WorkspaceProfileMember } from "../model/workspace.js";
 import {
   statusReportSchema,
@@ -57,9 +58,9 @@ async function collectMember(
   const ageMs = cached ? Date.now() - new Date(cached.checkedAt).getTime() : Number.POSITIVE_INFINITY;
   const fresh = ageMs <= ttlSeconds * 1000;
 
-  if (options.offline || (cached && fresh && !options.refresh)) {
+  if (isObservation() || options.offline || (cached && fresh && !options.refresh)) {
     if (!cached) {
-      return memberFailure(member, "STALE", "No cached member status is available offline.");
+      return memberFailure(member, "STALE", "No cached member status is available; use --refresh explicitly.");
     }
     return memberFromReport(member, cached.report, {
       checkedAt: cached.checkedAt,

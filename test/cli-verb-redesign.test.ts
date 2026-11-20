@@ -1,3 +1,4 @@
+import { diffEffects, snapshot } from "./helpers/effects.js";
 import { execFile } from "node:child_process";
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -946,11 +947,18 @@ describe("CLI verb redesign", () => {
 
   it("reports correlated released state before target identity migration", async () => {
     const state = await releasedTargetStateFixture();
-
-    const status = JSON.parse((await runCli([
+    const before = await snapshot(state.workspace);
+    const result = await runCli([
       "status", "--adapter", "codex", "--installation-type", "local",
       "--target-root", state.workspace, "--json",
-    ])).stdout);
+    ]).catch((error: { code: number; stdout: string; stderr: string }) => {
+      // Observation reports unavailable version metadata without populating a cache.
+      expect(error.code, error.stdout + error.stderr).toBe(1);
+      return error;
+    });
+    const status = JSON.parse(result.stdout);
+    expect(status.targets[0].packages[0].error).toMatch(/No cached version index.*--refresh/);
+    expect(diffEffects(before, await snapshot(state.workspace))).toEqual([]);
 
     expect(status.targets[0]).toMatchObject({
       manifestEntryCount: 1,

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "links": [
+    {
+      "file": "test/cli-verb-redesign.test.ts",
+      "name": "CLI verb redesign > previews and applies Git cache pruning",
+      "commands": ["cache prune"],
+      "evidence": "Runs cache prune in preview and apply modes and checks retained cache entries."
+    },
+    {
+      "file": "test/cli-verb-redesign.test.ts",
+      "name": "CLI verb redesign > drafts a registry publish submission from a GitHub URL without writing workspace state",
+      "commands": ["registry publish"],
+      "evidence": "Invokes registry publish and checks its draft and workspace effects."
+    },
+    {
+      "file": "test/cli-verb-redesign.test.ts",
+      "name": "CLI verb redesign > doctor suggests the Copilot user companion skill install without writing files",
+      "commands": ["doctor"],
+      "evidence": "Invokes doctor and checks the suggested install and unchanged tree."
+    }
+  ]
+}

@@ -401,7 +401,7 @@ async function observe(request: AdoptLegacyOwnershipRequest, transport: TargetTr
     desiredCoverage: desiredCoverageIdentity(request.desiredCoverage, selectedPaths),
     ...(guardedInventory ? { metadataGuards: {
       inventory: guardedInventory.map((item) => ({ stateKey: item.stateKey, revision: item.manifest.revision })),
-      runtime: selected.map((entry) => ({ path: entry.path, hash: entry.runtimeHash!, snapshotDigest: entry.runtimeSnapshotDigest!,
+      runtime: selected.map((entry) => ({ path: entry.path, hash: entry.managedBlock?.hash ?? entry.runtimeHash!, snapshotDigest: entry.runtimeSnapshotDigest!,
         ...(entry.managedBlock ? { managedBlock: entry.managedBlock } : {}) })),
     } } : {}),
   };

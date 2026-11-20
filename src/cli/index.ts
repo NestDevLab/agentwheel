@@ -80,7 +80,7 @@ import { pruneGitCache, releaseGitSnapshotLease } from "../source/cache.js";
 import { listRegisteredFleets, registerFleet, resolveWorkspaceOwnershipScope, resolveWorkspaceScope, showRegisteredFleet } from "../model/fleet.js";
 import { applyFleetNormalization, planFleetNormalization, recoverFleetNormalization, type FleetNormalizationSource } from "../lifecycle/fleet-normalize.js";
 import { declareMutationPath } from "../mutation/declarations.js";
-import { GovernedMutation, checkMutationProvider, mutationPolicyForWorkspace, recoverMutationRuntime, resumeMutation } from "../mutation/coordinator.js";
+import { GovernedMutation, checkMutationProvider, mutationPolicyForWorkspace, recoverMutationRuntime, resumeMutation, previewMutationRecovery } from "../mutation/coordinator.js";
 import { listMutationReceipts, readMutationReceipt, type MutationReceipt } from "../mutation/receipts.js";
 import { isGovernedCommand, requiresCleanMutationPreflight } from "../mutation/commands.js";
 
@@ -1934,7 +1934,9 @@ for (const action of ["finalize", "recover"] as const) {
     .description(`${action} one verified successful governed mutation idempotently`)
     .argument("<operation-id>", "mutation operation id")
     .option("--json", "print the updated receipt as JSON", false)
+    .option("--dry-run", "inspect zero-operation metadata recovery without writing", false)
     .action(async (operationId, options) => {
+      if (options.dryRun) return printRecoveryPreview(await previewMutationRecovery(operationId, action), options.json);
       const receipt = await resumeMutation(operationId, action);
       if (options.json) return console.log(JSON.stringify(receipt, null, 2));
       printMutationReceipt(receipt);
@@ -1946,7 +1948,9 @@ mutationCommand
   .description("resume linked runtime apply journals, verify them, and finalize revisioning")
   .argument("<operation-id>", "mutation operation id")
   .option("--json", "print the updated receipt as JSON", false)
+  .option("--dry-run", "inspect zero-operation metadata recovery without writing", false)
   .action(async (operationId, options) => {
+    if (options.dryRun) return printRecoveryPreview(await previewMutationRecovery(operationId), options.json);
     const receipt = await recoverMutationRuntime(operationId);
     if (options.json) return console.log(JSON.stringify(receipt, null, 2));
     printMutationReceipt(receipt);
@@ -5702,4 +5706,17 @@ try {
   }
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
+}
+
+function printRecoveryPreview(preview: Awaited<ReturnType<typeof previewMutationRecovery>>, json: boolean): void {
+  if (json) return console.log(JSON.stringify(preview, null, 2));
+  console.log(`DRY RUN ${preview.operationId}: ${preview.status}; zero runtime operations`);
+  for (const journal of preview.journals) {
+    console.log(`  ${journal.removesManifest ? "Remove" : "Write"} metadata: ${journal.manifestPath}`);
+    for (const path of journal.auditPaths) console.log(`  Ensure audit intent: ${path}`);
+    console.log(`  Resolve journal: ${journal.path}`);
+  }
+  for (const step of preview.steps) console.log(`  ${step}`);
+  console.log(`Next: ${preview.nextCommand}`);
+  console.log("Advisory only; execution revalidates all guards. No revision provider was invoked.");
 }

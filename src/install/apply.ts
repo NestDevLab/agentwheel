@@ -592,15 +592,33 @@ async function assertCommittedJournalState(
   return actualManifest;
 }
 
+/** Observe a zero-operation metadata recovery without locks, providers, or durable writes. */
+export async function previewMetadataJournal(journal: ApplyJournal, transport: TargetTransport = localTransport): Promise<{
+  manifestPath: string; auditPaths: string[]; removesManifest: boolean;
+}> {
+  if (journal.operations.length || journal.completed.length || (!journal.metadataGuards && !journal.metadataAudit)) {
+    throw new Error("Read-only recovery preview requires a guarded metadata journal with zero runtime operations.");
+  }
+  const manifest = withManifestRevision({ ...journal.manifest, generatedAt: journal.createdAt });
+  if (journal.metadataGuards) await assertMetadataStateGuards(journal, manifest, journal.metadataGuards, transport, false, true);
+  if (journal.metadataAudit) await assertMetadataAuditGuards(journal, manifest, transport, false, true);
+  return {
+    manifestPath: installManifestPath(journal.targetRoot, journal.adapter, { installationType: journal.installationType, stateKey: journal.stateKey }),
+    auditPaths: journal.metadataAudit?.auditFiles.map((file) => metadataAuditPath(journal.metadataAudit!, file.path)) ?? [],
+    removesManifest: manifest.entries.length === 0 && !journal.metadataAudit,
+  };
+}
+
 /** Both initial commit and recovery accept only the exact reviewed before/after manifest states. */
 async function assertMetadataAuditGuards(
   journal: ApplyJournal,
   after: InstallManifestV2,
   transport: TargetTransport,
   requireAfter = false,
+  readOnly = false,
 ): Promise<void> {
   const audit = journal.metadataAudit!;
-  await assertOwnershipMetadataAuditPaths(journal, transport);
+  if (!readOnly) await assertOwnershipMetadataAuditPaths(journal, transport);
   const sha = /^[a-f0-9]{64}$/;
   if (transport.kind === "ssh" || (audit.kind !== "ownership-release" && audit.kind !== "ownership-handoff")
     || after.adapter !== journal.adapter || after.targetRoot !== journal.targetRoot
@@ -612,7 +630,7 @@ async function assertMetadataAuditGuards(
     || audit.auditFiles.length !== 1 || audit.runtime.length !== 1 || !audit.inventory.length) {
     throw new Error("Invalid metadata-audit transaction; no state was committed.");
   }
-  await assertMetadataStateGuards(journal, after, audit, transport, requireAfter);
+  await assertMetadataStateGuards(journal, after, audit, transport, requireAfter, readOnly);
   for (const file of audit.auditFiles) {
     const path = metadataAuditPath(audit, file.path);
     await assertNoSymlinkPath(path);
@@ -633,6 +651,7 @@ async function assertMetadataStateGuards(
   guards: MetadataStateGuards,
   transport: TargetTransport,
   requireAfter = false,
+  readOnly = false,
 ): Promise<void> {
   const sha = /^[a-f0-9]{64}$/;
   if (transport.kind === "ssh" || (journal.metadataAudit && journal.metadataGuards)
@@ -645,7 +664,7 @@ async function assertMetadataStateGuards(
     || !guards.inventory.length || !guards.runtime.length) {
     throw new Error("Invalid guarded metadata transaction; no state was committed.");
   }
-  assertOwnershipMetadataTransportSupported(transport, journal);
+  if (!readOnly) assertOwnershipMetadataTransportSupported(transport, journal);
   if (transport.kind === "local") {
     await assertNoSymlinkPath(journal.targetRoot);
     await assertNoSymlinkPath(metadataDir(journal.targetRoot));
@@ -668,13 +687,35 @@ async function assertMetadataStateGuards(
   }
   for (const guard of guards.runtime) {
     const path = metadataRuntimePath(journal.targetRoot, guard.path);
+    // Older metadata journals record the block hash but not its selector. Resolve it
+    // from the exact CAS-verified inventory, never from arbitrary live marker text.
+    const selectors = new Set(inventory.flatMap(({ manifest }) => {
+      if (manifest.version === 2) {
+        return manifest.entries
+          .filter((entry) => entry.path === guard.path && entry.mode === "managed-block" && entry.hash === guard.hash)
+          .map((entry) => managedInstructionSelector(entry.logicalSelector, entry.artifactType, entry.artifactName));
+      }
+      return manifest.entries
+        .filter((entry) => entry.path === guard.path && entry.mode === "managed-block" && entry.hash === guard.hash)
+        .map((entry) => managedInstructionSelector(undefined, entry.artifactType, entry.artifactName));
+    }));
+    if (!guard.managedBlock && selectors.size > 1) throw new Error(`Ambiguous metadata managed block at ${guard.path}.`);
+    const selector = guard.managedBlock?.selector ?? [...selectors][0];
+    const current = selector
+      ? exactManagedInstructionBlockSnapshot(await transport.readFile(path), selector)
+      : undefined;
+    const runtimeHash = current ? current.hash : await transport.hashPath(path);
+    const expectedHash = guard.managedBlock?.hash ?? guard.hash;
+    // Legacy journals may pin a whole-file hash alongside an exact block snapshot.
+    // Preserve that file guard as well as comparing the live block with its recorded hash.
+    const legacyFileGuard = guard.managedBlock && guard.hash !== expectedHash;
     if (!sha.test(guard.hash) || !sha.test(guard.snapshotDigest)
       || (await observeOwnershipRuntime(path, transport)).snapshotDigest !== guard.snapshotDigest
-      || await transport.hashPath(path) !== guard.hash) {
+      || runtimeHash !== expectedHash
+      || (legacyFileGuard && await transport.hashPath(path) !== guard.hash)) {
       throw new Error(`Metadata runtime CAS failed at ${guard.path}; runtime was preserved.`);
     }
     if (guard.managedBlock) {
-      const current = exactManagedInstructionBlockSnapshot(await transport.readFile(path), guard.managedBlock.selector);
       if (canonicalJson(current) !== canonicalJson(guard.managedBlock)) {
         throw new Error(`Managed instruction snapshot CAS failed at ${guard.path}.`);
       }

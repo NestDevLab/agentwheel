@@ -70,4 +70,11 @@ jobs:
       - name: Test
         env:
           SYNCWHEEL_SOURCE_ROOT: ${{ github.workspace }}/syncwheel
-        run: pnpm test
+        run: node scripts/test-command-matrix.mjs "${{ runner.temp }}/test-command-matrix.json"
+
+      - name: Upload command test matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-command-matrix
+          path: ${{ runner.temp }}/test-command-matrix.json

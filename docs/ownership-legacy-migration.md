@@ -103,3 +103,24 @@ The printed directory is a full copy of the runtime snapshot and may hold the sa
 review it, then remove it. This verifies copied legacy claims, not the live endpoint,
 service permissions, fleet identity or a real install; the CLI and confined-worker tests cover those
 contracts separately. Never copy this rebased metadata back to the real target.
+
+## Proposal: retire one covered stale claim
+
+A legacy manifest can contain a superseded skill claim alongside claims that still own live
+artifacts. When the stable manifest already covers the selected path, add one optional exact
+`--path` selector to `ownership retire-stale`. Keep the existing destination coverage checks.
+The selected claim must be uniquely identified by the source state key, artifact identity,
+owner and path. The stable destination must prove the same artifact and current runtime
+content. A shared artifact also needs proof of all selected contributions. Refuse ambiguous
+overlaps, missing coverage, drift, pending journals, and symlink or identity mismatches.
+
+Bind the path, source and destination revisions, full inventory revision, and runtime evidence
+to the plan digest. During apply, acquire the existing target lock and revalidate those
+snapshots before the source manifest compare-and-swap. Preserve other entries byte-for-byte
+at the entry level. Preserve the destination manifest, runtime bytes and workspace declarations.
+Retain the source lock while its manifest still has entries. Reuse the existing transaction
+journal, recovery and empty-manifest cleanup.
+
+Acceptance cases should include two covered claims with one selected, a sibling that lacks
+coverage, a changed runtime or inventory between plan and apply, and an intervening ownership
+change. A target with no covering destination needs a separate migration or handoff.

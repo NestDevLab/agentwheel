@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { access, lstat, readFile, realpath, readdir } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { runProcess } from "../mutation/process.js";
 import type { MutationPolicy } from "./mutation.js";
@@ -12,6 +12,7 @@ export interface MaintenanceStorage {
   sourceRoot: string;
   sourceRevision: string;
   workspaceHead: string;
+  workspaceRepositoryRoot: string;
   workspaceConfigSha256: string;
   sourcePolicySha256: string;
   fleetId: string;
@@ -20,6 +21,18 @@ export interface MaintenanceStorage {
 }
 
 const context = new AsyncLocalStorage<{ binding?: MaintenanceStorage }>();
+
+function assertGitNamespaceEnvironment(): void {
+  // Git's repository-local environment (git rev-parse --local-env-vars).
+  const selectors = ["GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+    "GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_INTERNAL_SUPER_PREFIX"];
+  if (selectors.some(name => process.env[name] !== undefined)
+      || Object.keys(process.env).some(name => /^GIT_CONFIG_(KEY|VALUE)_/.test(name))) {
+    throw new Error("Native maintenance requires an unset repository-local Git environment.");
+  }
+}
 
 function configurationShape(value: object): string {
   const copy = { ...value } as Record<string, unknown>;
@@ -61,7 +74,8 @@ export function isMaintenanceRepository(root: string): boolean {
 
 export async function maintenanceLockRoot(): Promise<string | undefined> {
   const binding = maintenanceStorage();
-  return binding ? git(binding.workspaceRoot, "rev-parse", "--show-toplevel") : undefined;
+  if (binding) assertGitNamespaceEnvironment();
+  return binding?.workspaceRepositoryRoot;
 }
 
 async function git(root: string, ...args: string[]): Promise<string> {
@@ -81,6 +95,10 @@ async function assertSourceHistory(sourceRoot: string, revision: string): Promis
 async function assertSourceStorage(sourceRoot: string, workspaceRoot: string): Promise<void> {
   if (workspaceRoot === sourceRoot) throw new Error("Maintenance source must be an independent checkout.");
   if (await git(sourceRoot, "rev-parse", "--show-toplevel") !== sourceRoot) throw new Error("Maintenance source must be the Git root.");
+  const ownerRelative = relative(await git(workspaceRoot, "rev-parse", "--show-toplevel"), workspaceRoot);
+  if (ownerRelative === ".." || ownerRelative.startsWith(`..${sep}`) || isAbsolute(ownerRelative)) {
+    throw new Error("Maintenance owner must remain inside its canonical Git worktree.");
+  }
   if (await realpath(await git(sourceRoot, "rev-parse", "--path-format=absolute", "--git-common-dir"))
       === await realpath(await git(workspaceRoot, "rev-parse", "--path-format=absolute", "--git-common-dir"))) {
     throw new Error("Maintenance source must not share the managed Git directory.");
@@ -117,6 +135,7 @@ async function assertSourceStorage(sourceRoot: string, workspaceRoot: string): P
 }
 
 export async function activateMaintenanceStorage(input: { fleet: string; source: string; revision: string; globalRoot?: string; recoveryOperation?: string }): Promise<void> {
+  assertGitNamespaceEnvironment();
   if (!context.getStore()) throw new Error("Maintenance storage requires an isolated command context.");
   if (!/^[a-f0-9]{40}$/.test(input.revision)) throw new Error("Maintenance source requires an exact 40-hex revision.");
   const { showRegisteredFleet } = await import("./fleet.js");
@@ -154,6 +173,7 @@ export async function activateMaintenanceStorage(input: { fleet: string; source:
   if (configurationShape(source) !== configurationShape(canonical)) throw new Error("Maintenance storage cannot change runtime profiles or workspace identity.");
   context.getStore()!.binding = {
     workspaceRoot, sourceRoot, sourceRevision: input.revision, workspaceHead,
+    workspaceRepositoryRoot: await git(workspaceRoot, "rev-parse", "--show-toplevel"),
     workspaceConfigSha256: createHash("sha256").update(canonicalBytes).digest("hex"),
     sourcePolicySha256: digest(policy),
     fleetId: input.fleet, registration: JSON.stringify(registration), registryRoot,
@@ -176,12 +196,14 @@ export function assertMaintenancePaths(root: string, paths: readonly { path: str
 export async function assertMaintenanceLease(): Promise<void> {
   const binding = maintenanceStorage();
   if (!binding) return;
+  assertGitNamespaceEnvironment();
   await assertSourceStorage(binding.sourceRoot, binding.workspaceRoot);
   await assertSourceHistory(binding.sourceRoot, binding.sourceRevision);
   const { showRegisteredFleet } = await import("./fleet.js");
   const { workspaceConfigSchema } = await import("./workspace.js");
   const bytes = await readFile(join(binding.workspaceRoot, ".agentwheel/config.json"));
   if (await git(binding.workspaceRoot, "rev-parse", "HEAD") !== binding.workspaceHead
+      || await git(binding.workspaceRoot, "rev-parse", "--show-toplevel") !== binding.workspaceRepositoryRoot
       || createHash("sha256").update(bytes).digest("hex") !== binding.workspaceConfigSha256
       || JSON.stringify(await showRegisteredFleet(binding.fleetId, { globalRoot: binding.registryRoot })) !== binding.registration) {
     throw new Error("Canonical maintenance ownership/configuration lease changed.");
@@ -195,8 +217,10 @@ export async function assertMaintenanceLease(): Promise<void> {
 }
 
 export function assertMaintenanceReceipt(receipt: { maintenanceStorage?: MaintenanceStorage }): void {
-  if (receipt.maintenanceStorage
-      && JSON.stringify(receipt.maintenanceStorage) !== JSON.stringify(maintenanceStorage())) {
+  const original = receipt.maintenanceStorage;
+  const current = maintenanceStorage();
+  if (original && (!current || Object.keys(original).length !== Object.keys(current).length
+      || (Object.keys(original) as (keyof MaintenanceStorage)[]).some(key => original[key] !== current[key]))) {
     throw new Error("Recovery requires the original verified maintenance storage/ownership binding.");
   }
 }

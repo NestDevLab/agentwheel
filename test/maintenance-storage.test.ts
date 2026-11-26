@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, expect, it } from "vitest";
 import { registerFleet, resolveWorkspaceOwnershipScope } from "../src/model/fleet.js";
 import { readWorkspaceConfig, writeWorkspaceConfig, workspaceConfigPath } from "../src/model/workspace.js";
-import { activateMaintenanceStorage, assertMaintenanceLease, assertMaintenanceReceipt, maintenanceStorage, withMaintenanceStorageContext, workspaceStorageRoot } from "../src/model/maintenance-storage.js";
+import { activateMaintenanceStorage, assertMaintenanceLease, assertMaintenanceReceipt, maintenanceLockRoot, maintenanceStorage, withMaintenanceStorageContext, workspaceStorageRoot } from "../src/model/maintenance-storage.js";
 import { GovernedMutation, resumeMutation } from "../src/mutation/coordinator.js";
 import { invokeRevisionProvider } from "../src/mutation/providers.js";
 import { acquireMutationLock, readMutationReceipt, updateMutationReceipt } from "../src/mutation/receipts.js";
@@ -277,4 +277,25 @@ it("shares the existing repository mutex when the registered fleet root is neste
         .rejects.toThrow("Another Agentwheel mutation");
     } finally { await lock.release(); }
   });
+});
+
+it.each(["GIT_WORK_TREE", "GIT_DIR", "GIT_INDEX_FILE", "GIT_CONFIG_COUNT"])("refuses post-bind %s without changing the canonical mutex", async name => {
+  const f = await fixture();
+  const previous = process.env[name];
+  try {
+    await withMaintenanceStorageContext(async () => {
+      await f.activate();
+      const lock = await acquireMutationLock(f.canonical, "existing-writer");
+      try {
+        process.env[name] = f.source;
+        await expect(assertMaintenanceLease()).rejects.toThrow("repository-local Git environment");
+        await expect(maintenanceLockRoot()).rejects.toThrow("repository-local Git environment");
+        await expect(GovernedMutation.begin({ workspaceRoot: f.canonical, globalRoot: f.globalRoot,
+          commandName: "agentwheel pin", reason: "Preserve canonical namespace" }))
+          .rejects.toThrow("repository-local Git environment");
+      } finally { await lock.release(); }
+    });
+  } finally {
+    if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
+  }
 });

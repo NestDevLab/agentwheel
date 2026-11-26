@@ -17,6 +17,9 @@ options also support `pin`, `plan`, `status` and mutation recovery. They require
 an existing `--fleet`; they do not register or transfer ownership. Composite
 profiles must be qualified one owning workspace at a time.
 
+Repository-local Git environment selectors must be unset; Agentwheel rejects
+them rather than changing effective configuration or hooks. The canonical Git
+root is frozen in the receipt and rechecked for normal operations and recovery.
 The source must be clean, use a separate Git directory, and have no redirected
 or executable commit/ref hooks. Its exact reviewed 40-hex revision must descend
 from the registered workspace HEAD. Later commits may change only

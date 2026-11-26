@@ -67,6 +67,7 @@ const mutationReceiptBaseSchema = z.object({
   expectedManifestDigest: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   maintenanceStorage: z.object({
     workspaceRoot: z.string().min(1), sourceRoot: z.string().min(1),
+    workspaceRepositoryRoot: z.string().min(1),
     sourceRevision: z.string().regex(/^[a-f0-9]{40}$/), workspaceHead: z.string().regex(/^[a-f0-9]{40}$/),
     workspaceConfigSha256: z.string().regex(/^[a-f0-9]{64}$/),
     sourcePolicySha256: z.string().regex(/^[a-f0-9]{64}$/),

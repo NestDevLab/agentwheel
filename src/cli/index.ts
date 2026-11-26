@@ -487,6 +487,7 @@ program
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
   .option("--profile <name>", "workspace runtime profile")
   .option("--mode <mode>", "pinned or tracking")
+  .option("--artifact <type/name>", "install only one configured artifact while preserving sibling state")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
@@ -530,6 +531,7 @@ program
   .option("--all", "run for every configured agent", false)
   .option("--all-detected", "run for every runtime directory detected in the target root", false)
   .option("--mode <mode>", "pinned or tracking")
+  .option("--artifact <type/name>", "install only one configured artifact while preserving sibling state")
   .option("--select <type/name>", "select an artifact by type/name (repeatable or comma-separated)", collectSelectOption, [] as string[])
   .option("--skill <name>", "select a skill by name (repeatable or comma-separated)", collectSkillOption, [] as string[])
   .option("--with-suggestions", "include suggested companion artifacts for selected roots", false)
@@ -702,13 +704,7 @@ program
     if (options.artifact && (options.select.length > 0 || options.skill.length > 0 || options.dependency.length > 0)) {
       throw new Error("--artifact cannot be combined with --select, --skill, or --dependency.");
     }
-    const focusedSelector = options.artifact
-      ? normalizeArtifactSelectors([options.artifact])?.[0]
-      : undefined;
-    const focusedSeparator = focusedSelector?.indexOf("/") ?? -1;
-    const focusedArtifact = focusedSelector && focusedSeparator > 0
-      ? { type: focusedSelector.slice(0, focusedSeparator), name: focusedSelector.slice(focusedSeparator + 1) }
-      : undefined;
+    const focusedArtifact = options.artifact ? parseFocusedArtifact(options.artifact) : undefined;
     const normalizedOptions = normalizeRuntimeScopeOptions(options);
     const composite = await resolveSelectedCompositeProfile(normalizedOptions);
     if (composite) {
@@ -1994,8 +1990,15 @@ async function runInstallCommand(
   },
   behavior: { apply: boolean; quiet?: boolean },
 ): Promise<void> {
+  if (options.artifact && (!nameOrSource || options.profile)) {
+    throw new Error("--artifact requires a configured package and one agent or target; --profile is unsupported.");
+  }
+  if (options.artifact && ((options.select?.length ?? 0) > 0 || (options.skill?.length ?? 0) > 0)) {
+    throw new Error("--artifact cannot be combined with --select or --skill.");
+  }
   const normalizedOptions = normalizeRuntimeScopeOptions({
     ...options,
+    focusedArtifact: options.artifact ? parseFocusedArtifact(options.artifact) : options.focusedArtifact,
     forceConflict: options.forceConflict || options.adopt,
     replaceConflict: options.replaceConflict || options.adopt,
   }, { defaultUser: shouldDefaultUserInstall(nameOrSource, options) });
@@ -2090,6 +2093,10 @@ async function runInstallCommand(
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
+
+    if (targetOptions.focusedArtifact && !configured) {
+      throw new Error("--artifact requires an existing configured package for this target.");
+    }
 
     if (nameOrSource && !configured) {
       try {
@@ -2211,6 +2218,10 @@ async function buildPlanReport(
     let source: string | undefined;
     let scope = configured?.name;
     let extraPackage: WorkspacePackage | undefined;
+
+    if (targetOptions.focusedArtifact && !configured) {
+      throw new Error("--artifact requires an existing configured package for this target.");
+    }
 
     if (nameOrSource && !configured) {
       try {
@@ -2678,6 +2689,7 @@ interface GraphCliOptions {
   adopt?: boolean;
   retireExactMcp?: boolean;
   expectedFromWorkspaceOwner?: string;
+  artifact?: string;
   focusedArtifact?: { type: string; name: string };
   deferForeignStateCheck?: boolean;
 }
@@ -3316,6 +3328,15 @@ function operationBelongsToDependencyUpdate(
 }
 
 type FocusedArtifact = NonNullable<GraphCliOptions["focusedArtifact"]>;
+
+function parseFocusedArtifact(value: string): { type: string; name: string } {
+  const selector = normalizeArtifactSelectors([value])?.[0];
+  const separator = selector?.indexOf("/") ?? -1;
+  if (!selector || separator <= 0 || separator === selector.length - 1) {
+    throw new Error("--artifact requires TYPE/NAME.");
+  }
+  return { type: selector.slice(0, separator), name: selector.slice(separator + 1) };
+}
 
 function scopeInstallPlanToArtifact(
   result: GraphSourcePlanResult,

@@ -323,6 +323,66 @@ describe("CLI verb redesign", () => {
     expect(await readFile(skillPath, "utf8")).toContain("# sibling-v1");
   });
 
+  it("focuses native maintenance plan/install on a pinned rule without updating sibling skills", async () => {
+    const owner = await tempRoot(), source = await tempRoot(), runtime = await tempRoot();
+    const pack = await tempRoot();
+    await mkdir(join(pack, "rules"), { recursive: true });
+    await mkdir(join(pack, "skills", "sibling"), { recursive: true });
+    const rule = join(pack, "rules", "focus.md"), sibling = join(pack, "skills", "sibling", "SKILL.md");
+    await writeFile(rule, "Rule v1\n");
+    await writeFile(sibling, "---\nname: sibling\ndescription: Sibling fixture.\n---\nSibling v1\n");
+    await writeFile(join(pack, "openpack.json"), JSON.stringify({ schemaVersion: 2, name: "fixture/focus",
+      version: "1.0.0", provides: [{ type: "rules", path: "rules" }, { type: "skills", path: "skills" }] }));
+    await mkdir(join(owner, ".agentwheel"));
+    const configPath = join(owner, ".agentwheel", "config.json");
+    const config = { schemaVersion: 4, fleetId: "focused-maintenance", packages: [{ name: "focus", source: pack,
+      driver: "local", adapter: "claude", mode: "pinned", select: ["rules/focus.md", "skills/sibling"] }],
+      agents: { runtime: { adapter: "claude", root: runtime, transport: "local", installationType: "local" } } };
+    await writeFile(configPath, JSON.stringify(config));
+    await git(owner, ["init", "-b", "main"]);
+    await git(owner, ["config", "user.name", "Fixture"]);
+    await git(owner, ["config", "user.email", "fixture@example.invalid"]);
+    await git(owner, ["add", "."]); await git(owner, ["commit", "-qm", "fixture base"]);
+    await runCli(["fleet", "register", "focused-maintenance", "--root", owner, "--required-package", "focus"]);
+    await runCli(["install", "focus", "--fleet", "focused-maintenance", "--agent", "runtime", "--only-source"]);
+    const policy = { reason: "required", journal: "required", revisioning: { mode: "commit-after-verify",
+      allowNoCommitOverride: false, reasonInCommit: "full", provider: { kind: "command", id: "forbidden",
+        command: ["/never/execute"], executableSha256: "a".repeat(64), trustBoundary: "entrypoint", protocolVersion: 1 } } };
+    await writeFile(configPath, JSON.stringify({ ...config, mutationPolicy: policy }));
+    await git(owner, ["add", "."]); await git(owner, ["commit", "-qm", "guarded owner"]);
+    await git(source, ["clone", "--no-hardlinks", owner, "."]);
+    await git(source, ["config", "user.name", "Fixture"]);
+    await git(source, ["config", "user.email", "fixture@example.invalid"]);
+    const native = JSON.parse(await readFile(join(source, ".agentwheel/config.json"), "utf8"));
+    native.mutationPolicy.revisioning.provider = { kind: "git", id: "git", protocolVersion: 1 };
+    await writeFile(join(source, ".agentwheel/config.json"), JSON.stringify(native));
+    await git(source, ["add", "."]); await git(source, ["commit", "-qm", "native source"]);
+    const revision = (await execFileAsync("git", ["-C", source, "rev-parse", "HEAD"])).stdout.trim();
+    const beforeHead = (await execFileAsync("git", ["-C", owner, "rev-parse", "HEAD"])).stdout;
+    const beforeIndex = await readFile(join(owner, ".git/index"));
+    const beforeConfig = await readFile(configPath);
+    const siblingPath = join(runtime, ".claude/skills/sibling/SKILL.md"), rulePath = join(runtime, ".claude/rules/focus.md");
+    const beforeSibling = await readFile(siblingPath);
+    const beforeRule = await readFile(rulePath);
+    await writeFile(join(owner, ".git/hooks/pre-commit"), "#!/bin/sh\nexit 89\n");
+    await chmod(join(owner, ".git/hooks/pre-commit"), 0o700);
+    await writeFile(rule, "Rule v2\n"); await writeFile(sibling, "---\nname: sibling\ndescription: Sibling fixture.\n---\nSibling v2\n");
+    const binding = ["--maintenance-source", source, "--maintenance-revision", revision, "--reason", "Update one reviewed rule"];
+    const scope = ["focus", "--fleet", "focused-maintenance", "--agent", "runtime", "--only-source", "--artifact", "rules/focus.md"];
+    const preview = JSON.parse((await runCli([...binding, "plan", ...scope, "--json"])).stdout);
+    expect(preview.targets[0].summary).toMatchObject({ update: 1, remove: 0, drift: 0, conflict: 0 });
+    expect(preview.targets[0].operations.find((op: { artifactName: string }) => op.artifactName === "sibling").action).toBe("keep");
+    expect(await readFile(rulePath)).toEqual(beforeRule);
+    await runCli([...binding, "install", ...scope]);
+    expect(await readFile(rulePath, "utf8")).toBe("Rule v2\n");
+    expect(await readFile(siblingPath)).toEqual(beforeSibling);
+    expect((await execFileAsync("git", ["-C", owner, "rev-parse", "HEAD"])).stdout).toBe(beforeHead);
+    expect(await readFile(join(owner, ".git/index"))).toEqual(beforeIndex);
+    expect(await readFile(configPath)).toEqual(beforeConfig);
+    await expect(runCli([...binding, "plan", "--fleet", "focused-maintenance", "--agent", "runtime", "--artifact", "rules/focus.md"])).rejects.toMatchObject({ stderr: expect.stringContaining("requires a configured package") });
+    await expect(runCli([...binding, "plan", ...scope, "--select", "skills/sibling"])).rejects.toMatchObject({ stderr: expect.stringContaining("cannot be combined") });
+  });
+
   it("installs a new source into every detected runtime with --all-detected", async () => {
     const root = await tempRoot();
     const source = await packageFixture("detected");

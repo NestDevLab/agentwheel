@@ -1,3 +1,4 @@
+import { maintenanceStorage, workspaceStorageRoot, assertMaintenanceLease, assertMaintenanceReceipt, assertNativeMaintenancePolicy } from "../model/maintenance-storage.js";
 import { localTransport, createRunAsTransport } from "../transport/index.js";
 import { resolveRunAsIdentity } from "../transport/run-as-identity.js";
 import { randomUUID } from "node:crypto";
@@ -69,7 +70,9 @@ export class GovernedMutation {
   }
 
   static async begin(options: BeginMutationOptions): Promise<GovernedMutation | undefined> {
+    await assertMaintenanceLease();
     const policy = await mutationPolicyForWorkspace(options.workspaceRoot, options.globalRoot);
+    assertNativeMaintenancePolicy(policy);
     if (!policy) {
       if (options.noCommit) throw new Error("--no-commit requires an effective commit-after-verify mutation policy.");
       return undefined;
@@ -83,7 +86,7 @@ export class GovernedMutation {
     }
 
     const operationId = mutationOperationIdSchema.parse(options.operationId ?? randomUUID());
-    const repository = await discoverGitRepository(options.workspaceRoot);
+    const repository = await discoverGitRepository(workspaceStorageRoot(options.workspaceRoot));
     if (policy.revisioning.mode === "commit-after-verify" && !repository) {
       throw new Error(`commit-after-verify requires a Git repository containing ${options.workspaceRoot}.`);
     }
@@ -102,10 +105,12 @@ export class GovernedMutation {
         }
       }
     }
-    const lock = await acquireMutationLock(repository?.root ?? options.workspaceRoot, operationId);
+    await assertMaintenanceLease();
+    const lock = await acquireMutationLock(maintenanceStorage()?.workspaceRoot ?? repository?.root ?? options.workspaceRoot, operationId);
     let baseline: RepositorySnapshot | undefined;
     let receipt: MutationReceipt | undefined;
     try {
+      await assertMaintenanceLease();
       baseline = repository ? await snapshotRepository(repository.root) : undefined;
       receipt = await createMutationReceipt({
         operationId,
@@ -116,6 +121,7 @@ export class GovernedMutation {
         repositoryRoot: repository?.root ?? null,
         expectedHead: repository?.head ?? null,
         expectedManifestDigest: null,
+        ...(maintenanceStorage() ? { maintenanceStorage: maintenanceStorage() } : {}),
         revisionMode: policy.revisioning.mode,
         provider: policy.revisioning.mode === "commit-after-verify" ? policy.revisioning.provider : null,
         preexistingPaths: snapshotEntries(baseline),
@@ -399,6 +405,7 @@ async function transitionMutationRuntimeJournal(
 
 export async function resumeMutation(operationId: string, action: "finalize" | "recover"): Promise<MutationReceipt> {
   let receipt = await readMutationReceipt(operationId);
+  assertMaintenanceReceipt(receipt);
   if (["succeeded", "revisioning-skipped", "no-repository-delta"].includes(receipt.status)) return receipt;
   if (["prepared", "precheck-failed", "partial", "postcheck-failed", "failed"].includes(receipt.status)) {
     throw new Error(
@@ -417,7 +424,7 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
   const provider = receipt.provider;
   const repositoryRoot = receipt.repositoryRoot;
   const expectedHead = receipt.expectedHead;
-  const lock = await acquireMutationLock(repositoryRoot, receipt.operationId);
+  const lock = await acquireMutationLock(receipt.maintenanceStorage?.workspaceRoot ?? repositoryRoot, receipt.operationId);
   try {
     let paths = receipt.paths;
     const head = await currentHead(repositoryRoot);
@@ -471,7 +478,8 @@ export async function recoverMutationRuntime(
   options: RecoverMutationRuntimeOptions = {},
 ): Promise<MutationReceipt> {
   let receipt = await readMutationReceipt(operationId);
-  const lockRoot = receipt.repositoryRoot ?? receipt.workspaceRoot;
+  assertMaintenanceReceipt(receipt);
+  const lockRoot = receipt.maintenanceStorage?.workspaceRoot ?? receipt.repositoryRoot ?? receipt.workspaceRoot;
   const lock = await acquireMutationLock(lockRoot, receipt.operationId);
   try {
     await options.afterLockAcquired?.();

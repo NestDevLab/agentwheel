@@ -1,3 +1,4 @@
+import { workspaceStorageRoot } from "../model/maintenance-storage.js";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join, posix, resolve } from "node:path";
@@ -1182,7 +1183,7 @@ function ownedByWorkspace(owner: string, desiredOwner: string, workspaceRoot: st
 }
 
 function pathForGraphLock(workspaceRoot: string, targetKey: string, adapter: string, targetFingerprint: string): string {
-  return join(workspaceRoot, ".agentwheel", "locks", sanitizePathSegment(targetKey), sanitizePathSegment(adapter), `${targetFingerprint}.graph-lock.json`);
+  return join(workspaceStorageRoot(workspaceRoot), ".agentwheel", "locks", sanitizePathSegment(targetKey), sanitizePathSegment(adapter), `${targetFingerprint}.graph-lock.json`);
 }
 
 function sanitizePathSegment(value: string): string {

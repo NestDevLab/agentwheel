@@ -65,6 +65,13 @@ const mutationReceiptBaseSchema = z.object({
   repositoryRoot: z.string().min(1).nullable(),
   expectedHead: z.string().min(1).max(256).nullable(),
   expectedManifestDigest: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  maintenanceStorage: z.object({
+    workspaceRoot: z.string().min(1), sourceRoot: z.string().min(1),
+    sourceRevision: z.string().regex(/^[a-f0-9]{40}$/), workspaceHead: z.string().regex(/^[a-f0-9]{40}$/),
+    workspaceConfigSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sourcePolicySha256: z.string().regex(/^[a-f0-9]{64}$/),
+    fleetId: z.string().min(1), registration: z.string().min(1), registryRoot: z.string().min(1),
+  }).strict().optional(),
   revisionMode: z.enum(["off", "commit-after-verify"]),
   provider: revisionProviderConfigSchema.nullable(),
   preexistingPaths: z.array(preexistingPathSchema),

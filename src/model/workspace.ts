@@ -1,3 +1,4 @@
+import { workspaceStorageRoot } from "./maintenance-storage.js";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -295,7 +296,7 @@ export function supportsFleetConfig(config: WorkspaceConfig): config is FleetWor
 }
 
 export function workspaceConfigPath(workspaceRoot: string): string {
-  return join(workspaceRoot, ".agentwheel", "config.json");
+  return join(workspaceStorageRoot(workspaceRoot), ".agentwheel", "config.json");
 }
 
 export async function readWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig> {

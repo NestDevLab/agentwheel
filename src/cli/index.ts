@@ -3388,11 +3388,22 @@ function scopePlanOperationsToArtifact(
   const plannedPaths = new Set<string>();
   const preservedPaths = new Set<string>();
   const operations: InstallOperation[] = [];
+  const retainedOwners = new Map<string, string[]>();
 
   for (const operation of result.plan.operations) {
     plannedPaths.add(operation.relativeDestPath);
     if (operationMatchesFocusedArtifact(operation, focused, focusedOwnerKeys)) {
-      operations.push(operation);
+      const entry = manifestByPath.get(operation.relativeDestPath);
+      if (operation.action !== "remove" && entry && "owners" in entry && Array.isArray(entry.owners)
+        && entry.owners.every(owner => typeof owner === "string") && "workspaceOwner" in entry && entry.workspaceOwner === operation.workspaceOwner) {
+        // Focused delivery changes one artifact, not the other package claims on it.
+        const owners = sortedUniqueValues([...(operation.owners ?? []), ...entry.owners]);
+        operations.push({ ...operation, owners });
+        if (operation.graphNodeId) retainedOwners.set(operation.graphNodeId,
+          sortedUniqueValues([...(retainedOwners.get(operation.graphNodeId) ?? []), ...owners]));
+      } else {
+        operations.push(operation);
+      }
       continue;
     }
     const entry = manifestByPath.get(operation.relativeDestPath);
@@ -3418,6 +3429,13 @@ function scopePlanOperationsToArtifact(
 
   return {
     ...result,
+    bundle: { ...result.bundle, graphLock: canonicalizeGraphLock({
+      ...result.bundle.graphLock,
+      canonical: { ...result.bundle.graphLock.canonical, artifacts: result.bundle.graphLock.canonical.artifacts.map(artifact =>
+        graphArtifactMatchesFocus(artifact, focused) && retainedOwners.has(artifact.graphNodeId)
+          ? { ...artifact, owners: retainedOwners.get(artifact.graphNodeId)! }
+          : artifact) },
+    }) },
     plan: {
       ...result.plan,
       operations,

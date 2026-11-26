@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.1
+
+- Add focused configured-artifact install and plan commands that preserve sibling artifacts and existing same-workspace co-owners, including recorded versioned claims.
+
 ## 0.24.0
 
 - Add verified independent configuration/lock storage for native maintenance of a registered fleet, retaining its owner, mutation lock and canonical-state lease.

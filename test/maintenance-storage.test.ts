@@ -8,9 +8,15 @@ import { afterEach, expect, it } from "vitest";
 import { registerFleet, resolveWorkspaceOwnershipScope } from "../src/model/fleet.js";
 import { readWorkspaceConfig, writeWorkspaceConfig, workspaceConfigPath } from "../src/model/workspace.js";
 import { activateMaintenanceStorage, assertMaintenanceLease, assertMaintenanceReceipt, maintenanceLockRoot, maintenanceStorage, withMaintenanceStorageContext, workspaceStorageRoot } from "../src/model/maintenance-storage.js";
-import { GovernedMutation, resumeMutation } from "../src/mutation/coordinator.js";
+import { GovernedMutation, recoverMutationRuntime, resumeMutation } from "../src/mutation/coordinator.js";
 import { invokeRevisionProvider } from "../src/mutation/providers.js";
 import { acquireMutationLock, readMutationReceipt, updateMutationReceipt } from "../src/mutation/receipts.js";
+
+import { applyCombinedInstallPlan, createCombinedInstallPlan, type DesiredArtifact } from "../src/install/index.js";
+import { applyJournalPath } from "../src/install/transaction.js";
+import { installManifestPath } from "../src/install/paths.js";
+import { localTransport } from "../src/transport/index.js";
+import { hashPath } from "../src/utils/fs.js";
 
 const exec = promisify(execFile);
 const roots: string[] = [];
@@ -298,4 +304,49 @@ it.each(["GIT_WORK_TREE", "GIT_DIR", "GIT_INDEX_FILE", "GIT_CONFIG_COUNT"])("ref
   } finally {
     if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
   }
+});
+
+it("rechecks the maintenance lease under the recovery mutex before replaying a pending runtime journal", async () => {
+  const f = await fixture();
+  const runtime = join(f.root, "runtime"), artifactPath = join(f.root, "rule.md");
+  await mkdir(runtime);
+  await writeFile(artifactPath, "Reviewed runtime rule\n");
+  const adapter = { name: "recovery-fixture", targets: { rules: { local: { enabled: true, dest: ".runtime/rules" } } } };
+  const artifact: DesiredArtifact = { type: "rules", name: "rule.md", sourcePath: artifactPath,
+    stagedPath: artifactPath, relativePath: "rules/rule.md", kind: "file", hash: await hashPath(artifactPath),
+    channel: "managed", meta: { logicalSelector: "rules/rule.md", dependencyRole: "root", owners: ["core"] } };
+  const journalPath = applyJournalPath(runtime, adapter.name, { installationType: "local" });
+  const manifestPath = installManifestPath(runtime, adapter.name, { installationType: "local" });
+  const runtimePath = join(runtime, ".runtime/rules/rule.md");
+  await withMaintenanceStorageContext(async () => {
+    await f.activate();
+    const plan = await createCombinedInstallPlan([artifact], adapter, runtime);
+    const mutation = await GovernedMutation.begin({ workspaceRoot: f.canonical, globalRoot: f.globalRoot,
+      commandName: "agentwheel install", operationId: "maintenance-runtime-race", reason: "Recover a reviewed runtime rule" });
+    try {
+      await applyCombinedInstallPlan(plan, { transport: { ...localTransport, async atomicCopy() {
+        throw new Error("injected before runtime copy");
+      } } });
+      throw new Error("Expected injected failure");
+    } catch (error) {
+      expect(String(error)).toContain("injected before runtime copy");
+      await mutation!.fail(error);
+    }
+    expect((await readMutationReceipt("maintenance-runtime-race")).runtimeJournals[0]?.status).toBe("pending");
+    const bytes = async (path: string) => readFile(path).catch(error => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    const before = { runtime: await bytes(runtimePath), manifest: await bytes(manifestPath), journal: await bytes(journalPath) };
+    expect(before.runtime).toBeNull();
+    expect(before.journal).not.toBeNull();
+    await assertMaintenanceLease();
+    await expect(recoverMutationRuntime("maintenance-runtime-race", { afterLockAcquired: async () => {
+      const config = await readFile(join(f.canonical, ".agentwheel/config.json"), "utf8");
+      await writeFile(join(f.canonical, ".agentwheel/config.json"), config + "\n");
+    } })).rejects.toThrow("lease changed");
+    expect(await bytes(runtimePath)).toEqual(before.runtime);
+    expect(await bytes(manifestPath)).toEqual(before.manifest);
+    expect(await bytes(journalPath)).toEqual(before.journal);
+  });
 });

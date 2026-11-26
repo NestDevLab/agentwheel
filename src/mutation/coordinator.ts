@@ -484,6 +484,8 @@ export async function recoverMutationRuntime(
   try {
     await options.afterLockAcquired?.();
     receipt = await readMutationReceipt(operationId);
+    assertMaintenanceReceipt(receipt);
+    await assertMaintenanceLease();
     assertRuntimeRecoveryReceipt(receipt);
   } catch (error) {
     await lock.release();

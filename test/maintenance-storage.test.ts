@@ -258,3 +258,23 @@ it("rechecks source hooks after activation without executing them", async () => 
     await expect(assertMaintenanceLease()).rejects.toThrow("commit/ref hooks");
   });
 });
+
+it("shares the existing repository mutex when the registered fleet root is nested", async () => {
+  const f = await fixture();
+  const nested = join(f.canonical, "nested-fleet");
+  await mkdir(join(nested, ".agentwheel"), { recursive: true });
+  await writeFile(workspaceConfigPath(nested), await readFile(workspaceConfigPath(f.canonical)));
+  const globalConfig = await readWorkspaceConfig(f.globalRoot);
+  if (!("fleets" in globalConfig) || !globalConfig.fleets?.fixture) throw new Error("Missing fixture registration");
+  globalConfig.fleets.fixture.root = nested;
+  await writeWorkspaceConfig(f.globalRoot, globalConfig);
+  await withMaintenanceStorageContext(async () => {
+    await activateMaintenanceStorage({ fleet: "fixture", source: f.source, revision: f.revision, globalRoot: f.globalRoot });
+    const lock = await acquireMutationLock(f.canonical, "existing-repository-writer");
+    try {
+      await expect(GovernedMutation.begin({ workspaceRoot: nested, globalRoot: f.globalRoot,
+        commandName: "agentwheel pin", reason: "Preserve canonical repository mutex" }))
+        .rejects.toThrow("Another Agentwheel mutation");
+    } finally { await lock.release(); }
+  });
+});

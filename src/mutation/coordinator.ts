@@ -1,4 +1,4 @@
-import { maintenanceStorage, workspaceStorageRoot, assertMaintenanceLease, assertMaintenanceReceipt, assertNativeMaintenancePolicy } from "../model/maintenance-storage.js";
+import { maintenanceStorage, maintenanceLockRoot, workspaceStorageRoot, assertMaintenanceLease, assertMaintenanceReceipt, assertNativeMaintenancePolicy } from "../model/maintenance-storage.js";
 import { localTransport, createRunAsTransport } from "../transport/index.js";
 import { resolveRunAsIdentity } from "../transport/run-as-identity.js";
 import { randomUUID } from "node:crypto";
@@ -106,7 +106,7 @@ export class GovernedMutation {
       }
     }
     await assertMaintenanceLease();
-    const lock = await acquireMutationLock(maintenanceStorage()?.workspaceRoot ?? repository?.root ?? options.workspaceRoot, operationId);
+    const lock = await acquireMutationLock(await maintenanceLockRoot() ?? repository?.root ?? options.workspaceRoot, operationId);
     let baseline: RepositorySnapshot | undefined;
     let receipt: MutationReceipt | undefined;
     try {
@@ -424,7 +424,7 @@ export async function resumeMutation(operationId: string, action: "finalize" | "
   const provider = receipt.provider;
   const repositoryRoot = receipt.repositoryRoot;
   const expectedHead = receipt.expectedHead;
-  const lock = await acquireMutationLock(receipt.maintenanceStorage?.workspaceRoot ?? repositoryRoot, receipt.operationId);
+  const lock = await acquireMutationLock(await maintenanceLockRoot() ?? repositoryRoot, receipt.operationId);
   try {
     let paths = receipt.paths;
     const head = await currentHead(repositoryRoot);
@@ -479,7 +479,7 @@ export async function recoverMutationRuntime(
 ): Promise<MutationReceipt> {
   let receipt = await readMutationReceipt(operationId);
   assertMaintenanceReceipt(receipt);
-  const lockRoot = receipt.maintenanceStorage?.workspaceRoot ?? receipt.repositoryRoot ?? receipt.workspaceRoot;
+  const lockRoot = await maintenanceLockRoot() ?? receipt.repositoryRoot ?? receipt.workspaceRoot;
   const lock = await acquireMutationLock(lockRoot, receipt.operationId);
   try {
     await options.afterLockAcquired?.();

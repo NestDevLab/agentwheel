@@ -59,6 +59,11 @@ export function isMaintenanceRepository(root: string): boolean {
   return maintenanceStorage()?.sourceRoot === resolve(root);
 }
 
+export async function maintenanceLockRoot(): Promise<string | undefined> {
+  const binding = maintenanceStorage();
+  return binding ? git(binding.workspaceRoot, "rev-parse", "--show-toplevel") : undefined;
+}
+
 async function git(root: string, ...args: string[]): Promise<string> {
   return (await runProcess("git", ["-C", root, ...args])).stdout.toString("utf8").trim();
 }

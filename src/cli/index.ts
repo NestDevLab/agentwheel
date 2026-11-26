@@ -1,3 +1,4 @@
+import { withMaintenanceStorageContext, activateMaintenanceStorage, assertMaintenanceLease, maintenanceStorage } from "../model/maintenance-storage.js";
 import { applyOpenClawKeyMigration, applyOpenClawKeyRepair, planOpenClawKeyMigration, planOpenClawKeyRepair, type OpenClawRehomeSource } from "../lifecycle/openclaw-key-migration.js";
 import { inspectOpenClawTopicOwnership } from "../lifecycle/openclaw-topic-ownership.js";
 import { createHash } from "node:crypto";
@@ -101,6 +102,8 @@ program
   .option("--reason <text>", "full reason for a governed mutation")
   .option("--operation-id <id>", "stable governed-mutation operation id")
   .option("--no-commit", "apply under an audited policy override without creating a revision")
+  .option("--maintenance-source <path>", "independent Git configuration/lock checkout for registered-fleet maintenance")
+  .option("--maintenance-revision <sha>", "exact reviewed source revision for native maintenance")
   .addHelpText("after", `
 
 Core flow:
@@ -1933,6 +1936,7 @@ for (const action of ["finalize", "recover"] as const) {
     .command(action)
     .description(`${action} one verified successful governed mutation idempotently`)
     .argument("<operation-id>", "mutation operation id")
+    .option("--fleet <id>", "registered fleet for verified native maintenance recovery")
     .option("--json", "print the updated receipt as JSON", false)
     .action(async (operationId, options) => {
       const receipt = await resumeMutation(operationId, action);
@@ -1945,6 +1949,7 @@ mutationCommand
   .command("recover-runtime")
   .description("resume linked runtime apply journals, verify them, and finalize revisioning")
   .argument("<operation-id>", "mutation operation id")
+  .option("--fleet <id>", "registered fleet for verified native maintenance recovery")
   .option("--json", "print the updated receipt as JSON", false)
   .action(async (operationId, options) => {
     const receipt = await recoverMutationRuntime(operationId);
@@ -5526,6 +5531,8 @@ interface GovernedCommandContext {
 }
 
 interface GlobalMutationOptions extends RuntimeScopeOptions {
+  maintenanceSource?: string;
+  maintenanceRevision?: string;
   reason?: string;
   operationId?: string;
   commit?: boolean;
@@ -5539,8 +5546,21 @@ interface GlobalMutationOptions extends RuntimeScopeOptions {
 let activeMutation: GovernedMutation | undefined;
 
 program.hook("preAction", async (_command, actionCommand) => {
-  if (!isGovernedMutationCommand(actionCommand)) return;
   const options = actionCommand.optsWithGlobals() as GlobalMutationOptions;
+  if (options.maintenanceSource || options.maintenanceRevision) {
+    if (!options.maintenanceSource || !options.maintenanceRevision || !options.fleet
+        || !new Set(["install", "pin", "plan", "status", "mutation recover", "mutation finalize", "mutation recover-runtime"]).has(commandPath(actionCommand))) {
+      throw new Error("Native maintenance requires --fleet, --maintenance-source and --maintenance-revision on install/pin/plan/status.");
+    }
+    await activateMaintenanceStorage({ fleet: options.fleet, source: options.maintenanceSource, revision: options.maintenanceRevision,
+      recoveryOperation: commandPath(actionCommand).startsWith("mutation ") ? actionCommand.args[0] : undefined });
+    const maintenanceConfig = await readWorkspaceConfig(maintenanceStorage()!.workspaceRoot);
+    const profile = options.profile && maintenanceConfig.profiles?.[options.profile];
+    if (profile && isCompositeWorkspaceProfile(profile)) {
+      throw new Error("Native maintenance requires one owning workspace; qualify composite members separately.");
+    }
+  }
+  if (!isGovernedMutationCommand(actionCommand)) return;
   const context = await governedCommandContext(actionCommand, options);
   activeMutation = await GovernedMutation.begin({
     workspaceRoot: context.workspaceRoot,
@@ -5565,6 +5585,7 @@ program.hook("postAction", async (_command, actionCommand) => {
     activeMutation = undefined;
     throw error;
   }
+  await assertMaintenanceLease();
   const receipt = await mutation.complete();
   activeMutation = undefined;
   console.error(`Agentwheel mutation ${receipt.operationId}: ${receipt.status}`);
@@ -5690,7 +5711,7 @@ async function main(): Promise<void> {
     env: process.env,
     isTTY: process.stderr.isTTY === true,
   });
-  await program.parseAsync();
+  await withMaintenanceStorageContext(() => program.parseAsync());
 }
 
 try {

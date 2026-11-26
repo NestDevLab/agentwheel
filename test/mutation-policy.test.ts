@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -1856,11 +1856,9 @@ async function snapshotSyncwheelSource(sourceRoot: string): Promise<string> {
   await mkdir(scripts, { recursive: true });
   await Promise.all([
     writeFile(join(scripts, "syncwheel.py"), await readFile(join(sourceRoot, "scripts", "syncwheel.py")), { mode: 0o700 }),
-    writeFile(
-      join(scripts, "syncwheel_revision_provider.py"),
-      await readFile(join(sourceRoot, "scripts", "syncwheel_revision_provider.py")),
-      { mode: 0o600 },
-    ),
+    ...(await readdir(join(sourceRoot, "scripts")))
+      .filter(name => name.startsWith("syncwheel_") && name.endsWith(".py"))
+      .map(async name => writeFile(join(scripts, name), await readFile(join(sourceRoot, "scripts", name)), { mode: 0o600 })),
     writeFile(join(snapshot, "VERSION"), await readFile(join(sourceRoot, "VERSION")), { mode: 0o600 }),
   ]);
   return snapshot;

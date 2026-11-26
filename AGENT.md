@@ -15,6 +15,10 @@ commands, subagents, MCP, hooks, settings, plugins, or fragments.
 Runtime output directories are generated. Do not hand-edit generated skills, runtime config, or
 plugin directories to complete an Agentwheel change.
 
+For explicitly authorized maintenance that would depend on the tool being maintained,
+use [verified native maintenance storage](docs/native-maintenance.md). It retains the
+registered owner and ordinary mutation protections without changing managed hooks.
+
 ## Standard Flow
 
 ```bash

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0
+
+- Add verified independent configuration/lock storage for native maintenance of a registered fleet, retaining its owner, mutation lock and canonical-state lease.
+
 ## 0.23.2
 
 - Repair unconsumed OpenClaw key handoffs using the recipient's configured state and canonical workspace or fleet owner. Validate that same identity on new handoffs.

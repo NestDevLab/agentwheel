@@ -1,3 +1,4 @@
+import { isMaintenanceRepository, assertMaintenanceLease, assertMaintenancePaths, maintenanceStorage } from "../model/maintenance-storage.js";
 import { createHash } from "node:crypto";
 import { chmod, mkdtemp, open, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -39,6 +40,11 @@ export async function invokeRevisionProvider(
 ): Promise<RevisionProviderResponse> {
   const config = revisionProviderConfigSchema.parse(configInput);
   const request = revisionProviderRequestSchema.parse(input);
+  await assertMaintenanceLease();
+  if (maintenanceStorage() && (config.kind !== "git" || !isMaintenanceRepository(request.repositoryRoot))) {
+    throw new Error("Native maintenance requires its verified independent Git provider.");
+  }
+  assertMaintenancePaths(request.repositoryRoot, request.paths);
   const raw = config.kind === "git"
     ? await invokeGitProvider(config.id, request, config)
     : await invokeCommandProvider(
@@ -264,6 +270,7 @@ async function assertProviderSemantics(
 }
 
 async function invokeGitProvider(providerId: string, request: RevisionProviderRequest, config: RevisionProviderConfigInput): Promise<RevisionProviderResponse> {
+  await assertMaintenanceLease();
   const repository = await discoverGitRepository(request.repositoryRoot);
   if (!repository || repository.root !== resolve(request.repositoryRoot)) {
     throw new Error(`Git revision provider requires the repository root itself: ${request.repositoryRoot}.`);
@@ -306,6 +313,7 @@ async function finalizeGit(
     return terminalResponse(providerId, request, "already-verified", existing, await currentHead(request.repositoryRoot));
   }
 
+  await assertMaintenanceLease();
   const repository = await discoverGitRepository(request.repositoryRoot);
   if (!repository) throw new Error(`No Git repository at ${request.repositoryRoot}.`);
   await assertHeadLease(request.repositoryRoot, request.expectedHead, repository.head,
@@ -578,7 +586,7 @@ async function assertGitProviderCompatible(repositoryRoot: string): Promise<void
     "--error-unmatch",
     ".syncwheel/manifest.json",
   ], { allowExitCodes: [0, 1] });
-  if (trackedSyncwheelManifest.exitCode === 0) {
+  if (trackedSyncwheelManifest.exitCode === 0 && !isMaintenanceRepository(repositoryRoot)) {
     throw new Error("The builtin Git revision provider refuses a tracked .syncwheel/manifest.json; configure an external coordination provider.");
   }
 }

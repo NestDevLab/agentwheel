@@ -3166,14 +3166,17 @@ async function registeredCliLeafPaths(): Promise<Set<string>> {
   const leaves = new Set<string>();
   const queue: string[][] = [[]];
   while (queue.length > 0) {
-    const path = queue.shift()!;
-    const help = await runCli([...path, "--help"]);
-    const children = commandNamesFromHelp(help.stdout);
-    if (children.length === 0) {
-      if (path.length > 0) leaves.add(path.join(" "));
-      continue;
+    // Help exits before handlers; bound independent reads without dropping leaves.
+    const batch = queue.splice(0, 4);
+    const helps = await Promise.all(batch.map(path => runCli([...path, "--help"])));
+    for (const [index, path] of batch.entries()) {
+      const children = commandNamesFromHelp(helps[index]!.stdout);
+      if (children.length === 0) {
+        if (path.length > 0) leaves.add(path.join(" "));
+        continue;
+      }
+      for (const child of children) queue.push([...path, child]);
     }
-    for (const child of children) queue.push([...path, child]);
   }
   return leaves;
 }

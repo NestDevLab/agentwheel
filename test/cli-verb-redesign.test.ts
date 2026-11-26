@@ -323,6 +323,109 @@ describe("CLI verb redesign", () => {
     expect(await readFile(skillPath, "utf8")).toContain("# sibling-v1");
   });
 
+  it.each([false, true, "foreign" as const])("focuses native maintenance plan/install on a pinned rule without updating sibling skills (coOwned=%s)", async (coOwned) => {
+    const owner = await tempRoot(), source = await tempRoot(), runtime = await tempRoot();
+    const pack = await tempRoot();
+    await mkdir(join(pack, "rules"), { recursive: true });
+    await mkdir(join(pack, "skills", "sibling"), { recursive: true });
+    const rule = join(pack, "rules", "focus.md"), sibling = join(pack, "skills", "sibling", "SKILL.md");
+    await writeFile(rule, "Rule v1\n");
+    await writeFile(sibling, "---\nname: sibling\ndescription: Sibling fixture.\n---\nSibling v1\n");
+    await writeFile(join(pack, "openpack.json"), JSON.stringify({ schemaVersion: 2, name: "fixture/focus",
+      version: "1.0.0", provides: [{ type: "rules", path: "rules" }, { type: "skills", path: "skills" }] }));
+    await mkdir(join(owner, ".agentwheel"));
+    const configPath = join(owner, ".agentwheel", "config.json");
+    const config = { schemaVersion: 4, fleetId: "focused-maintenance", packages: [{ name: "focus", source: pack,
+      driver: "local", adapter: "claude", mode: "pinned", select: ["rules/focus.md", "skills/sibling"] }, ...(coOwned ? [{ name: "co-owner", source: pack, driver: "local", adapter: "claude", mode: "pinned", select: ["rules/focus.md"] }] : [])],
+      agents: { runtime: { adapter: "claude", root: runtime, transport: "local", installationType: "local" } } };
+    await writeFile(configPath, JSON.stringify(config));
+    await git(owner, ["init", "-b", "main"]);
+    await git(owner, ["config", "user.name", "Fixture"]);
+    await git(owner, ["config", "user.email", "fixture@example.invalid"]);
+    await git(owner, ["add", "."]); await git(owner, ["commit", "-qm", "fixture base"]);
+    await runCli(["fleet", "register", "focused-maintenance", "--root", owner, "--required-package", "focus"]);
+    await runCli(["install", "--fleet", "focused-maintenance", "--agent", "runtime"]);
+    let versionedCoOwner: string | undefined;
+    if (coOwned) {
+      const manifestPath = (await filesBelow(join(runtime, ".agentwheel"))).find(path => path.endsWith(".install-manifest.json"))!;
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      const entry = manifest.entries.find((item: { artifactName: string }) => item.artifactName === "focus.md");
+      // Model an existing legacy claim using a real, already-resolved graph node.
+      versionedCoOwner = entry.graphNodeId;
+      if (coOwned === "foreign") entry.workspaceOwner = "workspace-root:/foreign-fixture-owner";
+      entry.owners.push(versionedCoOwner);
+      entry.refCount = entry.owners.length;
+      await writeFile(manifestPath, JSON.stringify(manifest));
+    }
+    const policy = { reason: "required", journal: "required", revisioning: { mode: "commit-after-verify",
+      allowNoCommitOverride: false, reasonInCommit: "full", provider: { kind: "command", id: "forbidden",
+        command: ["/never/execute"], executableSha256: "a".repeat(64), trustBoundary: "entrypoint", protocolVersion: 1 } } };
+    await writeFile(configPath, JSON.stringify({ ...config, mutationPolicy: policy }));
+    await git(owner, ["add", "."]); await git(owner, ["commit", "-qm", "guarded owner"]);
+    await git(source, ["clone", "--no-hardlinks", owner, "."]);
+    await git(source, ["config", "user.name", "Fixture"]);
+    await git(source, ["config", "user.email", "fixture@example.invalid"]);
+    const native = JSON.parse(await readFile(join(source, ".agentwheel/config.json"), "utf8"));
+    native.mutationPolicy.revisioning.provider = { kind: "git", id: "git", protocolVersion: 1 };
+    await writeFile(join(source, ".agentwheel/config.json"), JSON.stringify(native));
+    await git(source, ["add", "."]); await git(source, ["commit", "-qm", "native source"]);
+    const revision = (await execFileAsync("git", ["-C", source, "rev-parse", "HEAD"])).stdout.trim();
+    const beforeHead = (await execFileAsync("git", ["-C", owner, "rev-parse", "HEAD"])).stdout;
+    const beforeIndex = await readFile(join(owner, ".git/index"));
+    const beforeConfig = await readFile(configPath);
+    const siblingPath = join(runtime, ".claude/skills/sibling/SKILL.md"), rulePath = join(runtime, ".claude/rules/focus.md");
+    const beforeSibling = await readFile(siblingPath);
+    const beforeRule = await readFile(rulePath);
+    await writeFile(join(owner, ".git/hooks/pre-commit"), "#!/bin/sh\nexit 89\n");
+    await chmod(join(owner, ".git/hooks/pre-commit"), 0o700);
+    await writeFile(rule, "Rule v2\n"); await writeFile(sibling, "---\nname: sibling\ndescription: Sibling fixture.\n---\nSibling v2\n");
+    const binding = ["--maintenance-source", source, "--maintenance-revision", revision, "--reason", "Update one reviewed rule"];
+    const scope = ["focus", "--fleet", "focused-maintenance", "--agent", "runtime", "--only-source", "--artifact", "rules/focus.md"];
+    if (coOwned === "foreign") {
+      const foreignPlan = JSON.parse((await runCli([...binding, "plan", ...scope, "--json"])).stdout);
+      expect(foreignPlan.targets[0].summary).toMatchObject({ update: 0, remove: 0, conflict: 0 });
+      const foreignRule = foreignPlan.targets[0].operations.find((op: { artifactName: string }) => op.artifactName === "focus.md");
+      expect(foreignRule).toMatchObject({ action: "keep", reason: expect.stringContaining("foreign artifact owned by") });
+      await runCli([...binding, "install", ...scope]);
+      const manifests = await Promise.all((await filesBelow(join(runtime, ".agentwheel"))).filter(path => path.endsWith(".install-manifest.json")).map(async path => JSON.parse(await readFile(path, "utf8"))));
+      const foreignEntry = manifests.flatMap(manifest => manifest.entries).find(entry => entry.artifactName === "focus.md");
+      expect(foreignEntry.workspaceOwner).toBe("workspace-root:/foreign-fixture-owner");
+      expect(foreignEntry.owners).toEqual(expect.arrayContaining(["workspace:co-owner", versionedCoOwner]));
+      expect(await readFile(rulePath)).toEqual(beforeRule);
+      expect(await readFile(siblingPath)).toEqual(beforeSibling);
+      expect((await execFileAsync("git", ["-C", owner, "rev-parse", "HEAD"])).stdout).toBe(beforeHead);
+      expect(await readFile(join(owner, ".git/index"))).toEqual(beforeIndex);
+      expect(await readFile(configPath)).toEqual(beforeConfig);
+      return;
+    }
+    const preview = JSON.parse((await runCli([...binding, "plan", ...scope, "--json"])).stdout);
+    expect(preview.targets[0].summary).toMatchObject({ update: 1, remove: 0, drift: 0, conflict: 0 });
+    if (coOwned) {
+      const owners = preview.targets[0].operations.find((op: { artifactName: string }) => op.artifactName === "focus.md").owners;
+      expect(owners).toEqual(expect.arrayContaining(["workspace:co-owner", versionedCoOwner]));
+    }
+    expect(preview.targets[0].operations.find((op: { artifactName: string }) => op.artifactName === "sibling").action).toBe("keep");
+    expect(await readFile(rulePath)).toEqual(beforeRule);
+    await runCli([...binding, "install", ...scope]);
+    expect(await readFile(rulePath, "utf8")).toBe("Rule v2\n");
+    expect(await readFile(siblingPath)).toEqual(beforeSibling);
+    if (coOwned) {
+      const manifests = await Promise.all((await filesBelow(join(runtime, ".agentwheel"))).filter(path => path.endsWith(".install-manifest.json")).map(async path => JSON.parse(await readFile(path, "utf8"))));
+      const ruleEntry = manifests.flatMap(manifest => manifest.entries).find(entry => entry.artifactName === "focus.md");
+      expect(ruleEntry.owners).toEqual(expect.arrayContaining(["workspace:co-owner", versionedCoOwner]));
+      expect(ruleEntry.refCount).toBe(ruleEntry.owners.length);
+      const locks = await Promise.all((await filesBelow(join(source, ".agentwheel/locks"))).filter(path => path.endsWith(".graph-lock.json")).map(async path => JSON.parse(await readFile(path, "utf8"))));
+      expect(locks.flatMap(lock => lock.canonical.artifacts).find(artifact => artifact.name === "focus.md" && artifact.hash === ruleEntry.sourceHash)?.owners)
+        .toEqual(expect.arrayContaining(["workspace:co-owner", versionedCoOwner]));
+      expect(locks.flatMap(lock => lock.canonical.nodes).some(node => node.id === versionedCoOwner)).toBe(true);
+    }
+    expect((await execFileAsync("git", ["-C", owner, "rev-parse", "HEAD"])).stdout).toBe(beforeHead);
+    expect(await readFile(join(owner, ".git/index"))).toEqual(beforeIndex);
+    expect(await readFile(configPath)).toEqual(beforeConfig);
+    await expect(runCli([...binding, "plan", "--fleet", "focused-maintenance", "--agent", "runtime", "--artifact", "rules/focus.md"])).rejects.toMatchObject({ stderr: expect.stringContaining("requires a configured package") });
+    await expect(runCli([...binding, "plan", ...scope, "--select", "skills/sibling"])).rejects.toMatchObject({ stderr: expect.stringContaining("cannot be combined") });
+  });
+
   it("installs a new source into every detected runtime with --all-detected", async () => {
     const root = await tempRoot();
     const source = await packageFixture("detected");

@@ -9,13 +9,23 @@ runtime journals and receipts. Its existing mutation lock remains authoritative.
 ```sh
 agentwheel --maintenance-source "$SOURCE" --maintenance-revision "$REVIEWED_SHA" \
   --reason "Install reviewed maintenance resources" \
-  install example-pack --fleet example-fleet --profile daily --dry-run
+  install example-pack --fleet example-fleet --agent example-agent --only-source --dry-run
 ```
 
 Inspect the plan, then apply the same command without `--dry-run`. The global
 options also support `pin`, `plan`, `status` and mutation recovery. They require
 an existing `--fleet`; they do not register or transfer ownership. Composite
 profiles must be qualified one owning workspace at a time.
+
+For a configured package, select one registered agent at a time and preserve its
+configured adapter options. Do not combine a package argument with `--profile`:
+that path treats the argument as a standalone source and can propose removal of
+unrelated installed artifacts. A scoped plan must preserve unrelated resources.
+When only one configured rule, instruction or role is in scope, use
+`plan PACKAGE --agent AGENT --only-source --artifact TYPE/NAME`, then the same
+`install` command after review. This preserves sibling package artifacts;
+`--select` changes the package selection and is not equivalent. Focused
+installation rejects new sources, profiles and combined selection flags.
 
 Repository-local Git environment selectors must be unset; Agentwheel rejects
 them rather than changing effective configuration or hooks. The canonical Git
